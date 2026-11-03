@@ -38,8 +38,8 @@ class ResourceAction {
 /// confirm (unless [confirm] is false) → call → snackbar with result/error.
 /// Returns the result, or null if cancelled/failed.
 ///
-/// Confirmation always names the kube context; on non-local contexts
-/// destructive actions additionally require typing the object's name.
+/// Confirmation always names the kube context, with a prominent warning on
+/// non-local contexts.
 Future<ActionResult?> runResourceAction(
   BuildContext context,
   PanelContext ctx,
