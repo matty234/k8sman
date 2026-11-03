@@ -1,0 +1,40 @@
+{
+  "prometheus": [
+    {
+      "id": "monitoring/kube-prometheus-stack-prometheus",
+      "kind": "prometheus",
+      "namespace": "monitoring",
+      "name": "kube-prometheus-stack-prometheus",
+      "source": "crd",
+      "service": "kube-prometheus-stack-prometheus",
+      "port": "http-web",
+      "scheme": "http",
+      "version": "3.15.1",
+      "replicas": 1,
+      "availableReplicas": 1,
+      "reachable": true,
+      "default": true,
+      "externalUrl": "http://kube-prometheus-stack-prometheus.monitoring:9090"
+    }
+  ],
+  "alertmanager": [
+    {
+      "id": "monitoring/kube-prometheus-stack-alertmanager",
+      "kind": "alertmanager",
+      "namespace": "monitoring",
+      "name": "kube-prometheus-stack-alertmanager",
+      "source": "crd",
+      "service": "kube-prometheus-stack-alertmanager",
+      "port": "http-web",
+      "scheme": "http",
+      "version": "0.34.2",
+      "replicas": 1,
+      "availableReplicas": 1,
+      "reachable": true,
+      "default": true,
+      "externalUrl": "http://kube-prometheus-stack-alertmanager.monitoring:9093"
+    }
+  ],
+  "operatorCRDs": true,
+  "checkedAt": "2026-11-03T13:08:42.989477Z"
+}

@@ -1,0 +1,236 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+      "annotations": {
+        "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"annotations\":{},\"name\":\"redis\",\"namespace\":\"demo\"},\"spec\":{\"clusterIP\":\"None\",\"ports\":[{\"name\":\"redis\",\"port\":6379}],\"selector\":{\"app\":\"redis\"}}}\n"
+      },
+      "creationTimestamp": "2026-11-03T11:22:57Z",
+      "managedFields": [
+        {
+          "apiVersion": "v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:metadata": {
+              "f:annotations": {
+                ".": {},
+                "f:kubectl.kubernetes.io/last-applied-configuration": {}
+              }
+            },
+            "f:spec": {
+              "f:clusterIP": {},
+              "f:internalTrafficPolicy": {},
+              "f:ports": {
+                ".": {},
+                "k:{\"port\":6379,\"protocol\":\"TCP\"}": {
+                  ".": {},
+                  "f:name": {},
+                  "f:port": {},
+                  "f:protocol": {},
+                  "f:targetPort": {}
+                }
+              },
+              "f:selector": {},
+              "f:sessionAffinity": {},
+              "f:type": {}
+            }
+          },
+          "manager": "kubectl-client-side-apply",
+          "operation": "Update",
+          "time": "2026-11-03T11:22:57Z"
+        }
+      ],
+      "name": "redis",
+      "namespace": "demo",
+      "resourceVersion": "774",
+      "uid": "fe30fc8e-781c-4a6b-90c7-c5596d5c076d"
+    },
+    "spec": {
+      "clusterIP": "None",
+      "clusterIPs": [
+        "None"
+      ],
+      "internalTrafficPolicy": "Cluster",
+      "ipFamilies": [
+        "IPv4"
+      ],
+      "ipFamilyPolicy": "SingleStack",
+      "ports": [
+        {
+          "name": "redis",
+          "port": 6379,
+          "protocol": "TCP",
+          "targetPort": 6379
+        }
+      ],
+      "selector": {
+        "app": "redis"
+      },
+      "sessionAffinity": "None",
+      "type": "ClusterIP"
+    },
+    "status": {
+      "loadBalancer": {}
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+      "annotations": {
+        "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"annotations\":{},\"labels\":{\"app\":\"web\"},\"name\":\"web\",\"namespace\":\"demo\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80,\"protocol\":\"TCP\",\"targetPort\":\"http\"}],\"selector\":{\"app\":\"web\"}}}\n"
+      },
+      "creationTimestamp": "2026-11-03T11:22:57Z",
+      "labels": {
+        "app": "web"
+      },
+      "managedFields": [
+        {
+          "apiVersion": "v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:metadata": {
+              "f:annotations": {
+                ".": {},
+                "f:kubectl.kubernetes.io/last-applied-configuration": {}
+              },
+              "f:labels": {
+                ".": {},
+                "f:app": {}
+              }
+            },
+            "f:spec": {
+              "f:internalTrafficPolicy": {},
+              "f:ports": {
+                ".": {},
+                "k:{\"port\":80,\"protocol\":\"TCP\"}": {
+                  ".": {},
+                  "f:name": {},
+                  "f:port": {},
+                  "f:protocol": {},
+                  "f:targetPort": {}
+                }
+              },
+              "f:selector": {},
+              "f:sessionAffinity": {},
+              "f:type": {}
+            }
+          },
+          "manager": "kubectl-client-side-apply",
+          "operation": "Update",
+          "time": "2026-11-03T11:22:57Z"
+        }
+      ],
+      "name": "web",
+      "namespace": "demo",
+      "resourceVersion": "747",
+      "uid": "7f1e48f8-a9ed-4d0c-9db8-6b981aa349e0"
+    },
+    "spec": {
+      "clusterIP": "10.96.247.109",
+      "clusterIPs": [
+        "10.96.247.109"
+      ],
+      "internalTrafficPolicy": "Cluster",
+      "ipFamilies": [
+        "IPv4"
+      ],
+      "ipFamilyPolicy": "SingleStack",
+      "ports": [
+        {
+          "name": "http",
+          "port": 80,
+          "protocol": "TCP",
+          "targetPort": "http"
+        }
+      ],
+      "selector": {
+        "app": "web"
+      },
+      "sessionAffinity": "None",
+      "type": "ClusterIP"
+    },
+    "status": {
+      "loadBalancer": {}
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+      "annotations": {
+        "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"annotations\":{},\"name\":\"web-nodeport\",\"namespace\":\"demo\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"nodePort\":30080,\"port\":80,\"targetPort\":8080}],\"selector\":{\"app\":\"web\"},\"type\":\"NodePort\"}}\n"
+      },
+      "creationTimestamp": "2026-11-03T11:22:57Z",
+      "managedFields": [
+        {
+          "apiVersion": "v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:metadata": {
+              "f:annotations": {
+                ".": {},
+                "f:kubectl.kubernetes.io/last-applied-configuration": {}
+              }
+            },
+            "f:spec": {
+              "f:externalTrafficPolicy": {},
+              "f:internalTrafficPolicy": {},
+              "f:ports": {
+                ".": {},
+                "k:{\"port\":80,\"protocol\":\"TCP\"}": {
+                  ".": {},
+                  "f:name": {},
+                  "f:nodePort": {},
+                  "f:port": {},
+                  "f:protocol": {},
+                  "f:targetPort": {}
+                }
+              },
+              "f:selector": {},
+              "f:sessionAffinity": {},
+              "f:type": {}
+            }
+          },
+          "manager": "kubectl-client-side-apply",
+          "operation": "Update",
+          "time": "2026-11-03T11:22:57Z"
+        }
+      ],
+      "name": "web-nodeport",
+      "namespace": "demo",
+      "resourceVersion": "764",
+      "uid": "5cddaecd-0de5-42ea-80be-23513230254a"
+    },
+    "spec": {
+      "clusterIP": "10.96.39.35",
+      "clusterIPs": [
+        "10.96.39.35"
+      ],
+      "externalTrafficPolicy": "Cluster",
+      "internalTrafficPolicy": "Cluster",
+      "ipFamilies": [
+        "IPv4"
+      ],
+      "ipFamilyPolicy": "SingleStack",
+      "ports": [
+        {
+          "name": "http",
+          "nodePort": 30080,
+          "port": 80,
+          "protocol": "TCP",
+          "targetPort": 8080
+        }
+      ],
+      "selector": {
+        "app": "web"
+      },
+      "sessionAffinity": "None",
+      "type": "NodePort"
+    },
+    "status": {
+      "loadBalancer": {}
+    }
+  }
+]

@@ -23,6 +23,7 @@ import (
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/columns"
 	"github.com/bargrove/k8sman/backend/internal/portforward"
+	"github.com/bargrove/k8sman/backend/internal/prom"
 )
 
 // Server wires the HTTP API to a cluster manager and column store.
@@ -47,6 +48,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.mutationRoutes()
 	s.actionRoutes()
 	s.overviewRoutes()
+	prom.Register(s.mux, mgr, opts.ReadOnly)
 	return s
 }
 

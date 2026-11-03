@@ -1,0 +1,1062 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+      "annotations": {
+        "checksum/config": "457c16ae5fdf9a6ab84c8aeadd5b7e2ca3e10c8b2f0e8c50a2cb40fe8ac9adf3",
+        "checksum/sc-dashboard-provider-config": "e70bf6a851099d385178a76de9757bb0bef8299da6d8443602590e44f05fdf24",
+        "checksum/secret": "1f772964119794fd2ae3eba77fa4f3d086c38024c838425e68a98f056486ba27",
+        "kubectl.kubernetes.io/default-container": "grafana"
+      },
+      "creationTimestamp": "2026-11-03T12:41:32Z",
+      "generateName": "kube-prometheus-stack-grafana-6f57c4978b-",
+      "labels": {
+        "app.kubernetes.io/instance": "kube-prometheus-stack",
+        "app.kubernetes.io/name": "grafana",
+        "app.kubernetes.io/version": "13.3.0",
+        "helm.sh/chart": "grafana-14.3.1",
+        "pod-template-hash": "6f57c4978b"
+      },
+      "managedFields": [
+        {
+          "apiVersion": "v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:metadata": {
+              "f:annotations": {
+                ".": {},
+                "f:checksum/config": {},
+                "f:checksum/sc-dashboard-provider-config": {},
+                "f:checksum/secret": {},
+                "f:kubectl.kubernetes.io/default-container": {}
+              },
+              "f:generateName": {},
+              "f:labels": {
+                ".": {},
+                "f:app.kubernetes.io/instance": {},
+                "f:app.kubernetes.io/name": {},
+                "f:app.kubernetes.io/version": {},
+                "f:helm.sh/chart": {},
+                "f:pod-template-hash": {}
+              },
+              "f:ownerReferences": {
+                ".": {},
+                "k:{\"uid\":\"bb19074b-7fb4-433a-9f41-37d81a362b9b\"}": {}
+              }
+            },
+            "f:spec": {
+              "f:automountServiceAccountToken": {},
+              "f:containers": {
+                "k:{\"name\":\"grafana\"}": {
+                  ".": {},
+                  "f:env": {
+                    ".": {},
+                    "k:{\"name\":\"GF_PATHS_DATA\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"GF_PATHS_LOGS\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"GF_PATHS_PLUGINS\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"GF_PATHS_PROVISIONING\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"GF_SECURITY_ADMIN_PASSWORD\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:valueFrom": {
+                        ".": {},
+                        "f:secretKeyRef": {}
+                      }
+                    },
+                    "k:{\"name\":\"GF_SECURITY_ADMIN_USER\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:valueFrom": {
+                        ".": {},
+                        "f:secretKeyRef": {}
+                      }
+                    },
+                    "k:{\"name\":\"GF_UNIFIED_STORAGE_INDEX_PATH\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"GOMEMLIMIT\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"POD_IP\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:valueFrom": {
+                        ".": {},
+                        "f:fieldRef": {}
+                      }
+                    }
+                  },
+                  "f:image": {},
+                  "f:imagePullPolicy": {},
+                  "f:livenessProbe": {
+                    ".": {},
+                    "f:failureThreshold": {},
+                    "f:httpGet": {
+                      ".": {},
+                      "f:path": {},
+                      "f:port": {},
+                      "f:scheme": {}
+                    },
+                    "f:initialDelaySeconds": {},
+                    "f:periodSeconds": {},
+                    "f:successThreshold": {},
+                    "f:timeoutSeconds": {}
+                  },
+                  "f:name": {},
+                  "f:ports": {
+                    ".": {},
+                    "k:{\"containerPort\":3000,\"protocol\":\"TCP\"}": {
+                      ".": {},
+                      "f:containerPort": {},
+                      "f:name": {},
+                      "f:protocol": {}
+                    },
+                    "k:{\"containerPort\":6060,\"protocol\":\"TCP\"}": {
+                      ".": {},
+                      "f:containerPort": {},
+                      "f:name": {},
+                      "f:protocol": {}
+                    },
+                    "k:{\"containerPort\":9094,\"protocol\":\"TCP\"}": {
+                      ".": {},
+                      "f:containerPort": {},
+                      "f:name": {},
+                      "f:protocol": {}
+                    },
+                    "k:{\"containerPort\":9094,\"protocol\":\"UDP\"}": {
+                      ".": {},
+                      "f:containerPort": {},
+                      "f:name": {},
+                      "f:protocol": {}
+                    }
+                  },
+                  "f:readinessProbe": {
+                    ".": {},
+                    "f:failureThreshold": {},
+                    "f:httpGet": {
+                      ".": {},
+                      "f:path": {},
+                      "f:port": {},
+                      "f:scheme": {}
+                    },
+                    "f:periodSeconds": {},
+                    "f:successThreshold": {},
+                    "f:timeoutSeconds": {}
+                  },
+                  "f:resources": {
+                    ".": {},
+                    "f:limits": {
+                      ".": {},
+                      "f:memory": {}
+                    },
+                    "f:requests": {
+                      ".": {},
+                      "f:cpu": {},
+                      "f:memory": {}
+                    }
+                  },
+                  "f:securityContext": {
+                    ".": {},
+                    "f:allowPrivilegeEscalation": {},
+                    "f:capabilities": {
+                      ".": {},
+                      "f:drop": {}
+                    },
+                    "f:privileged": {},
+                    "f:readOnlyRootFilesystem": {},
+                    "f:seccompProfile": {
+                      ".": {},
+                      "f:type": {}
+                    }
+                  },
+                  "f:terminationMessagePath": {},
+                  "f:terminationMessagePolicy": {},
+                  "f:volumeMounts": {
+                    ".": {},
+                    "k:{\"mountPath\":\"/etc/grafana/grafana.ini\"}": {
+                      ".": {},
+                      "f:mountPath": {},
+                      "f:name": {},
+                      "f:subPath": {}
+                    },
+                    "k:{\"mountPath\":\"/etc/grafana/provisioning/dashboards/sc-dashboardproviders.yaml\"}": {
+                      ".": {},
+                      "f:mountPath": {},
+                      "f:name": {},
+                      "f:subPath": {}
+                    },
+                    "k:{\"mountPath\":\"/etc/grafana/provisioning/datasources\"}": {
+                      ".": {},
+                      "f:mountPath": {},
+                      "f:name": {}
+                    },
+                    "k:{\"mountPath\":\"/tmp\"}": {
+                      ".": {},
+                      "f:mountPath": {},
+                      "f:name": {}
+                    },
+                    "k:{\"mountPath\":\"/tmp/dashboards\"}": {
+                      ".": {},
+                      "f:mountPath": {},
+                      "f:name": {}
+                    },
+                    "k:{\"mountPath\":\"/var/lib/grafana\"}": {
+                      ".": {},
+                      "f:mountPath": {},
+                      "f:name": {}
+                    },
+                    "k:{\"mountPath\":\"/var/lib/grafana-search\"}": {
+                      ".": {},
+                      "f:mountPath": {},
+                      "f:name": {}
+                    }
+                  }
+                },
+                "k:{\"name\":\"grafana-sc-dashboard\"}": {
+                  ".": {},
+                  "f:env": {
+                    ".": {},
+                    "k:{\"name\":\"FOLDER\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"LABEL\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"LABEL_VALUE\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"METHOD\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"NAMESPACE\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"REQ_METHOD\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"REQ_PASSWORD\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:valueFrom": {
+                        ".": {},
+                        "f:secretKeyRef": {}
+                      }
+                    },
+                    "k:{\"name\":\"REQ_URL\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"REQ_USERNAME\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:valueFrom": {
+                        ".": {},
+                        "f:secretKeyRef": {}
+                      }
+                    },
+                    "k:{\"name\":\"RESOURCE\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    }
+                  },
+                  "f:image": {},
+                  "f:imagePullPolicy": {},
+                  "f:name": {},
+                  "f:resources": {},
+                  "f:securityContext": {
+                    ".": {},
+                    "f:allowPrivilegeEscalation": {},
+                    "f:capabilities": {
+                      ".": {},
+                      "f:drop": {}
+                    },
+                    "f:readOnlyRootFilesystem": {},
+                    "f:seccompProfile": {
+                      ".": {},
+                      "f:type": {}
+                    }
+                  },
+                  "f:terminationMessagePath": {},
+                  "f:terminationMessagePolicy": {},
+                  "f:volumeMounts": {
+                    ".": {},
+                    "k:{\"mountPath\":\"/tmp/dashboards\"}": {
+                      ".": {},
+                      "f:mountPath": {},
+                      "f:name": {}
+                    }
+                  }
+                },
+                "k:{\"name\":\"grafana-sc-datasources\"}": {
+                  ".": {},
+                  "f:env": {
+                    ".": {},
+                    "k:{\"name\":\"FOLDER\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"LABEL\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"LABEL_VALUE\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"METHOD\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"REQ_METHOD\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"REQ_PASSWORD\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:valueFrom": {
+                        ".": {},
+                        "f:secretKeyRef": {}
+                      }
+                    },
+                    "k:{\"name\":\"REQ_URL\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    },
+                    "k:{\"name\":\"REQ_USERNAME\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:valueFrom": {
+                        ".": {},
+                        "f:secretKeyRef": {}
+                      }
+                    },
+                    "k:{\"name\":\"RESOURCE\"}": {
+                      ".": {},
+                      "f:name": {},
+                      "f:value": {}
+                    }
+                  },
+                  "f:image": {},
+                  "f:imagePullPolicy": {},
+                  "f:name": {},
+                  "f:resources": {},
+                  "f:securityContext": {
+                    ".": {},
+                    "f:allowPrivilegeEscalation": {},
+                    "f:capabilities": {
+                      ".": {},
+                      "f:drop": {}
+                    },
+                    "f:readOnlyRootFilesystem": {},
+                    "f:seccompProfile": {
+                      ".": {},
+                      "f:type": {}
+                    }
+                  },
+                  "f:terminationMessagePath": {},
+                  "f:terminationMessagePolicy": {},
+                  "f:volumeMounts": {
+                    ".": {},
+                    "k:{\"mountPath\":\"/etc/grafana/provisioning/datasources\"}": {
+                      ".": {},
+                      "f:mountPath": {},
+                      "f:name": {}
+                    }
+                  }
+                }
+              },
+              "f:dnsPolicy": {},
+              "f:enableServiceLinks": {},
+              "f:restartPolicy": {},
+              "f:schedulerName": {},
+              "f:securityContext": {
+                ".": {},
+                "f:fsGroup": {},
+                "f:runAsGroup": {},
+                "f:runAsNonRoot": {},
+                "f:runAsUser": {}
+              },
+              "f:serviceAccount": {},
+              "f:serviceAccountName": {},
+              "f:shareProcessNamespace": {},
+              "f:terminationGracePeriodSeconds": {},
+              "f:volumes": {
+                ".": {},
+                "k:{\"name\":\"config\"}": {
+                  ".": {},
+                  "f:configMap": {
+                    ".": {},
+                    "f:defaultMode": {},
+                    "f:name": {}
+                  },
+                  "f:name": {}
+                },
+                "k:{\"name\":\"sc-dashboard-provider\"}": {
+                  ".": {},
+                  "f:configMap": {
+                    ".": {},
+                    "f:defaultMode": {},
+                    "f:name": {}
+                  },
+                  "f:name": {}
+                },
+                "k:{\"name\":\"sc-dashboard-volume\"}": {
+                  ".": {},
+                  "f:emptyDir": {},
+                  "f:name": {}
+                },
+                "k:{\"name\":\"sc-datasources-volume\"}": {
+                  ".": {},
+                  "f:emptyDir": {},
+                  "f:name": {}
+                },
+                "k:{\"name\":\"search\"}": {
+                  ".": {},
+                  "f:emptyDir": {},
+                  "f:name": {}
+                },
+                "k:{\"name\":\"storage\"}": {
+                  ".": {},
+                  "f:emptyDir": {},
+                  "f:name": {}
+                },
+                "k:{\"name\":\"tmp\"}": {
+                  ".": {},
+                  "f:emptyDir": {},
+                  "f:name": {}
+                }
+              }
+            }
+          },
+          "manager": "kube-controller-manager",
+          "operation": "Update",
+          "time": "2026-11-03T12:41:32Z"
+        },
+        {
+          "apiVersion": "v1",
+          "fieldsType": "FieldsV1",
+          "fieldsV1": {
+            "f:status": {
+              "f:conditions": {
+                "k:{\"type\":\"ContainersReady\"}": {
+                  ".": {},
+                  "f:lastProbeTime": {},
+                  "f:lastTransitionTime": {},
+                  "f:status": {},
+                  "f:type": {}
+                },
+                "k:{\"type\":\"Initialized\"}": {
+                  ".": {},
+                  "f:lastProbeTime": {},
+                  "f:lastTransitionTime": {},
+                  "f:status": {},
+                  "f:type": {}
+                },
+                "k:{\"type\":\"Ready\"}": {
+                  ".": {},
+                  "f:lastProbeTime": {},
+                  "f:lastTransitionTime": {},
+                  "f:status": {},
+                  "f:type": {}
+                }
+              },
+              "f:containerStatuses": {},
+              "f:hostIP": {},
+              "f:phase": {},
+              "f:podIP": {},
+              "f:podIPs": {
+                ".": {},
+                "k:{\"ip\":\"10.244.0.121\"}": {
+                  ".": {},
+                  "f:ip": {}
+                }
+              },
+              "f:startTime": {}
+            }
+          },
+          "manager": "kubelet",
+          "operation": "Update",
+          "subresource": "status",
+          "time": "2026-11-03T12:46:53Z"
+        }
+      ],
+      "name": "kube-prometheus-stack-grafana-6f57c4978b-56rx7",
+      "namespace": "monitoring",
+      "ownerReferences": [
+        {
+          "apiVersion": "apps/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "ReplicaSet",
+          "name": "kube-prometheus-stack-grafana-6f57c4978b",
+          "uid": "bb19074b-7fb4-433a-9f41-37d81a362b9b"
+        }
+      ],
+      "resourceVersion": "12335",
+      "uid": "46aaa0bb-5999-4af2-9147-bbabf3f8b462"
+    },
+    "spec": {
+      "automountServiceAccountToken": true,
+      "containers": [
+        {
+          "env": [
+            {
+              "name": "METHOD",
+              "value": "WATCH"
+            },
+            {
+              "name": "LABEL",
+              "value": "grafana_dashboard"
+            },
+            {
+              "name": "LABEL_VALUE",
+              "value": "1"
+            },
+            {
+              "name": "FOLDER",
+              "value": "/tmp/dashboards"
+            },
+            {
+              "name": "RESOURCE",
+              "value": "both"
+            },
+            {
+              "name": "NAMESPACE",
+              "value": "ALL"
+            },
+            {
+              "name": "REQ_USERNAME",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "key": "admin-user",
+                  "name": "kube-prometheus-stack-grafana"
+                }
+              }
+            },
+            {
+              "name": "REQ_PASSWORD",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "key": "admin-password",
+                  "name": "kube-prometheus-stack-grafana"
+                }
+              }
+            },
+            {
+              "name": "REQ_URL",
+              "value": "http://localhost:3000/api/admin/provisioning/dashboards/reload"
+            },
+            {
+              "name": "REQ_METHOD",
+              "value": "POST"
+            }
+          ],
+          "image": "quay.io/kiwigrid/k8s-sidecar:2.14.3",
+          "imagePullPolicy": "IfNotPresent",
+          "name": "grafana-sc-dashboard",
+          "resources": {},
+          "securityContext": {
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            },
+            "readOnlyRootFilesystem": true,
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "terminationMessagePath": "/dev/termination-log",
+          "terminationMessagePolicy": "File",
+          "volumeMounts": [
+            {
+              "mountPath": "/tmp/dashboards",
+              "name": "sc-dashboard-volume"
+            },
+            {
+              "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+              "name": "kube-api-access-qf48b",
+              "readOnly": true
+            }
+          ]
+        },
+        {
+          "env": [
+            {
+              "name": "METHOD",
+              "value": "WATCH"
+            },
+            {
+              "name": "LABEL",
+              "value": "grafana_datasource"
+            },
+            {
+              "name": "LABEL_VALUE",
+              "value": "1"
+            },
+            {
+              "name": "FOLDER",
+              "value": "/etc/grafana/provisioning/datasources"
+            },
+            {
+              "name": "RESOURCE",
+              "value": "both"
+            },
+            {
+              "name": "REQ_USERNAME",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "key": "admin-user",
+                  "name": "kube-prometheus-stack-grafana"
+                }
+              }
+            },
+            {
+              "name": "REQ_PASSWORD",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "key": "admin-password",
+                  "name": "kube-prometheus-stack-grafana"
+                }
+              }
+            },
+            {
+              "name": "REQ_URL",
+              "value": "http://localhost:3000/api/admin/provisioning/datasources/reload"
+            },
+            {
+              "name": "REQ_METHOD",
+              "value": "POST"
+            }
+          ],
+          "image": "quay.io/kiwigrid/k8s-sidecar:2.14.3",
+          "imagePullPolicy": "IfNotPresent",
+          "name": "grafana-sc-datasources",
+          "resources": {},
+          "securityContext": {
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            },
+            "readOnlyRootFilesystem": true,
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "terminationMessagePath": "/dev/termination-log",
+          "terminationMessagePolicy": "File",
+          "volumeMounts": [
+            {
+              "mountPath": "/etc/grafana/provisioning/datasources",
+              "name": "sc-datasources-volume"
+            },
+            {
+              "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+              "name": "kube-api-access-qf48b",
+              "readOnly": true
+            }
+          ]
+        },
+        {
+          "env": [
+            {
+              "name": "POD_IP",
+              "valueFrom": {
+                "fieldRef": {
+                  "apiVersion": "v1",
+                  "fieldPath": "status.podIP"
+                }
+              }
+            },
+            {
+              "name": "GF_SECURITY_ADMIN_USER",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "key": "admin-user",
+                  "name": "kube-prometheus-stack-grafana"
+                }
+              }
+            },
+            {
+              "name": "GF_SECURITY_ADMIN_PASSWORD",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "key": "admin-password",
+                  "name": "kube-prometheus-stack-grafana"
+                }
+              }
+            },
+            {
+              "name": "GF_PATHS_DATA",
+              "value": "/var/lib/grafana/"
+            },
+            {
+              "name": "GF_PATHS_LOGS",
+              "value": "/var/log/grafana"
+            },
+            {
+              "name": "GF_PATHS_PLUGINS",
+              "value": "/var/lib/grafana/plugins"
+            },
+            {
+              "name": "GF_PATHS_PROVISIONING",
+              "value": "/etc/grafana/provisioning"
+            },
+            {
+              "name": "GF_UNIFIED_STORAGE_INDEX_PATH",
+              "value": "/var/lib/grafana-search/bleve"
+            },
+            {
+              "name": "GOMEMLIMIT",
+              "value": "345MiB"
+            }
+          ],
+          "image": "docker.io/grafana/grafana:13.3.0-distroless",
+          "imagePullPolicy": "IfNotPresent",
+          "livenessProbe": {
+            "failureThreshold": 10,
+            "httpGet": {
+              "path": "/api/health",
+              "port": "grafana",
+              "scheme": "HTTP"
+            },
+            "initialDelaySeconds": 60,
+            "periodSeconds": 10,
+            "successThreshold": 1,
+            "timeoutSeconds": 30
+          },
+          "name": "grafana",
+          "ports": [
+            {
+              "containerPort": 3000,
+              "name": "grafana",
+              "protocol": "TCP"
+            },
+            {
+              "containerPort": 9094,
+              "name": "gossip-tcp",
+              "protocol": "TCP"
+            },
+            {
+              "containerPort": 9094,
+              "name": "gossip-udp",
+              "protocol": "UDP"
+            },
+            {
+              "containerPort": 6060,
+              "name": "profiling",
+              "protocol": "TCP"
+            }
+          ],
+          "readinessProbe": {
+            "failureThreshold": 3,
+            "httpGet": {
+              "path": "/api/health",
+              "port": "grafana",
+              "scheme": "HTTP"
+            },
+            "periodSeconds": 10,
+            "successThreshold": 1,
+            "timeoutSeconds": 1
+          },
+          "resources": {
+            "limits": {
+              "memory": "384Mi"
+            },
+            "requests": {
+              "cpu": "50m",
+              "memory": "128Mi"
+            }
+          },
+          "securityContext": {
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            },
+            "privileged": false,
+            "readOnlyRootFilesystem": true,
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "terminationMessagePath": "/dev/termination-log",
+          "terminationMessagePolicy": "File",
+          "volumeMounts": [
+            {
+              "mountPath": "/tmp",
+              "name": "tmp"
+            },
+            {
+              "mountPath": "/etc/grafana/grafana.ini",
+              "name": "config",
+              "subPath": "grafana.ini"
+            },
+            {
+              "mountPath": "/var/lib/grafana",
+              "name": "storage"
+            },
+            {
+              "mountPath": "/var/lib/grafana-search",
+              "name": "search"
+            },
+            {
+              "mountPath": "/tmp/dashboards",
+              "name": "sc-dashboard-volume"
+            },
+            {
+              "mountPath": "/etc/grafana/provisioning/dashboards/sc-dashboardproviders.yaml",
+              "name": "sc-dashboard-provider",
+              "subPath": "provider.yaml"
+            },
+            {
+              "mountPath": "/etc/grafana/provisioning/datasources",
+              "name": "sc-datasources-volume"
+            },
+            {
+              "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+              "name": "kube-api-access-qf48b",
+              "readOnly": true
+            }
+          ]
+        }
+      ],
+      "dnsPolicy": "ClusterFirst",
+      "enableServiceLinks": true,
+      "nodeName": "k8sman-dev-control-plane",
+      "preemptionPolicy": "PreemptLowerPriority",
+      "priority": 0,
+      "restartPolicy": "Always",
+      "schedulerName": "default-scheduler",
+      "securityContext": {
+        "fsGroup": 472,
+        "runAsGroup": 472,
+        "runAsNonRoot": true,
+        "runAsUser": 472
+      },
+      "serviceAccount": "kube-prometheus-stack-grafana",
+      "serviceAccountName": "kube-prometheus-stack-grafana",
+      "shareProcessNamespace": false,
+      "terminationGracePeriodSeconds": 30,
+      "tolerations": [
+        {
+          "effect": "NoExecute",
+          "key": "node.kubernetes.io/not-ready",
+          "operator": "Exists",
+          "tolerationSeconds": 300
+        },
+        {
+          "effect": "NoExecute",
+          "key": "node.kubernetes.io/unreachable",
+          "operator": "Exists",
+          "tolerationSeconds": 300
+        }
+      ],
+      "volumes": [
+        {
+          "emptyDir": {},
+          "name": "tmp"
+        },
+        {
+          "configMap": {
+            "defaultMode": 420,
+            "name": "kube-prometheus-stack-grafana"
+          },
+          "name": "config"
+        },
+        {
+          "emptyDir": {},
+          "name": "storage"
+        },
+        {
+          "emptyDir": {},
+          "name": "search"
+        },
+        {
+          "emptyDir": {},
+          "name": "sc-dashboard-volume"
+        },
+        {
+          "configMap": {
+            "defaultMode": 420,
+            "name": "kube-prometheus-stack-grafana-config-dashboards"
+          },
+          "name": "sc-dashboard-provider"
+        },
+        {
+          "emptyDir": {},
+          "name": "sc-datasources-volume"
+        },
+        {
+          "name": "kube-api-access-qf48b",
+          "projected": {
+            "defaultMode": 420,
+            "sources": [
+              {
+                "serviceAccountToken": {
+                  "expirationSeconds": 3607,
+                  "path": "token"
+                }
+              },
+              {
+                "configMap": {
+                  "items": [
+                    {
+                      "key": "ca.crt",
+                      "path": "ca.crt"
+                    }
+                  ],
+                  "name": "kube-root-ca.crt"
+                }
+              },
+              {
+                "downwardAPI": {
+                  "items": [
+                    {
+                      "fieldRef": {
+                        "apiVersion": "v1",
+                        "fieldPath": "metadata.namespace"
+                      },
+                      "path": "namespace"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:41:32Z",
+          "status": "True",
+          "type": "Initialized"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:46:53Z",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:46:53Z",
+          "status": "True",
+          "type": "ContainersReady"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:41:32Z",
+          "status": "True",
+          "type": "PodScheduled"
+        }
+      ],
+      "containerStatuses": [
+        {
+          "containerID": "containerd://74e800b5117608352abb3a2677a1bbba05c3b6fd430fd1ad3f8111f943ee9460",
+          "image": "docker.io/grafana/grafana:13.3.0-distroless",
+          "imageID": "docker.io/grafana/grafana@sha256:540b8afb775bf34aefce417e4329039daa5d44b6f2fbda6881397b1b247ca7df",
+          "lastState": {},
+          "name": "grafana",
+          "ready": true,
+          "restartCount": 0,
+          "started": true,
+          "state": {
+            "running": {
+              "startedAt": "2026-11-03T12:45:39Z"
+            }
+          }
+        },
+        {
+          "containerID": "containerd://2527bff5ae121c6f65dafe2c4f2c75f936fe1ce1855302edaba2f4a3db947c5a",
+          "image": "quay.io/kiwigrid/k8s-sidecar:2.14.3",
+          "imageID": "quay.io/kiwigrid/k8s-sidecar@sha256:52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880",
+          "lastState": {},
+          "name": "grafana-sc-dashboard",
+          "ready": true,
+          "restartCount": 0,
+          "started": true,
+          "state": {
+            "running": {
+              "startedAt": "2026-11-03T12:43:00Z"
+            }
+          }
+        },
+        {
+          "containerID": "containerd://786fb1f78b31cf6bc7c665d5a136a8ccd96a88bfb2a0ea924a156f1cf9f86fca",
+          "image": "quay.io/kiwigrid/k8s-sidecar:2.14.3",
+          "imageID": "quay.io/kiwigrid/k8s-sidecar@sha256:52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880",
+          "lastState": {},
+          "name": "grafana-sc-datasources",
+          "ready": true,
+          "restartCount": 0,
+          "started": true,
+          "state": {
+            "running": {
+              "startedAt": "2026-11-03T12:43:06Z"
+            }
+          }
+        }
+      ],
+      "hostIP": "172.18.0.2",
+      "phase": "Running",
+      "podIP": "10.244.0.121",
+      "podIPs": [
+        {
+          "ip": "10.244.0.121"
+        }
+      ],
+      "qosClass": "Burstable",
+      "startTime": "2026-11-03T12:41:32Z"
+    }
+  }
+]

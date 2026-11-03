@@ -1,0 +1,85 @@
+{
+  "prometheus": {
+    "id": "monitoring/kube-prometheus-stack-prometheus",
+    "kind": "prometheus",
+    "namespace": "monitoring",
+    "name": "kube-prometheus-stack-prometheus",
+    "source": "crd",
+    "service": "kube-prometheus-stack-prometheus",
+    "port": "http-web",
+    "scheme": "http",
+    "version": "3.15.1",
+    "replicas": 1,
+    "availableReplicas": 1,
+    "reachable": true,
+    "default": true,
+    "externalUrl": "http://kube-prometheus-stack-prometheus.monitoring:9090"
+  },
+  "up": 0,
+  "down": 2,
+  "unknown": 0,
+  "pools": [
+    {
+      "scrapePool": "serviceMonitor/demo/web/0",
+      "monitor": {
+        "kind": "ServiceMonitor",
+        "namespace": "demo",
+        "name": "web",
+        "endpoint": 0
+      },
+      "up": 0,
+      "down": 2,
+      "unknown": 0,
+      "targets": [
+        {
+          "scrapePool": "serviceMonitor/demo/web/0",
+          "scrapeUrl": "http://10.244.0.27:8080/metrics",
+          "health": "down",
+          "lastError": "received unsupported Content-Type \"application/octet-stream\" and no fallback_scrape_protocol specified for target",
+          "lastScrape": "2026-11-03T13:08:45.758135548Z",
+          "lastScrapeDuration": 0.002534333,
+          "scrapeInterval": "30s",
+          "labels": {
+            "container": "nginx",
+            "endpoint": "http",
+            "instance": "10.244.0.27:8080",
+            "job": "web",
+            "namespace": "demo",
+            "pod": "web-6fd47b8fcb-4r4gm",
+            "service": "web"
+          },
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "demo",
+            "name": "web-6fd47b8fcb-4r4gm"
+          }
+        },
+        {
+          "scrapePool": "serviceMonitor/demo/web/0",
+          "scrapeUrl": "http://10.244.0.28:8080/metrics",
+          "health": "down",
+          "lastError": "received unsupported Content-Type \"application/octet-stream\" and no fallback_scrape_protocol specified for target",
+          "lastScrape": "2026-11-03T13:08:25.995661762Z",
+          "lastScrapeDuration": 0.005446708,
+          "scrapeInterval": "30s",
+          "labels": {
+            "container": "nginx",
+            "endpoint": "http",
+            "instance": "10.244.0.28:8080",
+            "job": "web",
+            "namespace": "demo",
+            "pod": "web-6fd47b8fcb-442dt",
+            "service": "web"
+          },
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "demo",
+            "name": "web-6fd47b8fcb-442dt"
+          }
+        }
+      ]
+    }
+  ]
+}

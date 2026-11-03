@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import '../state/log_dock.dart';
+import 'alerts/alerts_view.dart';
 import 'detail/detail_sidebar.dart';
 import 'logs/log_dock_view.dart';
 import 'nodes/nodes_view.dart';
@@ -85,6 +86,7 @@ class _ShellState extends State<Shell> {
                     Expanded(
                       child: switch (app.view) {
                         MainView.overview => const OverviewView(),
+                        MainView.alerts => const AlertsView(),
                         MainView.nodes => const NodesView(),
                         MainView.portForwards => const PortForwardView(),
                         MainView.resources => type == null

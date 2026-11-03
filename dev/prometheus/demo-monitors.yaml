@@ -1,0 +1,39 @@
+# Sample monitors for the k8sman dev cluster.
+#   kubectl apply -f dev/prometheus/demo-monitors.yaml
+# web serves no /metrics (nginx), so its targets are realistically down;
+# the PodMonitor scrapes Grafana, which is healthy.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: web
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8sman-demo
+spec:
+  selector:
+    matchLabels:
+      app: web
+  namespaceSelector:
+    matchNames: [demo]
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: grafana
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8sman-demo
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  namespaceSelector:
+    matchNames: [monitoring]
+  podMetricsEndpoints:
+    - port: grafana
+      path: /metrics
+      interval: 30s

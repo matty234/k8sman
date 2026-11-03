@@ -1,0 +1,139 @@
+{
+  "prometheus": {
+    "id": "monitoring/kube-prometheus-stack-prometheus",
+    "kind": "prometheus",
+    "namespace": "monitoring",
+    "name": "kube-prometheus-stack-prometheus",
+    "source": "crd",
+    "service": "kube-prometheus-stack-prometheus",
+    "port": "http-web",
+    "scheme": "http",
+    "version": "3.15.1",
+    "replicas": 1,
+    "availableReplicas": 1,
+    "reachable": true,
+    "default": true,
+    "externalUrl": "http://kube-prometheus-stack-prometheus.monitoring:9090"
+  },
+  "groups": [
+    {
+      "name": "k8sman-demo.alerts",
+      "file": "/etc/prometheus/rules/prometheus-kube-prometheus-stack-prometheus-rulefiles-0/demo-k8sman-demo-4cdd29ef-e80e-434c-b72a-91120a282b32.yaml",
+      "interval": 30,
+      "lastEvaluation": "2026-11-03T13:08:45.415231215Z",
+      "evaluationTime": 0.002855083,
+      "source": {
+        "namespace": "demo",
+        "name": "k8sman-demo"
+      },
+      "rules": [
+        {
+          "type": "alerting",
+          "name": "K8smanTestAlert",
+          "query": "vector(1)",
+          "duration": 60,
+          "labels": {
+            "namespace": "demo",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "Always fires one minute after the rule loads. Use it to try silences in k8sman.",
+            "runbook_url": "https://github.com/bargrove/k8sman/blob/master/docs/PROMETHEUS.md",
+            "summary": "Test alert from the k8sman demo rules"
+          },
+          "state": "firing",
+          "health": "ok",
+          "lastEvaluation": "2026-11-03T13:08:45.415391798Z",
+          "evaluationTime": 0.001539125,
+          "alerts": [
+            {
+              "labels": {
+                "alertname": "K8smanTestAlert",
+                "namespace": "demo",
+                "severity": "warning"
+              },
+              "annotations": {
+                "description": "Always fires one minute after the rule loads. Use it to try silences in k8sman.",
+                "runbook_url": "https://github.com/bargrove/k8sman/blob/master/docs/PROMETHEUS.md",
+                "summary": "Test alert from the k8sman demo rules"
+              },
+              "state": "firing",
+              "activeAt": "2026-11-03T12:48:45.404916777Z",
+              "value": "1e+00"
+            }
+          ]
+        },
+        {
+          "type": "alerting",
+          "name": "K8smanDemoPodCrashLooping",
+          "query": "max_over_time(kube_pod_container_status_waiting_reason{namespace=\"demo\",reason=\"CrashLoopBackOff\"}[5m]) >= 1",
+          "duration": 120,
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "description": "Container {{ $labels.container }} of pod {{ $labels.namespace }}/{{ $labels.pod }} has been in CrashLoopBackOff for more than 2 minutes.",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping",
+            "summary": "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+          },
+          "state": "firing",
+          "health": "ok",
+          "lastEvaluation": "2026-11-03T13:08:45.416956132Z",
+          "evaluationTime": 0.001119959,
+          "alerts": [
+            {
+              "labels": {
+                "alertname": "K8smanDemoPodCrashLooping",
+                "container": "app",
+                "endpoint": "http",
+                "instance": "10.244.0.120:8080",
+                "job": "kube-state-metrics",
+                "namespace": "demo",
+                "pod": "crashy",
+                "reason": "CrashLoopBackOff",
+                "service": "kube-prometheus-stack-kube-state-metrics",
+                "severity": "critical",
+                "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+              },
+              "annotations": {
+                "description": "Container app of pod demo/crashy has been in CrashLoopBackOff for more than 2 minutes.",
+                "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping",
+                "summary": "Pod demo/crashy is crash looping"
+              },
+              "state": "firing",
+              "activeAt": "2026-11-03T12:48:45.404916777Z",
+              "value": "1e+00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "k8sman-demo.records",
+      "file": "/etc/prometheus/rules/prometheus-kube-prometheus-stack-prometheus-rulefiles-0/demo-k8sman-demo-4cdd29ef-e80e-434c-b72a-91120a282b32.yaml",
+      "interval": 30,
+      "lastEvaluation": "2026-11-03T13:08:23.794531011Z",
+      "evaluationTime": 0.002756417,
+      "source": {
+        "namespace": "demo",
+        "name": "k8sman-demo"
+      },
+      "rules": [
+        {
+          "type": "recording",
+          "name": "namespace:k8sman_demo_container_restarts:sum",
+          "query": "sum by (namespace) (kube_pod_container_status_restarts_total{namespace=\"demo\"})",
+          "health": "ok",
+          "lastEvaluation": "2026-11-03T13:08:23.794868511Z",
+          "evaluationTime": 0.002352709
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "firing": 2,
+    "pending": 0,
+    "inactive": 0,
+    "errors": 0
+  }
+}

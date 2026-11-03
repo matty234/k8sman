@@ -16,6 +16,8 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/bargrove/k8sman/backend/internal/prom"
 )
 
 // Thresholds used by the analysis.
@@ -53,6 +55,8 @@ type Input struct {
 	Nodes        []corev1.Node
 	PVCs         []corev1.PersistentVolumeClaim
 	Events       []corev1.Event
+	// Alerts are firing Alertmanager alerts (nil when none is installed).
+	Alerts []prom.Alert
 }
 
 // Owner is the top-level controller of an object (Deployment, StatefulSet,
@@ -225,6 +229,7 @@ type categoryDef struct {
 // categoryDefs is the display order of the summary tiles.
 var categoryDefs = []categoryDef{
 	{"nodeNotReady", "Nodes not ready", "nodes", Critical},
+	{catAlertCritical, "Critical alerts", "alerts", Critical},
 	{"crashLoop", "CrashLoopBackOff", "pods", Critical},
 	{"imagePull", "Image pull errors", "pods", Critical},
 	{"createContainerConfigError", "Container config errors", "pods", Critical},
@@ -245,12 +250,14 @@ var categoryDefs = []categoryDef{
 	{"jobLongRunning", "Jobs running > 1h", "jobs", Warning},
 	{"cronJobOverdue", "CronJobs overdue", "jobs", Warning},
 	{"nodePressure", "Node pressure", "nodes", Warning},
+	{catAlertWarning, "Warning alerts", "alerts", Warning},
 	{"pvcPending", "PVCs pending", "storage", Warning},
 	{"rolling", "Rolling out", "workloads", Info},
 	{"deploymentPaused", "Paused rollouts", "workloads", Info},
 	{"jobSuspended", "Suspended jobs", "jobs", Info},
 	{"cronJobSuspended", "Suspended CronJobs", "jobs", Info},
 	{"nodeCordoned", "Nodes cordoned", "nodes", Info},
+	{catAlertInfo, "Info alerts", "alerts", Info},
 }
 
 var severityRank = map[string]int{Critical: 0, Warning: 1, Info: 2}
@@ -280,6 +287,7 @@ func Analyze(in Input) *Result {
 	a.nodes()
 	a.pvcs()
 	a.events()
+	a.alerts()
 	a.finish()
 	return a.res
 }

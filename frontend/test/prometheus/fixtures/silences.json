@@ -1,0 +1,100 @@
+{
+  "alertmanager": {
+    "id": "monitoring/kube-prometheus-stack-alertmanager",
+    "kind": "alertmanager",
+    "namespace": "monitoring",
+    "name": "kube-prometheus-stack-alertmanager",
+    "source": "crd",
+    "service": "kube-prometheus-stack-alertmanager",
+    "port": "http-web",
+    "scheme": "http",
+    "version": "0.34.2",
+    "replicas": 1,
+    "availableReplicas": 1,
+    "reachable": true,
+    "default": true,
+    "externalUrl": "http://kube-prometheus-stack-alertmanager.monitoring:9093"
+  },
+  "silences": [
+    {
+      "id": "fca67b8a-a015-4edf-b891-8d2bd64964f0",
+      "state": "active",
+      "matchers": [
+        {
+          "name": "alertname",
+          "value": "K8smanTestAlert",
+          "isRegex": false,
+          "isEqual": true
+        }
+      ],
+      "startsAt": "2026-11-03T12:51:34.874Z",
+      "endsAt": "2026-11-03T13:51:34.000Z",
+      "updatedAt": "2026-11-03T12:51:34.874Z",
+      "createdBy": "k8sman",
+      "comment": "Testing silences from k8sman"
+    },
+    {
+      "id": "669397c1-dad2-4448-9409-0c5255d01500",
+      "state": "active",
+      "matchers": [
+        {
+          "name": "alertname",
+          "value": "CPUThrottlingHigh",
+          "isRegex": false,
+          "isEqual": true
+        },
+        {
+          "name": "namespace",
+          "value": "trivy-system",
+          "isRegex": false,
+          "isEqual": true
+        }
+      ],
+      "startsAt": "2026-11-03T13:08:43.037Z",
+      "endsAt": "2026-11-03T17:08:42.000Z",
+      "updatedAt": "2026-11-03T13:08:43.037Z",
+      "createdBy": "k8sman",
+      "comment": "Scan jobs are CPU-limited on purpose"
+    },
+    {
+      "id": "5fb8b03e-3f5c-4fc6-bac1-9c2269f026cc",
+      "state": "active",
+      "matchers": [
+        {
+          "name": "alertname",
+          "value": "KubePodNotReady",
+          "isRegex": false,
+          "isEqual": true
+        },
+        {
+          "name": "namespace",
+          "value": "helm-tools",
+          "isRegex": false,
+          "isEqual": true
+        }
+      ],
+      "startsAt": "2026-11-03T13:08:43.056Z",
+      "endsAt": "2026-11-04T13:08:43.000Z",
+      "updatedAt": "2026-11-03T13:08:43.056Z",
+      "createdBy": "k8sman",
+      "comment": "Known bad image in the worker rollout; fix in progress"
+    },
+    {
+      "id": "b9831a79-ae89-4629-b11e-f25373688a69",
+      "state": "expired",
+      "matchers": [
+        {
+          "name": "alertname",
+          "value": "NodeClockNotSynchronising",
+          "isRegex": false,
+          "isEqual": true
+        }
+      ],
+      "startsAt": "2026-11-03T13:08:43.078Z",
+      "endsAt": "2026-11-03T13:08:49.278Z",
+      "updatedAt": "2026-11-03T13:08:49.278Z",
+      "createdBy": "k8sman",
+      "comment": "kind node clock; temporary"
+    }
+  ]
+}

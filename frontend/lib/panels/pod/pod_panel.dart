@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../actions/actions.dart';
 import '../../api/models.dart';
+import '../../prometheus/metric_history_chart.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
@@ -35,6 +36,7 @@ class PodPanel extends ResourcePanel {
           if (containers.isEmpty) const Hint('No containers'),
         ]),
       ),
+      podHistory(ctx),
       if (volumes.isNotEmpty)
         DetailSection(
           title: 'Volumes',

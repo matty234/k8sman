@@ -1,0 +1,59 @@
+{
+  "prometheus": {
+    "id": "monitoring/kube-prometheus-stack-prometheus",
+    "kind": "prometheus",
+    "namespace": "monitoring",
+    "name": "kube-prometheus-stack-prometheus",
+    "source": "crd",
+    "service": "kube-prometheus-stack-prometheus",
+    "port": "http-web",
+    "scheme": "http",
+    "version": "3.15.1",
+    "replicas": 1,
+    "availableReplicas": 1,
+    "reachable": true,
+    "default": true,
+    "externalUrl": "http://kube-prometheus-stack-prometheus.monitoring:9090"
+  },
+  "up": 1,
+  "down": 0,
+  "unknown": 0,
+  "pools": [
+    {
+      "scrapePool": "podMonitor/demo/grafana/0",
+      "monitor": {
+        "kind": "PodMonitor",
+        "namespace": "demo",
+        "name": "grafana",
+        "endpoint": 0
+      },
+      "up": 1,
+      "down": 0,
+      "unknown": 0,
+      "targets": [
+        {
+          "scrapePool": "podMonitor/demo/grafana/0",
+          "scrapeUrl": "http://10.244.0.121:3000/metrics",
+          "health": "up",
+          "lastScrape": "2026-11-03T13:08:34.782148085Z",
+          "lastScrapeDuration": 0.05857075,
+          "scrapeInterval": "30s",
+          "labels": {
+            "container": "grafana",
+            "endpoint": "grafana",
+            "instance": "10.244.0.121:3000",
+            "job": "demo/grafana",
+            "namespace": "monitoring",
+            "pod": "kube-prometheus-stack-grafana-6f57c4978b-56rx7"
+          },
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "kube-prometheus-stack-grafana-6f57c4978b-56rx7"
+          }
+        }
+      ]
+    }
+  ]
+}

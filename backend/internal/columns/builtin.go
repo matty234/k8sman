@@ -160,6 +160,41 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 	"clusterroles.rbac.authorization.k8s.io":        {{Name: "Rules", Type: "number", Query: `.rules // [] | length`}, ageCol},
 	"rolebindings.rbac.authorization.k8s.io":        {{Name: "Role", Query: `"\(.roleRef.kind)/\(.roleRef.name)"`}, {Name: "Subjects", Query: `[.subjects[]? | "\(.kind)/\(.name)"] | join(",")`}, ageCol},
 	"clusterrolebindings.rbac.authorization.k8s.io": {{Name: "Role", Query: `"\(.roleRef.kind)/\(.roleRef.name)"`}, {Name: "Subjects", Query: `[.subjects[]? | "\(.kind)/\(.name)"] | join(",")`}, ageCol},
+	// Prometheus Operator (monitoring.coreos.com)
+	"prometheusrules.monitoring.coreos.com": {
+		{Name: "Groups", Type: "number", Query: `.spec.groups // [] | length`},
+		{Name: "Alerts", Type: "number", Query: `[.spec.groups[]?.rules[]? | select(.alert)] | length`},
+		{Name: "Records", Type: "number", Query: `[.spec.groups[]?.rules[]? | select(.record)] | length`},
+		ageCol,
+	},
+	"servicemonitors.monitoring.coreos.com": {
+		{Name: "Selector", Query: `(.spec.selector.matchLabels // {}) | to_entries | map("\(.key)=\(.value)") | join(",")`},
+		{Name: "Namespaces", Query: `if .spec.namespaceSelector.any then "any" else ((.spec.namespaceSelector.matchNames // []) | join(",")) end`},
+		{Name: "Endpoints", Query: `[.spec.endpoints[]? | (.port // .targetPort // "?" | tostring) + (.path // "")] | join(", ")`},
+		{Name: "Interval", Query: `[.spec.endpoints[]?.interval | select(.)] | unique | join(",")`},
+		ageCol,
+	},
+	"podmonitors.monitoring.coreos.com": {
+		{Name: "Selector", Query: `(.spec.selector.matchLabels // {}) | to_entries | map("\(.key)=\(.value)") | join(",")`},
+		{Name: "Namespaces", Query: `if .spec.namespaceSelector.any then "any" else ((.spec.namespaceSelector.matchNames // []) | join(",")) end`},
+		{Name: "Endpoints", Query: `[.spec.podMetricsEndpoints[]? | (.port // .targetPort // .portNumber // "?" | tostring) + (.path // "")] | join(", ")`},
+		{Name: "Interval", Query: `[.spec.podMetricsEndpoints[]?.interval | select(.)] | unique | join(",")`},
+		ageCol,
+	},
+	"prometheuses.monitoring.coreos.com": {
+		{Name: "Version", Query: `.spec.version // ""`},
+		{Name: "Ready", Query: `"\(.status.availableReplicas // 0)/\(.spec.replicas // 1)"`},
+		{Name: "Retention", Query: `.spec.retention // "24h"`},
+		{Name: "Status", Type: "status", Query: `([.status.conditions[]? | select(.type == "Available")][0] | if . == null then "" elif .status == "True" then "Available" else (.reason // "Unavailable") end)`},
+		ageCol,
+	},
+	"alertmanagers.monitoring.coreos.com": {
+		{Name: "Version", Query: `.spec.version // ""`},
+		{Name: "Ready", Query: `"\(.status.availableReplicas // 0)/\(.spec.replicas // 1)"`},
+		{Name: "Retention", Query: `.spec.retention // "120h"`},
+		{Name: "Status", Type: "status", Query: `([.status.conditions[]? | select(.type == "Available")][0] | if . == null then "" elif .status == "True" then "Available" else (.reason // "Unavailable") end)`},
+		ageCol,
+	},
 	"horizontalpodautoscalers.autoscaling": {
 		{Name: "Reference", Query: `"\(.spec.scaleTargetRef.kind)/\(.spec.scaleTargetRef.name)"`},
 		{Name: "Min", Type: "number", Query: `.spec.minReplicas // 1`},

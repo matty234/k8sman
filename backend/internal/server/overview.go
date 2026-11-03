@@ -11,6 +11,7 @@ import (
 
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/overview"
+	"github.com/bargrove/k8sman/backend/internal/prom"
 )
 
 func (s *Server) overviewRoutes() {
@@ -130,6 +131,11 @@ func listForOverview(ctx context.Context, c *cluster.Clients, ns string) (overvi
 		if err == nil {
 			in.Events = l.Items
 		}
+		return err
+	})
+	run("alerts", func() error {
+		a, err := prom.ActiveAlerts(ctx, c)
+		in.Alerts = overview.FilterAlertsByNamespace(a, ns)
 		return err
 	})
 	wg.Wait()
