@@ -29,27 +29,45 @@ class VibrantRootViewController: NSViewController {
 }
 
 class MainFlutterWindow: NSWindow {
+  /// Height of the app's own titlebar band (`titlebarHeight` in theme.dart).
+  static let titlebarBand: CGFloat = 52
+  static let frameAutosaveName = "k8sman.main"
+  static let defaultSize = NSSize(width: 1440, height: 900)
+  static let minimumSize = NSSize(width: 1000, height: 640)
+
+  private var windowChannel: FlutterMethodChannel?
+  private var backendChannel: FlutterMethodChannel?
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
     self.contentViewController = VibrantRootViewController(flutterViewController: flutterViewController)
     self.setFrame(windowFrame, display: true)
 
-    // Unified, transparent titlebar: traffic lights float over the nav and
-    // the app's own toolbar rows (52pt, see `titlebarHeight` in theme.dart)
-    // sit in the titlebar area.
+    // Transparent, full-size-content titlebar with no NSToolbar: Flutter
+    // draws the 52pt band itself and receives every click in it. AppKit's
+    // titlebar container is shrunk to just the traffic lights (see
+    // layoutTrafficLights), so it can't swallow clicks elsewhere in the band.
     self.titleVisibility = .hidden
     self.titlebarAppearsTransparent = true
+    self.titlebarSeparatorStyle = .none
     self.styleMask.insert(.fullSizeContentView)
-    let toolbar = NSToolbar(identifier: "k8sman.main")
-    toolbar.displayMode = .iconOnly
-    self.toolbar = toolbar
-    self.toolbarStyle = .unified
-    self.minSize = NSSize(width: 900, height: 560)
+    self.toolbar = nil
+    self.isMovableByWindowBackground = false
 
-    // Flutter-side drag regions (WindowDragArea) call into here.
-    let channel = FlutterMethodChannel(name: "k8sman/window", binaryMessenger: flutterViewController.engine.binaryMessenger)
-    channel.setMethodCallHandler { [weak self] call, result in
+    // Size: about 1440×900 centred on first launch, then whatever the user
+    // left it at (frame autosave).
+    self.minSize = Self.minimumSize
+    if !self.setFrameUsingName(Self.frameAutosaveName) {
+      self.setFrame(Self.initialFrame(for: self.screen ?? NSScreen.main), display: true)
+    }
+    self.setFrameAutosaveName(Self.frameAutosaveName)
+
+    let messenger = flutterViewController.engine.binaryMessenger
+
+    // Window chrome: Flutter drag regions (WindowDragArea) and fullscreen state.
+    let window = FlutterMethodChannel(name: "k8sman/window", binaryMessenger: messenger)
+    window.setMethodCallHandler { [weak self] call, result in
       guard let self = self else { return result(nil) }
       switch call.method {
       case "startDrag":
@@ -58,13 +76,120 @@ class MainFlutterWindow: NSWindow {
       case "zoom":
         self.zoom(nil)
         result(nil)
+      case "isFullScreen":
+        result(self.styleMask.contains(.fullScreen))
       default:
         result(FlutterMethodNotImplemented)
+      }
+    }
+    windowChannel = window
+
+    // Embedded backend: status pushes and start/restart requests.
+    let backend = FlutterMethodChannel(name: "k8sman/backend", binaryMessenger: messenger)
+    backend.setMethodCallHandler { call, result in
+      switch call.method {
+      case "start":
+        BackendSupervisor.shared.start()
+        result(BackendSupervisor.shared.status())
+      case "restart":
+        BackendSupervisor.shared.restart()
+        result(nil)
+      case "status":
+        result(BackendSupervisor.shared.status())
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    BackendSupervisor.shared.onChange = { [weak backend] status in
+      backend?.invokeMethod("status", arguments: status)
+    }
+    backendChannel = backend
+
+    // Files: kubeconfig open panel and Reveal in Finder.
+    let files = FlutterMethodChannel(name: "k8sman/files", binaryMessenger: messenger)
+    files.setMethodCallHandler { [weak self] call, result in
+      switch call.method {
+      case "chooseKubeconfig":
+        let args = call.arguments as? [String: Any]
+        self?.chooseFile(startingAt: args?["directory"] as? String, result: result)
+      case "reveal":
+        if let path = call.arguments as? String {
+          NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        }
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    let nc = NotificationCenter.default
+    nc.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: self, queue: .main) { [weak self] _ in
+      self?.windowChannel?.invokeMethod("fullScreenChanged", arguments: true)
+    }
+    nc.addObserver(forName: NSWindow.willExitFullScreenNotification, object: self, queue: .main) { [weak self] _ in
+      self?.windowChannel?.invokeMethod("fullScreenChanged", arguments: false)
+    }
+    for name in [NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification,
+                 NSWindow.didBecomeKeyNotification, NSWindow.didEndLiveResizeNotification] {
+      nc.addObserver(forName: name, object: self, queue: .main) { [weak self] _ in
+        self?.layoutTrafficLights()
       }
     }
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()
+    layoutTrafficLights()
+    DispatchQueue.main.async { [weak self] in self?.layoutTrafficLights() }
+  }
+
+  override func layoutIfNeeded() {
+    super.layoutIfNeeded()
+    layoutTrafficLights()
+  }
+
+  static func initialFrame(for screen: NSScreen?) -> NSRect {
+    let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+    let w = min(defaultSize.width, visible.width * 0.94)
+    let h = min(defaultSize.height, visible.height * 0.94)
+    return NSRect(x: visible.midX - w / 2, y: visible.midY - h / 2, width: w, height: h).integral
+  }
+
+  /// Centre the traffic lights vertically in the 52pt band over the nav, and
+  /// shrink AppKit's titlebar container to just around them. Everything else
+  /// in the band then hit-tests straight to the Flutter view.
+  private func layoutTrafficLights() {
+    guard !styleMask.contains(.fullScreen),
+          let close = standardWindowButton(.closeButton),
+          let mini = standardWindowButton(.miniaturizeButton),
+          let zoom = standardWindowButton(.zoomButton),
+          let container = close.superview?.superview else { return }
+    let band = Self.titlebarBand
+    let buttons = [close, mini, zoom]
+    let spacing: CGFloat = 20
+    let left: CGFloat = 20
+    let width = left + spacing * 2 + zoom.frame.width + 12
+    let target = NSRect(x: 0, y: frame.height - band, width: width, height: band)
+    if container.frame != target { container.frame = target }
+    for (i, b) in buttons.enumerated() {
+      let origin = NSPoint(x: left + CGFloat(i) * spacing, y: ((band - b.frame.height) / 2).rounded())
+      if b.frame.origin != origin { b.setFrameOrigin(origin) }
+    }
+  }
+
+  private func chooseFile(startingAt directory: String?, result: @escaping FlutterResult) {
+    let panel = NSOpenPanel()
+    panel.title = "Choose a kubeconfig file"
+    panel.prompt = "Use Kubeconfig"
+    panel.canChooseFiles = true
+    panel.canChooseDirectories = false
+    panel.allowsMultipleSelection = false
+    panel.showsHiddenFiles = true
+    panel.treatsFilePackagesAsDirectories = true
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    panel.directoryURL = directory.map { URL(fileURLWithPath: $0) } ?? home.appendingPathComponent(".kube")
+    panel.beginSheetModal(for: self) { response in
+      result(response == .OK ? panel.url?.path : nil)
+    }
   }
 }

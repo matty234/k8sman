@@ -4,7 +4,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'kubeconfig.dart';
 import 'models.dart';
+
+export 'kubeconfig.dart';
 
 class ApiException implements Exception {
   final int status;
@@ -26,11 +29,19 @@ class ApiException implements Exception {
 /// Thin client for the k8sman Go backend. All calls are read-only against
 /// the cluster (column config writes go to the local config file).
 class ApiClient {
-  final Uri base;
+  /// Backend URL. In the macOS app the embedded backend listens on a random
+  /// port, so `BackendController` (lib/app/backend.dart) updates this once
+  /// the backend reports its address, and again after a restart.
+  Uri base;
   final http.Client _http;
 
+  /// `--dart-define=K8SMAN_BACKEND=http://…` points the app at an existing
+  /// backend (e.g. `make backend`) instead of spawning the embedded one.
+  static const definedBackend = String.fromEnvironment('K8SMAN_BACKEND');
+  static const defaultBackend = 'http://127.0.0.1:7443';
+
   ApiClient({Uri? base, http.Client? httpClient})
-      : base = base ?? Uri.parse(const String.fromEnvironment('K8SMAN_BACKEND', defaultValue: 'http://127.0.0.1:7443')),
+      : base = base ?? Uri.parse(definedBackend.isNotEmpty ? definedBackend : defaultBackend),
         _http = httpClient ?? http.Client();
 
   Uri _uri(String path, [Map<String, String?> query = const {}]) {
@@ -87,6 +98,13 @@ class ApiClient {
   }
 
   Future<void> switchContext(String name) => _send('POST', 'contexts/current', const {}, {'name': name});
+
+  /// The active kubeconfig file and candidates to switch to.
+  Future<KubeconfigList> kubeconfigs() async => KubeconfigList.fromJson(Map<String, dynamic>.from(await _get('kubeconfigs')));
+
+  /// Switch to another kubeconfig file (its last used, else current, context).
+  Future<KubeconfigList> switchKubeconfig(String path) async =>
+      KubeconfigList.fromJson(Map<String, dynamic>.from(await _send('POST', 'kubeconfigs/current', const {}, {'path': path})));
 
   Future<List<ResourceType>> resources({bool refresh = false}) async {
     final j = await _get('resources', {'refresh': refresh ? 'true' : null}) as List;

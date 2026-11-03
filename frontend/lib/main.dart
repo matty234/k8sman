@@ -2,21 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'api/client.dart';
+import 'app/backend.dart';
+import 'app/window_chrome.dart';
 import 'state/app_state.dart';
 import 'ui/shell.dart';
 import 'ui/theme.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  WindowChrome.init();
   final api = ApiClient();
+  final app = AppState(api);
+  // Spawns the embedded backend (macOS app) or uses K8SMAN_BACKEND, then
+  // loads the app state whenever the backend (re)connects.
+  final backend = BackendController(api, onReady: app.backendConnected);
   runApp(
     MultiProvider(
       providers: [
         Provider<ApiClient>.value(value: api),
-        ChangeNotifierProvider<AppState>(create: (_) => AppState(api)..init()),
+        ChangeNotifierProvider<AppState>.value(value: app),
+        ChangeNotifierProvider<BackendController>.value(value: backend),
       ],
       child: const K8sManApp(),
     ),
   );
+  backend.start();
 }
 
 class K8sManApp extends StatelessWidget {
@@ -32,6 +42,7 @@ class K8sManApp extends StatelessWidget {
         // Follow the system appearance, like a native app (the window's
         // vibrancy follows it too).
         themeMode: themeMode,
-        home: const Shell(),
+        builder: (context, child) => WindowChromeScope(child: child ?? const SizedBox.shrink()),
+        home: const BackendGate(child: Shell()),
       );
 }

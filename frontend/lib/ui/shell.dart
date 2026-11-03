@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../app/kubeconfig_picker.dart';
 import '../state/app_state.dart';
 import 'detail/detail_sidebar.dart';
 import 'nodes/nodes_view.dart';
@@ -38,13 +39,17 @@ class _ShellState extends State<Shell> {
             child: SizedBox(
               width: 460,
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Cannot reach the k8sman backend', style: theme.textTheme.titleMedium),
+                Text('Cannot connect to the cluster', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 InlineMessage('${app.error}', isError: true),
                 const SizedBox(height: 8),
-                Text('Start it with `make backend` (listens on 127.0.0.1:7443).', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                Text('Check the cluster is reachable and your credentials are valid, or choose another kubeconfig.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
                 const SizedBox(height: 16),
-                FilledButton(onPressed: app.init, child: const Text('Retry')),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  FilledButton(onPressed: app.init, child: const Text('Retry')),
+                  const KubeconfigPicker(compact: false),
+                ]),
               ]),
             ),
           ),

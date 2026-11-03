@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../app/window_chrome.dart';
 import '../state/app_state.dart';
 import '../state/table_controller.dart';
 import '../util/k8s.dart';
@@ -222,7 +223,7 @@ class _Toolbar extends StatelessWidget {
     final ns = app.namespaces.contains(app.namespace) ? app.namespace : null;
     return WindowDragArea(
       child: SizedBox(
-        height: titlebarHeight,
+        height: toolbarRowHeight(context),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
           child: Row(
