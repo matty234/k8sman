@@ -1,0 +1,370 @@
+# Gateway API samples for the dev cluster (see docs/GATEWAY_API.md).
+# Needs the Gateway API v1.2.1 CRDs and Envoy Gateway v1.2.8, plus the
+# `demo` namespace from samples.yaml. The TLS Secret `gateway-demo/demo-tls`
+# is created separately (self-signed *.example.com; see the doc).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-demo
+  labels:
+    gateway-access: "true"
+---
+# Run Envoy behind a ClusterIP Service: kind has no LoadBalancer, and
+# a Gateway without an address is never Programmed.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: clusterip-proxy
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: ClusterIP
+      envoyDeployment:
+        replicas: 1
+        container:
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  description: Envoy Gateway (dev, ClusterIP)
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: clusterip-proxy
+    namespace: envoy-gateway-system
+---
+# No controller claims this class: it stays Accepted=Unknown (Pending).
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: orphan
+spec:
+  controllerName: example.com/not-installed
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: demo-gw
+  namespace: gateway-demo
+  labels:
+    app.kubernetes.io/part-of: gateway-demo
+spec:
+  gatewayClassName: eg
+  infrastructure:
+    labels:
+      team: platform
+    annotations:
+      example.com/owner: platform-team
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.example.com"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: demo-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-access: "true"
+    - name: admin
+      protocol: HTTP
+      port: 8080
+      hostname: admin.example.com
+      allowedRoutes:
+        namespaces:
+          from: Same
+        kinds:
+          - kind: HTTPRoute
+    - name: redis
+      protocol: TCP
+      port: 6379
+      allowedRoutes:
+        namespaces:
+          from: All
+        kinds:
+          - kind: TCPRoute
+---
+# A degraded Gateway: an HTTPS listener whose certificate Secret is missing.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: legacy-gw
+  namespace: demo
+spec:
+  gatewayClassName: eg
+  listeners:
+    - name: web
+      protocol: HTTP
+      port: 80
+    - name: secure
+      protocol: HTTPS
+      port: 443
+      hostname: legacy.example.com
+      tls:
+        certificateRefs:
+          - name: missing-cert
+---
+# Uses the orphan class: no controller ever picks it up.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: pending-gw
+  namespace: gateway-demo
+spec:
+  gatewayClassName: orphan
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+# Lets routes in gateway-demo send traffic to Service demo/web (only).
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-gateway-demo-to-web
+  namespace: demo
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: gateway-demo
+    - group: gateway.networking.k8s.io
+      kind: GRPCRoute
+      namespace: gateway-demo
+  to:
+    - group: ""
+      kind: Service
+      name: web
+---
+# Healthy: weighted split, header/path/query/method matches, filters.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-route
+  namespace: demo
+spec:
+  parentRefs:
+    - name: demo-gw
+      namespace: gateway-demo
+      sectionName: http
+  hostnames:
+    - app.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+          headers:
+            - name: x-canary
+              value: "true"
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            add:
+              - name: x-route
+                value: api-canary
+            remove:
+              - x-debug
+      backendRefs:
+        - name: web
+          port: 80
+          weight: 90
+        - name: web-nodeport
+          port: 80
+          weight: 10
+      timeouts:
+        request: 10s
+    - matches:
+        - path:
+            type: Exact
+            value: /old
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /new
+            statusCode: 301
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v2
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: web
+          port: 80
+    - matches:
+        - method: GET
+          queryParams:
+            - name: debug
+              value: "1"
+      filters:
+        - type: RequestMirror
+          requestMirror:
+            backendRef:
+              name: web-nodeport
+              port: 80
+      backendRefs:
+        - name: web
+          port: 80
+    - backendRefs:
+        - name: web
+          port: 80
+---
+# Cross-namespace backend allowed by the ReferenceGrant.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: shop
+  namespace: gateway-demo
+spec:
+  parentRefs:
+    - name: demo-gw
+      sectionName: https
+  hostnames:
+    - shop.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: web
+          namespace: demo
+          port: 80
+---
+# Cross-namespace backend with no ReferenceGrant: ResolvedRefs=False / RefNotPermitted.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: cache-admin
+  namespace: gateway-demo
+spec:
+  parentRefs:
+    - name: demo-gw
+  hostnames:
+    - cache.example.com
+  rules:
+    - backendRefs:
+        - name: redis
+          namespace: demo
+          port: 6379
+---
+# parentRef targets a listener that does not exist: Accepted=False.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-api
+  namespace: gateway-demo
+spec:
+  parentRefs:
+    - name: demo-gw
+      sectionName: admin-api
+  hostnames:
+    - admin.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /admin
+      backendRefs:
+        - name: web
+          namespace: demo
+          port: 80
+---
+# The admin listener only allows routes from its own namespace: NotAllowedByListeners.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: sneaky-admin
+  namespace: demo
+spec:
+  parentRefs:
+    - name: demo-gw
+      namespace: gateway-demo
+      sectionName: admin
+  rules:
+    - backendRefs:
+        - name: web
+          port: 80
+---
+# Backend Service does not exist: ResolvedRefs=False / BackendNotFound.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ghost
+  namespace: demo
+spec:
+  parentRefs:
+    - name: demo-gw
+      namespace: gateway-demo
+      sectionName: http
+  hostnames:
+    - ghost.example.com
+  rules:
+    - backendRefs:
+        - name: ghost
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GRPCRoute
+metadata:
+  name: greeter
+  namespace: gateway-demo
+spec:
+  parentRefs:
+    - name: demo-gw
+      sectionName: http
+  hostnames:
+    - grpc.example.com
+  rules:
+    - matches:
+        - method:
+            service: helloworld.Greeter
+            method: SayHello
+          headers:
+            - name: x-tenant
+              value: acme
+      backendRefs:
+        - name: web
+          namespace: demo
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: redis
+  namespace: demo
+spec:
+  parentRefs:
+    - name: demo-gw
+      namespace: gateway-demo
+      sectionName: redis
+  rules:
+    - backendRefs:
+        - name: redis
+          port: 6379

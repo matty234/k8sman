@@ -1,0 +1,33 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1beta1",
+  "kind": "ReferenceGrant",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:34:53Z",
+    "generation": 1,
+    "name": "allow-gateway-demo-to-web",
+    "namespace": "demo",
+    "resourceVersion": "9131",
+    "uid": "defd3185-44a1-4bcb-931a-35256d1bdbe8"
+  },
+  "spec": {
+    "from": [
+      {
+        "group": "gateway.networking.k8s.io",
+        "kind": "HTTPRoute",
+        "namespace": "gateway-demo"
+      },
+      {
+        "group": "gateway.networking.k8s.io",
+        "kind": "GRPCRoute",
+        "namespace": "gateway-demo"
+      }
+    ],
+    "to": [
+      {
+        "group": "",
+        "kind": "Service",
+        "name": "web"
+      }
+    ]
+  }
+}

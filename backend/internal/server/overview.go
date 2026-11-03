@@ -8,6 +8,8 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/overview"
@@ -132,6 +134,54 @@ func listForOverview(ctx context.Context, c *cluster.Clients, ns string) (overvi
 		}
 		return err
 	})
+	listGatewayAPI(ctx, c, ns, &in, run, &mu)
 	wg.Wait()
 	return in, errs
+}
+
+// listGatewayAPI lists Gateways and every served route kind, but only when
+// the Gateway API CRDs are installed (otherwise the inputs stay nil and the
+// analysis skips them).
+func listGatewayAPI(ctx context.Context, c *cluster.Clients, ns string, in *overview.Input, run func(string, func() error), mu *sync.Mutex) {
+	gw, err := c.Find(ctx, overview.GatewayGroup, "", "gateways")
+	if err != nil {
+		return
+	}
+	list := func(t cluster.ResourceType) ([]unstructured.Unstructured, error) {
+		gvr := schema.GroupVersionResource{Group: t.Group, Version: t.Version, Resource: t.Resource}
+		l, err := c.Dynamic.Resource(gvr).Namespace(ns).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
+		if err != nil {
+			return nil, err
+		}
+		for i := range l.Items {
+			// Lists leave kind empty on items; the analysis needs it.
+			l.Items[i].SetKind(t.Kind)
+		}
+		return l.Items, nil
+	}
+	in.Routes = []unstructured.Unstructured{}
+	run("gateways", func() error {
+		items, err := list(gw)
+		if err == nil {
+			mu.Lock()
+			in.Gateways = items
+			mu.Unlock()
+		}
+		return err
+	})
+	for _, res := range overview.GatewayRouteResources {
+		t, err := c.Find(ctx, overview.GatewayGroup, "", res)
+		if err != nil {
+			continue
+		}
+		run(res, func() error {
+			items, err := list(t)
+			if err == nil {
+				mu.Lock()
+				in.Routes = append(in.Routes, items...)
+				mu.Unlock()
+			}
+			return err
+		})
+	}
 }

@@ -1,0 +1,76 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "kind": "HTTPRoute",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:34:53Z",
+    "generation": 1,
+    "name": "cache-admin",
+    "namespace": "gateway-demo",
+    "resourceVersion": "9971",
+    "uid": "778abb2b-34db-47b1-8b04-14292a79def2"
+  },
+  "spec": {
+    "hostnames": [
+      "cache.example.com"
+    ],
+    "parentRefs": [
+      {
+        "group": "gateway.networking.k8s.io",
+        "kind": "Gateway",
+        "name": "demo-gw"
+      }
+    ],
+    "rules": [
+      {
+        "backendRefs": [
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "redis",
+            "namespace": "demo",
+            "port": 6379,
+            "weight": 1
+          }
+        ],
+        "matches": [
+          {
+            "path": {
+              "type": "PathPrefix",
+              "value": "/"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "status": {
+    "parents": [
+      {
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Route is accepted",
+            "observedGeneration": 1,
+            "reason": "Accepted",
+            "status": "True",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Backend ref to Service demo/redis not permitted by any ReferenceGrant.",
+            "observedGeneration": 1,
+            "reason": "RefNotPermitted",
+            "status": "False",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+        "parentRef": {
+          "group": "gateway.networking.k8s.io",
+          "kind": "Gateway",
+          "name": "demo-gw"
+        }
+      }
+    ]
+  }
+}

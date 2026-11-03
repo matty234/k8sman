@@ -4,6 +4,7 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../gateway/routed_by.dart';
 import '../panel.dart';
 import 'widgets.dart';
 
@@ -149,6 +150,7 @@ class ServicePanel extends ResourcePanel {
             : LabelChips(selector),
       ),
       _ServiceBackendsView(key: ValueKey('${ctx.uid}/backends'), ctx: ctx, ports: ports, headless: headless, dns: dns),
+      RoutedBySection(key: ValueKey('${ctx.uid}/routed-by'), ctx: ctx),
     ];
   }
 

@@ -1,0 +1,78 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "kind": "HTTPRoute",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:34:53Z",
+    "generation": 1,
+    "name": "admin-api",
+    "namespace": "gateway-demo",
+    "resourceVersion": "9973",
+    "uid": "3bce080c-e443-46c0-a72c-543c27a0aa9c"
+  },
+  "spec": {
+    "hostnames": [
+      "admin.example.com"
+    ],
+    "parentRefs": [
+      {
+        "group": "gateway.networking.k8s.io",
+        "kind": "Gateway",
+        "name": "demo-gw",
+        "sectionName": "admin-api"
+      }
+    ],
+    "rules": [
+      {
+        "backendRefs": [
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "web",
+            "namespace": "demo",
+            "port": 80,
+            "weight": 1
+          }
+        ],
+        "matches": [
+          {
+            "path": {
+              "type": "PathPrefix",
+              "value": "/admin"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "status": {
+    "parents": [
+      {
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "No listeners match this parent ref",
+            "observedGeneration": 1,
+            "reason": "NoMatchingParent",
+            "status": "False",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Resolved all the Object references for the Route",
+            "observedGeneration": 1,
+            "reason": "ResolvedRefs",
+            "status": "True",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+        "parentRef": {
+          "group": "gateway.networking.k8s.io",
+          "kind": "Gateway",
+          "name": "demo-gw",
+          "sectionName": "admin-api"
+        }
+      }
+    ]
+  }
+}

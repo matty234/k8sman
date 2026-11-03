@@ -1,0 +1,76 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "kind": "HTTPRoute",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:34:53Z",
+    "generation": 1,
+    "name": "sneaky-admin",
+    "namespace": "demo",
+    "resourceVersion": "9975",
+    "uid": "691b9aa8-19e2-4635-9c09-266406f6c9a3"
+  },
+  "spec": {
+    "parentRefs": [
+      {
+        "group": "gateway.networking.k8s.io",
+        "kind": "Gateway",
+        "name": "demo-gw",
+        "namespace": "gateway-demo",
+        "sectionName": "admin"
+      }
+    ],
+    "rules": [
+      {
+        "backendRefs": [
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "web",
+            "port": 80,
+            "weight": 1
+          }
+        ],
+        "matches": [
+          {
+            "path": {
+              "type": "PathPrefix",
+              "value": "/"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "status": {
+    "parents": [
+      {
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "No listeners included by this parent ref allowed this attachment.",
+            "observedGeneration": 1,
+            "reason": "NotAllowedByListeners",
+            "status": "False",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Resolved all the Object references for the Route",
+            "observedGeneration": 1,
+            "reason": "ResolvedRefs",
+            "status": "True",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+        "parentRef": {
+          "group": "gateway.networking.k8s.io",
+          "kind": "Gateway",
+          "name": "demo-gw",
+          "namespace": "gateway-demo",
+          "sectionName": "admin"
+        }
+      }
+    ]
+  }
+}

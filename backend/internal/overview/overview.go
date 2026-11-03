@@ -16,6 +16,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // Thresholds used by the analysis.
@@ -53,6 +54,10 @@ type Input struct {
 	Nodes        []corev1.Node
 	PVCs         []corev1.PersistentVolumeClaim
 	Events       []corev1.Event
+	// Gateway API objects; nil when the CRDs aren't served (no analysis,
+	// no counts). Routes holds every route kind (HTTPRoute, GRPCRoute, ...).
+	Gateways []unstructured.Unstructured
+	Routes   []unstructured.Unstructured
 }
 
 // Owner is the top-level controller of an object (Deployment, StatefulSet,
@@ -86,7 +91,7 @@ type Issue struct {
 type Category struct {
 	ID       string `json:"id"`
 	Label    string `json:"label"`
-	Section  string `json:"section"` // pods | workloads | jobs | nodes | storage
+	Section  string `json:"section"` // pods | workloads | jobs | nodes | storage | network
 	Severity string `json:"severity"`
 	Count    int    `json:"count"`
 }
@@ -174,6 +179,8 @@ type Counts struct {
 	CronJobs     CronJobCounts    `json:"cronJobs"`
 	Nodes        NodeCounts       `json:"nodes"`
 	PVCs         PVCCounts        `json:"pvcs"`
+	Gateways     *GatewayCounts   `json:"gateways,omitempty"`
+	Routes       *RouteCounts     `json:"routes,omitempty"`
 }
 
 // NodeHealth is one node in the nodes strip.
@@ -238,6 +245,8 @@ var categoryDefs = []categoryDef{
 	{"cronJobFailing", "CronJobs failing", "jobs", Critical},
 	{"jobFailed", "Failed jobs", "jobs", Critical},
 	{"pvcLost", "PVCs lost", "storage", Critical},
+	{"gatewayNotReady", "Gateways not ready", "network", Critical},
+	{"routeNotAccepted", "Routes not accepted", "network", Critical},
 	{"stuckPending", "Stuck pending", "pods", Warning},
 	{"stuckTerminating", "Stuck terminating", "pods", Warning},
 	{"notReady", "Pods not ready", "pods", Warning},
@@ -246,6 +255,8 @@ var categoryDefs = []categoryDef{
 	{"cronJobOverdue", "CronJobs overdue", "jobs", Warning},
 	{"nodePressure", "Node pressure", "nodes", Warning},
 	{"pvcPending", "PVCs pending", "storage", Warning},
+	{"gatewayListener", "Gateway listener problems", "network", Warning},
+	{"routeUnresolvedRefs", "Routes with unresolved refs", "network", Warning},
 	{"rolling", "Rolling out", "workloads", Info},
 	{"deploymentPaused", "Paused rollouts", "workloads", Info},
 	{"jobSuspended", "Suspended jobs", "jobs", Info},
@@ -279,6 +290,8 @@ func Analyze(in Input) *Result {
 	a.cronJobs()
 	a.nodes()
 	a.pvcs()
+	a.gateways()
+	a.routes()
 	a.events()
 	a.finish()
 	return a.res

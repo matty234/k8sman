@@ -1,0 +1,79 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "kind": "HTTPRoute",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:34:53Z",
+    "generation": 1,
+    "name": "ghost",
+    "namespace": "demo",
+    "resourceVersion": "9977",
+    "uid": "1434edfa-2932-419b-b8e6-35bbd239c3df"
+  },
+  "spec": {
+    "hostnames": [
+      "ghost.example.com"
+    ],
+    "parentRefs": [
+      {
+        "group": "gateway.networking.k8s.io",
+        "kind": "Gateway",
+        "name": "demo-gw",
+        "namespace": "gateway-demo",
+        "sectionName": "http"
+      }
+    ],
+    "rules": [
+      {
+        "backendRefs": [
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "ghost",
+            "port": 80,
+            "weight": 1
+          }
+        ],
+        "matches": [
+          {
+            "path": {
+              "type": "PathPrefix",
+              "value": "/"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "status": {
+    "parents": [
+      {
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Route is accepted",
+            "observedGeneration": 1,
+            "reason": "Accepted",
+            "status": "True",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Service demo/ghost not found",
+            "observedGeneration": 1,
+            "reason": "BackendNotFound",
+            "status": "False",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+        "parentRef": {
+          "group": "gateway.networking.k8s.io",
+          "kind": "Gateway",
+          "name": "demo-gw",
+          "namespace": "gateway-demo",
+          "sectionName": "http"
+        }
+      }
+    ]
+  }
+}

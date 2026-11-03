@@ -6,6 +6,7 @@ import 'batch/index.dart';
 import 'cluster/index.dart';
 import 'config/index.dart';
 import 'custom/index.dart';
+import 'gateway/index.dart';
 import 'network/index.dart';
 import 'panel.dart';
 import 'pod/index.dart';
@@ -19,6 +20,7 @@ final List<ResourcePanel> allPanels = [
   ...workloadsPanels,
   ...batchPanels,
   ...networkPanels,
+  ...gatewayPanels,
   ...configPanels,
   ...storagePanels,
   ...clusterPanels,

@@ -1,0 +1,36 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "kind": "GatewayClass",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:34:53Z",
+    "finalizers": [
+      "gateway-exists-finalizer.gateway.networking.k8s.io"
+    ],
+    "generation": 1,
+    "name": "eg",
+    "resourceVersion": "9142",
+    "uid": "22939abe-3b53-40b5-b2c8-490dd0389828"
+  },
+  "spec": {
+    "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+    "description": "Envoy Gateway (dev, ClusterIP)",
+    "parametersRef": {
+      "group": "gateway.envoyproxy.io",
+      "kind": "EnvoyProxy",
+      "name": "clusterip-proxy",
+      "namespace": "envoy-gateway-system"
+    }
+  },
+  "status": {
+    "conditions": [
+      {
+        "lastTransitionTime": "2026-11-03T12:34:53Z",
+        "message": "Valid GatewayClass",
+        "observedGeneration": 1,
+        "reason": "Accepted",
+        "status": "True",
+        "type": "Accepted"
+      }
+    ]
+  }
+}
