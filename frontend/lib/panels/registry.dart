@@ -11,6 +11,7 @@ import 'gateway/index.dart';
 import 'network/index.dart';
 import 'panel.dart';
 import 'pod/index.dart';
+import 'prometheus/index.dart';
 import 'storage/index.dart';
 import 'workloads/index.dart';
 
@@ -27,6 +28,7 @@ final List<ResourcePanel> allPanels = [
   ...clusterPanels,
   ...customPanels,
   ...argocdPanels,
+  ...prometheusPanels,
 ];
 
 final Map<String, ResourcePanel> _byKind = {

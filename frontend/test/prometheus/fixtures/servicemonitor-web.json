@@ -1,0 +1,37 @@
+{
+  "apiVersion": "monitoring.coreos.com/v1",
+  "kind": "ServiceMonitor",
+  "metadata": {
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"monitoring.coreos.com/v1\",\"kind\":\"ServiceMonitor\",\"metadata\":{\"annotations\":{},\"labels\":{\"app.kubernetes.io/part-of\":\"k8sman-demo\"},\"name\":\"web\",\"namespace\":\"demo\"},\"spec\":{\"endpoints\":[{\"interval\":\"30s\",\"path\":\"/metrics\",\"port\":\"http\"}],\"namespaceSelector\":{\"matchNames\":[\"demo\"]},\"selector\":{\"matchLabels\":{\"app\":\"web\"}}}}\n"
+    },
+    "creationTimestamp": "2026-11-03T12:56:55Z",
+    "generation": 1,
+    "labels": {
+      "app.kubernetes.io/part-of": "k8sman-demo"
+    },
+    "name": "web",
+    "namespace": "demo",
+    "resourceVersion": "14725",
+    "uid": "b97b9a71-239d-4057-b591-52b2fdc89de7"
+  },
+  "spec": {
+    "endpoints": [
+      {
+        "interval": "30s",
+        "path": "/metrics",
+        "port": "http"
+      }
+    ],
+    "namespaceSelector": {
+      "matchNames": [
+        "demo"
+      ]
+    },
+    "selector": {
+      "matchLabels": {
+        "app": "web"
+      }
+    }
+  }
+}

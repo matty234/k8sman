@@ -1,0 +1,63 @@
+# kube-prometheus-stack values for local kind clusters (k8sman dev).
+#
+#   helm upgrade --install kube-prometheus-stack kube-prometheus-stack \
+#     --repo https://prometheus-community.github.io/helm-charts --version 92.17.1 \
+#     -n monitoring --create-namespace -f dev/prometheus/values-kind.yaml
+#
+# kind binds etcd / controller-manager / scheduler / kube-proxy metrics to
+# localhost, so their scrape targets (and the alerts about them) are disabled.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+defaultRules:
+  rules:
+    etcd: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeControllerManager: false
+    kubeProxy: false
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    retentionSize: 2GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    # Pick up ServiceMonitors / PodMonitors / PrometheusRules from every
+    # namespace, not only ones labelled for this release.
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    resources:
+      requests: {cpu: 100m, memory: 400Mi}
+      limits: {memory: 1500Mi}
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    retention: 24h
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {memory: 128Mi}
+grafana:
+  enabled: true
+  adminPassword: k8sman
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 384Mi}
+prometheusOperator:
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+kube-state-metrics:
+  resources:
+    requests: {cpu: 10m, memory: 64Mi}
+    limits: {memory: 256Mi}
+prometheus-node-exporter:
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 128Mi}

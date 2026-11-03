@@ -394,8 +394,8 @@ func TestAnalyzeScenario(t *testing.T) {
 		t.Errorf("rolling: stalled rollouts should not also be reported as rolling, got %v", names(got))
 	}
 	for _, d := range categoryDefs {
-		// Argo CD categories are covered by argocd_test.go.
-		if _, ok := expect[d.id]; !ok && d.id != "rolling" && d.section != "argocd" {
+		// Argo CD categories: argocd_test.go; alerts: alerts_test.go.
+		if _, ok := expect[d.id]; !ok && d.id != "rolling" && d.section != "argocd" && d.section != "alerts" {
 			t.Errorf("category %s is not covered by the scenario", d.id)
 		}
 	}

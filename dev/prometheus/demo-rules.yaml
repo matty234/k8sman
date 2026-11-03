@@ -1,0 +1,37 @@
+# Sample alerts for the k8sman dev cluster: one that fires within a minute
+# and one critical alert for the crashlooping demo/crashy pod.
+#   kubectl apply -f dev/prometheus/demo-rules.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: k8sman-demo
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8sman-demo
+spec:
+  groups:
+    - name: k8sman-demo.alerts
+      rules:
+        - alert: K8smanTestAlert
+          expr: vector(1)
+          for: 1m
+          labels:
+            severity: warning
+            namespace: demo
+          annotations:
+            summary: Test alert from the k8sman demo rules
+            description: Always fires one minute after the rule loads. Use it to try silences in k8sman.
+            runbook_url: https://github.com/bargrove/k8sman/blob/master/docs/PROMETHEUS.md
+        - alert: K8smanDemoPodCrashLooping
+          expr: max_over_time(kube_pod_container_status_waiting_reason{namespace="demo", reason="CrashLoopBackOff"}[5m]) >= 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping
+            description: Container {{ $labels.container }} of pod {{ $labels.namespace }}/{{ $labels.pod }} has been in CrashLoopBackOff for more than 2 minutes.
+            runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping
+    - name: k8sman-demo.records
+      rules:
+        - record: namespace:k8sman_demo_container_restarts:sum
+          expr: sum by (namespace) (kube_pod_container_status_restarts_total{namespace="demo"})

@@ -5,6 +5,7 @@ import '../api/models.dart';
 import '../app/kubeconfig_picker.dart';
 import '../app/window_chrome.dart';
 import '../state/app_state.dart';
+import 'alerts/alerts_nav_badge.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 
@@ -24,6 +25,13 @@ const _curated = <String, List<String>>{
     'gateway.networking.k8s.io/ReferenceGrant',
   ],
   'Config': ['/ConfigMap', '/Secret', '/ServiceAccount', 'autoscaling/HorizontalPodAutoscaler', '/ResourceQuota', '/LimitRange', 'policy/PodDisruptionBudget'],
+  'Monitoring': [
+    'monitoring.coreos.com/PrometheusRule',
+    'monitoring.coreos.com/ServiceMonitor',
+    'monitoring.coreos.com/PodMonitor',
+    'monitoring.coreos.com/Prometheus',
+    'monitoring.coreos.com/Alertmanager',
+  ],
   'Storage': ['/PersistentVolumeClaim', '/PersistentVolume', 'storage.k8s.io/StorageClass'],
   'Cluster': ['/Node', '/Namespace', '/Event', 'apiextensions.k8s.io/CustomResourceDefinition', 'apiregistration.k8s.io/APIService'],
   'Access Control': [
@@ -120,6 +128,7 @@ class _ResourceNavState extends State<ResourceNav> {
         const _ContextPicker(),
         const SizedBox(height: 6),
         _ViewItem(icon: Icons.space_dashboard_outlined, label: 'Overview', view: MainView.overview, selected: app.view == MainView.overview),
+        _ViewItem(icon: Icons.notifications_none, label: 'Alerts', view: MainView.alerts, selected: app.view == MainView.alerts, trailing: const AlertsNavBadge()),
         _ViewItem(icon: Icons.dns_outlined, label: 'Nodes', view: MainView.nodes, selected: app.view == MainView.nodes),
         _ViewItem(icon: Icons.sailing_outlined, label: 'Helm', view: MainView.helm, selected: app.view == MainView.helm),
         _ViewItem(icon: Icons.shield_outlined, label: 'Security', view: MainView.security, selected: app.view == MainView.security),
@@ -279,11 +288,12 @@ class _ViewItem extends StatelessWidget {
   final String label;
   final MainView view;
   final bool selected;
-  const _ViewItem({required this.icon, required this.label, required this.view, required this.selected});
+  final Widget? trailing;
+  const _ViewItem({required this.icon, required this.label, required this.view, required this.selected, this.trailing});
 
   @override
   Widget build(BuildContext context) =>
-      _SourceListItem(icon: icon, label: label, selected: selected, onTap: () => context.read<AppState>().showView(view));
+      _SourceListItem(icon: icon, label: label, selected: selected, trailing: trailing, onTap: () => context.read<AppState>().showView(view));
 }
 
 /// Cluster context switcher, styled like a workspace switcher.

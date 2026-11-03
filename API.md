@@ -218,3 +218,34 @@ Response of `GET /api/security`:
 
 - Findings are sorted by severity, then category. Workload findings are per top-level owner (Pod → ReplicaSet → Deployment, Pod → Job → CronJob), and best-practice findings are grouped per namespace, so 40 identical pods are one row. `check` is the stable check id; see `docs/SECURITY.md` for the full list and severities.
 - Images scanned on demand (still in the 1h cache) are merged into `images` with `source: "trivy-cli"`.
+
+## Prometheus stack
+
+Prometheus and Alertmanager are discovered through the Prometheus Operator
+CRDs (or well-known Service names without them) and reached through the API
+server's service proxy, so no port-forward is needed. Details, discovery
+rules and limits: [docs/PROMETHEUS.md](docs/PROMETHEUS.md). Every endpoint
+takes an optional `instance=<namespace>/<name>`; the default is the first
+reachable instance (preferring the `monitoring` namespace). When no instance
+of the needed kind exists the answer is 404 with `reason: "NotFound"`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/prom/status[?refresh=true]` | `{prometheus:[Instance], alertmanager:[Instance], operatorCRDs, checkedAt, errors?}`. Instance: `{id, kind, namespace, name, source: crd/service, service, port, scheme, pathPrefix?, version, replicas?, availableReplicas?, reachable, error?, default, externalUrl?}`. Cached for 30s |
+| GET | `/api/prom/alerts[?instance=&prometheus=]` | Alertmanager v2 alerts plus Prometheus' pending ones, grouped by alertname: `{alertmanager?, prometheus?, summary:{firing, pending, silenced, inhibited, critical}, groups:[{alertname, severity, state, counts:{state:n}, summary, alerts:[Alert]}], errors?}`. Alert: `{fingerprint, alertname, state: firing/pending/silenced/inhibited, severity, labels, annotations, startsAt, endsAt?, generatorURL?, silencedBy?, inhibitedBy?, receivers?, source: alertmanager/prometheus, value?, target?:{group, kind, namespace?, name}}`. Without a reachable Alertmanager, Prometheus' firing alerts are returned instead |
+| GET | `/api/prom/silences[?instance=]` | `{alertmanager, silences:[{id, state: active/pending/expired, matchers:[{name, value, isRegex, isEqual}], startsAt, endsAt, createdBy, comment}]}`, active first (soonest to end first) |
+| POST | `/api/prom/silences[?instance=]` | body `{matchers, duration: "1h"/"4h"/"1d"/Go duration, startsAt?, endsAt?, comment, createdBy?}` (createdBy defaults to `k8sman`). Needs one positive non-wildcard matcher and a comment; at most 90 days. Returns `{silenceID, alertmanager, startsAt, endsAt}`. 403 when read-only |
+| DELETE | `/api/prom/silences/{id}[?instance=]` | expire a silence. 403 when read-only |
+| GET | `/api/prom/rules[?namespace=&name=&instance=]` | Prometheus `/api/v1/rules` with live state: `{prometheus, counts:{firing, pending, inactive, errors}, groups:[{name, file, interval, source?:{namespace, name}, rules:[{type: alerting/recording, name, query, duration, labels, annotations, state, health, lastError?, lastEvaluation, alerts?}]}]}`. `source` is the PrometheusRule the group came from; `namespace`/`name` filter on it |
+| GET | `/api/prom/targets[?kind=&namespace=&name=&instance=]` | active scrape targets by pool: `{prometheus, up, down, unknown, pools:[{scrapePool, monitor?:{kind, namespace, name, endpoint}, up, down, unknown, targets:[{scrapeUrl, health, lastError?, lastScrape, lastScrapeDuration, scrapeInterval, labels, target?}]}]}`. `kind` (ServiceMonitor/PodMonitor/Probe), `namespace` and `name` filter on the monitor |
+| GET | `/api/prom/query?query=[&time=&instance=]` | instant PromQL query: `{resultType, result, series, truncated?, warnings?, prometheus}` (Prometheus' `data.result` format) |
+| GET | `/api/prom/query_range?query=[&start=&end=&step=&instance=]` | range query, same shape plus `{start, end, step}`. Times are Unix seconds, RFC3339 or relative (`-1h`); default the last hour at ~240 points. At most 31 days and 1100 points per series (the step is raised to fit) and 500 series. A bad query is 422 with Prometheus' message |
+
+The health overview (`/api/overview`) also lists firing Alertmanager alerts
+(not silenced or inhibited) as issues in the categories `alertCritical`,
+`alertWarning` and `alertInfo` (section `alerts`), from the alert's
+`severity` label: `critical` → critical, `warning` → warning, anything else
+→ info, and `none` (Watchdog) skipped. They link to the object their labels
+identify (`kind`/`name`, e.g. the pod, with its `owner`), else `kind: "Alert"`
+with the alertname. With a namespace filter only alerts labelled with that
+namespace are included.

@@ -7,6 +7,7 @@ import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/helm/helm_view.dart';
+import 'package:k8sman/ui/alerts/alerts_view.dart';
 import 'package:k8sman/ui/nodes/nodes_view.dart';
 import 'package:k8sman/ui/portforward/portforward_view.dart';
 import 'package:k8sman/ui/resource_table.dart';
@@ -17,6 +18,7 @@ import 'package:k8sman/ui/widgets/common.dart';
 import 'package:provider/provider.dart';
 
 import 'helm/fake_helm_api.dart';
+import 'prometheus/prom_fixtures.dart';
 import 'support/harness.dart';
 
 /// Every main-area page must use the same header height as the titlebar,
@@ -37,6 +39,7 @@ void main() {
     'port forwards': (_) => const PortForwardView(),
     'helm': (_) => HelmView(api: FakeHelmApi()),
     'security': (_) => SecurityView(source: _SecurityApi()),
+    'alerts': (_) => AlertsView(source: FixturePromApi()),
   };
   for (final e in pages.entries) {
     testWidgets('${e.key} header is titlebar height', (tester) async {

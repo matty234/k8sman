@@ -1,0 +1,966 @@
+{
+  "alertmanager": {
+    "id": "monitoring/kube-prometheus-stack-alertmanager",
+    "kind": "alertmanager",
+    "namespace": "monitoring",
+    "name": "kube-prometheus-stack-alertmanager",
+    "source": "crd",
+    "service": "kube-prometheus-stack-alertmanager",
+    "port": "http-web",
+    "scheme": "http",
+    "version": "0.34.2",
+    "replicas": 1,
+    "availableReplicas": 1,
+    "reachable": true,
+    "default": true,
+    "externalUrl": "http://kube-prometheus-stack-alertmanager.monitoring:9093"
+  },
+  "prometheus": {
+    "id": "monitoring/kube-prometheus-stack-prometheus",
+    "kind": "prometheus",
+    "namespace": "monitoring",
+    "name": "kube-prometheus-stack-prometheus",
+    "source": "crd",
+    "service": "kube-prometheus-stack-prometheus",
+    "port": "http-web",
+    "scheme": "http",
+    "version": "3.15.1",
+    "replicas": 1,
+    "availableReplicas": 1,
+    "reachable": true,
+    "default": true,
+    "externalUrl": "http://kube-prometheus-stack-prometheus.monitoring:9090"
+  },
+  "summary": {
+    "firing": 13,
+    "pending": 6,
+    "silenced": 2,
+    "inhibited": 2,
+    "critical": 1
+  },
+  "groups": [
+    {
+      "alertname": "K8smanDemoPodCrashLooping",
+      "severity": "critical",
+      "state": "firing",
+      "counts": {
+        "firing": 1
+      },
+      "summary": "Pod demo/crashy is crash looping",
+      "alerts": [
+        {
+          "fingerprint": "e3015b9f46273836",
+          "alertname": "K8smanDemoPodCrashLooping",
+          "state": "firing",
+          "severity": "critical",
+          "labels": {
+            "alertname": "K8smanDemoPodCrashLooping",
+            "container": "app",
+            "endpoint": "http",
+            "instance": "10.244.0.120:8080",
+            "job": "kube-state-metrics",
+            "namespace": "demo",
+            "pod": "crashy",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "reason": "CrashLoopBackOff",
+            "service": "kube-prometheus-stack-kube-state-metrics",
+            "severity": "critical",
+            "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+          },
+          "annotations": {
+            "description": "Container app of pod demo/crashy has been in CrashLoopBackOff for more than 2 minutes.",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping",
+            "summary": "Pod demo/crashy is crash looping"
+          },
+          "startsAt": "2026-11-03T12:50:45.404Z",
+          "endsAt": "2026-11-03T13:12:15.404Z",
+          "updatedAt": "2026-11-03T13:08:15.419Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=max_over_time%28kube_pod_container_status_waiting_reason%7Bnamespace%3D%22demo%22%2Creason%3D%22CrashLoopBackOff%22%7D%5B5m%5D%29+%3E%3D+1&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "demo",
+            "name": "crashy"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "KubePodNotReady",
+      "severity": "warning",
+      "state": "firing",
+      "counts": {
+        "firing": 4,
+        "silenced": 1
+      },
+      "summary": "Pod has been in a non-ready state for more than 15 minutes.",
+      "alerts": [
+        {
+          "fingerprint": "355b4b0ccf34c9bc",
+          "alertname": "KubePodNotReady",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubePodNotReady",
+            "job": "kube-state-metrics",
+            "namespace": "helm-demo",
+            "pod": "api-fdb985bcb-jvrrs",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "Pod helm-demo/api-fdb985bcb-jvrrs has been in a non-ready state for longer than 15 minutes on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready",
+            "summary": "Pod has been in a non-ready state for more than 15 minutes."
+          },
+          "startsAt": "2026-11-03T13:01:36.866Z",
+          "endsAt": "2026-11-03T13:11:36.866Z",
+          "updatedAt": "2026-11-03T13:07:36.923Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=sum+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28max+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D~%22Pending%7CUnknown%22%7D+or+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D%22Running%22%7D+%3D%3D+1+and+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_ready%7Bcondition%3D%22true%22%2Cjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%7D+%3D%3D+0%29%29+%2A+on+%28namespace%2C+pod%2C+cluster%29+group_left+%28%29+topk+by+%28namespace%2C+pod%2C+cluster%29+%281%2C+max+by+%28namespace%2C+pod%2C+owner_kind%2C+cluster%29+%28kube_pod_owner%7Bowner_kind%21%3D%22Job%22%7D%29%29%29+%3E+0+unless+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_reason%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Creason%3D%22SchedulingGated%22%7D+%3D%3D+1&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "helm-demo",
+            "name": "api-fdb985bcb-jvrrs"
+          }
+        },
+        {
+          "fingerprint": "40ebea27198f6d4d",
+          "alertname": "KubePodNotReady",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubePodNotReady",
+            "job": "kube-state-metrics",
+            "namespace": "guestbook-degraded",
+            "pod": "kustomize-guestbook-ui-755cbff6db-sdzbf",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "Pod guestbook-degraded/kustomize-guestbook-ui-755cbff6db-sdzbf has been in a non-ready state for longer than 15 minutes on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready",
+            "summary": "Pod has been in a non-ready state for more than 15 minutes."
+          },
+          "startsAt": "2026-11-03T13:01:36.866Z",
+          "endsAt": "2026-11-03T13:11:36.866Z",
+          "updatedAt": "2026-11-03T13:07:36.923Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=sum+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28max+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D~%22Pending%7CUnknown%22%7D+or+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D%22Running%22%7D+%3D%3D+1+and+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_ready%7Bcondition%3D%22true%22%2Cjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%7D+%3D%3D+0%29%29+%2A+on+%28namespace%2C+pod%2C+cluster%29+group_left+%28%29+topk+by+%28namespace%2C+pod%2C+cluster%29+%281%2C+max+by+%28namespace%2C+pod%2C+owner_kind%2C+cluster%29+%28kube_pod_owner%7Bowner_kind%21%3D%22Job%22%7D%29%29%29+%3E+0+unless+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_reason%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Creason%3D%22SchedulingGated%22%7D+%3D%3D+1&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "guestbook-degraded",
+            "name": "kustomize-guestbook-ui-755cbff6db-sdzbf"
+          }
+        },
+        {
+          "fingerprint": "46ce6bbd161f85c6",
+          "alertname": "KubePodNotReady",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubePodNotReady",
+            "job": "kube-state-metrics",
+            "namespace": "demo",
+            "pod": "bad-image",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "Pod demo/bad-image has been in a non-ready state for longer than 15 minutes on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready",
+            "summary": "Pod has been in a non-ready state for more than 15 minutes."
+          },
+          "startsAt": "2026-11-03T13:01:36.866Z",
+          "endsAt": "2026-11-03T13:11:36.866Z",
+          "updatedAt": "2026-11-03T13:07:36.923Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=sum+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28max+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D~%22Pending%7CUnknown%22%7D+or+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D%22Running%22%7D+%3D%3D+1+and+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_ready%7Bcondition%3D%22true%22%2Cjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%7D+%3D%3D+0%29%29+%2A+on+%28namespace%2C+pod%2C+cluster%29+group_left+%28%29+topk+by+%28namespace%2C+pod%2C+cluster%29+%281%2C+max+by+%28namespace%2C+pod%2C+owner_kind%2C+cluster%29+%28kube_pod_owner%7Bowner_kind%21%3D%22Job%22%7D%29%29%29+%3E+0+unless+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_reason%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Creason%3D%22SchedulingGated%22%7D+%3D%3D+1&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "demo",
+            "name": "bad-image"
+          }
+        },
+        {
+          "fingerprint": "956c0462621095b1",
+          "alertname": "KubePodNotReady",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubePodNotReady",
+            "job": "kube-state-metrics",
+            "namespace": "demo",
+            "pod": "crashy",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "Pod demo/crashy has been in a non-ready state for longer than 15 minutes on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready",
+            "summary": "Pod has been in a non-ready state for more than 15 minutes."
+          },
+          "startsAt": "2026-11-03T13:01:36.866Z",
+          "endsAt": "2026-11-03T13:11:36.866Z",
+          "updatedAt": "2026-11-03T13:07:36.923Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=sum+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28max+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D~%22Pending%7CUnknown%22%7D+or+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D%22Running%22%7D+%3D%3D+1+and+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_ready%7Bcondition%3D%22true%22%2Cjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%7D+%3D%3D+0%29%29+%2A+on+%28namespace%2C+pod%2C+cluster%29+group_left+%28%29+topk+by+%28namespace%2C+pod%2C+cluster%29+%281%2C+max+by+%28namespace%2C+pod%2C+owner_kind%2C+cluster%29+%28kube_pod_owner%7Bowner_kind%21%3D%22Job%22%7D%29%29%29+%3E+0+unless+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_reason%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Creason%3D%22SchedulingGated%22%7D+%3D%3D+1&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "demo",
+            "name": "crashy"
+          }
+        },
+        {
+          "fingerprint": "809b5139e9a08665",
+          "alertname": "KubePodNotReady",
+          "state": "silenced",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubePodNotReady",
+            "job": "kube-state-metrics",
+            "namespace": "helm-tools",
+            "pod": "worker-5cccdd97cb-7lbx5",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "Pod helm-tools/worker-5cccdd97cb-7lbx5 has been in a non-ready state for longer than 15 minutes on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready",
+            "summary": "Pod has been in a non-ready state for more than 15 minutes."
+          },
+          "startsAt": "2026-11-03T13:01:36.866Z",
+          "endsAt": "2026-11-03T13:11:36.866Z",
+          "updatedAt": "2026-11-03T13:07:36.923Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=sum+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28max+by+%28namespace%2C+pod%2C+job%2C+cluster%29+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D~%22Pending%7CUnknown%22%7D+or+%28kube_pod_status_phase%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cphase%3D%22Running%22%7D+%3D%3D+1+and+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_ready%7Bcondition%3D%22true%22%2Cjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%7D+%3D%3D+0%29%29+%2A+on+%28namespace%2C+pod%2C+cluster%29+group_left+%28%29+topk+by+%28namespace%2C+pod%2C+cluster%29+%281%2C+max+by+%28namespace%2C+pod%2C+owner_kind%2C+cluster%29+%28kube_pod_owner%7Bowner_kind%21%3D%22Job%22%7D%29%29%29+%3E+0+unless+on+%28namespace%2C+pod%2C+cluster%29+kube_pod_status_reason%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Creason%3D%22SchedulingGated%22%7D+%3D%3D+1&g0.tab=1",
+          "silencedBy": [
+            "5fb8b03e-3f5c-4fc6-bac1-9c2269f026cc"
+          ],
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "helm-tools",
+            "name": "worker-5cccdd97cb-7lbx5"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "KubeDeploymentRolloutStuck",
+      "severity": "warning",
+      "state": "firing",
+      "counts": {
+        "firing": 3
+      },
+      "summary": "Deployment rollout is not progressing.",
+      "alerts": [
+        {
+          "fingerprint": "4875327320b35c8b",
+          "alertname": "KubeDeploymentRolloutStuck",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubeDeploymentRolloutStuck",
+            "condition": "Progressing",
+            "container": "kube-state-metrics",
+            "deployment": "worker",
+            "endpoint": "http",
+            "instance": "10.244.0.120:8080",
+            "job": "kube-state-metrics",
+            "namespace": "helm-tools",
+            "pod": "kube-prometheus-stack-kube-state-metrics-7cdb69876c-b6xfd",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "reason": "ProgressDeadlineExceeded",
+            "service": "kube-prometheus-stack-kube-state-metrics",
+            "severity": "warning",
+            "status": "false"
+          },
+          "annotations": {
+            "description": "Rollout of deployment helm-tools/worker is not progressing for longer than 15 minutes on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubedeploymentrolloutstuck",
+            "summary": "Deployment rollout is not progressing."
+          },
+          "startsAt": "2026-11-03T13:01:36.866Z",
+          "endsAt": "2026-11-03T13:11:36.866Z",
+          "updatedAt": "2026-11-03T13:07:36.927Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=kube_deployment_status_condition%7Bcondition%3D%22Progressing%22%2Cjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cstatus%3D%22false%22%7D+%21%3D+0&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "apps",
+            "kind": "Deployment",
+            "namespace": "helm-tools",
+            "name": "worker"
+          }
+        },
+        {
+          "fingerprint": "5fbb856379cd91f1",
+          "alertname": "KubeDeploymentRolloutStuck",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubeDeploymentRolloutStuck",
+            "condition": "Progressing",
+            "container": "kube-state-metrics",
+            "deployment": "kustomize-guestbook-ui",
+            "endpoint": "http",
+            "instance": "10.244.0.120:8080",
+            "job": "kube-state-metrics",
+            "namespace": "guestbook-degraded",
+            "pod": "kube-prometheus-stack-kube-state-metrics-7cdb69876c-b6xfd",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "reason": "ProgressDeadlineExceeded",
+            "service": "kube-prometheus-stack-kube-state-metrics",
+            "severity": "warning",
+            "status": "false"
+          },
+          "annotations": {
+            "description": "Rollout of deployment guestbook-degraded/kustomize-guestbook-ui is not progressing for longer than 15 minutes on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubedeploymentrolloutstuck",
+            "summary": "Deployment rollout is not progressing."
+          },
+          "startsAt": "2026-11-03T13:01:36.866Z",
+          "endsAt": "2026-11-03T13:11:36.866Z",
+          "updatedAt": "2026-11-03T13:07:36.927Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=kube_deployment_status_condition%7Bcondition%3D%22Progressing%22%2Cjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cstatus%3D%22false%22%7D+%21%3D+0&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "apps",
+            "kind": "Deployment",
+            "namespace": "guestbook-degraded",
+            "name": "kustomize-guestbook-ui"
+          }
+        },
+        {
+          "fingerprint": "82467259b3bfdc49",
+          "alertname": "KubeDeploymentRolloutStuck",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubeDeploymentRolloutStuck",
+            "condition": "Progressing",
+            "container": "kube-state-metrics",
+            "deployment": "api",
+            "endpoint": "http",
+            "instance": "10.244.0.120:8080",
+            "job": "kube-state-metrics",
+            "namespace": "helm-demo",
+            "pod": "kube-prometheus-stack-kube-state-metrics-7cdb69876c-b6xfd",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "reason": "ProgressDeadlineExceeded",
+            "service": "kube-prometheus-stack-kube-state-metrics",
+            "severity": "warning",
+            "status": "false"
+          },
+          "annotations": {
+            "description": "Rollout of deployment helm-demo/api is not progressing for longer than 15 minutes on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubedeploymentrolloutstuck",
+            "summary": "Deployment rollout is not progressing."
+          },
+          "startsAt": "2026-11-03T13:01:36.866Z",
+          "endsAt": "2026-11-03T13:11:36.866Z",
+          "updatedAt": "2026-11-03T13:07:36.927Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=kube_deployment_status_condition%7Bcondition%3D%22Progressing%22%2Cjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Cstatus%3D%22false%22%7D+%21%3D+0&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "apps",
+            "kind": "Deployment",
+            "namespace": "helm-demo",
+            "name": "api"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "KubePodCrashLooping",
+      "severity": "warning",
+      "state": "firing",
+      "counts": {
+        "firing": 1
+      },
+      "summary": "Pod is crash looping.",
+      "alerts": [
+        {
+          "fingerprint": "f6a116ecda1c0635",
+          "alertname": "KubePodCrashLooping",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubePodCrashLooping",
+            "container": "app",
+            "endpoint": "http",
+            "instance": "10.244.0.120:8080",
+            "job": "kube-state-metrics",
+            "namespace": "demo",
+            "pod": "crashy",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "reason": "CrashLoopBackOff",
+            "service": "kube-prometheus-stack-kube-state-metrics",
+            "severity": "warning",
+            "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+          },
+          "annotations": {
+            "description": "Pod demo/crashy (app) is in waiting state (reason: \"CrashLoopBackOff\") on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping",
+            "summary": "Pod is crash looping."
+          },
+          "startsAt": "2026-11-03T13:01:36.866Z",
+          "endsAt": "2026-11-03T13:11:36.866Z",
+          "updatedAt": "2026-11-03T13:07:36.913Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=max_over_time%28kube_pod_container_status_waiting_reason%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22.%2A%22%2Creason%3D%22CrashLoopBackOff%22%7D%5B5m%5D%29+%3E%3D+1&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "demo",
+            "name": "crashy"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "NodeClockNotSynchronising",
+      "severity": "warning",
+      "state": "firing",
+      "counts": {
+        "firing": 1
+      },
+      "summary": "Clock not synchronising.",
+      "alerts": [
+        {
+          "fingerprint": "c912212a23801e52",
+          "alertname": "NodeClockNotSynchronising",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "NodeClockNotSynchronising",
+            "container": "node-exporter",
+            "endpoint": "http-metrics",
+            "instance": "172.18.0.2:9100",
+            "job": "node-exporter",
+            "namespace": "monitoring",
+            "pod": "kube-prometheus-stack-prometheus-node-exporter-kkp48",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "service": "kube-prometheus-stack-prometheus-node-exporter",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "Clock at 172.18.0.2:9100 is not synchronising. Ensure NTP is configured on this host.",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/node/nodeclocknotsynchronising",
+            "summary": "Clock not synchronising."
+          },
+          "startsAt": "2026-11-03T12:56:36.629Z",
+          "endsAt": "2026-11-03T13:12:36.629Z",
+          "updatedAt": "2026-11-03T13:08:36.693Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=min_over_time%28node_timex_sync_status%7Bjob%3D%22node-exporter%22%7D%5B5m%5D%29+%3D%3D+0+and+node_timex_maxerror_seconds%7Bjob%3D%22node-exporter%22%7D+%3E%3D+16&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "kube-prometheus-stack-prometheus-node-exporter-kkp48"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "PrometheusMissingRuleEvaluations",
+      "severity": "warning",
+      "state": "firing",
+      "counts": {
+        "firing": 1
+      },
+      "summary": "Prometheus is missing rule evaluations due to slow rule group evaluation.",
+      "alerts": [
+        {
+          "fingerprint": "df72c7560e71db05",
+          "alertname": "PrometheusMissingRuleEvaluations",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "PrometheusMissingRuleEvaluations",
+            "container": "prometheus",
+            "endpoint": "http-web",
+            "instance": "10.244.0.124:9090",
+            "job": "kube-prometheus-stack-prometheus",
+            "namespace": "monitoring",
+            "pod": "prometheus-kube-prometheus-stack-prometheus-0",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "rule_group": "/etc/prometheus/rules/prometheus-kube-prometheus-stack-prometheus-rulefiles-0/demo-k8sman-demo-4cdd29ef-e80e-434c-b72a-91120a282b32.yaml;k8sman-demo.alerts",
+            "service": "kube-prometheus-stack-prometheus",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "Prometheus monitoring/prometheus-kube-prometheus-stack-prometheus-0 has missed 1 rule group evaluations in the last 5m.",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusmissingruleevaluations",
+            "summary": "Prometheus is missing rule evaluations due to slow rule group evaluation."
+          },
+          "startsAt": "2026-11-03T13:04:52.250Z",
+          "endsAt": "2026-11-03T13:11:52.250Z",
+          "updatedAt": "2026-11-03T13:07:52.294Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=increase%28prometheus_rule_group_iterations_missed_total%7Bjob%3D%22kube-prometheus-stack-prometheus%22%2Cnamespace%3D%22monitoring%22%7D%5B5m%5D%29+%3E+0&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "prometheus-kube-prometheus-stack-prometheus-0"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "TargetDown",
+      "severity": "warning",
+      "state": "firing",
+      "counts": {
+        "firing": 1
+      },
+      "summary": "One or more targets are unreachable.",
+      "alerts": [
+        {
+          "fingerprint": "29cc58229132b2b3",
+          "alertname": "TargetDown",
+          "state": "firing",
+          "severity": "warning",
+          "labels": {
+            "alertname": "TargetDown",
+            "job": "web",
+            "namespace": "demo",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "service": "web",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "100% of the web/web targets in demo namespace are down.",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/general/targetdown",
+            "summary": "One or more targets are unreachable."
+          },
+          "startsAt": "2026-11-03T13:08:13.124Z",
+          "endsAt": "2026-11-03T13:12:13.124Z",
+          "updatedAt": "2026-11-03T13:08:13.164Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=100+%2A+%28count+by+%28cluster%2C+job%2C+namespace%2C+service%29+%28up+%3D%3D+0%29+%2F+count+by+%28cluster%2C+job%2C+namespace%2C+service%29+%28up%29%29+%3E+10&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Service",
+            "namespace": "demo",
+            "name": "web"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "Watchdog",
+      "severity": "none",
+      "state": "firing",
+      "counts": {
+        "firing": 1
+      },
+      "summary": "An alert that should always be firing to certify that Alertmanager is working properly.",
+      "alerts": [
+        {
+          "fingerprint": "7da76e02b5888fb5",
+          "alertname": "Watchdog",
+          "state": "firing",
+          "severity": "none",
+          "labels": {
+            "alertname": "Watchdog",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "severity": "none"
+          },
+          "annotations": {
+            "description": "This is an alert meant to ensure that the entire alerting pipeline is functional.\nThis alert is always firing, therefore it should always be firing in Alertmanager\nand always fire against a receiver. There are integrations with various notification\nmechanisms that send a notification when this alert is not firing. For example the\n\"DeadMansSnitch\" integration in PagerDuty.\n",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/general/watchdog",
+            "summary": "An alert that should always be firing to certify that Alertmanager is working properly."
+          },
+          "startsAt": "2026-11-03T12:46:13.124Z",
+          "endsAt": "2026-11-03T13:12:13.124Z",
+          "updatedAt": "2026-11-03T13:08:13.165Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=vector%281%29&g0.tab=1",
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager"
+        }
+      ]
+    },
+    {
+      "alertname": "KubeContainerWaiting",
+      "severity": "warning",
+      "state": "pending",
+      "counts": {
+        "pending": 4
+      },
+      "summary": "Pod container waiting longer than 1 hour",
+      "alerts": [
+        {
+          "fingerprint": "5e5d42a03030cfd9",
+          "alertname": "KubeContainerWaiting",
+          "state": "pending",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubeContainerWaiting",
+            "container": "web",
+            "endpoint": "http",
+            "instance": "10.244.0.120:8080",
+            "job": "kube-state-metrics",
+            "namespace": "helm-demo",
+            "pod": "api-fdb985bcb-jvrrs",
+            "reason": "ImagePullBackOff",
+            "service": "kube-prometheus-stack-kube-state-metrics",
+            "severity": "warning",
+            "uid": "f903c3a5-d3d6-4a6a-8763-dc475f64a6a9"
+          },
+          "annotations": {
+            "description": "pod/api-fdb985bcb-jvrrs in namespace helm-demo on container web has been in waiting state for longer than 1 hour. (reason: \"ImagePullBackOff\") on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubecontainerwaiting",
+            "summary": "Pod container waiting longer than 1 hour"
+          },
+          "startsAt": "2026-11-03T13:07:36.866282821Z",
+          "source": "prometheus",
+          "value": "1e+00",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "helm-demo",
+            "name": "api-fdb985bcb-jvrrs"
+          }
+        },
+        {
+          "fingerprint": "69f85f4df03956ac",
+          "alertname": "KubeContainerWaiting",
+          "state": "pending",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubeContainerWaiting",
+            "container": "guestbook-ui",
+            "endpoint": "http",
+            "instance": "10.244.0.120:8080",
+            "job": "kube-state-metrics",
+            "namespace": "guestbook-degraded",
+            "pod": "kustomize-guestbook-ui-755cbff6db-sdzbf",
+            "reason": "ImagePullBackOff",
+            "service": "kube-prometheus-stack-kube-state-metrics",
+            "severity": "warning",
+            "uid": "39eacd3f-fbe4-4595-84cc-a1fa7a650834"
+          },
+          "annotations": {
+            "description": "pod/kustomize-guestbook-ui-755cbff6db-sdzbf in namespace guestbook-degraded on container guestbook-ui has been in waiting state for longer than 1 hour. (reason: \"ImagePullBackOff\") on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubecontainerwaiting",
+            "summary": "Pod container waiting longer than 1 hour"
+          },
+          "startsAt": "2026-11-03T13:07:36.866282821Z",
+          "source": "prometheus",
+          "value": "1e+00",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "guestbook-degraded",
+            "name": "kustomize-guestbook-ui-755cbff6db-sdzbf"
+          }
+        },
+        {
+          "fingerprint": "d43fb6f08cc5b9ce",
+          "alertname": "KubeContainerWaiting",
+          "state": "pending",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubeContainerWaiting",
+            "container": "app",
+            "endpoint": "http",
+            "instance": "10.244.0.120:8080",
+            "job": "kube-state-metrics",
+            "namespace": "demo",
+            "pod": "bad-image",
+            "reason": "ImagePullBackOff",
+            "service": "kube-prometheus-stack-kube-state-metrics",
+            "severity": "warning",
+            "uid": "918ecf14-a359-49f1-95fe-a803cdeae634"
+          },
+          "annotations": {
+            "description": "pod/bad-image in namespace demo on container app has been in waiting state for longer than 1 hour. (reason: \"ImagePullBackOff\") on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubecontainerwaiting",
+            "summary": "Pod container waiting longer than 1 hour"
+          },
+          "startsAt": "2026-11-03T13:07:36.866282821Z",
+          "source": "prometheus",
+          "value": "1e+00",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "demo",
+            "name": "bad-image"
+          }
+        },
+        {
+          "fingerprint": "2cb34004a12d0170",
+          "alertname": "KubeContainerWaiting",
+          "state": "pending",
+          "severity": "warning",
+          "labels": {
+            "alertname": "KubeContainerWaiting",
+            "container": "web",
+            "endpoint": "http",
+            "instance": "10.244.0.120:8080",
+            "job": "kube-state-metrics",
+            "namespace": "helm-tools",
+            "pod": "worker-5cccdd97cb-7lbx5",
+            "reason": "ImagePullBackOff",
+            "service": "kube-prometheus-stack-kube-state-metrics",
+            "severity": "warning",
+            "uid": "f0268fb2-be54-49f4-be62-35592a7c9481"
+          },
+          "annotations": {
+            "description": "pod/worker-5cccdd97cb-7lbx5 in namespace helm-tools on container web has been in waiting state for longer than 1 hour. (reason: \"ImagePullBackOff\") on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubecontainerwaiting",
+            "summary": "Pod container waiting longer than 1 hour"
+          },
+          "startsAt": "2026-11-03T13:02:36.866282821Z",
+          "source": "prometheus",
+          "value": "1e+00",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "helm-tools",
+            "name": "worker-5cccdd97cb-7lbx5"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "CPUThrottlingHigh",
+      "severity": "info",
+      "state": "pending",
+      "counts": {
+        "pending": 2
+      },
+      "summary": "Processes experience elevated CPU throttling.",
+      "alerts": [
+        {
+          "fingerprint": "b072984e90faae23",
+          "alertname": "CPUThrottlingHigh",
+          "state": "pending",
+          "severity": "info",
+          "labels": {
+            "alertname": "CPUThrottlingHigh",
+            "container": "65781b0e-2585-4397-b5db-287867331327",
+            "instance": "172.18.0.2:10250",
+            "namespace": "trivy-system",
+            "pod": "scan-vulnerabilityreport-77cd7b5686-c9kcx",
+            "service": "kube-prometheus-stack-kubelet",
+            "severity": "info"
+          },
+          "annotations": {
+            "description": "64.56% throttling of CPU in namespace trivy-system for container 65781b0e-2585-4397-b5db-287867331327 in pod scan-vulnerabilityreport-77cd7b5686-c9kcx on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/cputhrottlinghigh",
+            "summary": "Processes experience elevated CPU throttling."
+          },
+          "startsAt": "2026-11-03T13:06:59.377468989Z",
+          "source": "prometheus",
+          "value": "6.456140350877193e-01",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "trivy-system",
+            "name": "scan-vulnerabilityreport-77cd7b5686-c9kcx"
+          }
+        },
+        {
+          "fingerprint": "d59fbf1e38e5abc4",
+          "alertname": "CPUThrottlingHigh",
+          "state": "pending",
+          "severity": "info",
+          "labels": {
+            "alertname": "CPUThrottlingHigh",
+            "container": "kindnet-cni",
+            "instance": "172.18.0.2:10250",
+            "namespace": "kube-system",
+            "pod": "kindnet-h5qrp",
+            "service": "kube-prometheus-stack-kubelet",
+            "severity": "info"
+          },
+          "annotations": {
+            "description": "38.66% throttling of CPU in namespace kube-system for container kindnet-cni in pod kindnet-h5qrp on cluster .",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/cputhrottlinghigh",
+            "summary": "Processes experience elevated CPU throttling."
+          },
+          "startsAt": "2026-11-03T13:06:59.377468989Z",
+          "source": "prometheus",
+          "value": "3.865546218487395e-01",
+          "target": {
+            "group": "",
+            "kind": "Pod",
+            "namespace": "kube-system",
+            "name": "kindnet-h5qrp"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "K8smanTestAlert",
+      "severity": "warning",
+      "state": "silenced",
+      "counts": {
+        "silenced": 1
+      },
+      "summary": "Test alert from the k8sman demo rules",
+      "alerts": [
+        {
+          "fingerprint": "49a34ea2aa7470e6",
+          "alertname": "K8smanTestAlert",
+          "state": "silenced",
+          "severity": "warning",
+          "labels": {
+            "alertname": "K8smanTestAlert",
+            "namespace": "demo",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "severity": "warning"
+          },
+          "annotations": {
+            "description": "Always fires one minute after the rule loads. Use it to try silences in k8sman.",
+            "runbook_url": "https://github.com/bargrove/k8sman/blob/master/docs/PROMETHEUS.md",
+            "summary": "Test alert from the k8sman demo rules"
+          },
+          "startsAt": "2026-11-03T12:49:45.404Z",
+          "endsAt": "2026-11-03T13:12:15.404Z",
+          "updatedAt": "2026-11-03T13:08:15.418Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=vector%281%29&g0.tab=1",
+          "silencedBy": [
+            "fca67b8a-a015-4edf-b891-8d2bd64964f0"
+          ],
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Namespace",
+            "name": "demo"
+          }
+        }
+      ]
+    },
+    {
+      "alertname": "InfoInhibitor",
+      "severity": "none",
+      "state": "inhibited",
+      "counts": {
+        "inhibited": 2
+      },
+      "summary": "Info-level alert inhibition.",
+      "alerts": [
+        {
+          "fingerprint": "6274314ded69ce84",
+          "alertname": "InfoInhibitor",
+          "state": "inhibited",
+          "severity": "none",
+          "labels": {
+            "alertname": "InfoInhibitor",
+            "namespace": "kube-system",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "severity": "none"
+          },
+          "annotations": {
+            "description": "This is an alert that is used to inhibit info alerts.\nBy themselves, the info-level alerts are sometimes very noisy, but they are relevant when combined with\nother alerts.\nThis alert fires whenever there's a severity=\"info\" alert, and stops firing when another alert with a\nseverity of 'warning' or 'critical' starts firing on the same namespace.\nThis alert should be routed to a null receiver and configured to inhibit alerts with severity=\"info\".\n",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/general/infoinhibitor",
+            "summary": "Info-level alert inhibition."
+          },
+          "startsAt": "2026-11-03T13:07:13.124Z",
+          "endsAt": "2026-11-03T13:12:43.124Z",
+          "updatedAt": "2026-11-03T13:08:43.160Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=group+by+%28namespace%29+%28ALERTS%7Bseverity%3D%22info%22%7D+%3D%3D+1%29+unless+on+%28namespace%29+group+by+%28namespace%29+%28ALERTS%7Balertname%21%3D%22InfoInhibitor%22%2Calertstate%3D%22firing%22%2Cseverity%3D~%22warning%7Ccritical%22%7D+%3D%3D+1%29&g0.tab=1",
+          "inhibitedBy": [
+            "e3015b9f46273836"
+          ],
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Namespace",
+            "name": "kube-system"
+          }
+        },
+        {
+          "fingerprint": "7f1ed403c05579bf",
+          "alertname": "InfoInhibitor",
+          "state": "inhibited",
+          "severity": "none",
+          "labels": {
+            "alertname": "InfoInhibitor",
+            "namespace": "trivy-system",
+            "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+            "severity": "none"
+          },
+          "annotations": {
+            "description": "This is an alert that is used to inhibit info alerts.\nBy themselves, the info-level alerts are sometimes very noisy, but they are relevant when combined with\nother alerts.\nThis alert fires whenever there's a severity=\"info\" alert, and stops firing when another alert with a\nseverity of 'warning' or 'critical' starts firing on the same namespace.\nThis alert should be routed to a null receiver and configured to inhibit alerts with severity=\"info\".\n",
+            "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/general/infoinhibitor",
+            "summary": "Info-level alert inhibition."
+          },
+          "startsAt": "2026-11-03T13:07:13.124Z",
+          "endsAt": "2026-11-03T13:12:43.124Z",
+          "updatedAt": "2026-11-03T13:08:43.160Z",
+          "generatorURL": "http://kube-prometheus-stack-prometheus.monitoring:9090/graph?g0.expr=group+by+%28namespace%29+%28ALERTS%7Bseverity%3D%22info%22%7D+%3D%3D+1%29+unless+on+%28namespace%29+group+by+%28namespace%29+%28ALERTS%7Balertname%21%3D%22InfoInhibitor%22%2Calertstate%3D%22firing%22%2Cseverity%3D~%22warning%7Ccritical%22%7D+%3D%3D+1%29&g0.tab=1",
+          "inhibitedBy": [
+            "40ebea27198f6d4d"
+          ],
+          "receivers": [
+            "null"
+          ],
+          "source": "alertmanager",
+          "target": {
+            "group": "",
+            "kind": "Namespace",
+            "name": "trivy-system"
+          }
+        }
+      ]
+    }
+  ]
+}

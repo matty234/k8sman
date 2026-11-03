@@ -6,6 +6,7 @@ import '../app/kubeconfig_picker.dart';
 import '../app/window_chrome.dart';
 import '../state/app_state.dart';
 import '../state/log_dock.dart';
+import 'alerts/alerts_view.dart';
 import 'detail/detail_sidebar.dart';
 import 'logs/log_dock_view.dart';
 import 'helm/helm_view.dart';
@@ -93,6 +94,7 @@ class _ShellState extends State<Shell> {
                     Expanded(
                       child: switch (app.view) {
                         MainView.overview => const OverviewView(),
+                        MainView.alerts => const AlertsView(),
                         MainView.nodes => const NodesView(),
                         MainView.security => const SecurityView(),
                         MainView.portForwards => const PortForwardView(),

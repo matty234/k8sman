@@ -23,6 +23,7 @@ import (
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/columns"
 	"github.com/bargrove/k8sman/backend/internal/portforward"
+	"github.com/bargrove/k8sman/backend/internal/prom"
 	"github.com/bargrove/k8sman/backend/internal/settings"
 )
 
@@ -58,6 +59,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.execRoutes()
 	s.helmRoutes()
 	s.securityRoutes()
+	prom.Register(s.mux, mgr, opts.ReadOnly)
 	return s
 }
 

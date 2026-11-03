@@ -1,0 +1,64 @@
+{
+  "apiVersion": "monitoring.coreos.com/v1",
+  "kind": "PrometheusRule",
+  "metadata": {
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"monitoring.coreos.com/v1\",\"kind\":\"PrometheusRule\",\"metadata\":{\"annotations\":{},\"labels\":{\"app.kubernetes.io/part-of\":\"k8sman-demo\"},\"name\":\"k8sman-demo\",\"namespace\":\"demo\"},\"spec\":{\"groups\":[{\"name\":\"k8sman-demo.alerts\",\"rules\":[{\"alert\":\"K8smanTestAlert\",\"annotations\":{\"description\":\"Always fires one minute after the rule loads. Use it to try silences in k8sman.\",\"runbook_url\":\"https://github.com/bargrove/k8sman/blob/master/docs/PROMETHEUS.md\",\"summary\":\"Test alert from the k8sman demo rules\"},\"expr\":\"vector(1)\",\"for\":\"1m\",\"labels\":{\"namespace\":\"demo\",\"severity\":\"warning\"}},{\"alert\":\"K8smanDemoPodCrashLooping\",\"annotations\":{\"description\":\"Container {{ $labels.container }} of pod {{ $labels.namespace }}/{{ $labels.pod }} has been in CrashLoopBackOff for more than 2 minutes.\",\"runbook_url\":\"https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping\",\"summary\":\"Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping\"},\"expr\":\"max_over_time(kube_pod_container_status_waiting_reason{namespace=\\\"demo\\\", reason=\\\"CrashLoopBackOff\\\"}[5m]) \\u003e= 1\",\"for\":\"2m\",\"labels\":{\"severity\":\"critical\"}}]},{\"name\":\"k8sman-demo.records\",\"rules\":[{\"expr\":\"sum by (namespace) (kube_pod_container_status_restarts_total{namespace=\\\"demo\\\"})\",\"record\":\"namespace:k8sman_demo_container_restarts:sum\"}]}]}}\n",
+      "prometheus-operator-validated": "true"
+    },
+    "creationTimestamp": "2026-11-03T12:48:16Z",
+    "generation": 1,
+    "labels": {
+      "app.kubernetes.io/part-of": "k8sman-demo"
+    },
+    "name": "k8sman-demo",
+    "namespace": "demo",
+    "resourceVersion": "12824",
+    "uid": "4cdd29ef-e80e-434c-b72a-91120a282b32"
+  },
+  "spec": {
+    "groups": [
+      {
+        "name": "k8sman-demo.alerts",
+        "rules": [
+          {
+            "alert": "K8smanTestAlert",
+            "annotations": {
+              "description": "Always fires one minute after the rule loads. Use it to try silences in k8sman.",
+              "runbook_url": "https://github.com/bargrove/k8sman/blob/master/docs/PROMETHEUS.md",
+              "summary": "Test alert from the k8sman demo rules"
+            },
+            "expr": "vector(1)",
+            "for": "1m",
+            "labels": {
+              "namespace": "demo",
+              "severity": "warning"
+            }
+          },
+          {
+            "alert": "K8smanDemoPodCrashLooping",
+            "annotations": {
+              "description": "Container {{ $labels.container }} of pod {{ $labels.namespace }}/{{ $labels.pod }} has been in CrashLoopBackOff for more than 2 minutes.",
+              "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping",
+              "summary": "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            },
+            "expr": "max_over_time(kube_pod_container_status_waiting_reason{namespace=\"demo\", reason=\"CrashLoopBackOff\"}[5m]) >= 1",
+            "for": "2m",
+            "labels": {
+              "severity": "critical"
+            }
+          }
+        ]
+      },
+      {
+        "name": "k8sman-demo.records",
+        "rules": [
+          {
+            "expr": "sum by (namespace) (kube_pod_container_status_restarts_total{namespace=\"demo\"})",
+            "record": "namespace:k8sman_demo_container_restarts:sum"
+          }
+        ]
+      }
+    ]
+  }
+}
