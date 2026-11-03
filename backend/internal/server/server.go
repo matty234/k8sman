@@ -147,7 +147,9 @@ func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	reason := ""
 	var se apierrors.APIStatus
-	if errors.As(err, &se) {
+	if r, c := classifyError(err); r != "" {
+		status, reason = c, r
+	} else if errors.As(err, &se) {
 		if c := int(se.Status().Code); c >= 400 {
 			status = c
 		}
@@ -181,6 +183,13 @@ func (s *Server) parseResource(ctx context.Context, r *http.Request) (*cluster.C
 	}
 	rt, err := c.Find(ctx, q.Get("group"), q.Get("version"), res)
 	if err != nil {
+		err = discoveryErr(err)
+		if reason, _ := classifyError(err); reason != "" {
+			return c, resourceQuery{}, err // discovery failed: unreachable, unauthorized, …
+		}
+		if strings.Contains(err.Error(), "not found") {
+			return c, resourceQuery{}, fmt.Errorf("%w: %v", errNotServed, err)
+		}
 		return c, resourceQuery{}, badRequest("%v", err)
 	}
 	return c, resourceQuery{
@@ -333,7 +342,7 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 	c := s.mgr.Clients()
 	types, err := c.Resources(r.Context(), r.URL.Query().Get("refresh") == "true")
 	if err != nil {
-		writeErr(w, err)
+		writeErr(w, discoveryErr(err))
 		return
 	}
 	writeJSON(w, 200, types)

@@ -3,12 +3,14 @@ package server
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/gorilla/websocket"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -83,6 +85,29 @@ type WatchMessage struct {
 	Table *Table `json:"table,omitempty"`
 	Row   *Row   `json:"row,omitempty"`
 	Error string `json:"error,omitempty"`
+	// On ERROR: Unreachable, Unauthorized, Forbidden, NotFound, Timeout, or
+	// another Kubernetes StatusReason; empty when unclassified.
+	Reason string `json:"reason,omitempty"`
+	// On ERROR: the HTTP status equivalent (401, 403, 404, 502, 504, …).
+	Code int `json:"code,omitempty"`
+	// On ERROR: the cluster API server URL, for "can't reach <host>".
+	Host string `json:"host,omitempty"`
+}
+
+// errorFrame builds an ERROR frame with the error classified for the UI.
+func errorFrame(c *cluster.Clients, err error) WatchMessage {
+	m := WatchMessage{Type: "ERROR", Error: err.Error()}
+	m.Reason, m.Code = classifyError(err)
+	if m.Reason == "" {
+		var se apierrors.APIStatus
+		if errors.As(err, &se) {
+			m.Reason, m.Code = string(se.Status().Reason), int(se.Status().Code)
+		}
+	}
+	if c != nil && c.RESTConfig != nil {
+		m.Host = c.RESTConfig.Host
+	}
+	return m
 }
 
 // handleWatch streams a live table: a SNAPSHOT, then row deltas. If the
@@ -90,7 +115,19 @@ type WatchMessage struct {
 func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 	c, rq, err := s.parseResource(r.Context(), r)
 	if err != nil {
-		writeErr(w, err)
+		// Report over the socket so the client can tell a cluster problem
+		// from the backend being down (a failed handshake looks the same).
+		if reason, _ := classifyError(err); reason == "" {
+			writeErr(w, err)
+			return
+		}
+		ws, _, cancel, uerr := upgrade(w, r)
+		if uerr != nil {
+			return
+		}
+		defer cancel()
+		defer ws.close()
+		_ = ws.send(errorFrame(c, err))
 		return
 	}
 	ws, ctx, cancel, err := upgrade(w, r)
@@ -113,7 +150,7 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 			if ctx.Err() != nil {
 				return
 			}
-			_ = ws.send(WatchMessage{Type: "ERROR", Error: err.Error()})
+			_ = ws.send(errorFrame(c, err))
 			if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
 				return
 			}
