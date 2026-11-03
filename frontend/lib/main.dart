@@ -40,6 +40,8 @@ class K8sManApp extends StatelessWidget {
         title: 'k8sman',
         debugShowCheckedModeBanner: false,
         scrollBehavior: const AppScrollBehavior(),
+        // No 200ms theme cross-fade: text/colours appear immediately (native feel).
+        themeAnimationDuration: Duration.zero,
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
         // Follow the system appearance, like a native app (the window's

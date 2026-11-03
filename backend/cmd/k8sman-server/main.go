@@ -16,6 +16,7 @@ import (
 
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/columns"
+	"github.com/bargrove/k8sman/backend/internal/icons"
 	"github.com/bargrove/k8sman/backend/internal/portforward"
 	"github.com/bargrove/k8sman/backend/internal/server"
 	"github.com/bargrove/k8sman/backend/internal/settings"
@@ -30,6 +31,8 @@ func main() {
 		pfPath       = flag.String("portforwards", portforward.DefaultPath(), "saved port-forwards file")
 		settingsPath = flag.String("settings", settings.DefaultPath(), "app settings file (chosen kubeconfig, last contexts)")
 		readOnly     = flag.Bool("read-only", false, "disable object edits and starting port-forwards")
+		noRemoteIcon = flag.Bool("no-remote-icons", false, "never fetch CRD group icons (chart icons, website favicons) from the internet")
+		iconCache    = flag.String("icon-cache", icons.DefaultCacheDir(), "CRD group icon cache directory")
 		exitOnEOF    = flag.Bool("exit-on-stdin-eof", false, "shut down when stdin closes (set by the macOS app so the backend dies with it)")
 	)
 	flag.Parse()
@@ -60,7 +63,7 @@ func main() {
 	// Machine-readable ready line so a parent process can discover the port.
 	fmt.Fprintf(os.Stdout, "K8SMAN_LISTENING %s\n", ln.Addr().String())
 
-	srv := &http.Server{Handler: server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st})}
+	srv := &http.Server{Handler: server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st, NoRemoteIcons: *noRemoteIcon, IconCacheDir: *iconCache})}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)

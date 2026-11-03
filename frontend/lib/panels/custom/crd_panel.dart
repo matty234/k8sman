@@ -7,6 +7,7 @@ import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
+import '../../ui/widgets/group_icon.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'health.dart';
@@ -126,8 +127,12 @@ class CrdPanel extends ResourcePanel {
       for (final v in stored) Chipish(text: v == storage ? '$v (storage)' : v, color: v == storage ? null : severityColor(context, Severity.warn)),
     ]);
 
+    final group = '${spec['group'] ?? ''}';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Wrap(spacing: 6, runSpacing: 6, children: badges),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (group.isNotEmpty) ...[GroupIcon(group: group, size: 28), const SizedBox(width: 10)],
+        Expanded(child: Wrap(spacing: 6, runSpacing: 6, children: badges)),
+      ]),
       const SizedBox(height: 8),
       KeyValueTable([
         ('Group', SelectableText('${spec['group'] ?? ''}', style: monoStyle(context, size: 12))),

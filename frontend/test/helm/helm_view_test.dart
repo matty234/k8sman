@@ -180,7 +180,7 @@ void main() {
     await dispose(tester);
   });
 
-  testWidgets('non-local context: uninstall requires typing the name', (tester) async {
+  testWidgets('non-local context: uninstall warns about the cluster, no typing needed', (tester) async {
     final (_, helm) = await pumpHelm(tester, namespace: 'helm-demo', context: 'prod-eu');
     await selectRelease(tester, 'web');
     expect(tester.widget<FilledButton>(find.ancestor(of: find.text('Edit values'), matching: find.byWidgetPredicate((w) => w is FilledButton))).onPressed, isNull,
@@ -188,9 +188,8 @@ void main() {
     await tester.tap(find.text('Uninstall'));
     await tester.pumpAndSettle();
     final confirm = find.widgetWithText(FilledButton, 'Uninstall').last;
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
-    await tester.enterText(find.byType(TextField).last, 'web');
-    await tester.pump();
+    expect(find.textContaining('not a local cluster'), findsOneWidget);
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
     await tester.tap(find.byType(Checkbox));
     await tester.pump();
     await tester.tap(confirm);
