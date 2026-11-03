@@ -83,9 +83,14 @@ const addonCatalog = <Addon>[
     description: 'kube-prometheus-stack: Prometheus, Alertmanager, Grafana and exporters.',
     repo: 'https://prometheus-community.github.io/helm-charts',
     chart: 'kube-prometheus-stack',
+    version: '92.17.1',
     namespace: 'monitoring',
     releaseName: 'kube-prometheus-stack',
-    values: 'grafana:\n  enabled: true\nalertmanager:\n  enabled: true\n',
+    // Without the *NilUsesHelmValues=false selectors, Prometheus ignores
+    // rules/monitors that weren't created by this release.
+    values: 'grafana:\n  enabled: true\nalertmanager:\n  enabled: true\nprometheus:\n  prometheusSpec:\n'
+        '    ruleSelectorNilUsesHelmValues: false\n    serviceMonitorSelectorNilUsesHelmValues: false\n'
+        '    podMonitorSelectorNilUsesHelmValues: false\n    probeSelectorNilUsesHelmValues: false\n',
     detectCrds: ['prometheuses.monitoring.coreos.com'],
   ),
   Addon(
@@ -95,6 +100,7 @@ const addonCatalog = <Addon>[
     description: 'Continuously scans workloads and writes VulnerabilityReports as CRDs.',
     repo: 'https://aquasecurity.github.io/helm-charts/',
     chart: 'trivy-operator',
+    version: '0.38.1',
     namespace: 'trivy-system',
     releaseName: 'trivy-operator',
     detectCrds: ['vulnerabilityreports.aquasecurity.github.io'],
@@ -117,6 +123,8 @@ const addonCatalog = <Addon>[
     description: 'Envoy-based Gateway API controller, including the Gateway API CRDs.',
     repo: 'oci://docker.io/envoyproxy/gateway-helm',
     chart: 'gateway-helm',
+    // v1.2.x supports Kubernetes 1.25+; newer charts need 1.30+.
+    version: 'v1.2.8',
     namespace: 'envoy-gateway-system',
     releaseName: 'eg',
     detectDeployments: ['envoy-gateway-system/envoy-gateway'],
