@@ -12,6 +12,8 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 
+export 'async.dart';
+
 /// A titled, collapsible block in the detail sidebar. Every panel section
 /// should be one of these.
 ///
@@ -746,28 +748,6 @@ class InlineMessage extends StatelessWidget {
       Expanded(child: SelectableText(text, style: theme.textTheme.bodySmall?.copyWith(color: c))),
     ]);
   }
-}
-
-/// Runs [future] and renders loading / error / data states.
-class AsyncSection<T> extends StatelessWidget {
-  final Future<T> future;
-  final Widget Function(BuildContext, T) builder;
-  const AsyncSection({super.key, required this.future, required this.builder});
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<T>(
-        future: future,
-        builder: (context, snap) {
-          if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
-          if (snap.connectionState != ConnectionState.done && !snap.hasData) {
-            return const Padding(
-              padding: EdgeInsets.all(8),
-              child: Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))),
-            );
-          }
-          return builder(context, snap.data as T);
-        },
-      );
 }
 
 /// Copies [text]. The snackbar echoes the value unless [label] is given —

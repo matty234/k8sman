@@ -300,10 +300,7 @@ class _NodePodsState extends State<_NodePods> {
         Widget body(Widget Function(List<Json>) f) {
           if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
           if (!snap.hasData) {
-            return const Padding(
-              padding: EdgeInsets.all(8),
-              child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
-            );
+            return const SectionSpinner();
           }
           return f(snap.data!);
         }
