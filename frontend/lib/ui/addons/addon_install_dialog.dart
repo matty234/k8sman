@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:re_editor/re_editor.dart';
@@ -136,7 +137,12 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
   void _onValuesChanged() {
     if (_values.text == _lastValues) return;
     _lastValues = _values.text;
-    if (mounted) setState(() {});
+    // The editor can notify while it builds; rebuild after the frame then.
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => mounted ? setState(() {}) : null);
+    } else if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -277,7 +283,6 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
             [
               if (a.clusterWide.isNotEmpty) 'Creates cluster-wide resources: ${a.clusterWide}.',
               if (wide.isNotEmpty) 'Rendered: ${wide.map((k) => '${k.$2} ${k.$1}').join(', ')}.',
-              'These affect the whole cluster, not just ${_namespace.text.trim()}.',
             ].join(' '),
             style: theme.textTheme.bodySmall,
           ),
@@ -315,8 +320,8 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
           '$total object${total == 1 ? '' : 's'}. k8sman waits up to ${addonWaitSeconds ~/ 60} minutes for them to become ready.',
       kubeContext: ctx,
       objectName: _name.text.trim(),
-      // Typed confirmation (and a red button) only off local clusters.
-      destructive: !isLocalContext(ctx),
+      // confirmAction itself warns prominently on non-local contexts.
+      destructive: false,
       confirmLabel: 'Install',
       width: 520,
       extra: a.clusterWide.isNotEmpty || wide.isNotEmpty ? clusterNote : null,
@@ -416,7 +421,7 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
       Expanded(child: HelmYamlView(controller: _values, readOnly: _phase != _Phase.edit && _phase != _Phase.failed)),
       if (_error != null || _dry != null || _phase == _Phase.rendering)
         ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 150),
+          constraints: const BoxConstraints(maxHeight: 200),
           child: SingleChildScrollView(
             padding: const EdgeInsets.only(top: 10),
             child: _error != null

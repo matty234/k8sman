@@ -63,6 +63,10 @@ class AddonStatus {
   });
 
   bool get installed => state != AddonState.notInstalled;
+
+  /// Not installed, but its CRDs are still served: left from an earlier
+  /// install, or it runs somewhere detection doesn't look.
+  bool get leftoverCrds => state == AddonState.notInstalled && crdServed;
   bool get viaHelm => release != null;
 
   /// Installed under a release name or namespace other than the catalog's.
@@ -119,7 +123,9 @@ AddonStatus detectAddon(Addon a, {required Set<String> servedCrds, required List
     owned = const [];
   }
   final health = [for (final d in owned) DeploymentHealth.fromJson(d)]..sort((x, y) => x.name.compareTo(y.name));
-  final installed = release != null || crd || named.isNotEmpty;
+  // CRDs alone, with no release and no workloads in the expected places,
+  // are usually left over from an uninstall (charts keep their CRDs).
+  final installed = release != null || named.isNotEmpty || (crd && health.isNotEmpty);
   final unhealthy = (release != null && release.problem) || health.any((d) => !d.healthy);
   final state = !installed
       ? AddonState.notInstalled
@@ -187,7 +193,8 @@ int compareChartVersions(String a, String b) {
     return ([for (final p in core.split('.')) int.tryParse(p) ?? 0], pre);
   }
 
-  final (ca, pa) = parse(a), (cb, pb) = parse(b);
+  final (ca, pa) = parse(a);
+  final (cb, pb) = parse(b);
   for (var i = 0; i < 3; i++) {
     final x = i < ca.length ? ca[i] : 0, y = i < cb.length ? cb[i] : 0;
     if (x != y) return x.compareTo(y);

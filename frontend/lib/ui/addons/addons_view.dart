@@ -12,6 +12,7 @@ import '../../util/k8s.dart';
 import '../helm/helm_api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/group_icon.dart';
 import 'addon_install_dialog.dart';
 
 /// Add-ons: the catalog as cards, each with its detected state on this
@@ -221,14 +222,15 @@ class _AddonsViewState extends State<AddonsView> {
   }
 }
 
-IconData addonIcon(String id) => switch (id) {
-      AddonIds.metricsServer => Icons.speed,
-      AddonIds.prometheus => Icons.monitor_heart_outlined,
-      AddonIds.trivyOperator => Icons.shield_outlined,
-      AddonIds.argoCd => Icons.sync_alt,
-      AddonIds.envoyGateway => Icons.alt_route,
-      AddonIds.certManager => Icons.verified_outlined,
-      _ => Icons.extension_outlined,
+/// The API group whose icon represents an add-on (all bundled with GroupIcon).
+String addonIconGroup(String id) => switch (id) {
+      AddonIds.metricsServer => 'metrics.k8s.io',
+      AddonIds.prometheus => 'monitoring.coreos.com',
+      AddonIds.trivyOperator => 'aquasecurity.github.io',
+      AddonIds.argoCd => 'argoproj.io',
+      AddonIds.envoyGateway => 'gateway.envoyproxy.io',
+      AddonIds.certManager => 'cert-manager.io',
+      _ => id,
     };
 
 /// One add-on: what it enables, its state here and the actions.
@@ -259,8 +261,10 @@ class AddonCard extends StatelessWidget {
         ('Chart', '${r.chartVersion}${r.appVersion.isEmpty ? '' : ' · app ${r.appVersion}'} · ${r.status}'),
       ] else if (s.installed)
         ('Detected', s.crdServed ? '${a.detectCrds.first} served' : 'Deployment ${a.detectDeployments.first}')
-      else
-        ('Chart', '${a.chart} ${a.version ?? '(latest)'} → ${a.namespace}'),
+      else ...[
+        ('Chart', '${a.chart} · ${a.version == null ? 'latest' : '${a.version} (pinned)'}'),
+        ('Namespace', a.namespace),
+      ],
       if (s.deployments.isNotEmpty) ('Workloads', '$ready/${s.deployments.length} deployment${s.deployments.length == 1 ? '' : 's'} available'),
     ];
     final problem = s.state == AddonState.unhealthy ? s.problem : '';
@@ -277,12 +281,7 @@ class AddonCard extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(7)),
-            child: Icon(addonIcon(a.id), size: 17, color: theme.colorScheme.primary),
-          ),
+          GroupIcon(group: addonIconGroup(a.id), size: 30),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -316,6 +315,11 @@ class AddonCard extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(child: Text(problem, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.error)))),
             ]),
+          ),
+        if (s.leftoverCrds)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('Its CRDs are still served (left from an earlier install, or it runs in another namespace).', style: dim),
           ),
         if (s.state == AddonState.external)
           Padding(

@@ -144,7 +144,7 @@ void main() {
     expect(find.text('gateway-demo/pending-gw'), findsOneWidget);
     await tester.tap(find.text('Install Envoy Gateway'));
     await tester.pumpAndSettle();
-    expect(find.text('Install Envoy Gateway?'), findsOneWidget);
+    expect(find.text('Dry run'), findsOneWidget);
   });
 
   testWidgets('ReferenceGrant: summary, routes relying on it, uncovered refs', (tester) async {

@@ -140,6 +140,7 @@ class _ResourceNavState extends State<ResourceNav> {
         _ViewItem(icon: Icons.shield_outlined, label: 'Security', view: MainView.security, selected: app.view == MainView.security),
         _ViewItem(icon: Icons.query_stats, label: 'Metrics', view: MainView.metrics, selected: app.view == MainView.metrics),
         _ViewItem(icon: Icons.swap_horiz, label: 'Port Forwards', view: MainView.portForwards, selected: app.view == MainView.portForwards),
+        _ViewItem(icon: Icons.extension_outlined, label: 'Add-ons', view: MainView.addons, selected: app.view == MainView.addons),
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
           child: SizedBox(

@@ -4,7 +4,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 
 /// What the main area shows.
-enum MainView { overview, alerts, nodes, metrics, resources, portForwards, helm, security }
+enum MainView { overview, alerts, nodes, metrics, resources, portForwards, helm, security, addons }
 
 /// An object shown in the detail sidebar.
 class DetailTarget {
@@ -48,6 +48,16 @@ class AppState extends ChangeNotifier {
     if (v != view && detail != null) inspectorCollapsed = true;
     view = v;
     notifyListeners();
+  }
+
+  /// `namespace/name` of a release the Helm page should select next time it
+  /// builds (set by [showHelmRelease], consumed by the page).
+  String? helmFocus;
+
+  void showHelmRelease(String namespace, String name) {
+    helmFocus = '$namespace/$name';
+    if (this.namespace != null && this.namespace != namespace) this.namespace = null;
+    showView(MainView.helm);
   }
 
   /// The inspector is open but collapsed to a slim tab on the right edge

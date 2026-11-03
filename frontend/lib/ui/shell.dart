@@ -7,6 +7,7 @@ import '../app/window_chrome.dart';
 import '../metrics/metrics_page.dart';
 import '../state/app_state.dart';
 import '../state/log_dock.dart';
+import 'addons/addons_view.dart';
 import 'alerts/alerts_view.dart';
 import 'detail/detail_sidebar.dart';
 import 'logs/log_dock_view.dart';
@@ -101,6 +102,7 @@ class _ShellState extends State<Shell> {
                         MainView.metrics => const MetricsPage(),
                         MainView.portForwards => const PortForwardView(),
                         MainView.helm => const HelmView(),
+                        MainView.addons => const AddonsView(),
                         MainView.resources => type == null
                             ? WindowDragArea(child: Center(child: Text('Select a resource kind', style: TextStyle(color: theme.hintColor))))
                             : ResourceTableView(type: type),
