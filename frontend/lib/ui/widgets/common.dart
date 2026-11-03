@@ -194,6 +194,52 @@ class WindowDragArea extends StatelessWidget {
   }
 }
 
+/// The standard top bar for every main-area page (resource tables, Overview,
+/// Nodes, Port Forwards, …): exactly [titlebarHeight] tall so it lines up
+/// with the unified titlebar, draggable like the native toolbar, with a
+/// title, an optional muted single-line subtitle and trailing actions.
+/// Pages put a `Divider()` under it, like the resource table does.
+class PageHeader extends StatelessWidget {
+  final String title;
+
+  /// Inline after the title; shrinks/ellipsizes first when space is tight.
+  final Widget? subtitle;
+  final List<Widget> actions;
+  const PageHeader({super.key, required this.title, this.subtitle, this.actions = const []});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return WindowDragArea(
+      child: SizedBox(
+        height: titlebarHeight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
+          child: Row(children: [
+            Expanded(
+              child: Row(children: [
+                Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge)),
+                if (subtitle != null) ...[
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: DefaultTextStyle.merge(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                      child: subtitle!,
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+            for (final a in actions) ...[const SizedBox(width: 6), a],
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 /// A two-column key/value grid. Values may be Strings or Widgets; null and
 /// empty-string values are skipped so callers can pass optional fields freely.
 class KeyValueTable extends StatelessWidget {

@@ -103,75 +103,86 @@ class _OverviewViewState extends State<OverviewView> {
     );
 
     if (data == null) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 0), child: header),
-        Expanded(
-          child: Center(
-            child: _error == null
-                ? const CircularProgressIndicator()
-                : SizedBox(
-                    width: 460,
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      InlineMessage('Could not load the overview: ${_errorText(_error!)}', isError: true),
-                      const SizedBox(height: 12),
-                      FilledButton.tonal(onPressed: _refresh, child: const Text('Retry')),
-                    ]),
-                  ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          const Divider(),
+          Expanded(
+            child: Center(
+              child: _error == null
+                  ? const CircularProgressIndicator()
+                  : SizedBox(
+                      width: 460,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          InlineMessage('Could not load the overview: ${_errorText(_error!)}', isError: true),
+                          const SizedBox(height: 12),
+                          FilledButton.tonal(onPressed: _refresh, child: const Text('Retry')),
+                        ],
+                      ),
+                    ),
+            ),
           ),
-        ),
-      ]);
+        ],
+      );
     }
 
     final issues = _filter == null ? data.issues : data.issues.where((i) => i.category == _filter).toList();
-    return Scrollbar(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        children: [
-          header,
-          const SizedBox(height: 6),
-          InventoryStrip(data: data),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            InlineMessage('Refresh failed: ${_errorText(_error!)}. Showing the last result.', isError: true),
-          ],
-          for (final e in data.errors.entries) ...[
-            const SizedBox(height: 8),
-            InlineMessage('Could not list ${e.key}: ${e.value}', icon: Icons.lock_outline),
-          ],
-          const SizedBox(height: 16),
-          SummaryTiles(
-            data: data,
-            namespace: _ns,
-            selected: _filter,
-            onSelect: (id) => setState(() => _filter = _filter == id ? null : id),
-          ),
-          const SizedBox(height: 16),
-          DetailSection(
-            title: 'Issues',
-            icon: Icons.report_gmailerrorred,
-            trailing: _issuesTrailing(context, data, issues.length),
-            child: IssueList(
-              issues: issues,
-              onChanged: _refresh,
-              emptyText: _filter == null ? 'Nothing needs attention.' : 'No issues in this category.',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        const Divider(),
+        Expanded(
+          child: Scrollbar(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              children: [
+                InventoryStrip(data: data),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  InlineMessage('Refresh failed: ${_errorText(_error!)}. Showing the last result.', isError: true),
+                ],
+                for (final e in data.errors.entries) ...[
+                  const SizedBox(height: 8),
+                  InlineMessage('Could not list ${e.key}: ${e.value}', icon: Icons.lock_outline),
+                ],
+                const SizedBox(height: 16),
+                SummaryTiles(data: data, namespace: _ns, selected: _filter, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
+                const SizedBox(height: 16),
+                DetailSection(
+                  title: 'Issues',
+                  icon: Icons.report_gmailerrorred,
+                  trailing: _issuesTrailing(context, data, issues.length),
+                  child: IssueList(
+                    issues: issues,
+                    onChanged: _refresh,
+                    emptyText: _filter == null ? 'Nothing needs attention.' : 'No issues in this category.',
+                  ),
+                ),
+                if (data.nodes.isNotEmpty)
+                  DetailSection(
+                    title: 'Nodes',
+                    icon: Icons.dns_outlined,
+                    trailing: Text(
+                      '${data.count('nodes', 'ready')}/${data.count('nodes', 'total')} ready',
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                    ),
+                    child: NodesStrip(nodes: data.nodes),
+                  ),
+                DetailSection(
+                  title: 'Top warning events',
+                  icon: Icons.notifications_active_outlined,
+                  trailing: Text('last hour', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                  child: WarningEventList(reasons: data.topWarnings),
+                ),
+              ],
             ),
           ),
-          if (data.nodes.isNotEmpty)
-            DetailSection(
-              title: 'Nodes',
-              icon: Icons.dns_outlined,
-              trailing: Text('${data.count('nodes', 'ready')}/${data.count('nodes', 'total')} ready',
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-              child: NodesStrip(nodes: data.nodes),
-            ),
-          DetailSection(
-            title: 'Top warning events',
-            icon: Icons.notifications_active_outlined,
-            trailing: Text('last hour', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-            child: WarningEventList(reasons: data.topWarnings),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
