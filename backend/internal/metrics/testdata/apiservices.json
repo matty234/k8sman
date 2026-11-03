@@ -1,0 +1,123 @@
+{
+ "kind": "APIServiceList",
+ "apiVersion": "apiregistration.k8s.io/v1",
+ "metadata": {
+  "resourceVersion": "13564"
+ },
+ "items": [
+  {
+   "metadata": {
+    "name": "v1.apps",
+    "uid": "3c06f55a-e9b2-4f69-b962-c7490d1a4bb8",
+    "resourceVersion": "11",
+    "creationTimestamp": "2026-11-03T11:18:34Z",
+    "labels": {
+     "kube-aggregator.kubernetes.io/automanaged": "onstart"
+    }
+   },
+   "spec": {
+    "group": "apps",
+    "version": "v1",
+    "groupPriorityMinimum": 17800,
+    "versionPriority": 15
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Available",
+      "status": "True",
+      "lastTransitionTime": "2026-11-03T11:18:34Z",
+      "reason": "Local",
+      "message": "Local APIServices are always available"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "v1beta1.external.metrics.k8s.io",
+    "uid": "69ebe43c-a082-49ac-87e6-1e4dca232942",
+    "resourceVersion": "10690",
+    "creationTimestamp": "2026-11-03T12:39:52Z",
+    "labels": {
+     "app.kubernetes.io/component": "operator",
+     "app.kubernetes.io/instance": "keda",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "v1beta1.external.metrics.k8s.io",
+     "app.kubernetes.io/part-of": "keda-operator",
+     "app.kubernetes.io/version": "2.11.2",
+     "helm.sh/chart": "keda-2.11.2"
+    },
+    "annotations": {
+     "meta.helm.sh/release-name": "keda",
+     "meta.helm.sh/release-namespace": "keda"
+    }
+   },
+   "spec": {
+    "service": {
+     "namespace": "keda",
+     "name": "keda-operator-metrics-apiserver",
+     "port": 443
+    },
+    "group": "external.metrics.k8s.io",
+    "version": "v1beta1",
+    "caBundle": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURFRENDQWZpZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFoTVJBd0RnWURWUVFLRXdkTFJVUkIKVDFKSE1RMHdDd1lEVlFRREV3UkxSVVJCTUI0WERUSTJNVEV3TXpFeE5EQXhORm9YRFRNMk1UQXpNVEV5TkRBeApORm93SVRFUU1BNEdBMVVFQ2hNSFMwVkVRVTlTUnpFTk1Bc0dBMVVFQXhNRVMwVkVRVENDQVNJd0RRWUpLb1pJCmh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBT3JSZElIbjc0T014VFdXNGJlSW9BczZtZWpNcGFLelZ4Q2IKRGEyTFU5VFJGU256Q3Bnd1A0cGI4elFGcEY2T3MrSk4rMi80R0FRQmNueU5PY2p3TkZKamhMVzNjK1BLdmFYbQpKZ1F2MWlHYWZtVE9ITzEzM3lUV0ZDZ2lvZ0w5SWc0elpDWE9raFh2Zkl4U0FOdkFoNk9MaUNnSXNuTXdzTmZwCncvTG1BWVpCNXgyZHlUb3RNeUtKNi9BTThHdktLMzBCMWp3RVVJNWFid3JzaDMrODR1Mk5SODBkS053bmhPcEQKQkxhMmUwQVYwRlZ2RjdnVW56YXd6OTJ0QWIyR0NuZ2ZPcEpmQVZVb2FKa3U0NFJVYmR0d2RwNkdzRndDWmprcwpjN1U1Z3dCUUpGTUR0WVhUSUVHMWJpUlFGZEZQL0IyanNuSGd1bHljbGFYeGJ5UE50djBDQXdFQUFhTlRNRkV3CkRnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCL3dRRk1BTUJBZjh3SFFZRFZSME9CQllFRlBWczFtV3cKZ1B2Sng1T3dWYWh1RlNzeWU3N05NQThHQTFVZEVRUUlNQWFDQkV0RlJFRXdEUVlKS29aSWh2Y05BUUVMQlFBRApnZ0VCQUwvT252YmlpR21ERDVKeVdZUTBEZmVQSVZoTDRXMnVHc1JFS2lVT3BNY0RDOTBDV2FxVVpCQXlJb3NFCitsaW4wY3JSSEJ5K0N1WGNvWFQ2Z3plSUh5MEQwQVdITjZFNll1bGdFNVBJTHl4dEVyUlpuZGJ4U3FVUC9EZ1YKV25NSURjb0xQbmgwYjFIWXFUcHZqa21nd01pNkFkUHlCZ2k4akgzeHh0cEt3Ym9nbStJRFFaUFVIZHFocDR5KwozTW5rWTBZbkNQS3M0Zy9MMHp3SEVHVytvNW00dlltTEZCTHJjdDlycXJGMEZrMzBpQWhOTzl5MDhNSnRqTXVQCjBuZzcrNDVLamdnRFFOSVQ5RkF5Q0Z5MC9UNXVxUmhHZzB6TGllWTVEeFFUM21vNXVUWTdMdEM2UVdsYm9SbXEKMUlJV2QvVzJ1NTFJM3BSSi9raVhPQXFxUElnPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==",
+    "groupPriorityMinimum": 100,
+    "versionPriority": 100
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Available",
+      "status": "True",
+      "lastTransitionTime": "2026-11-03T12:40:50Z",
+      "reason": "Passed",
+      "message": "all checks passed"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "v1beta1.metrics.k8s.io",
+    "uid": "bb5a160a-98c9-4ef5-9d7a-e3fa8da9f9ae",
+    "resourceVersion": "11719",
+    "creationTimestamp": "2026-11-03T12:36:56Z",
+    "labels": {
+     "app.kubernetes.io/instance": "metrics-server",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "metrics-server",
+     "app.kubernetes.io/version": "0.9.0",
+     "helm.sh/chart": "metrics-server-3.14.0"
+    },
+    "annotations": {
+     "meta.helm.sh/release-name": "metrics-server",
+     "meta.helm.sh/release-namespace": "kube-system"
+    }
+   },
+   "spec": {
+    "service": {
+     "namespace": "kube-system",
+     "name": "metrics-server",
+     "port": 443
+    },
+    "group": "metrics.k8s.io",
+    "version": "v1beta1",
+    "insecureSkipTLSVerify": true,
+    "groupPriorityMinimum": 100,
+    "versionPriority": 100
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Available",
+      "status": "True",
+      "lastTransitionTime": "2026-11-03T12:44:32Z",
+      "reason": "Passed",
+      "message": "all checks passed"
+     }
+    ]
+   }
+  }
+ ]
+}

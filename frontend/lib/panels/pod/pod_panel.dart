@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../actions/actions.dart';
 import '../../api/models.dart';
 import '../../prometheus/metric_history_chart.dart';
+import '../../metrics/pod_usage.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/terminal/open_terminal.dart';
 import '../../ui/theme.dart';
@@ -38,6 +39,7 @@ class PodPanel extends ResourcePanel {
               namespace: ctx.namespace,
               onViewLogs: (context, previous) => openPodLogs(context, ctx.object, container: c.name, previous: previous),
               onOpenTerminal: ctx.app.readOnly ? null : (context) => openPodTerminal(context, ctx.object, container: c.name),
+              usage: c.isRunning ? ContainerUsageLine(pod: ctx.object, container: c.name, spec: c.spec) : null,
             ),
           if (containers.isEmpty) const Hint('No containers'),
         ]),
@@ -211,6 +213,7 @@ class _StatusSummary extends StatelessWidget {
             'Started',
             InlineWrap([AgeText(status['startTime'], suffix: ' ago', style: small), Hint(parseTime(status['startTime'])!.toLocal().toString().split('.').first)])
           ),
+        ('Usage', PodUsageSummary(pod: pod)),
         if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), Hint(_qosHint(qos))])),
         (
           'Priority',

@@ -11,6 +11,8 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
   // ([.status.containerStatuses[]? | .state.waiting.reason // (select(.state.terminated) | .state.terminated.reason) | select(.)] | first)
   // .status.phase end`},
 		{Name: "Restarts", Type: "number", Query: `[.status.containerStatuses[]?.restartCount] | add // 0`},
+		usageCPU,
+		usageMemory,
 		{Name: "Node", Query: `.spec.nodeName`},
 		{Name: "IP", Query: `.status.podIP`},
 		ageCol,
@@ -125,8 +127,12 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Roles", Query: `[(.metadata.labels // {}) | keys[] | select(startswith("node-role.kubernetes.io/")) | ltrimstr("node-role.kubernetes.io/")] | join(",")`},
 		{Name: "Version", Query: `.status.nodeInfo.kubeletVersion`},
 		{Name: "Internal-IP", Query: `[.status.addresses[]? | select(.type == "InternalIP") | .address] | first`},
-		{Name: "CPU", Query: `.status.allocatable.cpu`},
-		{Name: "Memory", Query: `.status.allocatable.memory`},
+		usageCPU,
+		{Name: "CPU%", Type: "quantity", Query: `.k8sman.usage.cpuPercent // empty | tostring + "%"`},
+		usageMemory,
+		{Name: "Mem%", Type: "quantity", Query: `.k8sman.usage.memoryPercent // empty | tostring + "%"`},
+		{Name: "Alloc CPU", Type: "quantity", Query: `.status.allocatable.cpu`},
+		{Name: "Alloc Memory", Type: "quantity", Query: `.status.allocatable.memory | if test("Ki$") then (rtrimstr("Ki") | tonumber / 1024 | round | tostring) + "Mi" else . end`},
 		ageCol,
 	},
 	"namespaces": {
@@ -285,4 +291,12 @@ var (
   elif $ok < ($a | length) then "Warning: \($ok)/\($a | length) accepted (\($bad.reason // "NotAccepted"))"
   elif ($u | length) > 0 then "Warning: \($u[0].reason // "unresolved refs")"
   else "True" end`}
+)
+
+// Live usage from metrics.k8s.io, merged into pods and nodes as
+// `.k8sman.usage` before evaluation (see internal/metrics). Empty (rendered
+// as "—") when metrics-server isn't installed or has no sample yet.
+var (
+	usageCPU    = Column{Name: "CPU", Type: "quantity", Query: `.k8sman.usage.cpu`}
+	usageMemory = Column{Name: "Memory", Type: "quantity", Query: `.k8sman.usage.memoryBytes // empty | (. / 1048576 | round | tostring) + "Mi"`}
 )

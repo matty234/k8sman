@@ -23,7 +23,9 @@ type Column struct {
 	Query string `json:"query"`
 	// Type is a rendering hint for the UI:
 	//   "string" (default), "number", "age" (RFC3339 timestamp → relative age),
-	//   "status" (coloured badge), "bool", "labels" (map → chips).
+	//   "status" (coloured badge), "bool", "labels" (map → chips),
+	//   "quantity" (a Kubernetes quantity or percentage such as "250m",
+	//   "128Mi", "42%": right-aligned, sorted by value, "—" when empty).
 	Type string `json:"type,omitempty"`
 }
 

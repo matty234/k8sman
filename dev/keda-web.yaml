@@ -1,0 +1,34 @@
+# KEDA ScaledObject for demo/web, so the dev cluster serves an external
+# metric (external.metrics.k8s.io) and an HPA that uses one.
+#
+# Prereq: KEDA 2.11.2 (supports k8s 1.25–1.27; the kind cluster is 1.25):
+#   helm install keda kedacore/keda --version 2.11.2 -n keda --create-namespace --set webhooks.enabled=false
+#
+# It takes over the existing demo/web HPA by name (same min/max and CPU
+# target, plus a cron trigger), so two HPAs never fight over one Deployment.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: web
+  namespace: demo
+spec:
+  scaleTargetRef:
+    name: web
+  minReplicaCount: 2
+  maxReplicaCount: 5
+  advanced:
+    horizontalPodAutoscalerConfig:
+      name: web
+  triggers:
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "70"
+    # Inside the window the metric reports 2 desired replicas (= min, so no
+    # scaling churn); outside it reports 0.
+    - type: cron
+      metadata:
+        timezone: Etc/UTC
+        start: "0 * * * *"
+        end: "30 * * * *"
+        desiredReplicas: "2"

@@ -22,6 +22,7 @@ import (
 
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/columns"
+	"github.com/bargrove/k8sman/backend/internal/metrics"
 	"github.com/bargrove/k8sman/backend/internal/portforward"
 	"github.com/bargrove/k8sman/backend/internal/prom"
 	"github.com/bargrove/k8sman/backend/internal/settings"
@@ -60,6 +61,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.helmRoutes()
 	s.securityRoutes()
 	prom.Register(s.mux, mgr, opts.ReadOnly)
+	metrics.Register(s.mux, mgr)
 	return s
 }
 
@@ -229,6 +231,9 @@ type tableBuilder struct {
 	eval          *columns.Evaluator
 	includeObject bool
 	colErrs       map[int]string
+	// decorate, if set, returns a copy of the object with extra data for the
+	// columns (e.g. `.k8sman.usage` for pods/nodes). Row.Object stays the original.
+	decorate metrics.Decorator
 }
 
 func newTableBuilder(cols []columns.Column, includeObject bool) *tableBuilder {
@@ -236,7 +241,11 @@ func newTableBuilder(cols []columns.Column, includeObject bool) *tableBuilder {
 }
 
 func (b *tableBuilder) row(u *unstructured.Unstructured) Row {
-	cells, errs := b.eval.Row(u.Object)
+	obj := u.Object
+	if b.decorate != nil {
+		obj = b.decorate(obj)
+	}
+	cells, errs := b.eval.Row(obj)
 	for i, e := range errs {
 		if e != nil {
 			if _, seen := b.colErrs[i]; !seen {
@@ -356,6 +365,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 	}
 	cols, isDefault := s.columnsFor(r.Context(), c, rq.Type)
 	b := newTableBuilder(cols, r.URL.Query().Get("includeObject") == "true")
+	b.decorate = s.usageDecorator(r.Context(), c, rq)
 	writeJSON(w, 200, b.table(rq.Type, isDefault, list))
 }
 
@@ -520,5 +530,6 @@ func (s *Server) handlePreviewColumns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b := newTableBuilder(body.Columns, false)
+	b.decorate = s.usageDecorator(r.Context(), c, rq)
 	writeJSON(w, 200, b.table(rq.Type, false, list))
 }
