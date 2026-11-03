@@ -2,3 +2,7 @@
 backend/bin/
 .DS_Store
 .claude/
+dist/
+tools/app_icon/.dart_tool/
+tools/app_icon/build/
+tools/app_icon/.flutter-plugins-dependencies
