@@ -40,6 +40,7 @@ dependencies:
   re_editor: ^0.10.0
   re_highlight: ^0.0.3
   url_launcher: ^6.3.3
+  xterm: ^4.0.0
 
 dev_dependencies:
   flutter_test:

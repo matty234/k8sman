@@ -15,7 +15,11 @@ class ContainerCard extends StatelessWidget {
   /// Opens this container's logs in the dock (`previous` = the last
   /// terminated instance). Null hides the Logs row.
   final void Function(BuildContext context, bool previous)? onViewLogs;
-  const ContainerCard(this.c, {super.key, this.namespace, this.onViewLogs});
+
+  /// Opens a terminal in this container (dock tab). Null hides the link;
+  /// it only shows while the container is running.
+  final void Function(BuildContext context)? onOpenTerminal;
+  const ContainerCard(this.c, {super.key, this.namespace, this.onViewLogs, this.onOpenTerminal});
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +75,7 @@ class ContainerCard extends StatelessWidget {
           child: KeyValueTable(keyWidth: 84, [
             ('State', _stateWidget(context)),
             if (c.lastTerminated.isNotEmpty) ('Last state', _lastStateWidget(context)),
-            if (onViewLogs != null) ('Logs', _logsWidget(context)),
+            if (onViewLogs != null || _canTerminal) ('Open', _logsWidget(context)),
             if (c.kind == ContainerKind.ephemeral && spec['targetContainerName'] != null) ('Target', MonoValue('${spec['targetContainerName']}')),
             ('Image', _imageWidget(context)),
             if ((c.status['imageID'] ?? '').toString().isNotEmpty) ('Image ID', _imageIdWidget(context, '${c.status['imageID']}')),
@@ -91,9 +95,20 @@ class ContainerCard extends StatelessWidget {
     );
   }
 
+  bool get _canTerminal => onOpenTerminal != null && c.isRunning && c.kind != ContainerKind.init;
+
   Widget _logsWidget(BuildContext context) => InlineWrap([
-        _LogLink(key: ValueKey('view-logs-${c.name}'), icon: Icons.notes, label: 'View logs', onTap: () => onViewLogs!(context, false)),
-        if (c.restarts > 0 || c.lastTerminated.isNotEmpty)
+        if (onViewLogs != null)
+          _LogLink(key: ValueKey('view-logs-${c.name}'), icon: Icons.notes, label: 'View logs', onTap: () => onViewLogs!(context, false)),
+        if (_canTerminal)
+          _LogLink(
+            key: ValueKey('open-terminal-${c.name}'),
+            icon: Icons.terminal,
+            label: 'Terminal',
+            tooltip: 'Open a shell in ${c.name} (bottom panel)',
+            onTap: () => onOpenTerminal!(context),
+          ),
+        if (onViewLogs != null && (c.restarts > 0 || c.lastTerminated.isNotEmpty))
           _LogLink(
             key: ValueKey('view-previous-logs-${c.name}'),
             icon: Icons.history,

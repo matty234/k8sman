@@ -6,6 +6,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../ui/logs/open_logs.dart';
+import '../../ui/terminal/open_terminal.dart';
 import '../panel.dart';
 import 'rollout.dart';
 import 'widgets/pod_template.dart';
@@ -21,7 +22,7 @@ class DeploymentPanel extends ResourcePanel {
   Set<String> get kinds => const {'apps/Deployment'};
 
   @override
-  List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx)];
+  List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx), workloadTerminalAction(ctx)];
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {

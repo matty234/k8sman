@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/log_dock.dart';
+import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../terminal/terminal_session.dart';
+import '../terminal/terminal_tab.dart';
 import 'log_stream_view.dart';
 
 /// Height of the dock's tab strip (also the whole dock when collapsed).
 const double kLogDockStripHeight = 30;
 
-/// The bottom log panel: a resizable area with one tab per log stream.
+/// The bottom dock: a resizable area with one tab per log stream or terminal.
 /// [maxHeight] is the most the dock may take (the shell keeps room for the
 /// main content above it).
 class LogDockView extends StatelessWidget {
@@ -29,7 +32,7 @@ class LogDockView extends StatelessWidget {
     final colors = AppColors.of(context);
     final theme = Theme.of(context);
     final h = heightFor(dock, maxHeight);
-    final active = dock.active;
+    final active = dock.activeTab;
     return SizedBox(
       height: h,
       child: Stack(
@@ -48,13 +51,17 @@ class LogDockView extends StatelessWidget {
                             color: theme.colorScheme.surface,
                             child: Center(
                               child: Text(
-                                'No log streams. Open one with “Logs” in a pod’s inspector or a container card.',
+                                'No log streams or terminals. Open one with “Logs” or “Terminal” in a pod’s inspector or a container card.',
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
                               ),
                             ),
                           )
-                        : LogStreamView(key: ObjectKey(active), stream: active),
+                        : switch (active) {
+                            LogStream s => LogStreamView(key: ObjectKey(s), stream: s),
+                            TerminalTab t => TerminalSession(key: ObjectKey(t), session: t),
+                            _ => const SizedBox.shrink(),
+                          },
                   ),
                 ],
               ],
@@ -92,7 +99,13 @@ class _TabStrip extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     final tabs = dock.tabs;
-    final active = dock.active;
+    final active = dock.activeTab;
+    final terminals = tabs.whereType<TerminalTab>().length;
+    final (titleIcon, title) = tabs.isEmpty || terminals == 0
+        ? (Icons.notes, 'Logs')
+        : terminals == tabs.length
+            ? (Icons.terminal, 'Terminal')
+            : (Icons.view_agenda_outlined, 'Console');
     return Container(
       height: kLogDockStripHeight,
       color: colors.inspector,
@@ -103,8 +116,8 @@ class _TabStrip extends StatelessWidget {
           return Row(
             children: [
               const SizedBox(width: 10),
-              Icon(Icons.notes, size: 14, color: theme.hintColor),
-              if (!narrow) ...[const SizedBox(width: 5), Text('Logs', style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor))],
+              Icon(titleIcon, size: 14, color: theme.hintColor),
+              if (!narrow) ...[const SizedBox(width: 5), Text(title, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor))],
               const SizedBox(width: 8),
               Container(width: 1, height: 16, color: colors.separator),
               Expanded(
@@ -116,12 +129,12 @@ class _TabStrip extends StatelessWidget {
                     : ListView(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 4),
-                        children: [for (final t in tabs) _DockTab(stream: t, active: t == active && !dock.collapsed)],
+                        children: [for (final t in tabs) _DockTab(tab: t, active: t == active && !dock.collapsed)],
                       ),
               ),
-              if (active != null && !narrow) _ActiveStatus(stream: active),
+              if (active is LogStream && !narrow) _ActiveStatus(stream: active),
               IconButton(
-                tooltip: dock.collapsed ? 'Expand logs (⌘J)' : 'Collapse logs (⌘J)',
+                tooltip: dock.collapsed ? 'Expand panel (⌘J)' : 'Collapse panel (⌘J)',
                 icon: Icon(dock.collapsed ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 18),
                 onPressed: () => dock.tabs.isEmpty ? dock.toggle() : dock.setCollapsed(!dock.collapsed),
               ),
@@ -163,10 +176,31 @@ class _ActiveStatus extends StatelessWidget {
   }
 }
 
+/// Closes [tab], asking first if it is a running terminal session.
+Future<void> closeDockTab(BuildContext context, LogDock dock, DockTab tab) async {
+  if (tab.confirmClose && !await _confirmEndSessions(context, 1)) return;
+  dock.close(tab);
+}
+
+Future<bool> _confirmEndSessions(BuildContext context, int n) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(n == 1 ? 'End the terminal session?' : 'End $n terminal sessions?'),
+      content: const Text('The shell and anything running in it will be stopped.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(key: const ValueKey('confirm-close-terminal'), onPressed: () => Navigator.pop(context, true), child: const Text('Close')),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
 class _DockTab extends StatelessWidget {
-  final LogStream stream;
+  final DockTab tab;
   final bool active;
-  const _DockTab({required this.stream, required this.active});
+  const _DockTab({required this.tab, required this.active});
 
   Future<void> _menu(BuildContext context, Offset global) async {
     final dock = context.read<LogDock>();
@@ -188,13 +222,15 @@ class _DockTab extends StatelessWidget {
     if (!context.mounted) return;
     switch (v) {
       case 'close':
-        dock.close(stream);
+        await closeDockTab(context, dock, tab);
       case 'others':
-        dock.closeOthers(stream);
+        final n = dock.tabs.where((t) => t != tab && t.confirmClose).length;
+        if (n == 0 || await _confirmEndSessions(context, n)) dock.closeOthers(tab);
       case 'all':
-        dock.closeAll();
+        final n = dock.tabs.where((t) => t.confirmClose).length;
+        if (n == 0 || await _confirmEndSessions(context, n)) dock.closeAll();
       case 'copy':
-        copyToClipboard(context, stream.pod);
+        copyToClipboard(context, tab.pod);
     }
   }
 
@@ -203,18 +239,23 @@ class _DockTab extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     final dock = context.read<LogDock>();
+    final tab = this.tab;
+    final stream = tab is LogStream ? tab : null;
+    final term = tab is TerminalTab ? tab : null;
     return ListenableBuilder(
-      listenable: stream,
+      listenable: tab,
       builder: (context, _) => GestureDetector(
         onSecondaryTapUp: (d) => _menu(context, d.globalPosition),
-        onTertiaryTapUp: (_) => dock.close(stream),
+        onTertiaryTapUp: (_) => closeDockTab(context, dock, tab),
         child: Tooltip(
-          message: '${stream.namespace}/${stream.label} · ${logPhaseLabel(stream)}${stream.previous ? ' · previous' : ''}',
+          message: stream != null
+              ? '${stream.namespace}/${stream.label} · ${logPhaseLabel(stream)}${stream.previous ? ' · previous' : ''}'
+              : '${tab.namespace}/${tab.label} · ${term == null ? '' : '${term.commandLabel} · ${terminalPhaseLabel(term)}'}',
           waitDuration: const Duration(milliseconds: 800),
           child: Hoverable(
-            key: ValueKey('log-tab-${stream.id}'),
+            key: ValueKey('${stream != null ? 'log' : 'dock'}-tab-${tab.id}'),
             cursor: SystemMouseCursors.basic,
-            onTap: () => dock.activate(stream),
+            onTap: () => dock.activate(tab),
             builder: (h) => Container(
               margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 3),
               padding: const EdgeInsets.only(left: 8, right: 3),
@@ -227,18 +268,21 @@ class _DockTab extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _Dot(color: severityColor(context, logPhaseSeverity(stream)), pulse: stream.phase == LogPhase.streaming && stream.follow),
+                  if (stream != null)
+                    _Dot(color: severityColor(context, logPhaseSeverity(stream)), pulse: stream.phase == LogPhase.streaming && stream.follow)
+                  else
+                    Icon(Icons.terminal, size: 13, color: severityColor(context, term == null ? Severity.neutral : terminalSeverity(term))),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text.rich(
                       TextSpan(
                         children: [
-                          TextSpan(text: stream.pod),
+                          TextSpan(text: tab.pod),
                           TextSpan(
-                            text: '/${stream.container}',
+                            text: '/${stream?.container ?? term?.container ?? ''}',
                             style: TextStyle(color: theme.hintColor),
                           ),
-                          if (stream.previous)
+                          if (stream?.previous ?? false)
                             TextSpan(
                               text: ' (prev)',
                               style: TextStyle(color: theme.hintColor),
@@ -260,13 +304,13 @@ class _DockTab extends StatelessWidget {
                       width: 18,
                       height: 18,
                       child: IconButton(
-                        key: ValueKey('log-tab-close-${stream.id}'),
+                        key: ValueKey('${stream != null ? 'log' : 'dock'}-tab-close-${tab.id}'),
                         tooltip: 'Close',
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                         style: IconButton.styleFrom(minimumSize: const Size(18, 18), padding: EdgeInsets.zero),
                         icon: const Icon(Icons.close, size: 12),
-                        onPressed: () => dock.close(stream),
+                        onPressed: () => closeDockTab(context, dock, tab),
                       ),
                     ),
                   ),

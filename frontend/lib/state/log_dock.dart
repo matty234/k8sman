@@ -6,6 +6,9 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../panels/pod/pod_logic.dart';
 import '../util/k8s.dart';
+import 'dock_tab.dart';
+
+export 'dock_tab.dart';
 
 /// Maximum lines kept in memory per stream; older lines are dropped.
 const int kMaxLogLines = 10000;
@@ -15,9 +18,11 @@ enum LogPhase { connecting, streaming, eof, error, notStarted }
 /// One (pod, container) log stream. Owns its subscription and buffer, so it
 /// keeps streaming while its tab is hidden or the dock is collapsed. The
 /// [LogDock] disposes it (cancelling the subscription) when the tab closes.
-class LogStream extends ChangeNotifier {
+class LogStream extends DockTab {
   final ApiClient api;
+  @override
   final String namespace;
+  @override
   final String pod;
   String _container;
   String get container => _container;
@@ -56,7 +61,9 @@ class LogStream extends ChangeNotifier {
     _subscribe();
   }
 
+  @override
   String get id => logStreamId(namespace, pod, _container);
+  @override
   String get label => '$pod/$_container';
 
   /// True while the subscription is open (useful for tests).
@@ -235,8 +242,8 @@ String? defaultLogContainer(Json pod) {
   return (troubled.isNotEmpty ? troubled.first : (regular.isNotEmpty ? regular.first : (cs.isNotEmpty ? cs.first : null)))?.name;
 }
 
-/// The bottom log dock: open streams (one tab each), the active tab, and the
-/// panel's height / collapsed state. Not persisted across launches.
+/// The bottom dock: open tabs (log streams and terminal sessions), the active
+/// tab, and the panel's height / collapsed state. Not persisted across launches.
 class LogDock extends ChangeNotifier {
   final ApiClient api;
   LogDock(this.api);
@@ -244,15 +251,23 @@ class LogDock extends ChangeNotifier {
   static const double minHeight = 120;
   static const double defaultHeight = 280;
 
-  final List<LogStream> _tabs = [];
-  List<LogStream> get tabs => List.unmodifiable(_tabs);
+  final List<DockTab> _tabs = [];
+  List<DockTab> get tabs => List.unmodifiable(_tabs);
 
   String? _activeId;
-  LogStream? get active {
+
+  /// The visible tab of any kind.
+  DockTab? get activeTab {
     for (final t in _tabs) {
       if (t.id == _activeId) return t;
     }
     return _tabs.isEmpty ? null : _tabs.last;
+  }
+
+  /// The visible tab if it is a log stream (null when a terminal is shown).
+  LogStream? get active {
+    final t = activeTab;
+    return t is LogStream ? t : null;
   }
 
   /// Whether the dock is on screen at all.
@@ -266,7 +281,7 @@ class LogDock extends ChangeNotifier {
   LogStream? find(String namespace, String pod, String container) {
     final id = logStreamId(namespace, pod, container);
     for (final t in _tabs) {
-      if (t.id == id) return t;
+      if (t is LogStream && t.id == id) return t;
     }
     return null;
   }
@@ -292,7 +307,16 @@ class LogDock extends ChangeNotifier {
     return s;
   }
 
-  void activate(LogStream s) {
+  /// Adds a tab of any kind (e.g. a terminal), focuses it and expands the dock.
+  void add(DockTab tab, {bool focus = true}) {
+    if (!_tabs.contains(tab)) _tabs.add(tab);
+    if (focus || _activeId == null) _activeId = tab.id;
+    shown = true;
+    collapsed = false;
+    notifyListeners();
+  }
+
+  void activate(DockTab s) {
     _activeId = s.id;
     if (collapsed) collapsed = false;
     notifyListeners();
@@ -304,13 +328,13 @@ class LogDock extends ChangeNotifier {
     if (container == s.container) return;
     final existing = find(s.namespace, s.pod, container);
     if (existing != null) return activate(existing);
-    final wasActive = active == s;
+    final wasActive = activeTab == s;
     s._setContainer(container);
     if (wasActive) _activeId = s.id;
     notifyListeners();
   }
 
-  void close(LogStream s) {
+  void close(DockTab s) {
     final i = _tabs.indexOf(s);
     if (i < 0) return;
     _tabs.removeAt(i);
@@ -320,7 +344,7 @@ class LogDock extends ChangeNotifier {
     notifyListeners();
   }
 
-  void closeOthers(LogStream keep) {
+  void closeOthers(DockTab keep) {
     for (final t in [..._tabs]) {
       if (t != keep) {
         _tabs.remove(t);
