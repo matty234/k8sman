@@ -13,15 +13,6 @@ dynamic metricsFixture(String name) => jsonDecode(File('test/metrics/fixtures/$n
 Json nodeFixture() => Map<String, dynamic>.from(jsonDecode(File('../dev/fixtures/node-k8sman-dev-control-plane.json').readAsStringSync()));
 List<Json> demoPods() => [for (final p in metricsFixture('pods-demo-objects.json')) Map<String, dynamic>.from(p)];
 
-bool _matches(Json item, String? labelSelector) {
-  if (labelSelector == null || labelSelector.isEmpty) return true;
-  final labels = Map<String, dynamic>.from(item['metadata']?['labels'] ?? const {});
-  return labelSelector.split(',').every((kv) {
-    final p = kv.split('=');
-    return p.length == 2 && labels[p[0]] == p[1];
-  });
-}
-
 /// FakeApiClient that also serves the metrics endpoints.
 class MetricsFakeApi extends FakeApiClient {
   /// metrics-server installed (false → 404 "not installed").
@@ -36,7 +27,7 @@ class MetricsFakeApi extends FakeApiClient {
   MetricsFakeApi({this.resourceMetrics = true, this.customMetrics = true, Map<String, List<Json>>? items})
       : super(
           itemsByResource: items ?? {'nodes': [nodeFixture()], 'pods': demoPods()},
-          itemsFilter: (r, item, labelSelector, fieldSelector) => _matches(item, labelSelector),
+          itemsFilter: labelSelectorFilter,
         );
 
   static ApiException notInstalled(String group) => ApiException(404, '$group is not installed (no APIService registered)');

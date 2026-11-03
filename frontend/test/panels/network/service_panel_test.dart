@@ -13,7 +13,7 @@ FakeApiClient api({List<Json>? slices, List<Json>? pods}) => FakeApiClient(
         'endpointslices.discovery.k8s.io': slices ?? [devFixture('endpointslice-web'), Map<String, dynamic>.from(netFixture('endpointslice-redis'))],
         'pods': pods ?? demoPods(),
       },
-      itemsFilter: selectorFilter,
+      itemsFilter: labelSelectorFilter,
     );
 
 void main() {

@@ -8,7 +8,7 @@ void main() {
   testWidgets('netpol: explanation and selected pods', (tester) async {
     await loadRealFonts();
     final app = await pumpPanel(tester, devFixture('netpol-web-allow-frontend'),
-        api: FakeApiClient(itemsByResource: {'pods': demoPods()}, itemsFilter: selectorFilter));
+        api: FakeApiClient(itemsByResource: {'pods': demoPods()}, itemsFilter: labelSelectorFilter));
     await saveScreenshot(tester, 'network-netpol-web');
     expect(find.text('Applies to pods matching app=web in demo (2 pods).'), findsOneWidget);
     expect(find.text('Restricted'), findsOneWidget);
@@ -50,7 +50,7 @@ void main() {
           ],
         },
       },
-      api: FakeApiClient(itemsByResource: {'pods': demoPods()}, itemsFilter: selectorFilter),
+      api: FakeApiClient(itemsByResource: {'pods': demoPods()}, itemsFilter: labelSelectorFilter),
     );
     await saveScreenshot(tester, 'network-netpol-deny');
     expect(find.text('Applies to all pods in demo (9 pods).'), findsOneWidget);
