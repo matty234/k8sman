@@ -1,0 +1,245 @@
+# Sample Argo CD objects used to exercise k8sman's Argo CD panels.
+# Apply to the dev kind cluster after installing Argo CD (see docs/ARGOCD.md).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: demo-team
+  namespace: argocd
+spec:
+  description: Demo team project with restricted sources, destinations and kinds
+  sourceRepos:
+    - https://github.com/argoproj/argocd-example-apps
+    - https://github.com/argoproj/argocd-example-apps.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: 'guestbook*'
+    - server: https://kubernetes.default.svc
+      namespace: 'helm-*'
+    - server: https://kubernetes.default.svc
+      namespace: 'kustomize-*'
+    - name: in-cluster
+      namespace: 'team-*'
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+  namespaceResourceBlacklist:
+    - group: ''
+      kind: ResourceQuota
+    - group: ''
+      kind: LimitRange
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+  orphanedResources:
+    warn: true
+    ignore:
+      - kind: ConfigMap
+        name: kube-root-ca.crt
+  roles:
+    - name: ci
+      description: CI pipeline can sync apps in this project
+      policies:
+        - p, proj:demo-team:ci, applications, sync, demo-team/*, allow
+        - p, proj:demo-team:ci, applications, get, demo-team/*, allow
+      groups:
+        - my-org:ci-bots
+    - name: read-only
+      description: Read-only access
+      policies:
+        - p, proj:demo-team:read-only, applications, get, demo-team/*, allow
+  syncWindows:
+    - kind: deny
+      schedule: '0 22 * * *'
+      duration: 8h
+      applications: ['*-prod']
+      manualSync: true
+      timeZone: Europe/London
+    - kind: allow
+      schedule: '0 9 * * 1-5'
+      duration: 9h
+      namespaces: ['team-*']
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook
+  namespace: argocd
+spec:
+  project: demo-team
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps
+    path: guestbook
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: guestbook
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: helm-guestbook
+  namespace: argocd
+spec:
+  project: demo-team
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps
+    path: helm-guestbook
+    targetRevision: HEAD
+    helm:
+      releaseName: helm-guestbook
+      parameters:
+        - name: replicaCount
+          value: "2"
+        - name: service.type
+          value: ClusterIP
+      values: |
+        image:
+          pullPolicy: IfNotPresent
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: helm-guestbook
+  syncPolicy:
+    syncOptions: [CreateNamespace=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kustomize-guestbook
+  namespace: argocd
+spec:
+  project: demo-team
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps
+    path: kustomize-guestbook
+    targetRevision: master
+    kustomize:
+      namePrefix: staging-
+      images:
+        - gcr.io/google-samples/gb-frontend:v5
+      commonLabels:
+        env: staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kustomize-guestbook
+  syncPolicy:
+    syncOptions: [CreateNamespace=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook-degraded
+  namespace: argocd
+spec:
+  project: demo-team
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps
+    path: kustomize-guestbook
+    targetRevision: HEAD
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend:does-not-exist
+      patches:
+        - target: {kind: Deployment}
+          patch: |
+            - op: add
+              path: /spec/progressDeadlineSeconds
+              value: 60
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: guestbook-degraded
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook-no-namespace
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps
+    path: guestbook
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: does-not-exist
+  syncPolicy:
+    automated: {}
+    retry: {limit: 2, backoff: {duration: 5s, factor: 2, maxDuration: 1m}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bad-path
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps
+    path: this/path/does-not-exist
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: multi-source
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/argoproj/argocd-example-apps
+      path: helm-guestbook
+      targetRevision: HEAD
+      helm:
+        valueFiles: [$values/helm-guestbook/values-production.yaml]
+    - repoURL: https://github.com/argoproj/argocd-example-apps
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: multi-source
+  syncPolicy:
+    automated: {prune: true}
+    syncOptions: [CreateNamespace=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: guestbook-envs
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - env: dev
+            revision: HEAD
+          - env: staging
+            revision: master
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  template:
+    metadata:
+      name: 'guestbook-{{.env}}'
+      labels:
+        env: '{{.env}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/argoproj/argocd-example-apps
+        path: guestbook
+        targetRevision: '{{.revision}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: 'appset-{{.env}}'
+      syncPolicy:
+        automated: {prune: true, selfHeal: true}
+        syncOptions: [CreateNamespace=true]

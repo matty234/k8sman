@@ -167,4 +167,36 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Replicas", Type: "number", Query: `.status.currentReplicas // 0`},
 		ageCol,
 	},
+	// Argo CD
+	"applications.argoproj.io": {
+		{Name: "Sync", Type: "status", Query: `.status.sync.status // "Unknown"`},
+		{Name: "Health", Type: "status", Query: `.status.health.status // "Unknown"`},
+		{Name: "Revision", Query: `(.status.sync.revision // (.status.sync.revisions // [] | map(.[0:7]) | join(",")) // "") | .[0:7]`},
+		{Name: "Repo", Query: argoShortRepo},
+		{Name: "Path/Chart", Query: `[(.spec.source // empty), (.spec.sources[]? | select(.ref == null))] | map(.path // .chart // "") | map(select(. != "")) | join(", ")`},
+		{Name: "Destination", Query: `"\((.spec.destination.name // .spec.destination.server // "") | if . == "https://kubernetes.default.svc" then "in-cluster" else . end)/\(.spec.destination.namespace // "")"`},
+		{Name: "Project", Query: `.spec.project // "default"`},
+		ageCol,
+	},
+	"applicationsets.argoproj.io": {
+		{Name: "Generators", Query: `[.spec.generators[]? | ` + argoGenerator + `] | join(", ")`},
+		{Name: "Apps", Type: "number", Query: `.status.resourcesCount // (.status.resources // [] | length)`},
+		{Name: "Status", Type: "status", Query: `if any(.status.conditions[]?; .type == "ErrorOccurred" and .status == "True") then "Error" elif any(.status.conditions[]?; .type == "ResourcesUpToDate" and .status == "True") then "UpToDate" else (.status.health.status // "") end`},
+		ageCol,
+	},
+	"appprojects.argoproj.io": {
+		{Name: "Destinations", Query: `[.spec.destinations[]? | "\((.name // .server // "*") | if . == "https://kubernetes.default.svc" then "in-cluster" else . end)/\(.namespace // "*")"] | join(", ")`},
+		{Name: "Sources", Query: `.spec.sourceRepos // [] | join(", ")`},
+		{Name: "Description", Query: `.spec.description // ""`},
+		ageCol,
+	},
 }
+
+// argoShortRepo shortens a repo URL to its last two path segments
+// (`https://github.com/argoproj/argocd-example-apps.git` → `argoproj/argocd-example-apps`).
+const argoShortRepo = `(.spec.source.repoURL // ([.spec.sources[]? | select(.ref == null)][0].repoURL) // .spec.sources[0]?.repoURL // "")
+  | sub("\\.git$"; "") | sub("/+$"; "") | split("/") | if length > 3 then .[-2:] | join("/") else join("/") end`
+
+// argoGenerator names one ApplicationSet generator; matrix/merge list their children.
+const argoGenerator = `(to_entries | map(select(.key != "selector")) | first // {key: "?"}) as $g
+  | if ($g.key == "matrix" or $g.key == "merge") then "\($g.key)(\([$g.value.generators[]? | to_entries | map(select(.key != "selector")) | first.key] | join("+")))" else $g.key end`

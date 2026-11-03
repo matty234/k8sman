@@ -1,0 +1,99 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Application",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:24:58Z",
+    "generation": 3,
+    "name": "helm-guestbook",
+    "namespace": "argocd",
+    "resourceVersion": "7012",
+    "uid": "330c9b4f-d86f-4dae-88e5-20231684da07"
+  },
+  "spec": {
+    "destination": {
+      "namespace": "helm-guestbook",
+      "server": "https://kubernetes.default.svc"
+    },
+    "project": "demo-team",
+    "source": {
+      "helm": {
+        "parameters": [
+          {
+            "name": "replicaCount",
+            "value": "2"
+          },
+          {
+            "name": "service.type",
+            "value": "ClusterIP"
+          }
+        ],
+        "releaseName": "helm-guestbook",
+        "values": "image:\n  pullPolicy: IfNotPresent\n"
+      },
+      "path": "helm-guestbook",
+      "repoURL": "https://github.com/argoproj/argocd-example-apps",
+      "targetRevision": "HEAD"
+    },
+    "syncPolicy": {
+      "syncOptions": [
+        "CreateNamespace=true"
+      ]
+    }
+  },
+  "status": {
+    "controllerNamespace": "argocd",
+    "health": {
+      "lastTransitionTime": "2026-11-03T12:25:00Z",
+      "status": "Missing"
+    },
+    "reconciledAt": "2026-11-03T12:27:51Z",
+    "resourceHealthSource": "appTree",
+    "resources": [
+      {
+        "kind": "Service",
+        "name": "helm-guestbook",
+        "namespace": "helm-guestbook",
+        "status": "OutOfSync",
+        "version": "v1"
+      },
+      {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "helm-guestbook",
+        "namespace": "helm-guestbook",
+        "status": "OutOfSync",
+        "version": "v1"
+      }
+    ],
+    "sourceType": "Helm",
+    "sync": {
+      "comparedTo": {
+        "destination": {
+          "namespace": "helm-guestbook",
+          "server": "https://kubernetes.default.svc"
+        },
+        "source": {
+          "helm": {
+            "parameters": [
+              {
+                "name": "replicaCount",
+                "value": "2"
+              },
+              {
+                "name": "service.type",
+                "value": "ClusterIP"
+              }
+            ],
+            "releaseName": "helm-guestbook",
+            "values": "image:\n  pullPolicy: IfNotPresent\n"
+          },
+          "path": "helm-guestbook",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps",
+          "targetRevision": "HEAD"
+        }
+      },
+      "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+      "status": "OutOfSync"
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Application",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:24:58Z",
+    "generation": 2,
+    "name": "bad-path",
+    "namespace": "argocd",
+    "resourceVersion": "6524",
+    "uid": "b232f3c1-86dc-4048-a3fd-708870f56c92"
+  },
+  "spec": {
+    "destination": {
+      "namespace": "default",
+      "server": "https://kubernetes.default.svc"
+    },
+    "project": "default",
+    "source": {
+      "path": "this/path/does-not-exist",
+      "repoURL": "https://github.com/argoproj/argocd-example-apps",
+      "targetRevision": "HEAD"
+    }
+  },
+  "status": {
+    "conditions": [
+      {
+        "lastTransitionTime": "2026-11-03T12:24:58Z",
+        "message": "Failed to load target state: failed to generate manifest for source 1 of 1: rpc error: code = Unknown desc = this/path/does-not-exist: app path does not exist",
+        "type": "ComparisonError"
+      }
+    ],
+    "controllerNamespace": "argocd",
+    "health": {
+      "lastTransitionTime": "2026-11-03T12:25:00Z",
+      "status": "Healthy"
+    },
+    "reconciledAt": "2026-11-03T12:24:58Z",
+    "resourceHealthSource": "appTree",
+    "sync": {
+      "comparedTo": {
+        "destination": {
+          "namespace": "default",
+          "server": "https://kubernetes.default.svc"
+        },
+        "source": {
+          "path": "this/path/does-not-exist",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps",
+          "targetRevision": "HEAD"
+        }
+      },
+      "revision": "HEAD",
+      "status": "Unknown"
+    }
+  }
+}

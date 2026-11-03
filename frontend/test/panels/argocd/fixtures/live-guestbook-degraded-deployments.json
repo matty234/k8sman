@@ -1,0 +1,92 @@
+[
+  {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+      "annotations": {
+        "argocd.argoproj.io/tracking-id": "guestbook-degraded:apps/Deployment:guestbook-degraded/kustomize-guestbook-ui",
+        "deployment.kubernetes.io/revision": "2"
+      },
+      "creationTimestamp": "2026-11-03T12:25:01Z",
+      "generation": 2,
+      "name": "kustomize-guestbook-ui",
+      "namespace": "guestbook-degraded",
+      "resourceVersion": "7571",
+      "uid": "f92e4811-473e-4cfb-9076-66e75c294fb3"
+    },
+    "spec": {
+      "progressDeadlineSeconds": 60,
+      "replicas": 1,
+      "revisionHistoryLimit": 3,
+      "selector": {
+        "matchLabels": {
+          "app": "guestbook-ui"
+        }
+      },
+      "strategy": {
+        "rollingUpdate": {
+          "maxSurge": "25%",
+          "maxUnavailable": "25%"
+        },
+        "type": "RollingUpdate"
+      },
+      "template": {
+        "metadata": {
+          "creationTimestamp": null,
+          "labels": {
+            "app": "guestbook-ui"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "image": "gcr.io/google-samples/gb-frontend:does-not-exist",
+              "imagePullPolicy": "IfNotPresent",
+              "name": "guestbook-ui",
+              "ports": [
+                {
+                  "containerPort": 80,
+                  "protocol": "TCP"
+                }
+              ],
+              "resources": {},
+              "terminationMessagePath": "/dev/termination-log",
+              "terminationMessagePolicy": "File"
+            }
+          ],
+          "dnsPolicy": "ClusterFirst",
+          "restartPolicy": "Always",
+          "schedulerName": "default-scheduler",
+          "securityContext": {},
+          "terminationGracePeriodSeconds": 30
+        }
+      }
+    },
+    "status": {
+      "availableReplicas": 1,
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-11-03T12:25:23Z",
+          "lastUpdateTime": "2026-11-03T12:25:23Z",
+          "message": "Deployment has minimum availability.",
+          "reason": "MinimumReplicasAvailable",
+          "status": "True",
+          "type": "Available"
+        },
+        {
+          "lastTransitionTime": "2026-11-03T12:29:08Z",
+          "lastUpdateTime": "2026-11-03T12:29:08Z",
+          "message": "ReplicaSet \"kustomize-guestbook-ui-755cbff6db\" has timed out progressing.",
+          "reason": "ProgressDeadlineExceeded",
+          "status": "False",
+          "type": "Progressing"
+        }
+      ],
+      "observedGeneration": 2,
+      "readyReplicas": 1,
+      "replicas": 2,
+      "unavailableReplicas": 1,
+      "updatedReplicas": 1
+    }
+  }
+]

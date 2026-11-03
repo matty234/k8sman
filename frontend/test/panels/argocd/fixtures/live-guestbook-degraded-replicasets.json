@@ -1,0 +1,160 @@
+[
+  {
+    "apiVersion": "apps/v1",
+    "kind": "ReplicaSet",
+    "metadata": {
+      "annotations": {
+        "argocd.argoproj.io/tracking-id": "guestbook-degraded:apps/Deployment:guestbook-degraded/kustomize-guestbook-ui",
+        "deployment.kubernetes.io/desired-replicas": "1",
+        "deployment.kubernetes.io/max-replicas": "2",
+        "deployment.kubernetes.io/revision": "1"
+      },
+      "creationTimestamp": "2026-11-03T12:25:01Z",
+      "generation": 1,
+      "labels": {
+        "app": "guestbook-ui",
+        "pod-template-hash": "56584c887b"
+      },
+      "name": "kustomize-guestbook-ui-56584c887b",
+      "namespace": "guestbook-degraded",
+      "ownerReferences": [
+        {
+          "apiVersion": "apps/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Deployment",
+          "name": "kustomize-guestbook-ui",
+          "uid": "f92e4811-473e-4cfb-9076-66e75c294fb3"
+        }
+      ],
+      "resourceVersion": "6797",
+      "uid": "38512a8f-0e70-47b0-81dc-f603b8585da7"
+    },
+    "spec": {
+      "replicas": 1,
+      "selector": {
+        "matchLabels": {
+          "app": "guestbook-ui",
+          "pod-template-hash": "56584c887b"
+        }
+      },
+      "template": {
+        "metadata": {
+          "creationTimestamp": null,
+          "labels": {
+            "app": "guestbook-ui",
+            "pod-template-hash": "56584c887b"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "image": "gcr.io/google-samples/gb-frontend:v5",
+              "imagePullPolicy": "IfNotPresent",
+              "name": "guestbook-ui",
+              "ports": [
+                {
+                  "containerPort": 80,
+                  "protocol": "TCP"
+                }
+              ],
+              "resources": {},
+              "terminationMessagePath": "/dev/termination-log",
+              "terminationMessagePolicy": "File"
+            }
+          ],
+          "dnsPolicy": "ClusterFirst",
+          "restartPolicy": "Always",
+          "schedulerName": "default-scheduler",
+          "securityContext": {},
+          "terminationGracePeriodSeconds": 30
+        }
+      }
+    },
+    "status": {
+      "availableReplicas": 1,
+      "fullyLabeledReplicas": 1,
+      "observedGeneration": 1,
+      "readyReplicas": 1,
+      "replicas": 1
+    }
+  },
+  {
+    "apiVersion": "apps/v1",
+    "kind": "ReplicaSet",
+    "metadata": {
+      "annotations": {
+        "argocd.argoproj.io/tracking-id": "guestbook-degraded:apps/Deployment:guestbook-degraded/kustomize-guestbook-ui",
+        "deployment.kubernetes.io/desired-replicas": "1",
+        "deployment.kubernetes.io/max-replicas": "2",
+        "deployment.kubernetes.io/revision": "2"
+      },
+      "creationTimestamp": "2026-11-03T12:28:07Z",
+      "generation": 1,
+      "labels": {
+        "app": "guestbook-ui",
+        "pod-template-hash": "755cbff6db"
+      },
+      "name": "kustomize-guestbook-ui-755cbff6db",
+      "namespace": "guestbook-degraded",
+      "ownerReferences": [
+        {
+          "apiVersion": "apps/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Deployment",
+          "name": "kustomize-guestbook-ui",
+          "uid": "f92e4811-473e-4cfb-9076-66e75c294fb3"
+        }
+      ],
+      "resourceVersion": "7110",
+      "uid": "295e5b40-8ec0-4cf8-8099-38161a69ae7e"
+    },
+    "spec": {
+      "replicas": 1,
+      "selector": {
+        "matchLabels": {
+          "app": "guestbook-ui",
+          "pod-template-hash": "755cbff6db"
+        }
+      },
+      "template": {
+        "metadata": {
+          "creationTimestamp": null,
+          "labels": {
+            "app": "guestbook-ui",
+            "pod-template-hash": "755cbff6db"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "image": "gcr.io/google-samples/gb-frontend:does-not-exist",
+              "imagePullPolicy": "IfNotPresent",
+              "name": "guestbook-ui",
+              "ports": [
+                {
+                  "containerPort": 80,
+                  "protocol": "TCP"
+                }
+              ],
+              "resources": {},
+              "terminationMessagePath": "/dev/termination-log",
+              "terminationMessagePolicy": "File"
+            }
+          ],
+          "dnsPolicy": "ClusterFirst",
+          "restartPolicy": "Always",
+          "schedulerName": "default-scheduler",
+          "securityContext": {},
+          "terminationGracePeriodSeconds": 30
+        }
+      }
+    },
+    "status": {
+      "fullyLabeledReplicas": 1,
+      "observedGeneration": 1,
+      "replicas": 1
+    }
+  }
+]

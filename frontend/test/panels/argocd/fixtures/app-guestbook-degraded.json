@@ -1,0 +1,248 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Application",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:24:58Z",
+    "generation": 27,
+    "name": "guestbook-degraded",
+    "namespace": "argocd",
+    "resourceVersion": "7573",
+    "uid": "b11cf8ae-37d9-433b-8e98-4df9095f925b"
+  },
+  "spec": {
+    "destination": {
+      "namespace": "guestbook-degraded",
+      "server": "https://kubernetes.default.svc"
+    },
+    "project": "demo-team",
+    "source": {
+      "kustomize": {
+        "images": [
+          "gcr.io/google-samples/gb-frontend:does-not-exist"
+        ],
+        "patches": [
+          {
+            "patch": "- op: add\n  path: /spec/progressDeadlineSeconds\n  value: 60\n",
+            "target": {
+              "kind": "Deployment"
+            }
+          }
+        ]
+      },
+      "path": "kustomize-guestbook",
+      "repoURL": "https://github.com/argoproj/argocd-example-apps",
+      "targetRevision": "HEAD"
+    },
+    "syncPolicy": {
+      "automated": {
+        "prune": true,
+        "selfHeal": true
+      },
+      "syncOptions": [
+        "CreateNamespace=true"
+      ]
+    }
+  },
+  "status": {
+    "controllerNamespace": "argocd",
+    "health": {
+      "lastTransitionTime": "2026-11-03T12:29:08Z",
+      "status": "Degraded"
+    },
+    "history": [
+      {
+        "deployStartedAt": "2026-11-03T12:25:00Z",
+        "deployedAt": "2026-11-03T12:25:01Z",
+        "id": 0,
+        "initiatedBy": {
+          "automated": true
+        },
+        "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+        "source": {
+          "kustomize": {
+            "images": [
+              "gcr.io/heptio-images/ks-guestbook-demo:does-not-exist"
+            ],
+            "patches": [
+              {
+                "patch": "- op: add\n  path: /spec/progressDeadlineSeconds\n  value: 60\n",
+                "target": {
+                  "kind": "Deployment"
+                }
+              }
+            ]
+          },
+          "path": "kustomize-guestbook",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps",
+          "targetRevision": "HEAD"
+        }
+      },
+      {
+        "deployStartedAt": "2026-11-03T12:28:07Z",
+        "deployedAt": "2026-11-03T12:28:07Z",
+        "id": 1,
+        "initiatedBy": {
+          "automated": true
+        },
+        "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+        "source": {
+          "kustomize": {
+            "images": [
+              "gcr.io/google-samples/gb-frontend:does-not-exist"
+            ],
+            "patches": [
+              {
+                "patch": "- op: add\n  path: /spec/progressDeadlineSeconds\n  value: 60\n",
+                "target": {
+                  "kind": "Deployment"
+                }
+              }
+            ]
+          },
+          "path": "kustomize-guestbook",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps",
+          "targetRevision": "HEAD"
+        }
+      }
+    ],
+    "operationState": {
+      "finishedAt": "2026-11-03T12:28:07Z",
+      "message": "successfully synced (all tasks run)",
+      "operation": {
+        "initiatedBy": {
+          "automated": true
+        },
+        "retry": {
+          "limit": 5
+        },
+        "sync": {
+          "autoHealAttemptsCount": 1,
+          "prune": true,
+          "resources": [
+            {
+              "group": "apps",
+              "kind": "Deployment",
+              "name": "kustomize-guestbook-ui"
+            }
+          ],
+          "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+          "source": {
+            "kustomize": {
+              "images": [
+                "gcr.io/google-samples/gb-frontend:does-not-exist"
+              ],
+              "patches": [
+                {
+                  "patch": "- op: add\n  path: /spec/progressDeadlineSeconds\n  value: 60\n",
+                  "target": {
+                    "kind": "Deployment"
+                  }
+                }
+              ]
+            },
+            "path": "kustomize-guestbook",
+            "repoURL": "https://github.com/argoproj/argocd-example-apps",
+            "targetRevision": "HEAD"
+          },
+          "syncOptions": [
+            "CreateNamespace=true"
+          ]
+        }
+      },
+      "phase": "Succeeded",
+      "startedAt": "2026-11-03T12:28:07Z",
+      "syncResult": {
+        "resources": [
+          {
+            "group": "apps",
+            "hookPhase": "Running",
+            "images": [
+              "gcr.io/google-samples/gb-frontend:does-not-exist"
+            ],
+            "kind": "Deployment",
+            "message": "deployment.apps/kustomize-guestbook-ui unchanged",
+            "name": "kustomize-guestbook-ui",
+            "namespace": "guestbook-degraded",
+            "status": "Synced",
+            "syncPhase": "Sync",
+            "version": "v1"
+          }
+        ],
+        "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+        "source": {
+          "kustomize": {
+            "images": [
+              "gcr.io/google-samples/gb-frontend:does-not-exist"
+            ],
+            "patches": [
+              {
+                "patch": "- op: add\n  path: /spec/progressDeadlineSeconds\n  value: 60\n",
+                "target": {
+                  "kind": "Deployment"
+                }
+              }
+            ]
+          },
+          "path": "kustomize-guestbook",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps",
+          "targetRevision": "HEAD"
+        }
+      }
+    },
+    "reconciledAt": "2026-11-03T12:28:07Z",
+    "resourceHealthSource": "appTree",
+    "resources": [
+      {
+        "kind": "Service",
+        "name": "kustomize-guestbook-ui",
+        "namespace": "guestbook-degraded",
+        "status": "Synced",
+        "version": "v1"
+      },
+      {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "kustomize-guestbook-ui",
+        "namespace": "guestbook-degraded",
+        "status": "Synced",
+        "version": "v1"
+      }
+    ],
+    "sourceHydrator": {},
+    "sourceType": "Kustomize",
+    "summary": {
+      "images": [
+        "gcr.io/google-samples/gb-frontend:does-not-exist",
+        "gcr.io/google-samples/gb-frontend:v5"
+      ]
+    },
+    "sync": {
+      "comparedTo": {
+        "destination": {
+          "namespace": "guestbook-degraded",
+          "server": "https://kubernetes.default.svc"
+        },
+        "source": {
+          "kustomize": {
+            "images": [
+              "gcr.io/google-samples/gb-frontend:does-not-exist"
+            ],
+            "patches": [
+              {
+                "patch": "- op: add\n  path: /spec/progressDeadlineSeconds\n  value: 60\n",
+                "target": {
+                  "kind": "Deployment"
+                }
+              }
+            ]
+          },
+          "path": "kustomize-guestbook",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps",
+          "targetRevision": "HEAD"
+        }
+      },
+      "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+      "status": "Synced"
+    }
+  }
+}

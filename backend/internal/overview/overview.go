@@ -53,6 +53,9 @@ type Input struct {
 	Nodes        []corev1.Node
 	PVCs         []corev1.PersistentVolumeClaim
 	Events       []corev1.Event
+	// ArgoApps are Argo CD Applications (unstructured); nil when the CRD
+	// isn't served, which leaves Argo out of the result entirely.
+	ArgoApps []map[string]any
 }
 
 // Owner is the top-level controller of an object (Deployment, StatefulSet,
@@ -174,6 +177,7 @@ type Counts struct {
 	CronJobs     CronJobCounts    `json:"cronJobs"`
 	Nodes        NodeCounts       `json:"nodes"`
 	PVCs         PVCCounts        `json:"pvcs"`
+	ArgoApps     *ArgoCounts      `json:"argoApps,omitempty"`
 }
 
 // NodeHealth is one node in the nodes strip.
@@ -238,6 +242,8 @@ var categoryDefs = []categoryDef{
 	{"cronJobFailing", "CronJobs failing", "jobs", Critical},
 	{"jobFailed", "Failed jobs", "jobs", Critical},
 	{"pvcLost", "PVCs lost", "storage", Critical},
+	{"argoSyncFailed", "Argo CD sync errors", "argocd", Critical},
+	{"argoDegraded", "Argo CD apps degraded", "argocd", Critical},
 	{"stuckPending", "Stuck pending", "pods", Warning},
 	{"stuckTerminating", "Stuck terminating", "pods", Warning},
 	{"notReady", "Pods not ready", "pods", Warning},
@@ -246,6 +252,8 @@ var categoryDefs = []categoryDef{
 	{"cronJobOverdue", "CronJobs overdue", "jobs", Warning},
 	{"nodePressure", "Node pressure", "nodes", Warning},
 	{"pvcPending", "PVCs pending", "storage", Warning},
+	{"argoMissing", "Argo CD apps missing", "argocd", Warning},
+	{"argoOutOfSync", "Argo CD apps out of sync", "argocd", Warning},
 	{"rolling", "Rolling out", "workloads", Info},
 	{"deploymentPaused", "Paused rollouts", "workloads", Info},
 	{"jobSuspended", "Suspended jobs", "jobs", Info},
@@ -280,6 +288,7 @@ func Analyze(in Input) *Result {
 	a.nodes()
 	a.pvcs()
 	a.events()
+	a.argoApps()
 	a.finish()
 	return a.res
 }

@@ -20,6 +20,7 @@ const _curated = <String, List<String>>{
     'rbac.authorization.k8s.io/RoleBinding',
     'rbac.authorization.k8s.io/ClusterRoleBinding',
   ],
+  'Argo CD': ['argoproj.io/Application', 'argoproj.io/ApplicationSet', 'argoproj.io/AppProject'],
 };
 
 /// Source-list glyphs for well-known kinds (others get a generic one).

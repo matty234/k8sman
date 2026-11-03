@@ -1,0 +1,42 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+      "annotations": {
+        "argocd.argoproj.io/tracking-id": "guestbook:/Service:guestbook/guestbook-ui"
+      },
+      "creationTimestamp": "2026-11-03T12:25:01Z",
+      "name": "guestbook-ui",
+      "namespace": "guestbook",
+      "resourceVersion": "6593",
+      "uid": "c2ea123b-3ce8-4952-8cdd-07f1a110e32e"
+    },
+    "spec": {
+      "clusterIP": "10.96.218.189",
+      "clusterIPs": [
+        "10.96.218.189"
+      ],
+      "internalTrafficPolicy": "Cluster",
+      "ipFamilies": [
+        "IPv4"
+      ],
+      "ipFamilyPolicy": "SingleStack",
+      "ports": [
+        {
+          "port": 80,
+          "protocol": "TCP",
+          "targetPort": 80
+        }
+      ],
+      "selector": {
+        "app": "guestbook-ui"
+      },
+      "sessionAffinity": "None",
+      "type": "ClusterIP"
+    },
+    "status": {
+      "loadBalancer": {}
+    }
+  }
+]

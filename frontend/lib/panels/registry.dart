@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/models.dart';
 import '../ui/widgets/common.dart';
+import 'argocd/index.dart';
 import 'batch/index.dart';
 import 'cluster/index.dart';
 import 'config/index.dart';
@@ -23,6 +24,7 @@ final List<ResourcePanel> allPanels = [
   ...storagePanels,
   ...clusterPanels,
   ...customPanels,
+  ...argocdPanels,
 ];
 
 final Map<String, ResourcePanel> _byKind = {

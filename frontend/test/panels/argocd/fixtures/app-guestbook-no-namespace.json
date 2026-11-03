@@ -1,0 +1,149 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Application",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:24:58Z",
+    "generation": 13,
+    "name": "guestbook-no-namespace",
+    "namespace": "argocd",
+    "resourceVersion": "7006",
+    "uid": "ead9236c-304b-441f-838d-2512946478e7"
+  },
+  "spec": {
+    "destination": {
+      "namespace": "does-not-exist",
+      "server": "https://kubernetes.default.svc"
+    },
+    "project": "default",
+    "source": {
+      "path": "guestbook",
+      "repoURL": "https://github.com/argoproj/argocd-example-apps",
+      "targetRevision": "HEAD"
+    },
+    "syncPolicy": {
+      "automated": {},
+      "retry": {
+        "backoff": {
+          "duration": "5s",
+          "factor": 2,
+          "maxDuration": "1m"
+        },
+        "limit": 2
+      }
+    }
+  },
+  "status": {
+    "conditions": [
+      {
+        "lastTransitionTime": "2026-11-03T12:25:32Z",
+        "message": "Failed last sync attempt to [8088f4c0d970abb09e250248cc97e35623447cb5]: one or more objects failed to apply, reason: namespaces \"does-not-exist\" not found (retried 2 times).",
+        "type": "SyncError"
+      }
+    ],
+    "controllerNamespace": "argocd",
+    "health": {
+      "lastTransitionTime": "2026-11-03T12:25:00Z",
+      "status": "Missing"
+    },
+    "operationState": {
+      "finishedAt": "2026-11-03T12:25:32Z",
+      "message": "one or more objects failed to apply, reason: namespaces \"does-not-exist\" not found (retried 2 times).",
+      "operation": {
+        "initiatedBy": {
+          "automated": true
+        },
+        "retry": {
+          "backoff": {
+            "duration": "5s",
+            "factor": 2,
+            "maxDuration": "1m"
+          },
+          "limit": 2
+        },
+        "sync": {
+          "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+          "source": {
+            "path": "guestbook",
+            "repoURL": "https://github.com/argoproj/argocd-example-apps",
+            "targetRevision": "HEAD"
+          }
+        }
+      },
+      "phase": "Failed",
+      "retryCount": 2,
+      "startedAt": "2026-11-03T12:25:00Z",
+      "syncResult": {
+        "resources": [
+          {
+            "group": "",
+            "hookPhase": "Failed",
+            "kind": "Service",
+            "message": "namespaces \"does-not-exist\" not found",
+            "name": "guestbook-ui",
+            "namespace": "does-not-exist",
+            "status": "SyncFailed",
+            "syncPhase": "Sync",
+            "version": "v1"
+          },
+          {
+            "group": "apps",
+            "hookPhase": "Failed",
+            "images": [
+              "gcr.io/google-samples/gb-frontend:v5"
+            ],
+            "kind": "Deployment",
+            "message": "namespaces \"does-not-exist\" not found",
+            "name": "guestbook-ui",
+            "namespace": "does-not-exist",
+            "status": "SyncFailed",
+            "syncPhase": "Sync",
+            "version": "v1"
+          }
+        ],
+        "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+        "source": {
+          "path": "guestbook",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps",
+          "targetRevision": "HEAD"
+        }
+      }
+    },
+    "reconciledAt": "2026-11-03T12:27:49Z",
+    "resourceHealthSource": "appTree",
+    "resources": [
+      {
+        "kind": "Service",
+        "name": "guestbook-ui",
+        "namespace": "does-not-exist",
+        "status": "OutOfSync",
+        "version": "v1"
+      },
+      {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "guestbook-ui",
+        "namespace": "does-not-exist",
+        "status": "OutOfSync",
+        "version": "v1"
+      }
+    ],
+    "sourceHydrator": {},
+    "sourceType": "Directory",
+    "summary": {},
+    "sync": {
+      "comparedTo": {
+        "destination": {
+          "namespace": "does-not-exist",
+          "server": "https://kubernetes.default.svc"
+        },
+        "source": {
+          "path": "guestbook",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps",
+          "targetRevision": "HEAD"
+        }
+      },
+      "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+      "status": "OutOfSync"
+    }
+  }
+}

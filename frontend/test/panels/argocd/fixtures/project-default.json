@@ -1,0 +1,30 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "AppProject",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:23:40Z",
+    "generation": 1,
+    "name": "default",
+    "namespace": "argocd",
+    "resourceVersion": "6349",
+    "uid": "335bae25-fed0-4f6b-8c63-3f1816f58ad6"
+  },
+  "spec": {
+    "clusterResourceWhitelist": [
+      {
+        "group": "*",
+        "kind": "*"
+      }
+    ],
+    "destinations": [
+      {
+        "namespace": "*",
+        "server": "*"
+      }
+    ],
+    "sourceRepos": [
+      "*"
+    ]
+  },
+  "status": {}
+}
