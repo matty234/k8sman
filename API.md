@@ -78,3 +78,34 @@ Forwards with `autoStart` start when the backend launches.
 | PATCH | `/api/portforwards/{id}` | `{autoStart?, label?, localPort?}` |
 | POST | `/api/portforwards/{id}/start`, `/api/portforwards/{id}/stop` | start or stop a forward |
 | DELETE | `/api/portforwards/{id}` | stop and forget a forward |
+
+## Health overview
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/overview[?namespace=]` | cluster health summary for one namespace, or all if omitted. Lists pods, deployments, statefulsets, daemonsets, replicasets, jobs, cronjobs, nodes, PVCs and Warning events once each, in parallel, and analyses them (`backend/internal/overview`) |
+
+Response:
+
+```
+{generatedAt, namespace,
+ counts: {pods: {total, running, ready, pending, crashLoop, imagePull, createContainerConfigError, oomKilled,
+                 failed, terminating, stuckTerminating, stuckPending, notReady, highRestarts, completed, initBlocked},
+          deployments: {total, healthy, unavailable, progressDeadlineExceeded, paused, rolling},
+          statefulSets / daemonSets: {total, healthy, notReady},
+          jobs: {total, running, succeeded, failed, longRunning, suspended},
+          cronJobs: {total, suspended, failing, overdue},
+          nodes: {total, ready, notReady, pressure, cordoned},
+          pvcs: {total, bound, pending, lost}},
+ categories: [{id, label, section, severity, count}],   // only categories with issues, most severe first
+ issues: [{severity, category, kind, group, namespace?, name, reason, message, since?, count?, owner?: {group, kind, name}}],
+ nodes: [{name, ready, cordoned, pressure?, roles?, version, pods}],
+ topWarnings: [{reason, count, objects, latestMessage, lastSeen, example: {kind, group, namespace?, name}}],
+ errors?: {"<resource>": "<message>"}}                  // lists that failed (e.g. RBAC); pods failing is a hard error
+```
+
+- `severity` is `critical`, `warning` or `info`. Issues are sorted by severity, then by most recent `since` (RFC3339).
+- `owner` is the pod's top-level controller: Pod → ReplicaSet → Deployment, Pod → Job → CronJob, or a StatefulSet/DaemonSet. Group issues by `(namespace, owner, category)` to show "3 pods of Deployment web are CrashLoopBackOff".
+- Pod `reason` is the pod table's Status column (`Terminating`, `Init:<reason>`, the first container waiting/terminated reason, else the phase). `count` is the pod's restart count.
+- Categories: pods `crashLoop` (including a container that just exited non-zero and is restarting), `imagePull` (ImagePullBackOff, ErrImagePull, InvalidImageName), `createContainerConfigError` (also CreateContainerError and RunContainerError), `initBlocked` (failing init container, or still initializing after 5m), `oomKilled` (OOMKilled within the last hour), `podFailed`, `stuckPending` (Pending for more than 5m; reason from the PodScheduled condition, e.g. Unschedulable), `stuckTerminating` (deletionTimestamp more than 5m old), `notReady` (Running but not ready for more than 5m), `highRestarts` (5 or more restarts); workloads `deploymentUnavailable`, `progressDeadlineExceeded`, `rolling`, `deploymentPaused`, `statefulSetNotReady`, `daemonSetNotReady`; jobs `jobFailed`, `jobLongRunning` (active for more than 1h), `jobSuspended`, `cronJobFailing` (latest job failed), `cronJobOverdue` (next run per the schedule is more than 2m, or startingDeadlineSeconds, in the past), `cronJobSuspended`; nodes `nodeNotReady`, `nodePressure`, `nodeCordoned`; storage `pvcPending` (more than 5m), `pvcLost`.
+- `topWarnings` groups Warning events seen in the last hour by reason (top 10 by count).

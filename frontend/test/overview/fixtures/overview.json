@@ -1,0 +1,241 @@
+{
+    "generatedAt": "2026-11-03T12:08:49Z",
+    "namespace": "",
+    "counts": {
+        "pods": {
+            "total": 18,
+            "running": 13,
+            "ready": 13,
+            "pending": 0,
+            "crashLoop": 1,
+            "imagePull": 1,
+            "createContainerConfigError": 0,
+            "oomKilled": 0,
+            "failed": 0,
+            "terminating": 0,
+            "stuckTerminating": 0,
+            "stuckPending": 0,
+            "notReady": 0,
+            "highRestarts": 1,
+            "completed": 3,
+            "initBlocked": 0
+        },
+        "deployments": {
+            "total": 3,
+            "healthy": 3,
+            "unavailable": 0,
+            "progressDeadlineExceeded": 0,
+            "paused": 0,
+            "rolling": 0
+        },
+        "statefulSets": {
+            "total": 1,
+            "healthy": 1,
+            "notReady": 0
+        },
+        "daemonSets": {
+            "total": 3,
+            "healthy": 3,
+            "notReady": 0
+        },
+        "jobs": {
+            "total": 3,
+            "running": 0,
+            "succeeded": 3,
+            "failed": 0,
+            "longRunning": 0,
+            "suspended": 0
+        },
+        "cronJobs": {
+            "total": 1,
+            "suspended": 0,
+            "failing": 0,
+            "overdue": 0
+        },
+        "nodes": {
+            "total": 1,
+            "ready": 1,
+            "notReady": 0,
+            "pressure": 0,
+            "cordoned": 0
+        },
+        "pvcs": {
+            "total": 1,
+            "bound": 1,
+            "pending": 0,
+            "lost": 0
+        }
+    },
+    "categories": [
+        {
+            "id": "crashLoop",
+            "label": "CrashLoopBackOff",
+            "section": "pods",
+            "severity": "critical",
+            "count": 1
+        },
+        {
+            "id": "imagePull",
+            "label": "Image pull errors",
+            "section": "pods",
+            "severity": "critical",
+            "count": 1
+        }
+    ],
+    "issues": [
+        {
+            "severity": "critical",
+            "category": "imagePull",
+            "kind": "Pod",
+            "group": "",
+            "namespace": "demo",
+            "name": "bad-image",
+            "reason": "ImagePullBackOff",
+            "message": "container app, image registry.invalid/nope:latest: Back-off pulling image \"registry.invalid/nope:latest\"",
+            "since": "2026-11-03T11:22:57Z"
+        },
+        {
+            "severity": "critical",
+            "category": "crashLoop",
+            "kind": "Pod",
+            "group": "",
+            "namespace": "demo",
+            "name": "crashy",
+            "reason": "CrashLoopBackOff",
+            "message": "container app last terminated: exit 3, Error; 13 restarts",
+            "since": "2026-11-03T11:22:57Z",
+            "count": 13
+        }
+    ],
+    "nodes": [
+        {
+            "name": "k8sman-dev-control-plane",
+            "ready": true,
+            "cordoned": false,
+            "roles": [
+                "control-plane"
+            ],
+            "version": "v1.25.2",
+            "pods": 15
+        }
+    ],
+    "topWarnings": [
+        {
+            "reason": "BackOff",
+            "count": 186,
+            "objects": 1,
+            "latestMessage": "Back-off restarting failed container",
+            "lastSeen": "2026-11-03T12:07:06Z",
+            "example": {
+                "kind": "Pod",
+                "group": "",
+                "namespace": "demo",
+                "name": "crashy"
+            }
+        },
+        {
+            "reason": "FailedGetResourceMetric",
+            "count": 161,
+            "objects": 1,
+            "latestMessage": "failed to get cpu utilization: unable to get metrics for resource cpu: unable to fetch metrics from resource metrics API: the server could not find the requested resource (get pods.metrics.k8s.io)",
+            "lastSeen": "2026-11-03T12:07:09Z",
+            "example": {
+                "kind": "HorizontalPodAutoscaler",
+                "group": "autoscaling",
+                "namespace": "demo",
+                "name": "web"
+            }
+        },
+        {
+            "reason": "Unhealthy",
+            "count": 54,
+            "objects": 9,
+            "latestMessage": "Readiness probe failed: Get \"http://10.244.0.25:8080/\": dial tcp 10.244.0.25:8080: connect: connection refused",
+            "lastSeen": "2026-11-03T11:49:59Z",
+            "example": {
+                "kind": "Pod",
+                "group": "",
+                "namespace": "demo",
+                "name": "web-674c948f66-v8w6m"
+            }
+        },
+        {
+            "reason": "Failed",
+            "count": 14,
+            "objects": 1,
+            "latestMessage": "Error: ImagePullBackOff",
+            "lastSeen": "2026-11-03T11:24:53Z",
+            "example": {
+                "kind": "Pod",
+                "group": "",
+                "namespace": "demo",
+                "name": "bad-image"
+            }
+        },
+        {
+            "reason": "FailedComputeMetricsReplicas",
+            "count": 12,
+            "objects": 1,
+            "latestMessage": "invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: unable to get metrics for resource cpu: unable to fetch metrics from resource metrics API: the server could not find the requested resource (get pods.metrics.k8s.io)",
+            "lastSeen": "2026-11-03T11:25:58Z",
+            "example": {
+                "kind": "HorizontalPodAutoscaler",
+                "group": "autoscaling",
+                "namespace": "demo",
+                "name": "web"
+            }
+        },
+        {
+            "reason": "NodeNotReady",
+            "count": 4,
+            "objects": 4,
+            "latestMessage": "Node is not ready",
+            "lastSeen": "2026-11-03T11:18:51Z",
+            "example": {
+                "kind": "Pod",
+                "group": "",
+                "namespace": "kube-system",
+                "name": "etcd-k8sman-dev-control-plane"
+            }
+        },
+        {
+            "reason": "UnexpectedJob",
+            "count": 3,
+            "objects": 1,
+            "latestMessage": "Saw a job that the controller did not create or forgot: report-manual-706565",
+            "lastSeen": "2026-11-03T11:49:29Z",
+            "example": {
+                "kind": "CronJob",
+                "group": "batch",
+                "namespace": "demo",
+                "name": "report"
+            }
+        },
+        {
+            "reason": "FailedScheduling",
+            "count": 3,
+            "objects": 3,
+            "latestMessage": "0/1 nodes are available: 1 node(s) had untolerated taint {node.kubernetes.io/not-ready: }. preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.",
+            "lastSeen": "2026-11-03T11:18:52Z",
+            "example": {
+                "kind": "Pod",
+                "group": "",
+                "namespace": "kube-system",
+                "name": "coredns-565d847f94-qfldd"
+            }
+        },
+        {
+            "reason": "FailedToCreateEndpoint",
+            "count": 1,
+            "objects": 1,
+            "latestMessage": "Failed to create endpoint for service demo/web: endpoints \"web\" already exists",
+            "lastSeen": "2026-11-03T11:22:57Z",
+            "example": {
+                "kind": "Endpoints",
+                "group": "",
+                "namespace": "default",
+                "name": "web"
+            }
+        }
+    ]
+}
