@@ -1,10 +1,9 @@
 /// Client and models for `GET /api/overview` (cluster health summary).
 library;
 
-import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 
+import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../util/k8s.dart';
@@ -13,33 +12,12 @@ import '../../util/k8s.dart';
 /// reusing its base URL. Tests subclass this to serve canned JSON.
 class OverviewApi {
   final ApiClient api;
-  final http.Client? _http;
-  OverviewApi(this.api, {http.Client? httpClient}) : _http = httpClient;
+  final BackendHttp _http;
+  OverviewApi(this.api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/', httpClient: httpClient);
 
   /// [namespace] null or empty = all namespaces.
-  Future<OverviewData> fetch({String? namespace}) async {
-    final uri = api.base.replace(
-      path: '/api/overview',
-      queryParameters: namespace == null || namespace.isEmpty ? null : {'namespace': namespace},
-    );
-    final client = _http ?? http.Client();
-    try {
-      final res = await client.get(uri);
-      if (res.statusCode >= 400) {
-        var msg = res.body;
-        String? reason;
-        try {
-          final j = jsonDecode(res.body) as Map;
-          msg = '${j['error'] ?? msg}';
-          reason = j['reason'] as String?;
-        } catch (_) {}
-        throw ApiException(res.statusCode, msg, reason: reason);
-      }
-      return OverviewData.fromJson(Map<String, dynamic>.from(jsonDecode(res.body) as Map));
-    } finally {
-      if (_http == null) client.close();
-    }
-  }
+  Future<OverviewData> fetch({String? namespace}) async =>
+      OverviewData.fromJson(jsonObjectBody(await _http.get('overview', {'namespace': namespace})));
 }
 
 enum IssueSeverity {

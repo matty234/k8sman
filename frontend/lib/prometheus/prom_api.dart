@@ -3,10 +3,9 @@
 /// state, and PromQL queries. See docs/PROMETHEUS.md.
 library;
 
-import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 
+import '../api/backend_http.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../util/k8s.dart';
@@ -15,8 +14,8 @@ import '../util/k8s.dart';
 /// base URL. Tests subclass it (or set [debugOverride]) to serve canned JSON.
 class PromApi {
   final ApiClient api;
-  final http.Client _http;
-  PromApi(this.api, {http.Client? httpClient}) : _http = httpClient ?? http.Client();
+  final BackendHttp _http;
+  PromApi(this.api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/prom/', httpClient: httpClient);
 
   /// Tests: replaces the instance [PromApi.of] hands out.
   static PromApi Function(ApiClient api)? debugOverride;
@@ -27,39 +26,10 @@ class PromApi {
   /// availability check below is cached across panels).
   static PromApi of(ApiClient api) => debugOverride?.call(api) ?? (_byClient[api] ??= PromApi(api));
 
-  Uri _uri(String path, [Map<String, String?> query = const {}]) {
-    final q = <String, String>{
-      for (final e in query.entries)
-        if (e.value != null && e.value!.isNotEmpty) e.key: e.value!,
-    };
-    return api.base.replace(path: '/api/prom/$path', queryParameters: q.isEmpty ? null : q);
-  }
+  Future<dynamic> getJson(String path, [Map<String, String?> query = const {}]) async => jsonBody(await _http.get(path, query));
 
-  Future<dynamic> getJson(String path, [Map<String, String?> query = const {}]) async => _decode(await _http.get(_uri(path, query)));
-
-  Future<dynamic> send(String method, String path, {Map<String, String?> query = const {}, Object? body}) async {
-    final req = http.Request(method, _uri(path, query));
-    if (body != null) {
-      req.headers['Content-Type'] = 'application/json';
-      req.body = jsonEncode(body);
-    }
-    return _decode(await http.Response.fromStream(await _http.send(req)));
-  }
-
-  static dynamic _decode(http.Response res) {
-    if (res.statusCode >= 400) {
-      var msg = res.body;
-      String? reason;
-      try {
-        final j = jsonDecode(res.body) as Map;
-        msg = '${j['error'] ?? msg}';
-        reason = j['reason'] as String?;
-      } catch (_) {}
-      throw ApiException(res.statusCode, msg, reason: reason);
-    }
-    if (res.body.isEmpty) return null;
-    return jsonDecode(res.body);
-  }
+  Future<dynamic> send(String method, String path, {Map<String, String?> query = const {}, Object? body}) async =>
+      jsonBody(await _http.send(method, path, query: query, body: body));
 
   // ---- endpoints ----
 
