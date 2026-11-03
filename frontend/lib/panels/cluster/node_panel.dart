@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../gpu/gpu_sections.dart';
 import '../../prometheus/metric_history_chart.dart';
 import '../../metrics/node_usage.dart';
 import '../../ui/theme.dart';
@@ -28,6 +29,7 @@ class NodePanel extends ResourcePanel {
       DetailSection(title: 'Node status', icon: Icons.dns_outlined, child: _StatusBlock(ctx)),
       _NodePods(key: ValueKey(ctx.uid), api: ctx.api, nodeName: ctx.name, allocatable: asMap(status['allocatable'])),
       nodeHistory(ctx),
+      gpuNodeSection(ctx),
       DetailSection(
         title: 'Conditions',
         icon: Icons.fact_check_outlined,

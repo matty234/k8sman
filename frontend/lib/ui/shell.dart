@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app/window_chrome.dart';
+import '../gpu/gpu_view.dart';
 import '../metrics/metrics_page.dart';
 import '../state/app_state.dart';
 import '../state/cluster_error.dart';
@@ -94,6 +95,7 @@ class _ShellState extends State<Shell> {
                         MainView.overview => const OverviewView(),
                         MainView.alerts => const AlertsView(),
                         MainView.nodes => const NodesView(),
+                        MainView.gpus => const GpusView(),
                         MainView.security => const SecurityView(),
                         MainView.metrics => const MetricsPage(),
                         MainView.portForwards => const PortForwardView(),
