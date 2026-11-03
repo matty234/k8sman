@@ -128,7 +128,7 @@ class _LiveObjectState extends State<_LiveObject> {
                     child: TabBarView(children: [
                       ListView(
                         key: PageStorageKey('overview-${ctx!.uid}'),
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                         children: [
                           MetadataSection(ctx: ctx),
                           ..._safeSections(context, panel, ctx),
@@ -215,25 +215,28 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
-      child: Row(children: [
-        if (app.canGoBack) IconButton(tooltip: 'Back', icon: const Icon(Icons.arrow_back, size: 18), onPressed: app.back),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Chipish(text: target.type.kind, color: theme.colorScheme.primaryContainer),
-              if (target.namespace != null) ...[const SizedBox(width: 6), Text(target.namespace!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))],
-              if (deleted) ...[const SizedBox(width: 6), const StatusBadge('Deleted', severity: Severity.error, dense: true)],
+    final meta = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w400);
+    return WindowDragArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
+        child: Row(children: [
+          if (app.canGoBack) IconButton(tooltip: 'Back', icon: const Icon(Icons.chevron_left, size: 20), onPressed: app.back),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text(target.type.kind, style: meta?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
+                if (target.namespace != null) ...[Text('  ·  ', style: meta), Flexible(child: Text(target.namespace!, overflow: TextOverflow.ellipsis, style: meta))],
+                if (deleted) ...[const SizedBox(width: 8), const StatusBadge('Deleted', severity: Severity.error, dense: true)],
+              ]),
+              const SizedBox(height: 2),
+              SelectableText(target.name, maxLines: 1, style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
             ]),
-            const SizedBox(height: 3),
-            SelectableText(target.name, maxLines: 1, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-          ]),
-        ),
-        IconButton(tooltip: 'Copy name', icon: const Icon(Icons.copy, size: 16), onPressed: () => copyToClipboard(context, target.name)),
-        IconButton(tooltip: 'Close (Esc)', icon: const Icon(Icons.close, size: 18), onPressed: app.closeDetail),
-      ]),
+          ),
+          IconButton(tooltip: 'Copy name', icon: const Icon(Icons.copy_rounded, size: 14), onPressed: () => copyToClipboard(context, target.name)),
+          IconButton(tooltip: 'Close (Esc)', icon: const Icon(Icons.close, size: 16), onPressed: app.closeDetail),
+        ]),
+      ),
     );
   }
 }

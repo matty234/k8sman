@@ -7,7 +7,10 @@ import 'overview/overview_view.dart';
 import 'portforward/portforward_view.dart';
 import 'resource_nav.dart';
 import 'resource_table.dart';
+import 'theme.dart';
 import 'widgets/common.dart';
+
+const _navWidth = 232.0;
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -22,48 +25,70 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    if (app.loading && app.types.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    if (app.loading && app.types.isEmpty) {
+      return const Scaffold(body: WindowDragArea(child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator()))));
+    }
     if (app.error != null && app.types.isEmpty) {
       return Scaffold(
-        body: Center(
-          child: SizedBox(
-            width: 520,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              InlineMessage('Cannot reach the k8sman backend: ${app.error}', isError: true),
-              const SizedBox(height: 8),
-              const Text('Start it with `make backend` (listens on 127.0.0.1:7443).'),
-              const SizedBox(height: 12),
-              FilledButton(onPressed: app.init, child: const Text('Retry')),
-            ]),
+        body: WindowDragArea(
+          child: Center(
+            child: SizedBox(
+              width: 460,
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Cannot reach the k8sman backend', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                InlineMessage('${app.error}', isError: true),
+                const SizedBox(height: 8),
+                Text('Start it with `make backend` (listens on 127.0.0.1:7443).', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                const SizedBox(height: 16),
+                FilledButton(onPressed: app.init, child: const Text('Retry')),
+              ]),
+            ),
           ),
         ),
       );
     }
     final type = app.selectedType;
     return Scaffold(
+      // On macOS the nav shows the window's sidebar vibrancy through.
+      backgroundColor: nativeMacChrome ? Colors.transparent : null,
       body: LayoutBuilder(builder: (context, box) {
-        final maxSidebar = (box.maxWidth - 220 - 360).clamp(320.0, 1400.0);
+        final maxSidebar = (box.maxWidth - _navWidth - 360).clamp(320.0, 1400.0);
         final sidebar = _sidebarWidth.clamp(320.0, maxSidebar);
         return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const SizedBox(width: 220, child: ResourceNav()),
-          const VerticalDivider(width: 1),
+          const SizedBox(width: _navWidth, child: ResourceNav()),
+          Container(width: 1, color: colors.separator),
           Expanded(
-            child: switch (app.view) {
-              MainView.overview => const OverviewView(),
-              MainView.portForwards => const PortForwardView(),
-              MainView.resources => type == null ? const Center(child: Text('Select a resource kind')) : ResourceTableView(type: type),
-            },
+            child: ColoredBox(
+              color: theme.colorScheme.surface,
+              child: switch (app.view) {
+                MainView.overview => const OverviewView(),
+                MainView.portForwards => const PortForwardView(),
+                MainView.resources => type == null
+                    ? WindowDragArea(child: Center(child: Text('Select a resource kind', style: TextStyle(color: theme.hintColor))))
+                    : ResourceTableView(type: type),
+              },
+            ),
           ),
           if (app.detail != null) ...[
+            // Hairline splitter with a wider grab area.
             MouseRegion(
               cursor: SystemMouseCursors.resizeColumn,
               child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
+                behavior: HitTestBehavior.opaque,
                 onHorizontalDragUpdate: (d) => setState(() => _sidebarWidth = (sidebar - d.delta.dx).clamp(320.0, maxSidebar)),
-                child: const SizedBox(width: 5, child: VerticalDivider(width: 5)),
+                child: SizedBox(
+                  width: 5,
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Container(width: 1, color: colors.separator),
+                    Expanded(child: ColoredBox(color: colors.inspector)),
+                  ]),
+                ),
               ),
             ),
-            SizedBox(width: sidebar, child: const DetailSidebar()),
+            SizedBox(width: sidebar - 4, child: ColoredBox(color: colors.inspector, child: const DetailSidebar())),
           ],
         ]);
       }),

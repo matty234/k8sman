@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../api/models.dart';
 import '../state/app_state.dart';
+import 'theme.dart';
+import 'widgets/common.dart';
 
 /// Curated groups for built-in kinds, in display order. Anything not listed
 /// lands in "Custom Resources" (CRDs, grouped by API group) or "Other".
@@ -18,6 +20,42 @@ const _curated = <String, List<String>>{
     'rbac.authorization.k8s.io/RoleBinding',
     'rbac.authorization.k8s.io/ClusterRoleBinding',
   ],
+};
+
+/// Source-list glyphs for well-known kinds (others get a generic one).
+const _kindIcons = <String, IconData>{
+  '/Pod': Icons.view_in_ar_outlined,
+  'apps/Deployment': Icons.layers_outlined,
+  'apps/StatefulSet': Icons.storage_outlined,
+  'apps/DaemonSet': Icons.grid_view,
+  'apps/ReplicaSet': Icons.copy_all_outlined,
+  'batch/Job': Icons.play_circle_outline,
+  'batch/CronJob': Icons.schedule,
+  '/Service': Icons.lan_outlined,
+  'networking.k8s.io/Ingress': Icons.login,
+  'networking.k8s.io/IngressClass': Icons.category_outlined,
+  'discovery.k8s.io/EndpointSlice': Icons.hub_outlined,
+  '/Endpoints': Icons.scatter_plot_outlined,
+  'networking.k8s.io/NetworkPolicy': Icons.shield_outlined,
+  '/ConfigMap': Icons.description_outlined,
+  '/Secret': Icons.key_outlined,
+  '/ServiceAccount': Icons.badge_outlined,
+  'autoscaling/HorizontalPodAutoscaler': Icons.open_in_full,
+  '/ResourceQuota': Icons.pie_chart_outline,
+  '/LimitRange': Icons.straighten,
+  'policy/PodDisruptionBudget': Icons.health_and_safety_outlined,
+  '/PersistentVolumeClaim': Icons.sd_storage_outlined,
+  '/PersistentVolume': Icons.album_outlined,
+  'storage.k8s.io/StorageClass': Icons.inventory_2_outlined,
+  '/Node': Icons.dns_outlined,
+  '/Namespace': Icons.folder_outlined,
+  '/Event': Icons.bolt_outlined,
+  'apiextensions.k8s.io/CustomResourceDefinition': Icons.extension_outlined,
+  'apiregistration.k8s.io/APIService': Icons.api,
+  'rbac.authorization.k8s.io/Role': Icons.person_outline,
+  'rbac.authorization.k8s.io/ClusterRole': Icons.admin_panel_settings_outlined,
+  'rbac.authorization.k8s.io/RoleBinding': Icons.link,
+  'rbac.authorization.k8s.io/ClusterRoleBinding': Icons.add_link,
 };
 
 class ResourceNav extends StatefulWidget {
@@ -45,18 +83,37 @@ class _ResourceNavState extends State<ResourceNav> {
         t.shortNames.any((s) => s == q);
 
     return Container(
-      color: theme.colorScheme.surfaceContainerLowest,
-      child: Column(children: [
+      // Over the window's vibrancy on macOS; opaque elsewhere.
+      color: nativeMacChrome ? Colors.transparent : AppColors.of(context).sidebar,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Unified titlebar row: traffic lights live here on macOS.
+        WindowDragArea(
+          child: SizedBox(
+            height: titlebarHeight,
+            child: Row(children: [
+              const Spacer(),
+              IconButton(
+                tooltip: 'Rediscover API resources',
+                icon: const Icon(Icons.refresh),
+                onPressed: () => app.refreshTypes(),
+              ),
+              const SizedBox(width: 8),
+            ]),
+          ),
+        ),
         const _ContextPicker(),
-        _ViewItem(icon: Icons.monitor_heart_outlined, label: 'Overview', view: MainView.overview, selected: app.view == MainView.overview),
+        const SizedBox(height: 6),
+        _ViewItem(icon: Icons.space_dashboard_outlined, label: 'Overview', view: MainView.overview, selected: app.view == MainView.overview),
         _ViewItem(icon: Icons.swap_horiz, label: 'Port Forwards', view: MainView.portForwards, selected: app.view == MainView.portForwards),
-        const SizedBox(height: 4),
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-          child: TextField(
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 16), hintText: 'Find kind…'),
-            style: theme.textTheme.bodySmall,
-            onChanged: (v) => setState(() => _query = v.trim()),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
+          child: SizedBox(
+            height: 26,
+            child: TextField(
+              decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Find kind'),
+              style: theme.textTheme.bodyMedium,
+              onChanged: (v) => setState(() => _query = v.trim()),
+            ),
           ),
         ),
         Expanded(
@@ -118,17 +175,62 @@ class _GroupHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return InkWell(
+    final faint = AppColors.of(context).faint;
+    return Hoverable(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+      cursor: SystemMouseCursors.basic,
+      builder: (h) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 14, 4),
         child: Row(children: [
           Expanded(
-            child: Text(title.toUpperCase(),
+            child: Text(title,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, letterSpacing: 0.8, fontWeight: FontWeight.w700)),
+                style: theme.textTheme.labelSmall?.copyWith(color: faint, fontWeight: FontWeight.w600, letterSpacing: 0.1)),
           ),
-          Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 14, color: theme.hintColor),
+          // Like Finder: the disclosure shows on hover (and when collapsed).
+          if (h || collapsed) Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 14, color: h ? theme.hintColor : faint),
+        ]),
+      ),
+    );
+  }
+}
+
+/// A source-list row: inset, rounded, hover + accent-tinted selection.
+class _SourceListItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget? trailing;
+  const _SourceListItem({required this.icon, required this.label, required this.selected, required this.onTap, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    return Hoverable(
+      onTap: onTap,
+      cursor: SystemMouseCursors.basic,
+      builder: (h) => Container(
+        height: 26,
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 0.5),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: selected ? colors.selection : (h ? colors.hover : null),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Row(children: [
+          Icon(icon, size: 15, color: selected ? theme.colorScheme.primary : theme.hintColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: selected ? FontWeight.w500 : FontWeight.w400),
+            ),
+          ),
+          ?trailing,
         ]),
       ),
     );
@@ -142,24 +244,13 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: Material(
-        color: selected ? theme.colorScheme.primaryContainer.withValues(alpha: 0.6) : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () => context.read<AppState>().selectType(type),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(children: [
-              Expanded(child: Text(type.kind, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium)),
-              if (!type.namespaced) Tooltip(message: 'Cluster-scoped', child: Icon(Icons.public, size: 12, color: theme.hintColor)),
-            ]),
-          ),
-        ),
-      ),
+    final faint = AppColors.of(context).faint;
+    return _SourceListItem(
+      icon: _kindIcons[type.gk] ?? (type.custom ? Icons.extension_outlined : Icons.article_outlined),
+      label: type.kind,
+      selected: selected,
+      onTap: () => context.read<AppState>().selectType(type),
+      trailing: type.namespaced ? null : Tooltip(message: 'Cluster-scoped', child: Icon(Icons.public, size: 11, color: faint)),
     );
   }
 }
@@ -172,30 +263,11 @@ class _ViewItem extends StatelessWidget {
   const _ViewItem({required this.icon, required this.label, required this.view, required this.selected});
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: Material(
-        color: selected ? theme.colorScheme.primaryContainer.withValues(alpha: 0.6) : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () => context.read<AppState>().showView(view),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(children: [
-              Icon(icon, size: 16, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      _SourceListItem(icon: icon, label: label, selected: selected, onTap: () => context.read<AppState>().showView(view));
 }
 
+/// Cluster context switcher, styled like a workspace switcher.
 class _ContextPicker extends StatelessWidget {
   const _ContextPicker();
 
@@ -203,33 +275,48 @@ class _ContextPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    final current = app.contexts.any((c) => c.name == app.currentContext) ? app.currentContext : null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
-      child: Row(children: [
-        Icon(Icons.hub_outlined, size: 18, color: theme.colorScheme.primary),
-        const SizedBox(width: 6),
-        Expanded(
-          child: DropdownButton<String>(
-            isExpanded: true,
-            isDense: true,
-            underline: const SizedBox.shrink(),
-            value: app.contexts.any((c) => c.name == app.currentContext) ? app.currentContext : null,
-            hint: const Text('context'),
-            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-            items: [
-              for (final c in app.contexts) DropdownMenuItem(value: c.name, child: Text(c.name, overflow: TextOverflow.ellipsis)),
-            ],
-            onChanged: (v) => v != null && v != app.currentContext ? app.switchContext(v) : null,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: MenuButton<String>(
+        tooltip: 'Switch cluster context',
+        onSelected: (v) => v != app.currentContext ? app.switchContext(v) : null,
+        items: () => [
+          for (final c in app.contexts)
+            PopupMenuItem(
+              value: c.name,
+              height: 28,
+              child: Row(children: [
+                SizedBox(width: 18, child: c.name == app.currentContext ? Icon(Icons.check, size: 14, color: theme.colorScheme.primary) : null),
+                Flexible(child: Text(c.name, overflow: TextOverflow.ellipsis)),
+              ]),
+            ),
+        ],
+        builder: (h) => Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(color: h ? colors.hover : null, borderRadius: BorderRadius.circular(6)),
+            child: Row(children: [
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(color: theme.colorScheme.primary, borderRadius: BorderRadius.circular(5)),
+                child: const Icon(Icons.hub, size: 13, color: Colors.white),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  current ?? 'Select context',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
+            ]),
           ),
-        ),
-        IconButton(
-          tooltip: 'Rediscover API resources',
-          iconSize: 16,
-          visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.refresh),
-          onPressed: () => app.refreshTypes(),
-        ),
-      ]),
+      ),
     );
   }
 }

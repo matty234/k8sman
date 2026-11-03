@@ -142,13 +142,13 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
                 ? Padding(padding: const EdgeInsets.all(24), child: InlineMessage(_error!, isError: true))
                 : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                      padding: const EdgeInsets.fromLTRB(20, 14, 12, 12),
                       child: Row(children: [
-                        Text('Columns · ${widget.type.kind}', style: theme.textTheme.titleLarge),
+                        Text('Columns · ${widget.type.kind}', style: theme.textTheme.titleMedium),
                         const SizedBox(width: 12),
                         Text('jq expressions evaluated against each object', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
                         const Spacer(),
-                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop(false)),
+                        IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () => Navigator.of(context).pop(false)),
                       ]),
                     ),
                     const Divider(),
@@ -163,18 +163,27 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
                     SizedBox(height: 210, child: _previewTable(context)),
                     const Divider(),
                     Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.fromLTRB(12, 10, 16, 12),
                       child: Row(children: [
-                        TextButton.icon(onPressed: _reset, icon: const Icon(Icons.restart_alt), label: const Text('Reset to defaults')),
+                        TextButton.icon(onPressed: _reset, icon: const Icon(Icons.restart_alt, size: 15), label: const Text('Reset to defaults')),
                         const SizedBox(width: 8),
-                        PopupMenuButton<ColumnDef>(
+                        MenuButton<ColumnDef>(
                           tooltip: 'Add a default column',
                           onSelected: _add,
-                          itemBuilder: (_) => [for (final d in _defaults) PopupMenuItem(value: d, child: Text(d.name))],
-                          child: const Padding(padding: EdgeInsets.all(8), child: Row(mainAxisSize: MainAxisSize.min, children: [Text('Add default column'), Icon(Icons.arrow_drop_down, size: 18)])),
+                          items: () => [for (final d in _defaults) PopupMenuItem(value: d, height: 28, child: Text(d.name))],
+                          builder: (h) => Container(
+                            height: 28,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(color: h ? AppColors.of(context).hover : null, borderRadius: BorderRadius.circular(6)),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Text('Add default column', style: theme.textTheme.labelLarge),
+                              const SizedBox(width: 4),
+                              Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
+                            ]),
+                          ),
                         ),
                         const Spacer(),
-                        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+                        OutlinedButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
                         const SizedBox(width: 8),
                         FilledButton(onPressed: _saving ? null : _save, child: const Text('Save')),
                       ]),
@@ -185,10 +194,24 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
   }
 
   Widget _columnList(BuildContext context) {
+    final theme = Theme.of(context);
+    final head = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Row(children: [
+          const SizedBox(width: 24),
+          SizedBox(width: 150, child: Text('Name', style: head)),
+          const SizedBox(width: 8),
+          Expanded(child: Text('jq query', style: head)),
+          const SizedBox(width: 8),
+          SizedBox(width: 120, child: Text('Type', style: head)),
+          const SizedBox(width: 30),
+        ]),
+      ),
       Expanded(
         child: ReorderableListView.builder(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           buildDefaultDragHandles: false,
           itemCount: _cols.length,
           onReorderItem: (a, b) {
@@ -200,13 +223,23 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
             final err = _preview?.columnErrors[i];
             return Padding(
               key: c.key,
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: 6),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                ReorderableDragStartListener(index: i, child: const Padding(padding: EdgeInsets.only(top: 8), child: Icon(Icons.drag_indicator, size: 18))),
-                const SizedBox(width: 6),
+                ReorderableDragStartListener(
+                  index: i,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.grab,
+                    child: SizedBox(width: 24, height: 28, child: Icon(Icons.drag_indicator, size: 16, color: AppColors.of(context).faint)),
+                  ),
+                ),
                 SizedBox(
                   width: 150,
-                  child: TextField(controller: c.name, decoration: const InputDecoration(labelText: 'Name'), onChanged: (_) => _schedulePreview()),
+                  child: TextField(
+                    controller: c.name,
+                    style: theme.textTheme.bodyMedium,
+                    decoration: const InputDecoration(hintText: 'Name'),
+                    onChanged: (_) => _schedulePreview(),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -214,25 +247,30 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
                     controller: c.query,
                     minLines: 1,
                     maxLines: 4,
-                    style: monoStyle(context),
-                    decoration: InputDecoration(labelText: 'jq query', errorText: err, errorMaxLines: 3),
+                    style: monoStyle(context, size: 12),
+                    decoration: InputDecoration(hintText: '.path.to.field', errorText: err, errorMaxLines: 3),
                     onChanged: (_) => _schedulePreview(),
                   ),
                 ),
                 const SizedBox(width: 8),
                 SizedBox(
-                  width: 128,
+                  width: 120,
                   child: DropdownButtonFormField<String>(
                     isExpanded: true,
+                    isDense: true,
                     initialValue: _types.contains(c.type) ? c.type : 'string',
-                    decoration: const InputDecoration(labelText: 'Type'),
+                    style: theme.textTheme.bodyMedium,
+                    icon: Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
+                    borderRadius: BorderRadius.circular(8),
+                    decoration: const InputDecoration(),
                     items: [for (final t in _types) DropdownMenuItem(value: t, child: Text(t, overflow: TextOverflow.ellipsis))],
                     onChanged: (v) => setState(() => c.type = v ?? 'string'),
                   ),
                 ),
+                const SizedBox(width: 4),
                 IconButton(
                   tooltip: 'Remove',
-                  icon: const Icon(Icons.delete_outline, size: 18),
+                  icon: const Icon(Icons.remove_circle_outline, size: 15),
                   onPressed: () {
                     setState(() => _cols.removeAt(i).dispose());
                     _schedulePreview();
@@ -244,10 +282,10 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
         ),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
         child: Align(
           alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
+          child: TextButton.icon(
             icon: const Icon(Icons.add),
             label: const Text('Add column'),
             onPressed: () => _add(const ColumnDef(name: 'New', query: '.metadata.name')),
@@ -273,7 +311,7 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
           dataRowMinHeight: 24,
           dataRowMaxHeight: 28,
           columnSpacing: 18,
-          columns: [for (final c in p.columns) DataColumn(label: Text(c.name, style: theme.textTheme.labelSmall))],
+          columns: [for (final c in p.columns) DataColumn(label: Text(c.name, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)))],
           rows: [
             for (final r in p.rows)
               DataRow(cells: [
@@ -358,11 +396,11 @@ class _FieldPickerState extends State<_FieldPicker> {
     final visible = _paths.where((p) => q.isEmpty || p.$1.toLowerCase().contains(q)).take(400).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
         child: Text('Fields from a sample object', style: theme.textTheme.titleSmall),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
         child: TextField(
           decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 16), hintText: 'e.g. image, replicas'),
           onChanged: (v) => setState(() => _q = v),

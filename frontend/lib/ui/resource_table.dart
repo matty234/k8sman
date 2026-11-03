@@ -45,7 +45,7 @@ class _TableBodyState extends State<_TableBody> {
   final _focus = FocusNode();
   Timer? _ageTicker;
 
-  static const _rowHeight = 30.0;
+  static const _rowHeight = 28.0;
 
   @override
   void initState() {
@@ -87,7 +87,7 @@ class _TableBodyState extends State<_TableBody> {
               : LayoutBuilder(
                   builder: (context, box) {
                     final widths = _columnWidths(tc.columns, box.maxWidth);
-                    final total = widths.fold<double>(0, (a, b) => a + b) + 12; // + left gutter
+                    final total = widths.fold<double>(0, (a, b) => a + b) + 18; // + gutters
                     return Scrollbar(
                       controller: _hScroll,
                       child: SingleChildScrollView(
@@ -112,6 +112,7 @@ class _TableBodyState extends State<_TableBody> {
                                           controller: _vScroll,
                                           child: ListView.builder(
                                             controller: _vScroll,
+                                            padding: const EdgeInsets.only(top: 4, bottom: 8),
                                             itemExtent: _rowHeight,
                                             itemCount: rows.length,
                                             itemBuilder: (context, i) => _Row(
@@ -209,93 +210,124 @@ class _Toolbar extends StatelessWidget {
   final int shown;
   const _Toolbar({required this.controller, required this.shown});
 
+  static const _allNamespaces = '\u0000all';
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final theme = Theme.of(context);
+    final colors = AppColors.of(context);
     final t = controller.type;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
-      child: Row(
-        children: [
-          // Title block shrinks (ellipsis) before the controls do.
-          Expanded(
-            flex: 2,
-            child: Row(
-              children: [
+    final count = shown == controller.totalCount ? '$shown' : '$shown of ${controller.totalCount}';
+    final ns = app.namespaces.contains(app.namespace) ? app.namespace : null;
+    return WindowDragArea(
+      child: SizedBox(
+        height: titlebarHeight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
+          child: Row(
+            children: [
+              // Title block shrinks (ellipsis) before the controls do.
+              Expanded(
+                flex: 2,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        t.kind,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: theme.textTheme.titleLarge,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(count, maxLines: 1, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()])),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        t.apiVersion,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: theme.textTheme.labelSmall?.copyWith(color: colors.faint, fontWeight: FontWeight.w400),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (t.namespaced) ...[
                 Flexible(
-                  child: Text(
-                    t.kind,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                  flex: 2,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 190),
+                    child: MenuButton<String>(
+                      tooltip: 'Namespace',
+                      onSelected: (v) => app.setNamespace(v == _allNamespaces ? null : v),
+                      items: () => [
+                        _nsItem(context, _allNamespaces, 'All namespaces', ns == null),
+                        const PopupMenuDivider(height: 9),
+                        for (final n in app.namespaces) _nsItem(context, n, n, n == ns),
+                      ],
+                      builder: (h) => Container(
+                        height: 26,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: theme.inputDecorationTheme.fillColor?.withValues(alpha: h ? 0.14 : null),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(children: [
+                          Icon(Icons.folder_outlined, size: 14, color: theme.hintColor),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(ns ?? 'All namespaces', overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodyMedium),
+                          ),
+                          Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
+                        ]),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    t.apiVersion,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                    style: monoStyle(context, size: 11, color: theme.hintColor),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Chipish(text: shown == controller.totalCount ? '$shown' : '$shown / ${controller.totalCount}'),
               ],
-            ),
-          ),
-          if (t.namespaced) ...[
-            Flexible(
-              flex: 2,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 200),
-                child: DropdownButtonFormField<String?>(
-                  initialValue: app.namespaces.contains(app.namespace) ? app.namespace : null,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.folder_outlined, size: 16),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              Flexible(
+                flex: 3,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 240),
+                  child: SizedBox(
+                    height: 26,
+                    child: TextField(
+                      decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Filter  (or column=value)'),
+                      style: theme.textTheme.bodyMedium,
+                      onChanged: controller.setFilter,
+                    ),
                   ),
-                  style: theme.textTheme.bodySmall,
-                  items: [
-                    const DropdownMenuItem<String?>(value: null, child: Text('All namespaces')),
-                    for (final ns in app.namespaces)
-                      DropdownMenuItem<String?>(
-                        value: ns,
-                        child: Text(ns, overflow: TextOverflow.ellipsis),
-                      ),
-                  ],
-                  onChanged: app.setNamespace,
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            flex: 3,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 260),
-              child: TextField(
-                decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_list, size: 16), hintText: 'Filter (or column=value)'),
-                style: theme.textTheme.bodySmall,
-                onChanged: controller.setFilter,
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: controller.isDefaultColumns ? 'Customise columns' : 'Customise columns (customised)',
+                icon: Badge(isLabelVisible: !controller.isDefaultColumns, smallSize: 6, child: const Icon(Icons.view_column_outlined)),
+                onPressed: () async {
+                  final changed = await showColumnEditor(context, type: t, namespace: app.namespace);
+                  if (changed == true) app.columnsChanged();
+                },
               ),
-            ),
+            ],
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: controller.isDefaultColumns ? 'Customise columns' : 'Customise columns (customised)',
-            icon: Badge(isLabelVisible: !controller.isDefaultColumns, smallSize: 6, child: const Icon(Icons.view_column_outlined)),
-            onPressed: () async {
-              final changed = await showColumnEditor(context, type: t, namespace: app.namespace);
-              if (changed == true) app.columnsChanged();
-            },
-          ),
-        ],
+        ),
       ),
     );
   }
+
+  static PopupMenuItem<String> _nsItem(BuildContext context, String value, String label, bool selected) => PopupMenuItem(
+        value: value,
+        height: 26,
+        child: Row(children: [
+          SizedBox(width: 18, child: selected ? Icon(Icons.check, size: 14, color: Theme.of(context).colorScheme.primary) : null),
+          Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+        ]),
+      );
 }
 
 class _Header extends StatelessWidget {
@@ -306,27 +338,37 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final style = theme.textTheme.labelMedium?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w700);
+    final style = theme.textTheme.labelMedium?.copyWith(color: theme.hintColor);
     return SizedBox(
-      height: 32,
+      height: 28,
       child: Row(
         children: [
           const SizedBox(width: 12),
           for (var i = 0; i < controller.columns.length; i++)
             SizedBox(
               width: widths[i],
-              child: InkWell(
+              child: Hoverable(
+                cursor: SystemMouseCursors.basic,
                 onTap: () => controller.sortBy(i),
-                child: Padding(
+                builder: (h) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Row(
                     mainAxisAlignment: controller.columns[i].type == 'number' ? MainAxisAlignment.end : MainAxisAlignment.start,
                     children: [
                       Flexible(
-                        child: Text(controller.columns[i].name.toUpperCase(), overflow: TextOverflow.ellipsis, style: style),
+                        child: Text(
+                          controller.columns[i].name,
+                          overflow: TextOverflow.ellipsis,
+                          style: style?.copyWith(
+                            color: h || controller.sortColumn == i ? theme.colorScheme.onSurface : null,
+                            fontWeight: controller.sortColumn == i ? FontWeight.w600 : null,
+                          ),
+                        ),
                       ),
-                      if (controller.sortColumn == i)
-                        Icon(controller.sortAscending ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: theme.hintColor),
+                      if (controller.sortColumn == i) ...[
+                        const SizedBox(width: 2),
+                        Icon(controller.sortAscending ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 14, color: theme.hintColor),
+                      ],
                       if (controller.columnErrors[i] != null)
                         Tooltip(
                           message: 'jq error: ${controller.columnErrors[i]}\n${controller.columns[i].query}',
@@ -354,19 +396,25 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final bg = selected
-        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.55)
-        : striped
-        ? theme.colorScheme.surfaceContainerLow.withValues(alpha: 0.5)
-        : Colors.transparent;
-    return Material(
-      color: bg,
-      child: InkWell(
-        onTap: onTap,
+    final colors = AppColors.of(context);
+    return Hoverable(
+      cursor: SystemMouseCursors.basic,
+      onTap: onTap,
+      builder: (hovered) => Container(
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.only(left: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? colors.selection
+              : hovered
+                  ? colors.hover
+                  : striped
+                      ? colors.stripe
+                      : null,
+          borderRadius: BorderRadius.circular(5),
+        ),
         child: Row(
           children: [
-            const SizedBox(width: 12),
             for (var i = 0; i < columns.length; i++)
               SizedBox(
                 width: widths[i],
@@ -381,7 +429,6 @@ class _Row extends StatelessWidget {
     );
   }
 }
-
 /// Renders one cell according to its column's type hint.
 class TableCellView extends StatelessWidget {
   final dynamic value;
@@ -392,7 +439,7 @@ class TableCellView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final base = theme.textTheme.bodySmall?.copyWith(fontWeight: emphasise ? FontWeight.w600 : null);
+    final base = theme.textTheme.bodyMedium?.copyWith(fontSize: 12.5, fontWeight: emphasise ? FontWeight.w500 : null);
     final v = value;
     if (v == null) return const SizedBox.shrink();
     switch (column.type) {
@@ -400,7 +447,7 @@ class TableCellView extends StatelessWidget {
         final t = parseTime(v);
         return Tooltip(
           message: t?.toLocal().toString() ?? '$v',
-          child: Text(t != null ? formatAge(t) : '$v', style: base),
+          child: Text(t != null ? formatAge(t) : '$v', style: base?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()])),
         );
       case 'status':
         final s = _text(v);

@@ -121,12 +121,17 @@ Future<AppState> pumpPanel(
   await tester.pumpWidget(MultiProvider(
     providers: [Provider<ApiClient>.value(value: client), ChangeNotifierProvider<AppState>.value(value: app)],
     child: MaterialApp(
+      debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.dark),
-      home: Scaffold(
-        body: Builder(builder: (context) {
-          final ctx = PanelContext(object: object, type: t, api: client, app: app);
-          return ListView(padding: const EdgeInsets.all(12), children: panel.buildSections(context, ctx));
-        }),
+      home: Builder(
+        // Same background and padding as the sidebar's Overview tab.
+        builder: (context) => Scaffold(
+          backgroundColor: AppColors.of(context).inspector,
+          body: Builder(builder: (context) {
+            final ctx = PanelContext(object: object, type: t, api: client, app: app);
+            return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), children: panel.buildSections(context, ctx));
+          }),
+        ),
       ),
     ),
   ));
@@ -135,7 +140,14 @@ Future<AppState> pumpPanel(
 }
 
 /// Renders one of the panel's extra tabs (by label).
-Future<void> pumpPanelTab(WidgetTester tester, Json object, String tabLabel, {ApiClient? api, ResourceType? type}) async {
+Future<void> pumpPanelTab(
+  WidgetTester tester,
+  Json object,
+  String tabLabel, {
+  ApiClient? api,
+  ResourceType? type,
+  Size size = const Size(900, 1400),
+}) async {
   final apiVersion = '${object['apiVersion']}';
   final group = apiVersion.contains('/') ? apiVersion.split('/').first : '';
   final t = type ?? testType(group, '${object['kind']}');
@@ -143,12 +155,16 @@ Future<void> pumpPanelTab(WidgetTester tester, Json object, String tabLabel, {Ap
   final app = AppState(client)..types = testTypes;
   final ctx = PanelContext(object: object, type: t, api: client, app: app);
   final tab = panelFor(t).tabs(ctx).firstWhere((x) => x.label == tabLabel);
-  tester.view.physicalSize = const Size(900, 1400);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MultiProvider(
     providers: [Provider<ApiClient>.value(value: client), ChangeNotifierProvider<AppState>.value(value: app)],
-    child: MaterialApp(theme: buildTheme(Brightness.dark), home: Scaffold(body: Builder(builder: (c) => tab.builder(c, ctx)))),
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(Brightness.dark),
+      home: Scaffold(body: Builder(builder: (c) => tab.builder(c, ctx))),
+    ),
   ));
   await tester.pump(const Duration(milliseconds: 100));
 }
