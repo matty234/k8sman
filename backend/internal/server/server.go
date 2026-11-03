@@ -55,6 +55,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.actionRoutes()
 	s.overviewRoutes()
 	s.kubeconfigRoutes()
+	s.execRoutes()
 	return s
 }
 

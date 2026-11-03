@@ -5,6 +5,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../actions/actions.dart';
 import '../../ui/logs/open_logs.dart';
+import '../../ui/terminal/open_terminal.dart';
 import '../panel.dart';
 import 'widgets/pod_template.dart';
 import 'widgets/pods_list.dart';
@@ -34,7 +35,7 @@ class DaemonSetPanel extends ResourcePanel {
   Set<String> get kinds => const {'apps/DaemonSet'};
 
   @override
-  List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx)];
+  List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx), workloadTerminalAction(ctx)];
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {

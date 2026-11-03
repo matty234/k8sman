@@ -193,6 +193,6 @@ void main() {
     final pod = fixture('pod-web');
     final ctx = PanelContext(object: pod, type: testType('', 'Pod'), api: FakeApiClient(), app: AppState(FakeApiClient()));
     expect(const PodPanel().tabs(ctx), isEmpty);
-    expect(const PodPanel().actions(ctx).map((a) => a.id), ['logs']);
+    expect(const PodPanel().actions(ctx).map((a) => a.id), ['logs', 'terminal']);
   });
 }

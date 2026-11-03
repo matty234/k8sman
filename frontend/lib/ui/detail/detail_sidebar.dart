@@ -10,6 +10,7 @@ import '../../panels/registry.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../logs/open_logs.dart';
+import '../terminal/open_terminal.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../portforward/portforward_dialog.dart';
@@ -162,11 +163,13 @@ class _LiveObjectState extends State<_LiveObject> {
     final extra = panel.actions(ctx);
     final logs = extra.where((a) => a.id == kLogsActionId).toList();
     if (app.readOnly) return logs;
+    final terminal = extra.where((a) => a.id == kTerminalActionId);
     return [
       ...logs,
+      ...terminal,
       if (portForwardKinds.containsKey(t.type.gk)) portForwardAction(ctx),
       ...standardActions(ctx),
-      ...extra.where((a) => a.id != kLogsActionId),
+      ...extra.where((a) => a.id != kLogsActionId && a.id != kTerminalActionId),
     ];
   }
 

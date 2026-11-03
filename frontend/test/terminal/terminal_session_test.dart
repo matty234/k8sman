@@ -1,0 +1,229 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/ui/terminal/exec_protocol.dart';
+import 'package:k8sman/ui/terminal/terminal_session.dart';
+import 'package:k8sman/ui/terminal/terminal_tab.dart';
+
+import '../support/screenshot.dart';
+import 'fake_exec.dart';
+
+/// Stream events land in a microtask after the frame; pump once more to render them.
+Future<void> flush(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump();
+}
+
+String screenText(TerminalTab t) => [for (var i = 0; i < t.terminal.buffer.lines.length; i++) t.terminal.buffer.lines[i].toString()].join('\n');
+
+void main() {
+  testWidgets('output renders into the terminal buffer (UTF-8 split across frames)', (tester) async {
+    final transport = FakeExecTransport();
+    final tab = newTab(transport);
+    await pumpDock(tester, tabs: [tab]);
+    final c = transport.last;
+    c.emit(const ExecStarted('nginx', ['/bin/sh']));
+    c.output('hello \x1b[32mworld\x1b[0m\r\n');
+    // "é" split over two frames must still decode.
+    c.emit(ExecOutput(Uint8List.fromList([0x63, 0x61, 0x66, 0xC3])));
+    c.emit(ExecOutput(Uint8List.fromList([0xA9, 0x0D, 0x0A])));
+    await flush(tester);
+    expect(tab.phase, TerminalPhase.running);
+    expect(screenText(tab), contains('hello world'));
+    expect(screenText(tab), contains('café'));
+    expect(find.byKey(const ValueKey('terminal-view')), findsOneWidget);
+    expect(find.textContaining('connected'), findsOneWidget);
+    tab.dispose();
+  });
+
+  testWidgets('typed input is sent as binary frames', (tester) async {
+    final transport = FakeExecTransport();
+    final tab = newTab(transport);
+    await pumpDock(tester, tabs: [tab]);
+    final c = transport.last;
+    c.emit(const ExecStarted('nginx', ['/bin/sh']));
+    await flush(tester);
+    await tester.tap(find.byKey(const ValueKey('terminal-view')));
+    await tester.pump(const Duration(milliseconds: 500)); // let the double-tap timer lapse
+    tester.testTextInput.enterText('ls');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await flush(tester);
+    expect(c.inputText, contains('ls'));
+    expect(c.inputText, contains('\r'));
+    expect(c.inputText, contains('\x1b[A'));
+    tab.dispose();
+  });
+
+  testWidgets('resize sends a control frame with the view size', (tester) async {
+    final transport = FakeExecTransport();
+    final tab = newTab(transport);
+    await pumpDock(tester, tabs: [tab], size: const Size(1000, 420));
+    final c = transport.last;
+    expect(c.resizes, isNotEmpty);
+    final first = c.resizes.last;
+    expect(first, (tab.terminal.viewWidth, tab.terminal.viewHeight));
+    expect(first.$1, greaterThan(60)); // ~1000px of 13pt cells (test font)
+
+    tester.view.physicalSize = const Size(600, 420);
+    await flush(tester);
+    final second = c.resizes.last;
+    expect(second.$1, lessThan(first.$1));
+    expect(second, (tab.terminal.viewWidth, tab.terminal.viewHeight));
+    tab.dispose();
+  });
+
+  testWidgets('exit shows the ended state; Restart session reconnects', (tester) async {
+    final transport = FakeExecTransport();
+    final tab = newTab(transport);
+    await pumpDock(tester, tabs: [tab]);
+    transport.last
+      ..emit(const ExecStarted('nginx', ['/bin/sh']))
+      ..emit(const ExecExit(3));
+    await flush(tester);
+    expect(tab.phase, TerminalPhase.exited);
+    expect(find.text('Session ended · exit code 3'), findsOneWidget);
+    expect(screenText(tab), contains('[process exited with code 3]'));
+    expect(transport.last.closed, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('terminal-restart-session')));
+    await flush(tester);
+    expect(transport.connections, hasLength(2));
+    expect(tab.phase, TerminalPhase.connecting);
+    expect(find.byKey(const ValueKey('terminal-state-banner')), findsNothing);
+    tab.dispose();
+  });
+
+  testWidgets('no shell offers a debug container; confirming creates it and execs into it', (tester) async {
+    final transport = FakeExecTransport();
+    final tab = newTab(transport, container: 'pause');
+    await pumpDock(tester, tabs: [tab], size: const Size(1000, 800)); // room for the confirm dialog
+    transport.last.emit(const ExecError(ExecReason.noShell, 'stat /bin/sh: no such file or directory'));
+    await flush(tester);
+    expect(tab.noShell, isTrue);
+    expect(find.text('No shell in container pause'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('terminal-start-debug')));
+    await tester.pumpAndSettle();
+    // The confirmation explains the pod spec change and offers images.
+    expect(find.textContaining('cannot be undone'), findsOneWidget);
+    expect(find.text('nicolaka/netshoot'), findsOneWidget);
+    await tester.tap(find.text('nicolaka/netshoot'));
+    await flush(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Start debug container'));
+    await tester.pumpAndSettle();
+    expect(transport.debugRequests.single, {'namespace': 'demo', 'pod': 'web-6fd47b8fcb-442dt', 'target': 'pause', 'image': 'nicolaka/netshoot'});
+    expect(transport.connections, hasLength(2));
+    expect(transport.last.request.container, 'debugger');
+    expect(tab.debugTarget, 'pause');
+    tab.dispose();
+  });
+
+  testWidgets('read-only hides the debug container button', (tester) async {
+    final transport = FakeExecTransport();
+    final tab = newTab(transport, container: 'pause');
+    await pumpDock(tester, tabs: [tab], readOnly: true);
+    transport.last.emit(const ExecError(ExecReason.noShell, 'no /bin/sh'));
+    await flush(tester);
+    expect(find.byKey(const ValueKey('terminal-start-debug')), findsNothing);
+    tab.dispose();
+  });
+
+  testWidgets('focused terminal keeps plain keys from app shortcuts but lets ⌘J through', (tester) async {
+    final transport = FakeExecTransport();
+    final tab = newTab(transport);
+    var plain = 0, cmdJ = 0;
+    await pumpDock(tester, tabs: [tab], shortcuts: {
+      const SingleActivator(LogicalKeyboardKey.keyJ): () => plain++,
+      const SingleActivator(LogicalKeyboardKey.keyJ, meta: true): () => cmdJ++,
+    });
+    transport.last.emit(const ExecStarted('nginx', ['/bin/sh']));
+    await flush(tester);
+    await tester.tap(find.byKey(const ValueKey('terminal-view')));
+    await tester.pump(const Duration(milliseconds: 500)); // let the double-tap timer lapse
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    expect(plain, 0);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    expect(cmdJ, 1);
+    tab.dispose();
+  });
+
+  testWidgets('dock: terminal tab has its own icon and asks before closing a running session', (tester) async {
+    final transport = FakeExecTransport();
+    final tab = newTab(transport);
+    final (dock, _) = await pumpDock(tester, tabs: [tab]);
+    transport.last.emit(const ExecStarted('nginx', ['/bin/sh']));
+    await flush(tester);
+    expect(find.text('Terminal'), findsOneWidget); // strip title
+    expect(find.descendant(of: find.byKey(ValueKey('dock-tab-${tab.id}')), matching: find.byIcon(Icons.terminal)), findsOneWidget);
+
+    // Collapsing keeps the session alive.
+    dock.setCollapsed(true);
+    await flush(tester);
+    expect(find.byType(TerminalSession), findsNothing);
+    expect(transport.last.closed, isFalse);
+    dock.setCollapsed(false);
+    await flush(tester);
+
+    await tester.tap(find.byKey(ValueKey('dock-tab-close-${tab.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('End the terminal session?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(dock.tabs, [tab]);
+
+    await tester.tap(find.byKey(ValueKey('dock-tab-close-${tab.id}')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-close-terminal')));
+    await tester.pumpAndSettle();
+    expect(dock.tabs, isEmpty);
+    expect(transport.last.closed, isTrue);
+  });
+
+  testWidgets('screenshot: a session in the dock', (tester) async {
+    await loadRealFonts();
+    final transport = FakeExecTransport();
+    final tab = newTab(transport);
+    await pumpDock(tester, tabs: [tab], size: const Size(1100, 380));
+    final c = transport.last;
+    c.emit(const ExecStarted('nginx', ['/bin/sh']));
+    c.output('/ # ls -la /etc/nginx\r\n'
+        'total 48\r\n'
+        'drwxr-xr-x    3 root     root          4096 Oct 28 10:12 \x1b[1;34m.\x1b[0m\r\n'
+        'drwxr-xr-x    1 root     root          4096 Nov  3 11:40 \x1b[1;34m..\x1b[0m\r\n'
+        'drwxr-xr-x    2 root     root          4096 Oct 28 10:12 \x1b[1;34mconf.d\x1b[0m\r\n'
+        '-rw-r--r--    1 root     root          1077 Oct 28 10:12 fastcgi.conf\r\n'
+        '-rw-r--r--    1 root     root           648 Oct 28 10:12 \x1b[32mnginx.conf\x1b[0m\r\n'
+        '/ # echo -e "\\e[38;5;208m256-colour\\e[0m \\e[38;2;120;200;255mtruecolour\\e[0m"\r\n'
+        '\x1b[38;5;208m256-colour\x1b[0m \x1b[38;2;120;200;255mtruecolour\x1b[0m\r\n'
+        '/ # ');
+    await flush(tester);
+    await tester.tap(find.byKey(const ValueKey('terminal-view')));
+    await tester.pump(const Duration(milliseconds: 200));
+    await saveScreenshot(tester, 'terminal-session');
+
+    c.emit(const ExecExit(0));
+    await tester.pump(const Duration(milliseconds: 200));
+    await saveScreenshot(tester, 'terminal-session-exited');
+
+    final t2 = newTab(transport, container: 'pause');
+    t2.terminal.write('');
+    transport.last.emit(const ExecError(ExecReason.noShell, 'OCI runtime exec failed: exec: "/bin/sh": stat /bin/sh: no such file or directory'));
+    await pumpDock(tester, tabs: [t2], size: const Size(1100, 380));
+    await tester.pump(const Duration(milliseconds: 200));
+    await saveScreenshot(tester, 'terminal-session-noshell');
+    tab.dispose();
+    t2.dispose();
+  });
+
+  test('frames round-trip through the tab', () async {
+    final transport = FakeExecTransport();
+    final tab = newTab(transport);
+    tab.terminal.textInput('pwd');
+    expect(utf8.decode(transport.last.input.expand((b) => b).toList()), 'pwd');
+    tab.dispose();
+  });
+}

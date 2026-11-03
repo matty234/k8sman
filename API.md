@@ -3,8 +3,8 @@
 Local-only HTTP/WebSocket API served by `backend/cmd/k8sman-server` on
 `127.0.0.1:7443` by default. The macOS app embeds the server and runs it with
 `--addr 127.0.0.1:0`; the server prints `K8SMAN_LISTENING <addr>` on stdout
-once it listens. Reads are always available. Edits, actions and starting
-port-forwards are refused (403) when the server runs with `--read-only`. The Dart client in
+once it listens. Reads are always available. Edits, actions, starting
+port-forwards, exec and debug containers are refused (403) when the server runs with `--read-only`. The Dart client in
 `frontend/lib/api/client.dart` wraps all of these endpoints.
 
 If no kubeconfig can be loaded at startup the server still runs, disconnected:
@@ -71,6 +71,44 @@ The actions are:
 | `trigger` | CronJobs | creates a Job now; `created` points at it |
 | `cordon` / `uncordon` | Nodes | sets `spec.unschedulable` |
 | `delete` | anything with the delete verb | deletes the object |
+
+## Terminals (exec)
+
+| Method | Path | Purpose |
+|---|---|---|
+| WS | `/api/exec` | interactive TTY in a container. Query: `namespace`, `pod`, `container` (default: the `kubectl.kubernetes.io/default-container` annotation, else the first), `command` (repeat the param per argument, or pass one JSON array such as `["redis-cli","-n","1"]`; exec'd as-is), `shell` (`auto` (default), `bash`, `zsh`, ... used when there's no `command`), `cols`/`rows` (initial size) |
+| POST | `/api/debug-container` | body `{namespace, pod, targetContainer, image}` (image defaults to `busybox:1.36`). Adds an ephemeral container like `kubectl debug -it pod --image=... --target=...` and waits (up to 3m) until it runs. Returns `{name, image, context}`. A fatal start (ErrImagePull, ...) or timeout returns 504 `DebugContainerNotRunning` |
+
+**Shell selection** happens in one exec: without `command`, the server runs
+`/bin/sh -c <script>`. The script sets `TERM=xterm-256color` when it is unset, `dumb` or
+the runtime's default `xterm`, then `exec`s the first of `<shell>`, zsh, bash, ash and sh
+that `command -v` finds.
+
+**Framing.** Binary frames carry raw terminal bytes both ways: client→server is stdin,
+server→client is stdout (the TTY merges stderr). Text frames are JSON control messages:
+
+- client → server: `{type:"resize", cols, rows}`
+- server → client: `{type:"started", container, command}`; then exactly one of
+  `{type:"exit", code}` or `{type:"error", reason, message, code?}`; then the socket closes.
+
+The `reason` for errors is one of:
+
+- `noShell`: auto mode, and `/bin/sh` is missing (distroless) or exited 126/127 before any output. The UI offers a debug container.
+- `commandNotFound`: the same failure for an explicit `command`.
+- `podNotFound`, `containerNotFound`, `containerNotRunning` (checked before exec).
+- `forbidden`: RBAC.
+- `execFailed`: anything else.
+
+Exec uses client-go's WebSocket executor (falling back to SPDY, like kubectl 1.30+).
+Stdin and stdout block end to end, so a slow client applies backpressure to the
+container. Closing the socket ends the exec; the process exiting closes the socket.
+
+Debug containers are exec'd into (`/api/exec?container=debugger`), not attached.
+They are created with `stdin`+`tty` so the image's default shell stays alive, which
+means restart and reconnect work and the shell picker applies. They share the
+target's process namespace (`/proc/1/root` reaches its filesystem when permissions
+allow). Ephemeral containers cannot be removed: they stay until the pod is deleted.
+Names are `debugger`, `debugger-2`, and so on.
 
 ## Port-forwards
 

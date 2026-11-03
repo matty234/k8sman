@@ -4,6 +4,7 @@ Clicking a table row opens the detail sidebar. It has these tabs:
 
 - **Overview**: the shared `MetadataSection`, then your panel's `buildSections()`
 - your panel's extra `tabs()`, if any. Logs are not a tab: they open in the bottom log dock (`lib/ui/logs/open_logs.dart`: `podLogsAction`, `workloadLogsAction`, `openPodLogs`).
+  Terminals open in the same dock (`lib/ui/terminal/open_terminal.dart`: `podTerminalAction`, `workloadTerminalAction`, `openPodTerminal`, `openTerminal`). They are hidden in read-only mode.
 - **YAML** and **Events**, which are shared and need no panel code
 
 ## Contract (`frontend/lib/panels/panel.dart`)
