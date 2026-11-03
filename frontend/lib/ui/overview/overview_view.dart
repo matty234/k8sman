@@ -36,6 +36,10 @@ class _OverviewViewState extends State<OverviewView> {
 
   /// Namespace the current data (or in-flight request) is for.
   String? _ns;
+
+  /// Overview has its own scope (independent of the table's namespace),
+  /// defaulting to all namespaces and remembered for the session.
+  static String? _sessionScope;
   bool _started = false;
 
   OverviewApi get source => _source ??= widget.source ?? OverviewApi(context.read<ApiClient>());
@@ -80,11 +84,9 @@ class _OverviewViewState extends State<OverviewView> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    if (!_started || app.namespace != _ns) {
-      final changed = _started;
+    if (!_started) {
       _started = true;
-      _ns = app.namespace;
-      if (changed) _data = null; // don't show another scope's numbers
+      _ns = _sessionScope;
       scheduleMicrotask(() {
         if (mounted) _refresh();
       });
@@ -94,6 +96,15 @@ class _OverviewViewState extends State<OverviewView> {
 
     final header = OverviewHeader(
       namespace: _ns,
+      namespaces: app.namespaces,
+      onNamespaceChanged: (ns) {
+        if (ns == _ns) return;
+        setState(() {
+          _ns = _sessionScope = ns;
+          _data = null; // don't show another scope's numbers
+        });
+        _refresh();
+      },
       updatedAt: _updatedAt,
       loading: _loading,
       paused: _paused,

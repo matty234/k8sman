@@ -95,9 +95,30 @@ class ResourceNav extends StatefulWidget {
   State<ResourceNav> createState() => _ResourceNavState();
 }
 
+/// Groups shown expanded by default; everything else starts collapsed to
+/// keep the sidebar calm. User toggles are remembered for the session.
+const _expandedByDefault = {'Workloads', 'Network', 'Config'};
+
+/// Pages shown under "More" (the rest are always visible).
+const _morePages = {MainView.metrics, MainView.helm, MainView.portForwards, MainView.addons};
+
+/// Session-wide nav UI state (survives the nav being rebuilt/remounted):
+/// sections the user explicitly opened (true) or closed (false).
+final Map<String, bool> _navExplicit = {};
+bool _navMoreOpen = false;
+
 class _ResourceNavState extends State<ResourceNav> {
   String _query = '';
-  final Set<String> _collapsed = {'Other'};
+
+  /// An explicit open/close always wins. Otherwise the default applies,
+  /// except that a section holding the current selection auto-opens.
+  bool _isCollapsed(String group, {bool holdsSelection = false}) {
+    final explicit = _navExplicit[group];
+    if (explicit != null) return !explicit;
+    return !_expandedByDefault.contains(group) && !holdsSelection;
+  }
+
+  void _toggle(String group, {required bool currentlyCollapsed}) => setState(() => _navExplicit[group] = currentlyCollapsed);
 
   @override
   Widget build(BuildContext context) {
@@ -136,11 +157,16 @@ class _ResourceNavState extends State<ResourceNav> {
         _ViewItem(icon: Icons.space_dashboard_outlined, label: 'Overview', view: MainView.overview, selected: app.view == MainView.overview),
         _ViewItem(icon: Icons.notifications_none, label: 'Alerts', view: MainView.alerts, selected: app.view == MainView.alerts, trailing: const AlertsNavBadge()),
         _ViewItem(icon: Icons.dns_outlined, label: 'Nodes', view: MainView.nodes, selected: app.view == MainView.nodes),
-        _ViewItem(icon: Icons.sailing_outlined, label: 'Helm', view: MainView.helm, selected: app.view == MainView.helm),
         _ViewItem(icon: Icons.shield_outlined, label: 'Security', view: MainView.security, selected: app.view == MainView.security),
-        _ViewItem(icon: Icons.query_stats, label: 'Metrics', view: MainView.metrics, selected: app.view == MainView.metrics),
-        _ViewItem(icon: Icons.swap_horiz, label: 'Port Forwards', view: MainView.portForwards, selected: app.view == MainView.portForwards),
-        _ViewItem(icon: Icons.extension_outlined, label: 'Add-ons', view: MainView.addons, selected: app.view == MainView.addons),
+        // Less-used pages fold under "More" (auto-open when one is active).
+        if (_navMoreOpen || _morePages.contains(app.view)) ...[
+          _ViewItem(icon: Icons.query_stats, label: 'Metrics', view: MainView.metrics, selected: app.view == MainView.metrics),
+          _ViewItem(icon: Icons.sailing_outlined, label: 'Helm', view: MainView.helm, selected: app.view == MainView.helm),
+          _ViewItem(icon: Icons.swap_horiz, label: 'Port Forwards', view: MainView.portForwards, selected: app.view == MainView.portForwards),
+          _ViewItem(icon: Icons.extension_outlined, label: 'Add-ons', view: MainView.addons, selected: app.view == MainView.addons),
+        ],
+        if (!_morePages.contains(app.view))
+          _MoreToggle(open: _navMoreOpen, onTap: () => setState(() => _navMoreOpen = !_navMoreOpen)),
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
           child: SizedBox(
@@ -156,17 +182,28 @@ class _ResourceNavState extends State<ResourceNav> {
           child: ListView(
             padding: const EdgeInsets.only(bottom: 12),
             children: [
-              for (final g in groups.entries)
-                if (g.value.any(matches)) ...[
-                  _GroupHeader(
-                    title: g.key,
-                    group: g.value.first.custom ? g.key : null,
-                    collapsed: q.isEmpty && _collapsed.contains(g.key),
-                    onTap: () => setState(() => _collapsed.contains(g.key) ? _collapsed.remove(g.key) : _collapsed.add(g.key)),
-                  ),
-                  if (q.isNotEmpty || !_collapsed.contains(g.key))
-                    for (final t in g.value.where(matches)) _NavItem(type: t, selected: app.view == MainView.resources && app.selectedType == t),
-                ],
+              for (final (i, g) in groups.entries.indexed) ...() {
+                // Curated sections (incl. CRD-based ones like Argo CD) stand on
+                // their own; only uncurated API groups nest under "Custom Resources".
+                bool isCustomSection(String key) => !_curated.containsKey(key) && key != 'Other';
+                final custom = isCustomSection(g.key);
+                final firstCustom = custom && (i == 0 || !isCustomSection(groups.keys.elementAt(i - 1)));
+                final selectedHere = app.view == MainView.resources && g.value.contains(app.selectedType);
+                final customSelected = app.view == MainView.resources && app.selectedType != null && isCustomSection(groups.entries.firstWhere((e) => e.value.contains(app.selectedType), orElse: () => const MapEntry('', [])).key);
+                final customCollapsed = q.isEmpty && _isCollapsed('Custom Resources', holdsSelection: customSelected);
+                final collapsed = q.isEmpty && _isCollapsed(g.key, holdsSelection: selectedHere);
+                if (!g.value.any(matches)) return const <Widget>[];
+                return [
+                  // One umbrella header for all CRD groups, collapsed by default.
+                  if (firstCustom && q.isEmpty)
+                    _GroupHeader(title: 'Custom Resources', collapsed: customCollapsed, onTap: () => _toggle('Custom Resources', currentlyCollapsed: customCollapsed)),
+                  if (!custom || !customCollapsed || q.isNotEmpty) ...[
+                    _GroupHeader(title: g.key, group: custom ? g.key : null, nested: custom, collapsed: collapsed, onTap: () => _toggle(g.key, currentlyCollapsed: collapsed)),
+                    if (!collapsed)
+                      for (final t in g.value.where(matches)) _NavItem(type: t, nested: custom, selected: app.view == MainView.resources && app.selectedType == t),
+                  ],
+                ];
+              }(),
             ],
           ),
         ),
@@ -210,7 +247,10 @@ class _GroupHeader extends StatelessWidget {
   final String? group;
   final bool collapsed;
   final VoidCallback onTap;
-  const _GroupHeader({required this.title, this.group, required this.collapsed, required this.onTap});
+
+  /// CRD groups nest (indent) under the "Custom Resources" header.
+  final bool nested;
+  const _GroupHeader({required this.title, this.group, required this.collapsed, required this.onTap, this.nested = false});
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +260,7 @@ class _GroupHeader extends StatelessWidget {
       onTap: onTap,
       cursor: SystemMouseCursors.basic,
       builder: (h) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 14, 4),
+        padding: EdgeInsets.fromLTRB(nested ? 26 : 18, nested ? 6 : 14, 14, 4),
         child: Row(children: [
           if (group != null) ...[GroupIcon(group: group!, size: 14), const SizedBox(width: 6)],
           Expanded(
@@ -238,15 +278,17 @@ class _GroupHeader extends StatelessWidget {
 
 /// A source-list row: inset, rounded, hover + accent-tinted selection.
 class _SourceListItem extends StatelessWidget {
-  final IconData icon;
+  /// Null for text-only rows (resource kinds).
+  final IconData? icon;
+
+  /// Left padding inside the row when there's no icon.
+  final double indent;
   final String label;
   final bool selected;
   final VoidCallback onTap;
   final Widget? trailing;
 
-  /// Replaces [icon] (e.g. a custom resource's group icon).
-  final Widget? leading;
-  const _SourceListItem({required this.icon, required this.label, required this.selected, required this.onTap, this.trailing, this.leading});
+  const _SourceListItem({this.icon, required this.label, required this.selected, required this.onTap, this.trailing, this.indent = 10});
 
   @override
   Widget build(BuildContext context) {
@@ -264,8 +306,11 @@ class _SourceListItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(5),
         ),
         child: Row(children: [
-          leading ?? Icon(icon, size: 15, color: selected ? theme.colorScheme.primary : theme.hintColor),
-          const SizedBox(width: 8),
+          if (icon != null) ...[
+            Icon(icon, size: 15, color: selected ? theme.colorScheme.primary : theme.hintColor),
+            const SizedBox(width: 8),
+          ] else
+            SizedBox(width: indent),
           Expanded(
             child: Text(
               label,
@@ -284,18 +329,24 @@ class _SourceListItem extends StatelessWidget {
 class _NavItem extends StatelessWidget {
   final ResourceType type;
   final bool selected;
-  const _NavItem({required this.type, required this.selected});
+
+  /// Items of CRD groups nested under "Custom Resources" indent one level.
+  final bool nested;
+  const _NavItem({required this.type, required this.selected, this.nested = false});
 
   @override
   Widget build(BuildContext context) {
-    final faint = AppColors.of(context).faint;
-    return _SourceListItem(
-      icon: kindIcon(type),
-      leading: type.custom ? kindIconWidget(type) : null,
+    // Text-only rows keep the sidebar calm; scope is in the tooltip.
+    final item = _SourceListItem(
       label: type.kind,
+      indent: nested ? 18 : 10,
       selected: selected,
       onTap: () => context.read<AppState>().selectType(type),
-      trailing: type.namespaced ? null : Tooltip(message: 'Cluster-scoped', child: Icon(Icons.public, size: 11, color: faint)),
+    );
+    return Tooltip(
+      waitDuration: const Duration(milliseconds: 900),
+      message: '${type.kind} · ${type.apiVersion}${type.namespaced ? '' : ' · cluster-scoped'}',
+      child: item,
     );
   }
 }
@@ -314,6 +365,21 @@ class _ViewItem extends StatelessWidget {
 }
 
 /// Cluster context switcher, styled like a workspace switcher.
+/// "More" disclosure for the less-used pages.
+class _MoreToggle extends StatelessWidget {
+  final bool open;
+  final VoidCallback onTap;
+  const _MoreToggle({required this.open, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => _SourceListItem(
+        icon: open ? Icons.expand_less : Icons.more_horiz,
+        label: open ? 'Less' : 'More',
+        selected: false,
+        onTap: onTap,
+      );
+}
+
 class _ContextPicker extends StatelessWidget {
   const _ContextPicker();
 
