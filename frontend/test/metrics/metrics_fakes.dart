@@ -30,6 +30,8 @@ class MetricsFakeApi extends FakeApiClient {
   /// A custom metrics adapter installed.
   final bool customMetrics;
   final List<String> calls = [];
+  /// The `namespace` of each pod metrics request.
+  final podNamespaces = <String?>[];
 
   MetricsFakeApi({this.resourceMetrics = true, this.customMetrics = true, Map<String, List<Json>>? items})
       : super(
@@ -61,6 +63,7 @@ class MetricsFakeApi extends FakeApiClient {
         if (!resourceMetrics) throw notInstalled('metrics.k8s.io');
         return f('nodes.json');
       case 'pods':
+        podNamespaces.add(query['namespace']);
         if (!resourceMetrics) throw notInstalled('metrics.k8s.io');
         return f(query['namespace'] == 'demo' ? 'pods-demo.json' : 'pods-all.json');
       case 'custom/discover':

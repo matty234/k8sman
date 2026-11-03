@@ -15,17 +15,22 @@ import 'package:provider/provider.dart';
 import '../support/harness.dart';
 import '../support/screenshot.dart';
 import 'metrics_fakes.dart';
+import 'package:k8sman/ui/widgets/namespace_picker.dart';
 
 Json _fixture(String path) => Map<String, dynamic>.from(jsonDecode(File(path).readAsStringSync()));
 
 /// Pumps a main-area page at [size] with the given API.
-Future<AppState> _pumpPage(WidgetTester tester, Widget page, ApiClient api, {Size size = const Size(1200, 760), String? namespace = 'demo'}) async {
+Future<AppState> _pumpPage(WidgetTester tester, Widget page, ApiClient api, {Size size = const Size(1200, 760), String? namespace = 'demo', String? scope = 'demo'}) async {
+  // The Metrics page's own scope (session-wide), independent of app.namespace.
+  PageScope.reset();
+  PageScope.set('metrics', scope);
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final app = AppState(api)
     ..types = testTypes
     ..namespace = namespace
+    ..namespaces = ['default', 'demo', 'kube-system']
     ..currentContext = 'kind-k8sman-dev';
   await tester.pumpWidget(MultiProvider(
     providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
@@ -153,6 +158,31 @@ void main() {
       }
       await _resize(tester, 380, 760);
       await saveScreenshot(tester, 'metrics-page-top-narrow');
+    });
+
+    testWidgets('has its own scope: defaults to all namespaces, ignores app.namespace, picker refetches', (tester) async {
+      PageScope.reset();
+      final api = MetricsFakeApi();
+      final app = await _pumpPage(tester, const MetricsPage(), api, namespace: 'kube-system', scope: null);
+      expect(PageScope.of('metrics'), isNull);
+      expect(api.podNamespaces, [null]);
+      expect(find.text('All namespaces'), findsOneWidget);
+
+      // Changing the table's namespace doesn't change the page scope.
+      app.setNamespace('default');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(api.podNamespaces, [null]);
+
+      // Picking a namespace in the header refetches with it.
+      await tester.tap(find.byKey(const ValueKey('page-scope-picker')));
+      await tester.pump();
+      await tester.tap(find.text('demo').last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(api.podNamespaces.last, 'demo');
+      expect(PageScope.of('metrics'), 'demo');
+      PageScope.reset();
     });
 
     testWidgets('Top sorts by CPU and by name', (tester) async {

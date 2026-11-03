@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 
 import '../support/harness.dart';
 import '../support/screenshot.dart';
+import 'package:k8sman/ui/widgets/namespace_picker.dart';
 
 /// Real response captured from the kind dev cluster (`demo` has a
 /// CrashLoopBackOff and an ImagePullBackOff pod).
@@ -53,6 +54,7 @@ Future<(AppState, FakeOverviewApi)> pumpOverview(
   String? namespace,
   ApiClient? api,
 }) async {
+  PageScope.reset(); // Overview's scope is session-wide.
   final client = api ?? RecordingApi();
   final app = AppState(client)
     ..types = testTypes
