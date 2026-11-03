@@ -99,9 +99,13 @@ List<BulkAction> bulkActionsFor(AppState app, ResourceType type, List<TableRowDa
       doing: 'Deleting',
       done: 'Deleted',
       destructive: true,
-      message: isPod && rows.any((r) => !r.controlled)
+      message: !isPod
+          ? 'Dependents are garbage-collected in the background.'
+          : rows.every((r) => !r.controlled)
+          ? 'These pods have no controller and will not come back.'
+          : rows.any((r) => !r.controlled)
           ? '${rows.where((r) => !r.controlled).length} of these $n pods have no controller and will not come back.'
-          : 'Dependents are garbage-collected in the background.',
+          : 'Their controllers will create replacements.',
     ));
   }
   return out;
