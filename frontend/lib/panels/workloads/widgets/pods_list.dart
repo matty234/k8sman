@@ -1,0 +1,215 @@
+import 'package:flutter/material.dart';
+
+import '../../../api/client.dart';
+import '../../../api/models.dart';
+import '../../../ui/widgets/common.dart';
+import '../../../util/k8s.dart';
+import 'util.dart';
+
+const podsRef = ResourceRef(resource: 'pods');
+const replicaSetsRef = ResourceRef(group: 'apps', resource: 'replicasets');
+
+/// Pod status string, same logic as the pod table's Status column:
+/// Terminating, then the first failing init container (`Init:<reason>`),
+/// then the first container waiting/terminated reason, then the phase.
+String podStatus(Json pod) {
+  if (dig(pod, ['metadata', 'deletionTimestamp']) != null) return 'Terminating';
+  for (final s in asMapList(dig(pod, ['status', 'initContainerStatuses']))) {
+    final waiting = dig<Map>(s, ['state', 'waiting']);
+    final term = asMap(dig(s, ['state', 'terminated']));
+    final exit = asInt(term['exitCode']) ?? 0;
+    if (exit != 0 || waiting != null) {
+      return 'Init:${waiting?['reason'] ?? term['reason'] ?? 'Error'}';
+    }
+  }
+  for (final s in asMapList(dig(pod, ['status', 'containerStatuses']))) {
+    final w = dig<String>(s, ['state', 'waiting', 'reason']);
+    if (w != null) return w;
+    final term = dig<Map>(s, ['state', 'terminated']);
+    if (term != null && term['reason'] != null) return '${term['reason']}';
+  }
+  return dig<String>(pod, ['status', 'phase']) ?? 'Unknown';
+}
+
+({int ready, int total}) podReady(Json pod) {
+  final total = asMapList(dig(pod, ['spec', 'containers'])).length;
+  final ready = asMapList(dig(pod, ['status', 'containerStatuses'])).where((s) => s['ready'] == true).length;
+  return (ready: ready, total: total);
+}
+
+int podRestarts(Json pod) =>
+    asMapList(dig(pod, ['status', 'containerStatuses'])).fold(0, (a, s) => a + (asInt(s['restartCount']) ?? 0));
+
+/// Filters [pods] to those owned by any uid in [ownerUids].
+List<Json> filterPodsByOwner(List<Json> pods, Set<String> ownerUids) => [for (final p in pods) if (isOwnedByAny(p, ownerUids)) p];
+
+/// Fetches pods by label selector, optionally restricted to those owned by
+/// [ownerUid] (or, with [viaReplicaSets], owned by ReplicaSets that
+/// [ownerUid] owns — for Deployments). Fetches once per [ownerUid] and again
+/// whenever [refreshKey] changes (pass e.g. observedGeneration + counts).
+class PodsList extends StatefulWidget {
+  final ApiClient api;
+  final String? namespace;
+  final dynamic selector;
+  final String? ownerUid;
+  final bool viaReplicaSets;
+  final String refreshKey;
+  final bool sortByOrdinal;
+  final bool showNode;
+
+  const PodsList({
+    super.key,
+    required this.api,
+    required this.namespace,
+    required this.selector,
+    this.ownerUid,
+    this.viaReplicaSets = false,
+    this.refreshKey = '',
+    this.sortByOrdinal = false,
+    this.showNode = true,
+  });
+
+  @override
+  State<PodsList> createState() => _PodsListState();
+}
+
+class _PodsListState extends State<PodsList> {
+  late Future<List<Json>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  @override
+  void didUpdateWidget(PodsList old) {
+    super.didUpdateWidget(old);
+    if (old.refreshKey != widget.refreshKey ||
+        old.ownerUid != widget.ownerUid ||
+        selectorToString(old.selector) != selectorToString(widget.selector)) {
+      _future = _load(); // build() follows didUpdateWidget
+    }
+  }
+
+  Future<List<Json>> _load() async {
+    final sel = selectorToString(widget.selector);
+    if (sel.isEmpty && widget.ownerUid == null) return const [];
+    final pods = await widget.api.items(podsRef, namespace: widget.namespace, labelSelector: sel.isEmpty ? null : sel);
+    var result = pods;
+    final owner = widget.ownerUid;
+    if (owner != null) {
+      var uids = {owner};
+      if (widget.viaReplicaSets) {
+        final rs = await widget.api.items(replicaSetsRef, namespace: widget.namespace, labelSelector: sel.isEmpty ? null : sel);
+        uids = {for (final r in rs) if (isOwnedByAny(r, {owner})) '${dig(r, ['metadata', 'uid'])}'};
+      }
+      result = filterPodsByOwner(pods, uids);
+    }
+    result = [...result];
+    if (widget.sortByOrdinal) {
+      result.sort((a, b) => (ordinalOf('${dig(a, ['metadata', 'name'])}') ?? 1 << 30)
+          .compareTo(ordinalOf('${dig(b, ['metadata', 'name'])}') ?? 1 << 30));
+    } else {
+      result.sort((a, b) => naturalCompare('${dig(a, ['metadata', 'name'])}', '${dig(b, ['metadata', 'name'])}'));
+    }
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) => AsyncSection<List<Json>>(
+        future: _future,
+        builder: (context, pods) {
+          if (pods.isEmpty) return const InlineMessage('No matching pods');
+          return PodRows(pods: pods, showNode: widget.showNode);
+        },
+      );
+}
+
+/// Compact table of pods: status, name, ready, restarts, node, age.
+class PodRows extends StatelessWidget {
+  final List<Json> pods;
+  final bool showNode;
+  const PodRows({super.key, required this.pods, this.showNode = true});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final head = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor);
+    final counts = <String, int>{};
+    for (final p in pods) {
+      final s = podStatus(p);
+      counts[s] = (counts[s] ?? 0) + 1;
+    }
+    Widget row(List<Widget> cells) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: cells),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Wrap(spacing: 6, runSpacing: 4, children: [
+          for (final e in counts.entries) StatusBadge('${e.value} ${e.key}', severity: severityOf(e.key), dense: true),
+        ]),
+      ),
+      row([
+        Expanded(flex: 1, child: Text('POD', style: head)),
+        SizedBox(width: 100, child: Text('STATUS', style: head)),
+        SizedBox(width: 40, child: Text('READY', style: head)),
+        SizedBox(width: 36, child: Text('RST', style: head, textAlign: TextAlign.right)),
+        if (showNode) ...[const SizedBox(width: 10), Expanded(flex: 1, child: Text('NODE', style: head))],
+        SizedBox(width: 40, child: Text('AGE', style: head, textAlign: TextAlign.right)),
+      ]),
+      const Divider(height: 4),
+      for (final p in pods) _podRow(context, p, row),
+    ]);
+  }
+
+  Widget _podRow(BuildContext context, Json p, Widget Function(List<Widget>) row) {
+    final name = '${dig(p, ['metadata', 'name'])}';
+    final ns = dig<String>(p, ['metadata', 'namespace']);
+    final status = podStatus(p);
+    final r = podReady(p);
+    final restarts = podRestarts(p);
+    final node = dig<String>(p, ['spec', 'nodeName']);
+    final readySev = r.total > 0 && r.ready == r.total ? Severity.ok : (status == 'Succeeded' || status == 'Completed' ? Severity.neutral : Severity.warn);
+    return row([
+      Expanded(flex: 1, child: OneLineLink(ObjectRef(kind: 'Pod', name: name, namespace: ns))),
+      SizedBox(
+        width: 100,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Tooltip(message: status, child: _Badge(status)),
+        ),
+      ),
+      SizedBox(width: 40, child: coloredCount(context, '${r.ready}/${r.total}', readySev)),
+      SizedBox(
+        width: 36,
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: coloredCount(context, '$restarts', restarts > 0 ? (restarts >= 5 ? Severity.error : Severity.warn) : Severity.neutral,
+              bold: restarts > 0),
+        ),
+      ),
+      if (showNode) ...[
+        const SizedBox(width: 10),
+        Expanded(
+          flex: 1,
+          child: node == null ? const HintText('—') : OneLineLink(ObjectRef(kind: 'Node', name: node)),
+        ),
+      ],
+      SizedBox(
+        width: 40,
+        child: Align(alignment: Alignment.centerRight, child: AgeText(dig(p, ['metadata', 'creationTimestamp']))),
+      ),
+    ]);
+  }
+}
+
+/// A StatusBadge that never overflows its slot.
+class _Badge extends StatelessWidget {
+  final String text;
+  const _Badge(this.text);
+  @override
+  Widget build(BuildContext context) => FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: StatusBadge(text, dense: true));
+}
