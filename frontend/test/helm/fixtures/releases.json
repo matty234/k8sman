@@ -1,0 +1,62 @@
+{
+ "releases": [
+  {
+   "name": "api",
+   "namespace": "helm-demo",
+   "revision": 2,
+   "status": "failed",
+   "chart": "k8sman-demo",
+   "chartVersion": "0.3.1",
+   "appVersion": "1.27",
+   "updated": "2026-11-03T12:28:47Z",
+   "description": "Upgrade \"api\" failed: context deadline exceeded"
+  },
+  {
+   "name": "web",
+   "namespace": "helm-demo",
+   "revision": 5,
+   "status": "deployed",
+   "chart": "k8sman-demo",
+   "chartVersion": "0.3.1",
+   "appVersion": "1.27",
+   "updated": "2026-11-03T12:28:29Z",
+   "description": "Pin nginx 1.27.3"
+  },
+  {
+   "name": "cache-only",
+   "namespace": "helm-tools",
+   "revision": 1,
+   "status": "deployed",
+   "chart": "k8sman-demo",
+   "chartVersion": "0.3.1",
+   "appVersion": "1.27",
+   "updated": "2026-11-03T12:29:08Z",
+   "description": "Install complete"
+  },
+  {
+   "name": "worker",
+   "namespace": "helm-tools",
+   "revision": 2,
+   "status": "pending-upgrade",
+   "chart": "k8sman-demo",
+   "chartVersion": "0.3.1",
+   "appVersion": "1.27",
+   "updated": "2026-11-03T12:29:18Z",
+   "description": "Preparing upgrade"
+  },
+  {
+   "name": "metrics-server",
+   "namespace": "kube-system",
+   "revision": 1,
+   "status": "deployed",
+   "chart": "metrics-server",
+   "chartVersion": "3.14.0",
+   "appVersion": "0.9.0",
+   "updated": "2026-11-03T12:36:55Z",
+   "description": "Installed from k8sman"
+  }
+ ],
+ "total": 5,
+ "failed": 1,
+ "pending": 1
+}

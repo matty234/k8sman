@@ -108,6 +108,7 @@ class _ResourceNavState extends State<ResourceNav> {
         const SizedBox(height: 6),
         _ViewItem(icon: Icons.space_dashboard_outlined, label: 'Overview', view: MainView.overview, selected: app.view == MainView.overview),
         _ViewItem(icon: Icons.dns_outlined, label: 'Nodes', view: MainView.nodes, selected: app.view == MainView.nodes),
+        _ViewItem(icon: Icons.sailing_outlined, label: 'Helm', view: MainView.helm, selected: app.view == MainView.helm),
         _ViewItem(icon: Icons.swap_horiz, label: 'Port Forwards', view: MainView.portForwards, selected: app.view == MainView.portForwards),
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),

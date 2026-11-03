@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../state/log_dock.dart';
 import 'detail/detail_sidebar.dart';
 import 'logs/log_dock_view.dart';
+import 'helm/helm_view.dart';
 import 'nodes/nodes_view.dart';
 import 'overview/overview_view.dart';
 import 'portforward/portforward_view.dart';
@@ -87,6 +88,7 @@ class _ShellState extends State<Shell> {
                         MainView.overview => const OverviewView(),
                         MainView.nodes => const NodesView(),
                         MainView.portForwards => const PortForwardView(),
+                        MainView.helm => const HelmView(),
                         MainView.resources => type == null
                             ? WindowDragArea(child: Center(child: Text('Select a resource kind', style: TextStyle(color: theme.hintColor))))
                             : ResourceTableView(type: type),
