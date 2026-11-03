@@ -421,7 +421,7 @@ class ConditionsTable extends StatelessWidget {
   static Severity _condSeverity(Json c) {
     final type = '${c['type']}';
     final status = '${c['status']}';
-    const negative = {'MemoryPressure', 'DiskPressure', 'PIDPressure', 'NetworkUnavailable', 'Failed', 'ReplicaFailure', 'Stalled', 'Degraded'};
+    const negative = {'MemoryPressure', 'DiskPressure', 'PIDPressure', 'NetworkUnavailable', 'Failed', 'ReplicaFailure', 'Stalled', 'Degraded', 'NonStructuralSchema', 'Terminating'};
     final bad = negative.contains(type) || type.endsWith('Failed') || type.endsWith('Error');
     if (status == 'Unknown') return Severity.warn;
     final good = (status == 'True') != bad;
@@ -658,7 +658,7 @@ class AsyncSection<T> extends StatelessWidget {
         future: future,
         builder: (context, snap) {
           if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
-          if (snap.connectionState != ConnectionState.done) {
+          if (snap.connectionState != ConnectionState.done && !snap.hasData) {
             return const Padding(
               padding: EdgeInsets.all(8),
               child: Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))),
