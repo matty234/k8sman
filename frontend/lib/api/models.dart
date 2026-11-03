@@ -165,7 +165,7 @@ class TableData {
 
 /// A frame from /api/watch.
 class WatchMessage {
-  /// SNAPSHOT | ADDED | MODIFIED | DELETED | ERROR
+  /// SNAPSHOT | ADDED | MODIFIED | DELETED | ERROR | BATCH
   final String type;
   final TableData? table;
   final TableRowData? row;
@@ -180,7 +180,11 @@ class WatchMessage {
 
   /// On ERROR: the cluster API server URL.
   final String? host;
-  const WatchMessage({required this.type, this.table, this.row, this.error, this.reason, this.code, this.host});
+
+  /// On BATCH (only with `batch=true`): ADDED/MODIFIED/DELETED frames to
+  /// apply in order, with one UI update for the lot.
+  final List<WatchMessage> events;
+  const WatchMessage({required this.type, this.table, this.row, this.error, this.reason, this.code, this.host, this.events = const []});
 
   factory WatchMessage.fromJson(Json j) => WatchMessage(
         type: j['type'] ?? 'ERROR',
@@ -190,6 +194,7 @@ class WatchMessage {
         reason: j['reason'],
         code: j['code'],
         host: j['host'],
+        events: [for (final e in (j['events'] as List? ?? const [])) WatchMessage.fromJson(Map<String, dynamic>.from(e))],
       );
 }
 

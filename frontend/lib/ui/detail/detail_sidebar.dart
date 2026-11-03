@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +9,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../panels/registry.dart';
 import '../../state/app_state.dart';
+import '../../state/table_controller.dart';
 import '../../util/k8s.dart';
 import '../logs/open_logs.dart';
 import '../terminal/open_terminal.dart';
@@ -60,34 +62,44 @@ class _LiveObjectState extends State<_LiveObject> {
         .read<ApiClient>()
         .watch(t.type.ref, namespace: t.namespace, fieldSelector: 'metadata.name=${t.name}', includeObject: true)
         .listen((m) {
-      setState(() {
-        switch (m.type) {
-          case 'SNAPSHOT':
-            final rows = m.table?.rows ?? const [];
-            if (rows.isEmpty) {
-              _deleted = _object != null;
-              _error ??= _object == null ? 'Not found' : null;
-            } else {
-              _object = rows.first.object;
-              _deleted = false;
-              _error = null;
-            }
-          case 'ADDED' || 'MODIFIED':
-            _object = m.row?.object ?? _object;
-            _deleted = false;
-          case 'DELETED':
-            _deleted = true;
-          case 'ERROR':
-            _error = m.error;
-        }
-      });
+      // A BATCH frame: apply its events in order, rebuild once.
+      setState(() => m.type == 'BATCH' ? m.events.forEach(_apply) : _apply(m));
     }, onError: (Object e) => _reconnect(), onDone: _reconnect);
   }
+
+  void _apply(WatchMessage m) {
+    switch (m.type) {
+      case 'SNAPSHOT':
+        _attempt = 0;
+        final rows = m.table?.rows ?? const [];
+        if (rows.isEmpty) {
+          _deleted = _object != null;
+          _error ??= _object == null ? 'Not found' : null;
+        } else {
+          _object = rows.first.object;
+          _deleted = false;
+          _error = null;
+        }
+      case 'ADDED' || 'MODIFIED':
+        _object = m.row?.object ?? _object;
+        _deleted = false;
+      case 'DELETED':
+        _deleted = true;
+      case 'ERROR':
+        _error = m.error;
+    }
+  }
+
+  /// Consecutive reconnects without a SNAPSHOT in between.
+  int _attempt = 0;
+  static final _random = math.Random();
 
   void _reconnect() {
     if (!mounted) return;
     _retry?.cancel();
-    _retry = Timer(const Duration(seconds: 2), () => mounted ? _subscribe() : null);
+    // Same jittered exponential backoff as the tables (250 ms … 16 s).
+    final delay = TableController.reconnectDelay(_attempt++, _random);
+    _retry = Timer(delay, () => mounted ? _subscribe() : null);
   }
 
   @override

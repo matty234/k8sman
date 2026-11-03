@@ -234,24 +234,51 @@ class ApiClient {
     return u.replace(scheme: u.scheme == 'https' ? 'wss' : 'ws');
   }
 
+  /// One WebSocket per listen. Cancelling the subscription closes the socket
+  /// (and drops anything still in flight); the socket closing ends the stream.
   Stream<Json> _wsStream(Uri uri) {
-    late WebSocketChannel ch;
+    WebSocketChannel? ch;
+    StreamSubscription<dynamic>? sub;
     final controller = StreamController<Json>();
     controller.onListen = () {
-      ch = WebSocketChannel.connect(uri);
-      ch.stream.listen(
-        (m) => controller.add(jsonDecode(m as String) as Json),
+      try {
+        ch = WebSocketChannel.connect(uri);
+      } catch (e, st) {
+        controller.addError(e, st);
+        controller.close();
+        return;
+      }
+      sub = ch!.stream.listen(
+        (m) {
+          try {
+            controller.add(jsonDecode(m as String) as Json);
+          } catch (e, st) {
+            controller.addError(e, st);
+          }
+        },
         onError: controller.addError,
         onDone: controller.close,
       );
     };
-    controller.onCancel = () => ch.sink.close();
+    controller.onCancel = () async {
+      final c = ch, s = sub;
+      ch = null;
+      sub = null;
+      // Closing a socket that is still connecting (or failed to) must not
+      // surface as an unhandled error, nor hold up the cancel.
+      c?.sink.close().catchError((Object _) {});
+      await s?.cancel();
+    };
     return controller.stream;
   }
 
   /// Live table: a SNAPSHOT, then ADDED/MODIFIED/DELETED rows. Use a
   /// `fieldSelector` of `metadata.name=<name>` with [includeObject] to watch
   /// a single object.
+  ///
+  /// Asks for `batch=true`: newer backends may coalesce bursts into BATCH
+  /// frames ([WatchMessage.events]); older ones ignore it and send single
+  /// rows, so consumers must handle both.
   Stream<WatchMessage> watch(ResourceRef r,
           {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
       _wsStream(_ws('watch', {
@@ -260,6 +287,7 @@ class ApiClient {
         'labelSelector': labelSelector,
         'fieldSelector': fieldSelector,
         'includeObject': includeObject ? 'true' : null,
+        'batch': 'true',
       })).map(WatchMessage.fromJson);
 
   /// Container logs, one line per message, ending with eof or error.
