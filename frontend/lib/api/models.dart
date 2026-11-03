@@ -223,3 +223,98 @@ class ObjectRef {
   @override
   String toString() => '$kind/${namespace != null ? '$namespace/' : ''}$name';
 }
+
+class UpdateResult {
+  final bool dryRun;
+  final String resourceVersion;
+  final String yaml;
+  final String context;
+  const UpdateResult({required this.dryRun, required this.resourceVersion, required this.yaml, required this.context});
+  factory UpdateResult.fromJson(Json j) =>
+      UpdateResult(dryRun: j['dryRun'] ?? false, resourceVersion: j['resourceVersion'] ?? '', yaml: j['yaml'] ?? '', context: j['context'] ?? '');
+}
+
+class ActionResult {
+  final String message;
+  final bool dryRun;
+  final String context;
+
+  /// Object created by the action (e.g. the Job from a CronJob trigger).
+  final ObjectRef? created;
+  const ActionResult({required this.message, this.dryRun = false, this.context = '', this.created});
+  factory ActionResult.fromJson(Json j) => ActionResult(
+        message: j['message'] ?? '',
+        dryRun: j['dryRun'] ?? false,
+        context: j['context'] ?? '',
+        created: j['created'] == null
+            ? null
+            : ObjectRef(group: j['created']['group'] ?? '', kind: j['created']['kind'] ?? '', name: j['created']['name'] ?? '', namespace: j['created']['namespace']),
+      );
+}
+
+class PortForward {
+  final String id;
+  final String context;
+  final String namespace;
+  final String kind;
+  final String name;
+  final String port;
+  final int localPort;
+  final String address;
+  final bool autoStart;
+  final String? label;
+
+  /// stopped | starting | active | reconnecting | error
+  final String state;
+  final String? pod;
+  final int? remotePort;
+  final String? error;
+  final DateTime? since;
+  final int reconnects;
+  final int connections;
+  final String? url;
+
+  const PortForward({
+    required this.id,
+    required this.context,
+    required this.namespace,
+    required this.kind,
+    required this.name,
+    required this.port,
+    required this.localPort,
+    this.address = '127.0.0.1',
+    this.autoStart = false,
+    this.label,
+    required this.state,
+    this.pod,
+    this.remotePort,
+    this.error,
+    this.since,
+    this.reconnects = 0,
+    this.connections = 0,
+    this.url,
+  });
+
+  factory PortForward.fromJson(Json j) => PortForward(
+        id: j['id'] ?? '',
+        context: j['context'] ?? '',
+        namespace: j['namespace'] ?? '',
+        kind: j['kind'] ?? '',
+        name: j['name'] ?? '',
+        port: '${j['port'] ?? ''}',
+        localPort: j['localPort'] ?? 0,
+        address: j['address'] ?? '127.0.0.1',
+        autoStart: j['autoStart'] ?? false,
+        label: j['label'],
+        state: j['state'] ?? 'stopped',
+        pod: j['pod'],
+        remotePort: j['remotePort'],
+        error: j['error'],
+        since: j['since'] != null && !(j['since'] as String).startsWith('0001') ? DateTime.tryParse(j['since']) : null,
+        reconnects: j['reconnects'] ?? 0,
+        connections: j['connections'] ?? 0,
+        url: j['url'],
+      );
+
+  String get target => '$kind/$name:$port';
+}

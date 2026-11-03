@@ -1,7 +1,8 @@
 # k8sman backend API
 
 Local-only HTTP/WebSocket API served by `backend/cmd/k8sman-server` on
-`127.0.0.1:7443`. Every cluster call is **read-only**. The Dart client in
+`127.0.0.1:7443`. Reads are always available. Edits, actions and starting
+port-forwards are refused (403) when the server runs with `--read-only`. The Dart client in
 `frontend/lib/api/client.dart` wraps all of these endpoints.
 
 Resource targets use query params `group` (`""` = core), `version` (optional:
@@ -40,3 +41,40 @@ Columns resolve in this order:
 
 Overrides are keyed kubectl-style (`pods`, `deployments.apps`,
 `widgets.example.k8sman.dev`), so they apply across API versions.
+
+## Mutations
+
+| Method | Path | Purpose |
+|---|---|---|
+| PUT | `/api/object?name=[&dryRun=true]` | replace an object from a YAML/JSON body (`kubectl edit` semantics). The body must keep `metadata.resourceVersion`, so a stale edit returns 409 `Conflict`. Validation failures return 422 with `causes:[{field,message}]`. Returns `{dryRun, resourceVersion, yaml, context}` |
+| GET | `/api/actions` | actions supported for a type: `{actions:[...]}` |
+| POST | `/api/actions/{action}?name=` | run an action. Body: `{replicas?, revision?, gracePeriodSeconds?, propagation?, dryRun?}`. Returns `{message, dryRun, context, created?}` |
+
+The actions are:
+
+| Action | Applies to | Effect |
+|---|---|---|
+| `scale` | Deployments, StatefulSets, ReplicaSets, and CRs with a scale subresource | `{replicas}` |
+| `restart` | Deployments, StatefulSets, DaemonSets | stamps the pod template with `restartedAt`, like `kubectl rollout restart` |
+| `pause` / `resume` | Deployments | pauses or resumes the rollout |
+| `rollback` | Deployments | `{revision}` (0 = previous), like `kubectl rollout undo` |
+| `suspend` / `unsuspend` | Jobs, CronJobs | sets `spec.suspend` |
+| `trigger` | CronJobs | creates a Job now; `created` points at it |
+| `cordon` / `uncordon` | Nodes | sets `spec.unschedulable` |
+| `delete` | anything with the delete verb | deletes the object |
+
+## Port-forwards
+
+Forwards are persisted to `~/.config/k8sman/portforwards.json` and supervised.
+Each one resolves to a ready pod (for services: the selector, with
+`targetPort` mapped like kubectl does; for workloads: their selector). It watches
+that pod and reconnects to a fresh pod with backoff if the pod or stream dies.
+Forwards with `autoStart` start when the backend launches.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/portforwards` | `{forwards:[{id, context, namespace, kind, name, port, localPort, address, autoStart, label, state, pod, remotePort, error, since, reconnects, connections, url}]}`. `state` is `stopped`, `starting`, `active`, `reconnecting` or `error` |
+| POST | `/api/portforwards` | create: `{namespace, kind: pod/service/deployment/statefulset/daemonset/replicaset, name, port (number or name), localPort (0 = auto), autoStart, label}` |
+| PATCH | `/api/portforwards/{id}` | `{autoStart?, label?, localPort?}` |
+| POST | `/api/portforwards/{id}/start`, `/api/portforwards/{id}/stop` | start or stop a forward |
+| DELETE | `/api/portforwards/{id}` | stop and forget a forward |

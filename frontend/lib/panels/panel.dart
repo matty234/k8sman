@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../actions/actions.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../state/app_state.dart';
@@ -47,4 +48,10 @@ abstract class ResourcePanel {
 
   /// Optional extra tabs (e.g. Logs for pods).
   List<PanelTab> tabs(PanelContext ctx) => const [];
+
+  /// Extra header actions beyond [standardActions] (scale/restart/delete/…,
+  /// which the sidebar already shows for the relevant kinds). For inline
+  /// controls inside sections use `ScaleControl` / `ActionButton` from
+  /// `lib/actions/actions.dart`.
+  List<ResourceAction> actions(PanelContext ctx) => const [];
 }

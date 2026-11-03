@@ -257,7 +257,11 @@ class CodeBlock extends StatelessWidget {
   final String text;
   final int? maxLines;
   final bool wrap;
-  const CodeBlock(this.text, {super.key, this.maxLines, this.wrap = true});
+
+  /// What the copy button copies (defaults to [text]); use when [text] is a
+  /// truncated/pretty-printed rendering of a longer value.
+  final String? copyValue;
+  const CodeBlock(this.text, {super.key, this.maxLines, this.wrap = true, this.copyValue});
 
   @override
   Widget build(BuildContext context) {
@@ -278,7 +282,7 @@ class CodeBlock extends StatelessWidget {
             visualDensity: VisualDensity.compact,
             tooltip: 'Copy',
             icon: const Icon(Icons.copy),
-            onPressed: () => copyToClipboard(context, text),
+            onPressed: () => copyToClipboard(context, copyValue ?? text),
           ),
         ),
       ]),
@@ -422,7 +426,7 @@ class AsyncSection<T> extends StatelessWidget {
         future: future,
         builder: (context, snap) {
           if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
-          if (!snap.hasData) {
+          if (snap.connectionState != ConnectionState.done) {
             return const Padding(
               padding: EdgeInsets.all(8),
               child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
@@ -433,9 +437,12 @@ class AsyncSection<T> extends StatelessWidget {
       );
 }
 
-void copyToClipboard(BuildContext context, String text) {
+/// Copies [text]. The snackbar echoes the value unless [label] is given —
+/// always pass a label for sensitive values (e.g. `label: 'decoded API_TOKEN'`).
+void copyToClipboard(BuildContext context, String text, {String? label}) {
   Clipboard.setData(ClipboardData(text: text));
+  final shown = label ?? (text.length > 40 ? '${text.substring(0, 40)}…' : text);
   ScaffoldMessenger.maybeOf(context)
     ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text('Copied ${text.length > 40 ? '${text.substring(0, 40)}…' : text}'), duration: const Duration(seconds: 1)));
+    ..showSnackBar(SnackBar(content: Text('Copied $shown'), duration: const Duration(seconds: 1)));
 }

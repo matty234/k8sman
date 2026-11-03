@@ -1,0 +1,30 @@
+[
+ {
+  "apiVersion": "rbac.authorization.k8s.io/v1",
+  "kind": "ClusterRoleBinding",
+  "metadata": {
+   "annotations": {
+    "rbac.authorization.kubernetes.io/autoupdate": "true"
+   },
+   "creationTimestamp": "2026-11-03T11:18:35Z",
+   "labels": {
+    "kubernetes.io/bootstrapping": "rbac-defaults"
+   },
+   "name": "cluster-admin",
+   "resourceVersion": "134",
+   "uid": "359fa61e-3b59-44ff-8863-ce3d05139de4"
+  },
+  "roleRef": {
+   "apiGroup": "rbac.authorization.k8s.io",
+   "kind": "ClusterRole",
+   "name": "cluster-admin"
+  },
+  "subjects": [
+   {
+    "apiGroup": "rbac.authorization.k8s.io",
+    "kind": "Group",
+    "name": "system:masters"
+   }
+  ]
+ }
+]

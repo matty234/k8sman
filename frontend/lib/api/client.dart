@@ -9,7 +9,14 @@ import 'models.dart';
 class ApiException implements Exception {
   final int status;
   final String message;
-  ApiException(this.status, this.message);
+
+  /// Kubernetes StatusReason, e.g. Conflict, Invalid, Forbidden.
+  final String? reason;
+
+  /// Field-level validation causes: {field, message, reason}.
+  final List<Map<String, dynamic>> causes;
+  ApiException(this.status, this.message, {this.reason, this.causes = const []});
+  bool get isConflict => status == 409;
   bool get isNotFound => status == 404;
   bool get isForbidden => status == 403;
   @override
@@ -52,11 +59,17 @@ class ApiClient {
   dynamic _decode(http.Response res) {
     if (res.statusCode >= 400) {
       String msg = res.body;
+      String? reason;
+      var causes = <Map<String, dynamic>>[];
       try {
-        msg = (jsonDecode(res.body) as Map)['error'] ?? msg;
+        final j = jsonDecode(res.body) as Map;
+        msg = j['error'] ?? msg;
+        reason = j['reason'];
+        causes = [for (final c in (j['causes'] as List? ?? const [])) Map<String, dynamic>.from(c)];
       } catch (_) {}
-      throw ApiException(res.statusCode, msg);
+      throw ApiException(res.statusCode, msg, reason: reason, causes: causes);
     }
+    if (res.statusCode == 204 || res.body.isEmpty) return null;
     if (res.headers['content-type']?.contains('json') ?? false) return jsonDecode(res.body);
     return res.body;
   }
@@ -141,6 +154,57 @@ class ApiClient {
   Future<TableData> previewColumns(ResourceRef r, List<ColumnDef> cols, {String? namespace, int limit = 25}) async =>
       TableData.fromJson(await _send('POST', 'columns/preview', {...r.toQuery(), 'namespace': namespace, 'limit': '$limit'},
           {'columns': [for (final c in cols) c.toJson()]}));
+
+  // ---- mutations (disabled when the backend runs --read-only) ----
+
+  /// Replace an object from edited YAML (`kubectl edit` semantics). The YAML
+  /// must keep metadata.resourceVersion; a concurrent change → 409.
+  Future<UpdateResult> updateObject(ResourceRef r, {String? namespace, required String name, required String yaml, bool dryRun = false}) async {
+    final req = http.Request('PUT', _uri('object', {...r.toQuery(), 'namespace': namespace, 'name': name, 'dryRun': dryRun ? 'true' : null}))
+      ..headers['Content-Type'] = 'application/yaml'
+      ..body = yaml;
+    return UpdateResult.fromJson(_decode(await http.Response.fromStream(await _http.send(req))));
+  }
+
+  /// Action names supported for a type (scale, restart, delete, ...).
+  Future<List<String>> availableActions(ResourceRef r) async =>
+      List<String>.from(((await _get('actions', r.toQuery())) as Json)['actions'] ?? const []);
+
+  /// Run an action, e.g. `runAction(ref, namespace: ns, name: n, action: 'scale', body: {'replicas': 3})`.
+  Future<ActionResult> runAction(ResourceRef r, {String? namespace, required String name, required String action, Json body = const {}}) async =>
+      ActionResult.fromJson(await _send('POST', 'actions/$action', {...r.toQuery(), 'namespace': namespace, 'name': name}, body));
+
+  Future<List<PortForward>> portForwards() async =>
+      [for (final f in (((await _get('portforwards')) as Json)['forwards'] as List? ?? const [])) PortForward.fromJson(f)];
+
+  /// [kind]: pod | service | deployment | statefulset | daemonset | replicaset.
+  /// [port]: remote port number or name (service port for services).
+  /// [localPort] 0 = same as remote if free, else a free port.
+  Future<PortForward> createPortForward({
+    required String namespace,
+    required String kind,
+    required String name,
+    required String port,
+    int localPort = 0,
+    bool autoStart = false,
+    String? label,
+  }) async =>
+      PortForward.fromJson(await _send('POST', 'portforwards', const {}, {
+        'namespace': namespace,
+        'kind': kind,
+        'name': name,
+        'port': port,
+        'localPort': localPort,
+        'autoStart': autoStart,
+        'label': ?label,
+      }));
+
+  Future<PortForward> updatePortForward(String id, {bool? autoStart, String? label, int? localPort}) async =>
+      PortForward.fromJson(await _send('PATCH', 'portforwards/$id', const {}, {'autoStart': ?autoStart, 'label': ?label, 'localPort': ?localPort}));
+
+  Future<void> startPortForward(String id) => _send('POST', 'portforwards/$id/start', const {}, null);
+  Future<void> stopPortForward(String id) => _send('POST', 'portforwards/$id/stop', const {}, null);
+  Future<void> deletePortForward(String id) => _send('DELETE', 'portforwards/$id', const {}, null);
 
   // ---- streams ----
 

@@ -40,7 +40,21 @@ so you never touch `registry.dart`.
 - **Fields may be missing.** Use `dig<T>(obj, [...])`, `asMap` and `asMapList`
   from `lib/util/k8s.dart`. Never index blindly. One panel exception is caught
   and shown inline, but don't rely on that.
-- **Read-only.** The backend has no mutating endpoints. Don't add any.
+- **Mutations go through `lib/actions/actions.dart`.** Never call `api.runAction` or `api.updateObject` directly from a panel.
+  - The sidebar header already shows the standard actions for each kind
+    (`standardActions()`): Scale, Restart, Pause/Resume, Roll back, Run now,
+    Suspend, Cordon and Delete. Don't duplicate those as header buttons.
+  - To put actions *in context* inside a section, use the drop-in widgets:
+    - `ScaleControl(ctx)`: a − N + stepper, e.g. next to the replica bar
+    - `ActionButton(ctx, action: 'rollback', body: {'revision': 3}, label: 'Roll back', icon: Icons.history, title: 'Roll back web to revision 3?', destructive: true)`
+  - For anything custom, use `runResourceAction(context, ctx, action, title:, message:, destructive:, body:)`.
+  All of these confirm the action, show the kube context, require typing the
+  name for destructive actions on non-local clusters, and report the result.
+  - Override `actions(ctx)` on your panel only for kind-specific extras that
+    aren't in `standardActions`.
+  - Hide mutating UI when `ctx.app.readOnly` is true.
+  - The available actions are listed in `API.md`. Don't add backend endpoints.
+- **Secrets:** pass `label:` to `copyToClipboard` so the snackbar doesn't echo the value.
 - **Reuse shared widgets** from `lib/ui/widgets/common.dart`: `DetailSection`,
   `KeyValueTable`, `StatusBadge`, `LabelChips`, `Chipish`, `ConditionsTable`,
   `AgeText`, `CodeBlock`, `ResourceLink`, `JsonTree`, `InlineMessage`,

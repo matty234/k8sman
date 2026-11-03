@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../actions/actions.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../panels/registry.dart';
@@ -102,6 +103,7 @@ class _LiveObjectState extends State<_LiveObject> {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _Header(target: t, deleted: _deleted),
+      if (ctx != null && !app.readOnly && !_deleted) _ActionBar(actions: [...standardActions(ctx), ...panel.actions(ctx)]),
       const Divider(),
       Expanded(
         child: obj == null
@@ -153,6 +155,53 @@ class _LiveObjectState extends State<_LiveObject> {
         ...const BasicFallbackPanel().buildSections(context, ctx),
       ];
     }
+  }
+}
+
+/// First few actions as buttons, the rest (and all destructive ones) in a menu.
+class _ActionBar extends StatelessWidget {
+  final List<ResourceAction> actions;
+  const _ActionBar({required this.actions});
+
+  @override
+  Widget build(BuildContext context) {
+    if (actions.isEmpty) return const SizedBox.shrink();
+    final primary = actions.where((a) => !a.destructive).take(3).toList();
+    final rest = actions.where((a) => !primary.contains(a)).toList();
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 6, 8),
+      child: Row(children: [
+        Expanded(
+          child: Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final a in primary)
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                icon: Icon(a.icon, size: 15),
+                label: Text(a.label),
+                onPressed: () => a.run(context),
+              ),
+          ]),
+        ),
+        if (rest.isNotEmpty)
+          PopupMenuButton<ResourceAction>(
+            tooltip: 'More actions',
+            icon: const Icon(Icons.more_horiz, size: 18),
+            onSelected: (a) => a.run(context),
+            itemBuilder: (_) => [
+              for (final a in rest)
+                PopupMenuItem(
+                  value: a,
+                  child: Row(children: [
+                    Icon(a.icon, size: 16, color: a.destructive ? theme.colorScheme.error : null),
+                    const SizedBox(width: 10),
+                    Text(a.label, style: TextStyle(color: a.destructive ? theme.colorScheme.error : null)),
+                  ]),
+                ),
+            ],
+          ),
+      ]),
+    );
   }
 }
 

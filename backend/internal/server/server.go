@@ -22,19 +22,30 @@ import (
 
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/columns"
+	"github.com/bargrove/k8sman/backend/internal/portforward"
 )
 
 // Server wires the HTTP API to a cluster manager and column store.
 type Server struct {
-	mgr   *cluster.Manager
-	store *columns.Store
-	mux   *http.ServeMux
+	mgr      *cluster.Manager
+	store    *columns.Store
+	pf       *portforward.Manager
+	readOnly bool
+	mux      *http.ServeMux
+}
+
+// Options configures optional server behaviour.
+type Options struct {
+	// ReadOnly disables object edits and starting port-forwards.
+	ReadOnly bool
 }
 
 // New builds the server and registers routes.
-func New(mgr *cluster.Manager, store *columns.Store) *Server {
-	s := &Server{mgr: mgr, store: store, mux: http.NewServeMux()}
+func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, opts Options) *Server {
+	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, mux: http.NewServeMux()}
 	s.routes()
+	s.mutationRoutes()
+	s.actionRoutes()
 	return s
 }
 
@@ -83,6 +94,9 @@ func isLocalOrigin(o string) bool {
 type apiError struct {
 	Error string `json:"error"`
 	Code  int    `json:"code"`
+	// Reason is the Kubernetes StatusReason (e.g. Conflict, Invalid).
+	Reason string              `json:"reason,omitempty"`
+	Causes []map[string]string `json:"causes,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -93,15 +107,17 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
+	reason := ""
 	var se apierrors.APIStatus
 	if errors.As(err, &se) {
 		if c := int(se.Status().Code); c >= 400 {
 			status = c
 		}
+		reason = string(se.Status().Reason)
 	} else if errors.Is(err, errBadRequest) {
 		status = http.StatusBadRequest
 	}
-	writeJSON(w, status, apiError{Error: err.Error(), Code: status})
+	writeJSON(w, status, apiError{Error: err.Error(), Code: status, Reason: reason, Causes: statusCauses(err)})
 }
 
 var errBadRequest = errors.New("bad request")
@@ -233,7 +249,7 @@ func (b *tableBuilder) table(rt cluster.ResourceType, isDefault bool, list *unst
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	c := s.mgr.Clients()
-	writeJSON(w, 200, map[string]any{"ok": true, "context": c.Context, "host": c.RESTConfig.Host})
+	writeJSON(w, 200, map[string]any{"ok": true, "context": c.Context, "host": c.RESTConfig.Host, "readOnly": s.readOnly})
 }
 
 func (s *Server) handleContexts(w http.ResponseWriter, r *http.Request) {
