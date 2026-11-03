@@ -203,16 +203,6 @@ func (d *discoverer) get(ctx context.Context, e env, appNs string, refresh bool)
 	return c
 }
 
-func (d *discoverer) forget(contextName string) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	for k := range d.cache {
-		if strings.HasPrefix(k, contextName+"\x00") {
-			delete(d.cache, k)
-		}
-	}
-}
-
 // findService looks for the argocd-server Service in the app's namespace,
 // then cluster-wide, then in "argocd" (when listing all namespaces is
 // forbidden).
