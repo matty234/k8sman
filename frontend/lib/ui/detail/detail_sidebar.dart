@@ -9,9 +9,10 @@ import '../../api/models.dart';
 import '../../panels/registry.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
-import '../theme.dart';
 import '../widgets/common.dart';
+import '../portforward/portforward_dialog.dart';
 import 'metadata_section.dart';
+import 'yaml_editor.dart';
 
 /// Right-hand sidebar for the current [AppState.detail] target. Keeps the
 /// object live via a single-object watch.
@@ -103,7 +104,7 @@ class _LiveObjectState extends State<_LiveObject> {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _Header(target: t, deleted: _deleted),
-      if (ctx != null && !app.readOnly && !_deleted) _ActionBar(actions: [...standardActions(ctx), ...panel.actions(ctx)]),
+      if (ctx != null && !app.readOnly && !_deleted) _ActionBar(actions: [if (portForwardKinds.containsKey(t.type.gk)) portForwardAction(ctx), ...standardActions(ctx), ...panel.actions(ctx)]),
       const Divider(),
       Expanded(
         child: obj == null
@@ -134,7 +135,7 @@ class _LiveObjectState extends State<_LiveObject> {
                         ],
                       ),
                       for (final x in extraTabs) Builder(builder: (c) => x.builder(c, ctx)),
-                      _YamlTab(target: t, resourceVersion: dig<String>(obj, ['metadata', 'resourceVersion']) ?? ''),
+                      YamlEditorTab(key: ValueKey('yaml-${ctx.uid}'), target: t, resourceVersion: dig<String>(obj, ['metadata', 'resourceVersion']) ?? ''),
                       _EventsTab(namespace: t.namespace, uid: ctx.uid),
                     ]),
                   ),
@@ -234,53 +235,6 @@ class _Header extends StatelessWidget {
         IconButton(tooltip: 'Close (Esc)', icon: const Icon(Icons.close, size: 18), onPressed: app.closeDetail),
       ]),
     );
-  }
-}
-
-class _YamlTab extends StatefulWidget {
-  final DetailTarget target;
-  final String resourceVersion;
-  const _YamlTab({required this.target, required this.resourceVersion});
-
-  @override
-  State<_YamlTab> createState() => _YamlTabState();
-}
-
-class _YamlTabState extends State<_YamlTab> {
-  late Future<String> _future = _fetch();
-  bool _managed = false;
-
-  Future<String> _fetch() => context.read<ApiClient>().objectYaml(widget.target.type.ref, namespace: widget.target.namespace, name: widget.target.name, managedFields: _managed);
-
-  @override
-  void didUpdateWidget(covariant _YamlTab old) {
-    super.didUpdateWidget(old);
-    if (old.resourceVersion != widget.resourceVersion) _future = _fetch();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-        child: Row(children: [
-          Text('rv ${widget.resourceVersion}', style: monoStyle(context, size: 11, color: Theme.of(context).hintColor)),
-          const Spacer(),
-          const Text('managedFields'),
-          Switch(value: _managed, onChanged: (v) => setState(() => (_managed = v, _future = _fetch()))),
-        ]),
-      ),
-      Expanded(
-        child: FutureBuilder<String>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.hasError) return Padding(padding: const EdgeInsets.all(12), child: InlineMessage('${snap.error}', isError: true));
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-            return SingleChildScrollView(padding: const EdgeInsets.all(12), child: CodeBlock(snap.data!));
-          },
-        ),
-      ),
-    ]);
   }
 }
 

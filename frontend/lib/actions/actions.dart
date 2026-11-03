@@ -101,6 +101,7 @@ Future<bool?> confirmAction(
   bool destructive = false,
   String? confirmLabel,
   Widget? extra,
+  double width = 460,
 }) {
   final local = isLocalContext(kubeContext);
   final mustType = destructive && !local;
@@ -114,7 +115,7 @@ Future<bool?> confirmAction(
         return AlertDialog(
           title: Text(title),
           content: SizedBox(
-            width: 460,
+            width: width,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               if (message != null) ...[Text(message), const SizedBox(height: 12)],
               ?extra,
@@ -238,6 +239,9 @@ class ActionButton extends StatefulWidget {
   final String? message;
   final bool destructive;
   final bool dense;
+
+  /// Called with the result after a successful run (e.g. to refresh a list).
+  final void Function(ActionResult result)? onResult;
   const ActionButton(
     this.ctx, {
     super.key,
@@ -249,6 +253,7 @@ class ActionButton extends StatefulWidget {
     this.message,
     this.destructive = false,
     this.dense = true,
+    this.onResult,
   });
 
   @override
@@ -274,10 +279,20 @@ class _ActionButtonState extends State<ActionButton> {
       onPressed: _busy
           ? null
           : () async {
+              // Confirm first so the spinner only shows while the request runs.
+              final ok = await confirmAction(context,
+                  title: widget.title,
+                  message: widget.message,
+                  kubeContext: widget.ctx.app.currentContext,
+                  objectName: widget.ctx.name,
+                  destructive: widget.destructive,
+                  confirmLabel: widget.label);
+              if (ok != true || !context.mounted) return;
               setState(() => _busy = true);
-              await runResourceAction(context, widget.ctx, widget.action,
-                  body: widget.body, title: widget.title, message: widget.message, destructive: widget.destructive, confirmLabel: widget.label);
+              final res = await runResourceAction(context, widget.ctx, widget.action,
+                  body: widget.body, title: widget.title, destructive: widget.destructive, confirm: false);
               if (mounted) setState(() => _busy = false);
+              if (res != null) widget.onResult?.call(res);
             },
     );
   }
