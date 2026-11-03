@@ -1,0 +1,189 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T11:22:57Z",
+    "generateName": "redis-",
+    "labels": {
+      "app": "redis",
+      "controller-revision-hash": "redis-7d788b9dd7",
+      "statefulset.kubernetes.io/pod-name": "redis-0"
+    },
+    "name": "redis-0",
+    "namespace": "demo",
+    "ownerReferences": [
+      {
+        "apiVersion": "apps/v1",
+        "blockOwnerDeletion": true,
+        "controller": true,
+        "kind": "StatefulSet",
+        "name": "redis",
+        "uid": "4d2a15ca-c84a-4159-b23d-85e672249774"
+      }
+    ],
+    "resourceVersion": "929",
+    "uid": "ba31c76b-19fe-40da-8951-c083a0a5ab91"
+  },
+  "spec": {
+    "containers": [
+      {
+        "args": [
+          "--appendonly",
+          "yes"
+        ],
+        "image": "redis:7-alpine",
+        "imagePullPolicy": "IfNotPresent",
+        "name": "redis",
+        "ports": [
+          {
+            "containerPort": 6379,
+            "name": "redis",
+            "protocol": "TCP"
+          }
+        ],
+        "resources": {},
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "File",
+        "volumeMounts": [
+          {
+            "mountPath": "/data",
+            "name": "data"
+          },
+          {
+            "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+            "name": "kube-api-access-g84ql",
+            "readOnly": true
+          }
+        ]
+      }
+    ],
+    "dnsPolicy": "ClusterFirst",
+    "enableServiceLinks": true,
+    "hostname": "redis-0",
+    "nodeName": "k8sman-dev-control-plane",
+    "preemptionPolicy": "PreemptLowerPriority",
+    "priority": 0,
+    "restartPolicy": "Always",
+    "schedulerName": "default-scheduler",
+    "securityContext": {},
+    "serviceAccount": "default",
+    "serviceAccountName": "default",
+    "subdomain": "redis",
+    "terminationGracePeriodSeconds": 30,
+    "tolerations": [
+      {
+        "effect": "NoExecute",
+        "key": "node.kubernetes.io/not-ready",
+        "operator": "Exists",
+        "tolerationSeconds": 300
+      },
+      {
+        "effect": "NoExecute",
+        "key": "node.kubernetes.io/unreachable",
+        "operator": "Exists",
+        "tolerationSeconds": 300
+      }
+    ],
+    "volumes": [
+      {
+        "name": "data",
+        "persistentVolumeClaim": {
+          "claimName": "data-redis-0"
+        }
+      },
+      {
+        "name": "kube-api-access-g84ql",
+        "projected": {
+          "defaultMode": 420,
+          "sources": [
+            {
+              "serviceAccountToken": {
+                "expirationSeconds": 3607,
+                "path": "token"
+              }
+            },
+            {
+              "configMap": {
+                "items": [
+                  {
+                    "key": "ca.crt",
+                    "path": "ca.crt"
+                  }
+                ],
+                "name": "kube-root-ca.crt"
+              }
+            },
+            {
+              "downwardAPI": {
+                "items": [
+                  {
+                    "fieldRef": {
+                      "apiVersion": "v1",
+                      "fieldPath": "metadata.namespace"
+                    },
+                    "path": "namespace"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "status": {
+    "conditions": [
+      {
+        "lastProbeTime": null,
+        "lastTransitionTime": "2026-11-03T11:23:03Z",
+        "status": "True",
+        "type": "Initialized"
+      },
+      {
+        "lastProbeTime": null,
+        "lastTransitionTime": "2026-11-03T11:23:10Z",
+        "status": "True",
+        "type": "Ready"
+      },
+      {
+        "lastProbeTime": null,
+        "lastTransitionTime": "2026-11-03T11:23:10Z",
+        "status": "True",
+        "type": "ContainersReady"
+      },
+      {
+        "lastProbeTime": null,
+        "lastTransitionTime": "2026-11-03T11:23:03Z",
+        "status": "True",
+        "type": "PodScheduled"
+      }
+    ],
+    "containerStatuses": [
+      {
+        "containerID": "containerd://d4128048db3e4827c6c10e9ac4288bcdcfbaf66e6dc7612e23c5de203598845d",
+        "image": "docker.io/library/redis:7-alpine",
+        "imageID": "docker.io/library/redis@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+        "lastState": {},
+        "name": "redis",
+        "ready": true,
+        "restartCount": 0,
+        "started": true,
+        "state": {
+          "running": {
+            "startedAt": "2026-11-03T11:23:10Z"
+          }
+        }
+      }
+    ],
+    "hostIP": "172.18.0.2",
+    "phase": "Running",
+    "podIP": "10.244.0.12",
+    "podIPs": [
+      {
+        "ip": "10.244.0.12"
+      }
+    ],
+    "qosClass": "BestEffort",
+    "startTime": "2026-11-03T11:23:03Z"
+  }
+}
