@@ -78,7 +78,6 @@ class _TableBodyState extends State<_TableBody> {
   Widget build(BuildContext context) {
     final tc = context.watch<TableController>();
     final app = context.watch<AppState>();
-    final theme = Theme.of(context);
     final rows = tc.rows;
     final selectedRows = tc.selectedRows;
     final multi = selectedRows.length >= 2;
@@ -131,9 +130,7 @@ class _TableBodyState extends State<_TableBody> {
                               const Divider(),
                               Expanded(
                                 child: rows.isEmpty
-                                    ? Center(
-                                        child: Text(tc.filter.isEmpty ? 'No ${tc.type.resource}' : 'No matches', style: TextStyle(color: theme.hintColor)),
-                                      )
+                                    ? _EmptyTable(controller: tc)
                                     : Focus(
                                         focusNode: _focus,
                                         onKeyEvent: (node, e) => _onKey(e, rows, app),
@@ -773,5 +770,37 @@ class TableCellView extends StatelessWidget {
     if (v is List) return v.map(_text).join(', ');
     if (v is Map) return jsonEncode(v);
     return '$v';
+  }
+}
+
+
+/// Empty table: when the list is empty only because of the namespace scope,
+/// offer a one-click switch to all namespaces.
+class _EmptyTable extends StatelessWidget {
+  final TableController controller;
+  const _EmptyTable({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final app = context.watch<AppState>();
+    final tc = controller;
+    final hint = TextStyle(color: theme.hintColor);
+    if (tc.filter.isNotEmpty) return Center(child: Text('No matches', style: hint));
+    final ns = app.namespace;
+    final scoped = tc.type.namespaced && ns != null;
+    return Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(scoped ? 'No ${tc.type.resource} in $ns' : 'No ${tc.type.resource}', style: hint),
+        if (scoped) ...[
+          const SizedBox(height: 10),
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.public, size: 15),
+            label: const Text('Show all namespaces'),
+            onPressed: () => app.setNamespace(null),
+          ),
+        ],
+      ]),
+    );
   }
 }
