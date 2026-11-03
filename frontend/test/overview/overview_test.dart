@@ -239,15 +239,28 @@ void main() {
     expect(find.byType(OutlinedButton), findsNothing);
   });
 
-  testWidgets('follows the namespace and auto-refreshes until paused', (tester) async {
+  testWidgets('defaults to all namespaces, has its own scope picker, auto-refreshes until paused', (tester) async {
     final (app, source) = await pumpOverview(tester, liveFixture(), namespace: 'demo');
-    expect(source.calls, ['demo']);
-    expect(find.text('demo'), findsWidgets);
+    // Independent of the table's namespace: starts cluster-wide.
+    expect(source.calls, [null]);
+    expect(find.text('All namespaces'), findsOneWidget);
 
-    app.setNamespace(null);
+    // Changing the table's namespace doesn't change the Overview scope.
+    app.setNamespace('kube-system');
     await tester.pump();
     await tester.pump();
-    expect(source.calls, ['demo', null]);
+    expect(source.calls, [null]);
+
+    // Pick a namespace in Overview's own picker.
+    app.namespaces = ['default', 'demo', 'kube-system'];
+    app.setNamespace('kube-system');
+    await tester.pump();
+    await tester.tap(find.text('All namespaces'));
+    await tester.pump();
+    await tester.tap(find.text('demo').last);
+    await tester.pump();
+    await tester.pump();
+    expect(source.calls, [null, 'demo']);
 
     await tester.pump(const Duration(seconds: 10));
     await tester.pump();
@@ -262,6 +275,12 @@ void main() {
     await tester.tap(find.byTooltip('Refresh now'));
     await tester.pump();
     expect(source.calls.length, 4);
+
+    // Reset the session-wide scope for other tests.
+    await tester.tap(find.text('demo').first);
+    await tester.pump();
+    await tester.tap(find.text('All namespaces').last);
+    await tester.pump();
   });
 
   test('groupIssues groups by owner and category', () {

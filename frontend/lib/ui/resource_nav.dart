@@ -102,15 +102,23 @@ const _expandedByDefault = {'Workloads', 'Network', 'Config'};
 /// Pages shown under "More" (the rest are always visible).
 const _morePages = {MainView.metrics, MainView.helm, MainView.portForwards};
 
-/// Session-wide nav UI state (survives the nav being rebuilt/remounted).
-final Set<String> _navToggled = {};
+/// Session-wide nav UI state (survives the nav being rebuilt/remounted):
+/// sections the user explicitly opened (true) or closed (false).
+final Map<String, bool> _navExplicit = {};
 bool _navMoreOpen = false;
 
 class _ResourceNavState extends State<ResourceNav> {
   String _query = '';
 
-  bool _isCollapsed(String group) => _expandedByDefault.contains(group) == _navToggled.contains(group);
-  void _toggle(String group) => setState(() => _navToggled.contains(group) ? _navToggled.remove(group) : _navToggled.add(group));
+  /// An explicit open/close always wins. Otherwise the default applies,
+  /// except that a section holding the current selection auto-opens.
+  bool _isCollapsed(String group, {bool holdsSelection = false}) {
+    final explicit = _navExplicit[group];
+    if (explicit != null) return !explicit;
+    return !_expandedByDefault.contains(group) && !holdsSelection;
+  }
+
+  void _toggle(String group, {required bool currentlyCollapsed}) => setState(() => _navExplicit[group] = currentlyCollapsed);
 
   @override
   Widget build(BuildContext context) {
@@ -179,15 +187,17 @@ class _ResourceNavState extends State<ResourceNav> {
                 bool isCustomSection(String key) => !_curated.containsKey(key) && key != 'Other';
                 final custom = isCustomSection(g.key);
                 final firstCustom = custom && (i == 0 || !isCustomSection(groups.keys.elementAt(i - 1)));
-                final customCollapsed = q.isEmpty && _isCollapsed('Custom Resources') && !g.value.contains(app.selectedType);
-                final collapsed = q.isEmpty && _isCollapsed(g.key) && !(app.view == MainView.resources && g.value.contains(app.selectedType));
+                final selectedHere = app.view == MainView.resources && g.value.contains(app.selectedType);
+                final customSelected = app.view == MainView.resources && app.selectedType != null && isCustomSection(groups.entries.firstWhere((e) => e.value.contains(app.selectedType), orElse: () => const MapEntry('', [])).key);
+                final customCollapsed = q.isEmpty && _isCollapsed('Custom Resources', holdsSelection: customSelected);
+                final collapsed = q.isEmpty && _isCollapsed(g.key, holdsSelection: selectedHere);
                 if (!g.value.any(matches)) return const <Widget>[];
                 return [
                   // One umbrella header for all CRD groups, collapsed by default.
                   if (firstCustom && q.isEmpty)
-                    _GroupHeader(title: 'Custom Resources', collapsed: customCollapsed, onTap: () => _toggle('Custom Resources')),
+                    _GroupHeader(title: 'Custom Resources', collapsed: customCollapsed, onTap: () => _toggle('Custom Resources', currentlyCollapsed: customCollapsed)),
                   if (!custom || !customCollapsed || q.isNotEmpty) ...[
-                    _GroupHeader(title: g.key, group: custom ? g.key : null, nested: custom, collapsed: collapsed, onTap: () => _toggle(g.key)),
+                    _GroupHeader(title: g.key, group: custom ? g.key : null, nested: custom, collapsed: collapsed, onTap: () => _toggle(g.key, currentlyCollapsed: collapsed)),
                     if (!collapsed)
                       for (final t in g.value.where(matches)) _NavItem(type: t, nested: custom, selected: app.view == MainView.resources && app.selectedType == t),
                   ],
