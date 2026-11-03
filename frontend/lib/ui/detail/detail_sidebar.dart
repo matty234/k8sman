@@ -13,6 +13,7 @@ import '../logs/open_logs.dart';
 import '../terminal/open_terminal.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/group_icon.dart';
 import '../portforward/portforward_dialog.dart';
 import 'metadata_section.dart';
 import 'yaml_editor.dart';
@@ -271,6 +272,7 @@ class _Header extends StatelessWidget {
           child: WindowDragArea(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
+                if (target.type.custom) ...[GroupIcon(group: target.type.group, size: 14), const SizedBox(width: 5)],
                 Text(target.type.kind, style: meta?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
                 if (target.namespace != null) ...[Text('  ·  ', style: meta), Flexible(child: Text(target.namespace!, overflow: TextOverflow.ellipsis, style: meta))],
                 if (deleted) ...[const SizedBox(width: 8), const StatusBadge('Deleted', severity: Severity.error, dense: true)],

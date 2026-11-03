@@ -109,6 +109,7 @@ backend/   Go server (client-go)
   internal/server/     HTTP and WebSocket API
   internal/portforward supervised port-forwards
   internal/settings/   ~/.config/k8sman/settings.json
+  internal/icons/      CRD group icons: Helm chart icons, bundled icons, favicons
 tools/     build-backend.sh, app icon generator
 ```
 
@@ -124,8 +125,8 @@ tools/     build-backend.sh, app icon generator
   - On quit it sends SIGTERM, and the backend stops its port-forwards. The
     backend also exits if its stdin closes, so it never outlives the app.
 - **Local state** lives in `~/.config/k8sman/`:
-  - `settings.json`: the chosen kubeconfig, recent kubeconfigs, and the last
-    context per kubeconfig.
+  - `settings.json`: the chosen kubeconfig, recent kubeconfigs, the last
+    context per kubeconfig, and `remoteIcons` (see below).
   - `columns.json`: custom columns.
   - `portforwards.json`: saved forwards.
 
@@ -141,6 +142,13 @@ tools/     build-backend.sh, app icon generator
 - **Read-only mode.** Run the backend with `--read-only` to refuse edits,
   actions and new port-forwards (HTTP 403). The UI hides those controls. For
   the app, run `defaults write dev.k8sman.app BackendArgs -array --read-only`.
+- **CRD icons.** Icons for custom resource groups come from Helm chart
+  metadata, icons bundled with the app, or the group's website favicon
+  (fetched directly, never through a third-party favicon service). Internet
+  fetches are on by default only for local clusters (kind, k3d, minikube,
+  Docker Desktop, …). Set `"remoteIcons": false` (or `true`) in
+  `settings.json`, or pass `--no-remote-icons`, to override. See
+  [API.md](API.md#crd-group-icons).
 - **Confirmations.** Mutating actions ask for confirmation, and the dialog
   names the target kube context (see `frontend/lib/actions/actions.dart`).
   YAML edits support server-side dry-run.

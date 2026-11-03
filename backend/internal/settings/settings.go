@@ -23,6 +23,10 @@ type Settings struct {
 	RecentKubeconfigs []string `json:"recentKubeconfigs,omitempty"`
 	// LastContext maps kubeconfig path → last selected context.
 	LastContext map[string]string `json:"lastContext,omitempty"`
+	// RemoteIcons controls fetching CRD group icons from the internet
+	// (chart icon URLs and website favicons). nil = automatic: on for local
+	// clusters (kind, k3d, minikube, Docker Desktop, …), off otherwise.
+	RemoteIcons *bool `json:"remoteIcons,omitempty"`
 }
 
 // Store reads and writes the settings file. Methods are safe for concurrent use.

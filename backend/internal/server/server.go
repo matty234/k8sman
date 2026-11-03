@@ -22,6 +22,7 @@ import (
 
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/columns"
+	"github.com/bargrove/k8sman/backend/internal/icons"
 	"github.com/bargrove/k8sman/backend/internal/metrics"
 	"github.com/bargrove/k8sman/backend/internal/portforward"
 	"github.com/bargrove/k8sman/backend/internal/prom"
@@ -36,6 +37,7 @@ type Server struct {
 	readOnly bool
 	settings *settings.Store
 	mux      *http.ServeMux
+	icons    *icons.Resolver
 }
 
 // Options configures optional server behaviour.
@@ -44,6 +46,10 @@ type Options struct {
 	ReadOnly bool
 	// Settings persists the chosen kubeconfig and last context. Optional.
 	Settings *settings.Store
+	// NoRemoteIcons disables fetching CRD group icons from the internet.
+	NoRemoteIcons bool
+	// IconCacheDir caches resolved icons ("" = memory only).
+	IconCacheDir string
 }
 
 // New builds the server and registers routes.
@@ -62,6 +68,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.securityRoutes()
 	prom.Register(s.mux, mgr, opts.ReadOnly)
 	metrics.Register(s.mux, mgr)
+	s.iconRoutes(opts)
 	return s
 }
 
