@@ -13,6 +13,7 @@ import '../state/app_state.dart';
 import '../state/table_controller.dart';
 import '../util/k8s.dart';
 import 'column_editor.dart';
+import 'row_context_menu.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 
@@ -129,6 +130,7 @@ class _TableBodyState extends State<_TableBody> {
                                                 _focus.requestFocus();
                                                 _open(app, tc.type, rows[i]);
                                               },
+                                              onContextMenu: (pos) => showRowContextMenu(context, pos, tc.type, rows[i]),
                                             ),
                                           ),
                                         ),
@@ -395,38 +397,53 @@ class _Row extends StatelessWidget {
   final bool striped;
   final bool selected;
   final VoidCallback onTap;
-  const _Row({required this.row, required this.columns, required this.widths, required this.striped, required this.selected, required this.onTap});
+
+  /// Right-click (or two-finger click) at a global position.
+  final ValueChanged<Offset>? onContextMenu;
+  const _Row({
+    required this.row,
+    required this.columns,
+    required this.widths,
+    required this.striped,
+    required this.selected,
+    required this.onTap,
+    this.onContextMenu,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    return Hoverable(
-      cursor: SystemMouseCursors.basic,
-      onTap: onTap,
-      builder: (hovered) => Container(
-        margin: const EdgeInsets.symmetric(horizontal: 6),
-        padding: const EdgeInsets.only(left: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? colors.selection
-              : hovered
-              ? colors.hover
-              : striped
-              ? colors.stripe
-              : null,
-          borderRadius: BorderRadius.circular(5),
-        ),
-        child: Row(
-          children: [
-            for (var i = 0; i < columns.length; i++)
-              SizedBox(
-                width: widths[i],
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: TableCellView(value: i < row.cells.length ? row.cells[i] : null, column: columns[i], emphasise: i == 0),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onSecondaryTapDown: onContextMenu == null ? null : (d) => onContextMenu!(d.globalPosition),
+      child: Hoverable(
+        cursor: SystemMouseCursors.basic,
+        onTap: onTap,
+        builder: (hovered) => Container(
+          margin: const EdgeInsets.symmetric(horizontal: 6),
+          padding: const EdgeInsets.only(left: 6),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.selection
+                : hovered
+                ? colors.hover
+                : striped
+                ? colors.stripe
+                : null,
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Row(
+            children: [
+              for (var i = 0; i < columns.length; i++)
+                SizedBox(
+                  width: widths[i],
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: TableCellView(value: i < row.cells.length ? row.cells[i] : null, column: columns[i], emphasise: i == 0),
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

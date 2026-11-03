@@ -57,6 +57,7 @@ class _KubeconfigPickerState extends State<KubeconfigPicker> {
     final list = app.kubeconfigs;
     final topLeft = box.localToGlobal(Offset(0, box.size.height + 4), ancestor: overlay);
     final v = await showMenu<String>(
+      popUpAnimationStyle: AnimationStyle.noAnimation,
       context: ctx,
       position: RelativeRect.fromLTRB(topLeft.dx, topLeft.dy, overlay.size.width - topLeft.dx - box.size.width, 0),
       constraints: BoxConstraints(minWidth: box.size.width.clamp(260, 460), maxWidth: 460),

@@ -159,19 +159,7 @@ class _LiveObjectState extends State<_LiveObject> {
   /// Header actions: "Logs" first (and the only kind kept in read-only
   /// mode, since it changes nothing), then port-forward, standard and panel
   /// extras.
-  static List<ResourceAction> _actionsFor(AppState app, DetailTarget t, ResourcePanel panel, PanelContext ctx) {
-    final extra = panel.actions(ctx);
-    final logs = extra.where((a) => a.id == kLogsActionId).toList();
-    if (app.readOnly) return logs;
-    final terminal = extra.where((a) => a.id == kTerminalActionId);
-    return [
-      ...logs,
-      ...terminal,
-      if (portForwardKinds.containsKey(t.type.gk)) portForwardAction(ctx),
-      ...standardActions(ctx),
-      ...extra.where((a) => a.id != kLogsActionId && a.id != kTerminalActionId),
-    ];
-  }
+  static List<ResourceAction> _actionsFor(AppState app, DetailTarget t, ResourcePanel panel, PanelContext ctx) => resourceActionsFor(app, t, panel, ctx);
 
   /// A buggy panel shouldn't take down the whole sidebar.
   List<Widget> _safeSections(BuildContext context, ResourcePanel panel, PanelContext ctx) {
@@ -426,4 +414,20 @@ class _InstantTabViewState extends State<InstantTabView> {
       ],
     );
   }
+}
+
+/// The actions offered for an object, in display order. Shared by the
+/// inspector header and the table's right-click menu so they always match.
+List<ResourceAction> resourceActionsFor(AppState app, DetailTarget t, ResourcePanel panel, PanelContext ctx) {
+  final extra = panel.actions(ctx);
+  final logs = extra.where((a) => a.id == kLogsActionId).toList();
+  if (app.readOnly) return logs;
+  final terminal = extra.where((a) => a.id == kTerminalActionId);
+  return [
+    ...logs,
+    ...terminal,
+    if (portForwardKinds.containsKey(t.type.gk)) portForwardAction(ctx),
+    ...standardActions(ctx),
+    ...extra.where((a) => a.id != kLogsActionId && a.id != kTerminalActionId),
+  ];
 }

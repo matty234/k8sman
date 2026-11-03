@@ -183,6 +183,7 @@ class _TerminalSessionState extends State<TerminalSession> {
     if (overlay == null) return;
     final p = overlay.globalToLocal(d.globalPosition);
     final v = await showMenu<String>(
+      popUpAnimationStyle: AnimationStyle.noAnimation,
       context: context,
       position: RelativeRect.fromLTRB(p.dx, p.dy, overlay.size.width - p.dx, overlay.size.height - p.dy),
       items: [
@@ -333,6 +334,7 @@ class _Toolbar extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         PopupMenuButton<String>(
+          popUpAnimationStyle: AnimationStyle.noAnimation,
           key: const ValueKey('terminal-shell-picker'),
           tooltip: 'Shell or command (restarts the session)',
           onSelected: (v) => v == '__custom' ? onCustomCommand() : onShell(v),
@@ -371,6 +373,7 @@ class _Toolbar extends StatelessWidget {
         icon('terminal-font-larger', 'Larger text (⌘+)', Icons.text_increase,
             s.fontSize < TerminalSettings.maxFontSize ? () => s.setFontSize(s.fontSize + 1) : null),
         PopupMenuButton<int>(
+          popUpAnimationStyle: AnimationStyle.noAnimation,
           tooltip: 'Scrollback',
           icon: const Icon(Icons.more_horiz, size: 16),
           padding: EdgeInsets.zero,

@@ -209,6 +209,7 @@ class _DockTab extends StatelessWidget {
     final p = overlay.globalToLocal(global);
     PopupMenuItem<String> item(String v, String label, {bool enabled = true}) => PopupMenuItem(value: v, height: 28, enabled: enabled, child: Text(label));
     final v = await showMenu<String>(
+      popUpAnimationStyle: AnimationStyle.noAnimation,
       context: context,
       position: RelativeRect.fromLTRB(p.dx, p.dy, overlay.size.width - p.dx, overlay.size.height - p.dy),
       items: [
