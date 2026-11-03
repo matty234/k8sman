@@ -255,16 +255,18 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
                 const SizedBox(width: 8),
                 SizedBox(
                   width: 120,
-                  child: DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    isDense: true,
-                    initialValue: _types.contains(c.type) ? c.type : 'string',
-                    style: theme.textTheme.bodyMedium,
-                    icon: Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
-                    borderRadius: BorderRadius.circular(8),
-                    decoration: const InputDecoration(),
-                    items: [for (final t in _types) DropdownMenuItem(value: t, child: Text(t, overflow: TextOverflow.ellipsis))],
-                    onChanged: (v) => setState(() => c.type = v ?? 'string'),
+                  child: Container(
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: theme.inputDecorationTheme.fillColor,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    alignment: Alignment.centerLeft,
+                    child: MenuSelect<String>(
+                      value: _types.contains(c.type) ? c.type : 'string',
+                      options: [for (final t in _types) (t, Text(t, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium))],
+                      onChanged: (v) => setState(() => c.type = v),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 4),

@@ -267,18 +267,14 @@ class _Toolbar extends StatelessWidget {
         final options = <Widget>[
           _box(
             context,
-            DropdownButton<String>(
+            MenuSelect<String>(
               value: c?.name,
-              isDense: true,
-              underline: const SizedBox(),
-              focusColor: Colors.transparent,
-              style: monoStyle(context, size: 12),
               hint: Text(s.container, style: monoStyle(context, size: 12)),
-              items: [
+              options: [
                 for (final x in s.containers)
-                  DropdownMenuItem(
-                    value: x.name,
-                    child: Row(
+                  (
+                    x.name,
+                    Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.circle, size: 8, color: severityColor(context, x.severity)),
@@ -293,22 +289,18 @@ class _Toolbar extends StatelessWidget {
                     ),
                   ),
               ],
-              onChanged: (v) => v == null ? null : context.read<LogDock>().switchContainer(s, v),
+              onChanged: (v) => context.read<LogDock>().switchContainer(s, v),
             ),
             tooltip: 'Container',
           ),
           _box(
             context,
-            DropdownButton<int>(
+            MenuSelect<int>(
               value: s.tail,
-              isDense: true,
-              underline: const SizedBox(),
-              focusColor: Colors.transparent,
-              style: theme.textTheme.bodySmall,
-              items: [
-                for (final n in const [100, 500, 2000, -1]) DropdownMenuItem(value: n, child: Text(n < 0 ? 'all lines' : 'last $n')),
+              options: [
+                for (final n in const [100, 500, 2000, -1]) (n, Text(n < 0 ? 'all lines' : 'last $n', style: theme.textTheme.bodySmall)),
               ],
-              onChanged: (v) => s.setOptions(tail: v ?? 500),
+              onChanged: (v) => s.setOptions(tail: v),
             ),
             tooltip: 'Initial lines',
           ),

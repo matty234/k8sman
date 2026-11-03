@@ -267,6 +267,7 @@ class _PodMenu extends StatelessWidget {
     final owned = ownerRefs(pod.object).isNotEmpty;
     final theme = Theme.of(context);
     return PopupMenuButton<String>(
+            popUpAnimationStyle: AnimationStyle.noAnimation,
       tooltip: 'Pod actions',
       padding: EdgeInsets.zero,
       iconSize: 16,

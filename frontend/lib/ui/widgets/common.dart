@@ -140,6 +140,57 @@ class _HoverableState extends State<Hoverable> {
   }
 }
 
+/// A compact select (replacement for [DropdownButton], whose open animation
+/// can't be disabled): shows the current option's label and opens an instant
+/// menu of [options].
+class MenuSelect<T> extends StatelessWidget {
+  final T? value;
+  final List<(T, Widget)> options;
+  final ValueChanged<T> onChanged;
+
+  /// Shown when [value] matches no option.
+  final Widget? hint;
+  final String? tooltip;
+  const MenuSelect({super.key, required this.value, required this.options, required this.onChanged, this.hint, this.tooltip});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    Widget? current;
+    for (final (v, label) in options) {
+      if (v == value) current = label;
+    }
+    return MenuButton<T>(
+      tooltip: tooltip,
+      onSelected: onChanged,
+      items: () => [
+        for (final (v, label) in options)
+          PopupMenuItem<T>(
+            value: v,
+            height: 30,
+            child: Row(children: [
+              SizedBox(width: 18, child: v == value ? Icon(Icons.check, size: 14, color: theme.colorScheme.primary) : null),
+              Flexible(child: label),
+            ]),
+          ),
+      ],
+      builder: (h) => Container(
+        height: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: h ? theme.colorScheme.onSurface.withValues(alpha: 0.06) : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(child: current ?? hint ?? const SizedBox.shrink()),
+          const SizedBox(width: 4),
+          Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
+        ]),
+      ),
+    );
+  }
+}
+
 /// A native-feeling pop-up button: [builder] draws the control (given its
 /// hover state); clicking opens [items] in a menu aligned under it.
 class MenuButton<T> extends StatelessWidget {
@@ -163,6 +214,8 @@ class MenuButton<T> extends StatelessWidget {
             context: ctx,
             position: RelativeRect.fromLTRB(topLeft.dx, topLeft.dy, overlay.size.width - topLeft.dx - box.size.width, 0),
             constraints: BoxConstraints(minWidth: box.size.width, maxWidth: 420),
+            // Native menus appear instantly; no Material grow/fade.
+            popUpAnimationStyle: AnimationStyle.noAnimation,
             items: items(),
           );
           if (v != null) onSelected(v);

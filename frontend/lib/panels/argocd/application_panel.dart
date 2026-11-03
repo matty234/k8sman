@@ -249,6 +249,7 @@ class _RefreshButton extends StatelessWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       _SmallButton(icon: Icons.refresh, label: 'Refresh', onPressed: () => argoRefresh(context, ctx)),
       PopupMenuButton<bool>(
+            popUpAnimationStyle: AnimationStyle.noAnimation,
         tooltip: 'More refresh options',
         padding: EdgeInsets.zero,
         iconSize: 18,

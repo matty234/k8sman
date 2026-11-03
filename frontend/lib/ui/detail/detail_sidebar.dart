@@ -216,6 +216,7 @@ class _ActionBar extends StatelessWidget {
           ActionIconButton(rest.single)
         else if (rest.length > 1)
           PopupMenuButton<ResourceAction>(
+            popUpAnimationStyle: AnimationStyle.noAnimation,
             tooltip: 'More actions',
             icon: const Icon(Icons.more_horiz, size: 18),
             onSelected: (a) => a.run(context),
