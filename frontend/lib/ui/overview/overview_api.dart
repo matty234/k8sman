@@ -215,7 +215,21 @@ class IssueGroup {
   IssueGroup(this.issues);
 
   OverviewIssue get first => issues.first;
-  OverviewOwner? get owner => first.owner;
+
+  /// The workload the group is about. Issues are keyed by their owner, or by
+  /// their own object when they have none, so one group can mix both, e.g.
+  /// an alert on a Deployment plus pod alerts owned by it. Take the first
+  /// owner present rather than assuming the first issue has one.
+  OverviewOwner? get owner {
+    for (final i in issues) {
+      if (i.owner != null) return i.owner;
+    }
+    return null;
+  }
+
+  /// [owner], or the first issue's own object when no issue has an owner
+  /// (e.g. several alerts on the same Deployment). Never null.
+  OverviewOwner get subject => owner ?? OverviewOwner(group: first.group, kind: first.kind, name: first.name);
   IssueSeverity get severity => first.severity;
   bool get isGroup => owner != null;
   String get category => first.category;
@@ -236,9 +250,7 @@ class IssueGroup {
   }
 
   /// Identifier for expansion state.
-  String get key => owner != null
-      ? '${first.namespace}/${owner!.group}/${owner!.kind}/${owner!.name}/$category'
-      : '${first.namespace}/${first.group}/${first.kind}/${first.name}/$category';
+  String get key => '${first.namespace}/${subject.group}/${subject.kind}/${subject.name}/$category';
 }
 
 /// Groups issues by (namespace, owner, category), keeping the backend's order

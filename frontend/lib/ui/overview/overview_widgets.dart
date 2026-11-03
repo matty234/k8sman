@@ -407,8 +407,11 @@ class IssueGroupTile extends StatelessWidget {
         onChanged: onChanged,
       );
     }
-    final ownerRef = ObjectRef(group: owner!.group, kind: owner.kind, name: owner.name, namespace: first.namespace);
-    final kindWord = first.kind == 'Pod' ? 'pod' : first.kind.toLowerCase();
+    final subject = group.subject;
+    final ownerRef = ObjectRef(group: subject.group, kind: subject.kind, name: subject.name, namespace: first.namespace);
+    // Mixed groups (e.g. alerts on a Deployment and on its pods) count "issues".
+    final kinds = {for (final i in group.issues) i.kind};
+    final kindWord = kinds.length > 1 ? 'issue' : (first.kind == 'Pod' ? 'pod' : first.kind.toLowerCase());
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _IssueRow(
         issue: first,
