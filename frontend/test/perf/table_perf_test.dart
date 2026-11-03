@@ -264,8 +264,28 @@ void main() {
         await tester.pump(const Duration(milliseconds: 60));
       }
       sw2.stop();
-      results['flush at cap, 1 tab x $perFlush lines incl. frame (ms)'] = _ms(sw2.elapsed, 50);
+      results['flush at cap, 1 hidden tab x $perFlush lines incl. frame (ms)'] = _ms(sw2.elapsed, 50);
       expect(s.lines.length, kMaxLogLines);
+
+      // Search active on the visible tab ("only matching"): each flush
+      // updates the matches.
+      final active = dock.active!;
+      active
+        ..setQuery('request 1')
+        ..setView(onlyMatching: true);
+      await tester.pump();
+      final c = api.controllers[streams.indexOf(active)];
+      final sw3 = Stopwatch()..start();
+      for (var k = 0; k < 50; k++) {
+        for (var j = 0; j < perFlush; j++) {
+          c.add(LogMessage(line: '2026-11-03T10:00:00.000Z INFO request ${k * perFlush + j} GET /x 200\n'));
+        }
+        await null;
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+      sw3.stop();
+      results['flush at cap with search + only-matching, visible tab (ms)'] = _ms(sw3.elapsed, 50);
+      results['matches'] = '${active.matching.length}';
       print('PERF logdock ${const JsonEncoder.withIndent('  ').convert(results)}');
       dock.closeAll();
       await tester.pumpWidget(const SizedBox());

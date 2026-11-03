@@ -1,0 +1,73 @@
+import 'dart:collection';
+
+/// A bounded, append-only list of log lines: past [capacity] the oldest
+/// lines are overwritten in place (no shifting the whole list on every
+/// flush). Reads as an ordinary read-only list, oldest first.
+///
+/// Also numbers lines with a running sequence ([firstSeq] is the number of
+/// `this[0]`), so per-line state such as search matches can be kept
+/// incrementally across evictions.
+class LogBuffer extends ListBase<String> {
+  final int capacity;
+  LogBuffer(this.capacity) : assert(capacity > 0);
+
+  // Grows to [capacity], then wraps; [_head] is the oldest line once full.
+  final List<String> _buf = [];
+  int _head = 0;
+  int _firstSeq = 0;
+
+  /// Sequence number of `this[0]` (lines evicted or cleared so far).
+  int get firstSeq => _firstSeq;
+
+  /// Sequence number the next appended line will get.
+  int get nextSeq => _firstSeq + _buf.length;
+
+  @override
+  int get length => _buf.length;
+
+  @override
+  set length(int n) {
+    if (n != 0) throw UnsupportedError('LogBuffer can only be cleared');
+    clear();
+  }
+
+  @override
+  String operator [](int i) {
+    RangeError.checkValidIndex(i, this);
+    final j = _head + i;
+    return _buf[j < _buf.length ? j : j - _buf.length];
+  }
+
+  @override
+  void operator []=(int i, String v) => throw UnsupportedError('LogBuffer is append-only');
+
+  @override
+  void add(String element) => append([element]);
+
+  @override
+  void addAll(Iterable<String> iterable) => append(iterable);
+
+  /// Appends [lines], evicting the oldest past [capacity]. Returns how many
+  /// lines were evicted.
+  int append(Iterable<String> lines) {
+    var evicted = 0;
+    for (final l in lines) {
+      if (_buf.length < capacity) {
+        _buf.add(l);
+      } else {
+        _buf[_head] = l;
+        _head = _head + 1 == capacity ? 0 : _head + 1;
+        evicted++;
+      }
+    }
+    _firstSeq += evicted;
+    return evicted;
+  }
+
+  @override
+  void clear() {
+    _firstSeq += _buf.length;
+    _buf.clear();
+    _head = 0;
+  }
+}
