@@ -346,13 +346,18 @@ nothing to run in your cluster, and nothing that leaves your machine.
 To verify a download against the release's `SHA256SUMS`, run
 `shasum -a 256 -c SHA256SUMS`.
 
-**Homebrew (coming soon).** A cask is ready in
-[`packaging/homebrew/`](packaging/homebrew/) but hasn't been published to a tap
-yet. Once it has:
+**Homebrew.** Install from the
+[matty234/tap](https://github.com/matty234/homebrew-tap) tap. Homebrew 7
+and later only load casks from third-party taps you have trusted, so trust
+it first:
 
 ```sh
+brew trust matty234/tap
 brew install --cask matty234/tap/k8sman
 ```
+
+The same Gatekeeper step applies on first launch. k8sman updates itself, so
+`brew upgrade` skips it unless you pass `--greedy`.
 
 ### Updates
 
@@ -548,7 +553,6 @@ packaging/ Homebrew cask template
 Next on the list:
 
 - Notarized builds, so there's no Gatekeeper prompt.
-- A published Homebrew tap.
 - More kind panels and Overview checks.
 
 Issues and pull requests are welcome. Before opening a PR, run `make test`.
