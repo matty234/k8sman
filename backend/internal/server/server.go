@@ -312,7 +312,13 @@ func (b *tableBuilder) build(u *unstructured.Unstructured) *builtRow {
 		}
 	}
 	compute := func() any {
-		cells, errs := b.eval.Row(obj)
+		eval := obj
+		if b.memo != nil {
+			// Shared with other goroutines (the watch cache): gojq writes
+			// to its input, so evaluate a private copy.
+			eval = columns.PrivateCopy(obj)
+		}
+		cells, errs := b.eval.Row(eval)
 		r := Row{
 			UID:             string(u.GetUID()),
 			Name:            u.GetName(),

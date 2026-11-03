@@ -1,7 +1,9 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -56,10 +58,19 @@ func BenchmarkTableSnapshot(b *testing.B) {
 	items := benchPods(1500)
 	cols := columns.Defaults(podsType, nil)
 	rt := cluster.ResourceType{Resource: "pods", Version: "v1", Namespaced: true}
-	b.Run("cold", func(b *testing.B) {
+	b.Run("list", func(b *testing.B) { // direct LIST path (and every SNAPSHOT before the cache)
 		b.ReportAllocs()
 		for b.Loop() {
 			tb := newTableBuilder(cols, false)
+			t, built := tb.tableOf(rt, true, items, "1")
+			_ = snapshotFrame(t, built)
+		}
+	})
+	b.Run("cold", func(b *testing.B) { // first SNAPSHOT from the cache: memo misses, private copies
+		b.ReportAllocs()
+		for b.Loop() {
+			tb := newTableBuilder(cols, false)
+			tb.memo = mapMemo()
 			t, built := tb.tableOf(rt, true, items, "1")
 			_ = snapshotFrame(t, built)
 		}
@@ -78,4 +89,34 @@ func BenchmarkTableSnapshot(b *testing.B) {
 			_ = snapshotFrame(t, built)
 		}
 	})
+}
+
+// Objects from the watch cache are shared between goroutines; rendering
+// them (gojq normalises its input in place) must never write to them.
+// Run with -race.
+func TestSharedObjectsAreNotWrittenByColumnEvaluation(t *testing.T) {
+	items := benchPods(20)
+	cols := columns.Defaults(podsType, nil)
+	rt := cluster.ResourceType{Resource: "pods", Version: "v1", Namespaced: true}
+	noCache := func(_ *unstructured.Unstructured, _ any, _ string, compute func() any) any { return compute() }
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			tb := newTableBuilder(cols, true)
+			tb.memo = noCache
+			tb.decorate = decorator(map[string]int64{"perf-pause-0001": 5})
+			tb.tableOf(rt, true, items, "1")
+		}()
+		go func() {
+			defer wg.Done()
+			_, _ = json.Marshal(items) // like /api/items or an includeObject row
+		}()
+	}
+	wg.Wait()
+	cs := items[0].Object["status"].(map[string]any)["containerStatuses"].([]any)[0].(map[string]any)
+	if _, ok := cs["restartCount"].(int64); !ok {
+		t.Fatalf("restartCount was normalised in place to %T", cs["restartCount"])
+	}
 }

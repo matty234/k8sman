@@ -369,6 +369,7 @@ func (s *stream) run() {
 			s.fail(err, terminal)
 			if terminal {
 				s.c.drop(s)
+				s.cancel()
 				return
 			}
 			sleep(s.ctx, backoff)
