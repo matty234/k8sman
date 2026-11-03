@@ -1,0 +1,4 @@
+tags:
+  # README screenshots (test/marketing). Skipped unless K8SMAN_MARKETING is set;
+  # run with tools/marketing-shots.sh.
+  marketing: {}

@@ -20,7 +20,7 @@ RELEASE_URL ?= https://github.com/$(GITHUB_REPO)/releases/tag/v$(VERSION)
 DOWNLOAD_URL ?= https://github.com/$(GITHUB_REPO)/releases/download/v$(VERSION)/k8sman-$(VERSION)-macos.zip
 RELEASE_NOTES ?=
 
-.PHONY: backend backend-build backend-test frontend-test analyze test app app-dev cluster samples release appcast sparkle-tools update-e2e icon clean-dist
+.PHONY: backend backend-build backend-test frontend-test analyze test app app-dev cluster samples release appcast sparkle-tools update-e2e icon shots clean-dist
 
 backend-build:
 	cd backend && go build -o bin/k8sman-server ./cmd/k8sman-server
@@ -93,6 +93,10 @@ update-e2e:
 ## Regenerate the app icon PNGs (tools/app_icon).
 icon:
 	cd tools/app_icon && flutter test
+
+## Render the README screenshots into docs/images (demo data; tools/marketing-shots.sh).
+shots:
+	tools/marketing-shots.sh
 
 clean-dist:
 	rm -rf dist
