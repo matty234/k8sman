@@ -1,0 +1,59 @@
+{
+  "addressType": "IPv4",
+  "apiVersion": "discovery.k8s.io/v1",
+  "endpoints": [
+    {
+      "addresses": [
+        "10.244.0.12"
+      ],
+      "conditions": {
+        "ready": true,
+        "serving": true,
+        "terminating": false
+      },
+      "hostname": "redis-0",
+      "nodeName": "k8sman-dev-control-plane",
+      "targetRef": {
+        "kind": "Pod",
+        "name": "redis-0",
+        "namespace": "demo",
+        "uid": "ba31c76b-19fe-40da-8951-c083a0a5ab91"
+      }
+    }
+  ],
+  "kind": "EndpointSlice",
+  "metadata": {
+    "annotations": {
+      "endpoints.kubernetes.io/last-change-trigger-time": "2026-11-03T11:23:10Z"
+    },
+    "creationTimestamp": "2026-11-03T11:22:57Z",
+    "generateName": "redis-",
+    "generation": 2,
+    "labels": {
+      "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
+      "kubernetes.io/service-name": "redis",
+      "service.kubernetes.io/headless": ""
+    },
+    "name": "redis-829zl",
+    "namespace": "demo",
+    "ownerReferences": [
+      {
+        "apiVersion": "v1",
+        "blockOwnerDeletion": true,
+        "controller": true,
+        "kind": "Service",
+        "name": "redis",
+        "uid": "fe30fc8e-781c-4a6b-90c7-c5596d5c076d"
+      }
+    ],
+    "resourceVersion": "931",
+    "uid": "367cd238-f085-4e6c-98d8-0e8b61850656"
+  },
+  "ports": [
+    {
+      "name": "redis",
+      "port": 6379,
+      "protocol": "TCP"
+    }
+  ]
+}

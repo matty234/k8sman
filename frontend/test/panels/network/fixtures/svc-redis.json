@@ -1,0 +1,41 @@
+{
+  "apiVersion": "v1",
+  "kind": "Service",
+  "metadata": {
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"annotations\":{},\"name\":\"redis\",\"namespace\":\"demo\"},\"spec\":{\"clusterIP\":\"None\",\"ports\":[{\"name\":\"redis\",\"port\":6379}],\"selector\":{\"app\":\"redis\"}}}\n"
+    },
+    "creationTimestamp": "2026-11-03T11:22:57Z",
+    "name": "redis",
+    "namespace": "demo",
+    "resourceVersion": "774",
+    "uid": "fe30fc8e-781c-4a6b-90c7-c5596d5c076d"
+  },
+  "spec": {
+    "clusterIP": "None",
+    "clusterIPs": [
+      "None"
+    ],
+    "internalTrafficPolicy": "Cluster",
+    "ipFamilies": [
+      "IPv4"
+    ],
+    "ipFamilyPolicy": "SingleStack",
+    "ports": [
+      {
+        "name": "redis",
+        "port": 6379,
+        "protocol": "TCP",
+        "targetPort": 6379
+      }
+    ],
+    "selector": {
+      "app": "redis"
+    },
+    "sessionAffinity": "None",
+    "type": "ClusterIP"
+  },
+  "status": {
+    "loadBalancer": {}
+  }
+}
