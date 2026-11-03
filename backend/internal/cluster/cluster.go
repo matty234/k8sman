@@ -14,11 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 // ResourceType describes one listable API resource discovered on the server.
@@ -69,124 +67,6 @@ type Clients struct {
 	crdMu   sync.Mutex
 	crdCols map[schema.GroupVersionResource][]PrinterColumn
 	crdSet  map[schema.GroupResource]bool
-}
-
-// Manager holds the active Clients and can switch contexts.
-type Manager struct {
-	rules *clientcmd.ClientConfigLoadingRules
-
-	mu      sync.RWMutex
-	current *Clients
-	byName  map[string]*Clients
-}
-
-// NewManager loads kubeconfig (explicit path, or default rules incl. $KUBECONFIG)
-// and connects to the given context ("" = kubeconfig's current-context).
-func NewManager(kubeconfig, contextName string) (*Manager, error) {
-	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if kubeconfig != "" {
-		rules.ExplicitPath = kubeconfig
-	}
-	m := &Manager{rules: rules}
-	if err := m.SwitchContext(contextName); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// Clients returns the current client snapshot.
-func (m *Manager) Clients() *Clients {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.current
-}
-
-// Contexts lists the contexts in kubeconfig and the active one.
-func (m *Manager) Contexts() (current string, out []ContextInfo, err error) {
-	raw, err := m.rules.Load()
-	if err != nil {
-		return "", nil, err
-	}
-	for name, c := range raw.Contexts {
-		out = append(out, ContextInfo{Name: name, Cluster: c.Cluster, User: c.AuthInfo, Namespace: c.Namespace})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	if c := m.Clients(); c != nil {
-		current = c.Context
-	}
-	return current, out, nil
-}
-
-// SwitchContext makes the named context ("" = kubeconfig current-context) active.
-func (m *Manager) SwitchContext(name string) error {
-	c, err := m.ClientsFor(name)
-	if err != nil {
-		return err
-	}
-	m.mu.Lock()
-	m.current = c
-	m.mu.Unlock()
-	return nil
-}
-
-// ClientsFor returns (cached) clients for any kubeconfig context without
-// changing the active one. Used by long-lived work such as port-forwards.
-func (m *Manager) ClientsFor(name string) (*Clients, error) {
-	overrides := &clientcmd.ConfigOverrides{}
-	if name != "" {
-		overrides.CurrentContext = name
-	}
-	cc := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(m.rules, overrides)
-	raw, err := cc.RawConfig()
-	if err != nil {
-		return nil, fmt.Errorf("load kubeconfig: %w", err)
-	}
-	if name == "" {
-		name = raw.CurrentContext
-	}
-	if _, ok := raw.Contexts[name]; !ok {
-		return nil, fmt.Errorf("context %q not found in kubeconfig", name)
-	}
-	m.mu.RLock()
-	cached := m.byName[name]
-	m.mu.RUnlock()
-	if cached != nil {
-		return cached, nil
-	}
-	cfg, err := cc.ClientConfig()
-	if err != nil {
-		return nil, fmt.Errorf("client config for %q: %w", name, err)
-	}
-	cfg.QPS, cfg.Burst = 50, 100
-	ns, _, _ := cc.Namespace()
-
-	dyn, err := dynamic.NewForConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-	typed, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
-	c := &Clients{
-		Context:    name,
-		Namespace:  ns,
-		RESTConfig: cfg,
-		Dynamic:    dyn,
-		Typed:      typed,
-		Discovery:  memory.NewMemCacheClient(dc),
-	}
-	m.mu.Lock()
-	if m.byName == nil {
-		m.byName = map[string]*Clients{}
-	}
-	m.byName[name] = c
-	m.mu.Unlock()
-	return c, nil
 }
 
 var crdGVR = schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
