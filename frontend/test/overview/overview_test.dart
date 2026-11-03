@@ -1,0 +1,276 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/api/client.dart';
+import 'package:k8sman/api/models.dart';
+import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/ui/overview/overview_api.dart';
+import 'package:k8sman/ui/overview/overview_view.dart';
+import 'package:k8sman/ui/theme.dart';
+import 'package:provider/provider.dart';
+
+import '../support/harness.dart';
+import '../support/screenshot.dart';
+
+/// Real response captured from the kind dev cluster (`demo` has a
+/// CrashLoopBackOff and an ImagePullBackOff pod).
+Json liveFixture() => jsonDecode(File('test/overview/fixtures/overview.json').readAsStringSync());
+
+/// The backend's analysis of its unit-test scenario (one of every problem),
+/// written by `OVERVIEW_FIXTURE_OUT=... go test ./internal/overview -run Scenario`.
+Json scenarioFixture() => jsonDecode(File('test/overview/fixtures/overview-scenario.json').readAsStringSync());
+
+class FakeOverviewApi extends OverviewApi {
+  Json response;
+  final List<String?> calls = [];
+  FakeOverviewApi(this.response, ApiClient api) : super(api);
+
+  @override
+  Future<OverviewData> fetch({String? namespace}) async {
+    calls.add(namespace);
+    return OverviewData.fromJson(response);
+  }
+}
+
+class RecordingApi extends FakeApiClient {
+  final List<String> actions = [];
+  RecordingApi({super.objects});
+
+  @override
+  Future<ActionResult> runAction(ResourceRef r, {String? namespace, required String name, required String action, Json body = const {}}) async {
+    actions.add('$action ${r.resource} $namespace/$name ${jsonEncode(body)}');
+    return ActionResult(message: '$action ok', context: 'kind-k8sman-dev');
+  }
+}
+
+Future<(AppState, FakeOverviewApi)> pumpOverview(
+  WidgetTester tester,
+  Json response, {
+  Size size = const Size(1000, 800),
+  bool readOnly = false,
+  String? namespace,
+  ApiClient? api,
+}) async {
+  final client = api ?? RecordingApi();
+  final app = AppState(client)
+    ..types = testTypes
+    ..readOnly = readOnly
+    ..currentContext = 'kind-k8sman-dev'
+    ..namespace = namespace;
+  final source = FakeOverviewApi(response, client);
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(MultiProvider(
+    providers: [Provider<ApiClient>.value(value: client), ChangeNotifierProvider<AppState>.value(value: app)],
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(Brightness.dark),
+      home: Scaffold(body: OverviewView(source: source)),
+    ),
+  ));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 50));
+  return (app, source);
+}
+
+/// pumpAndSettle never settles while a button spinner runs behind a dialog.
+Future<void> settle(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+Json healthyResponse() => {
+      'generatedAt': '2026-11-03T12:00:00Z',
+      'namespace': '',
+      'counts': {
+        'pods': {'total': 12, 'ready': 10, 'running': 10, 'completed': 2},
+        'deployments': {'total': 3, 'healthy': 3},
+        'nodes': {'total': 1, 'ready': 1},
+      },
+      'categories': [],
+      'issues': [],
+      'nodes': [
+        {'name': 'k8sman-dev-control-plane', 'ready': true, 'roles': ['control-plane'], 'pods': 10},
+      ],
+      'topWarnings': [],
+    };
+
+void main() {
+  testWidgets('live fixture: tiles, issues, nodes and events', (tester) async {
+    await loadRealFonts();
+    final (app, source) = await pumpOverview(tester, liveFixture());
+    expect(source.calls, [null]);
+    expect(find.text('All namespaces'), findsOneWidget);
+    expect(find.text('CrashLoopBackOff'), findsWidgets); // tile + badge
+    expect(find.text('Image pull errors'), findsOneWidget);
+    expect(find.text('crashy'), findsWidgets); // issue row + warning event example
+    expect(find.text('bad-image'), findsWidgets);
+    expect(find.text('k8sman-dev-control-plane'), findsOneWidget);
+    expect(find.text('BackOff'), findsOneWidget);
+    await saveScreenshot(tester, 'overview-live-1000');
+
+    // Clicking a name opens the sidebar.
+    await tester.tap(find.text('crashy').first);
+    expect(app.detail?.name, 'crashy');
+    expect(app.detail?.namespace, 'demo');
+    expect(app.detail?.type.kind, 'Pod');
+
+    tester.view.physicalSize = const Size(1500, 900);
+    await tester.pump();
+    await saveScreenshot(tester, 'overview-live-1500');
+  });
+
+  testWidgets('scenario: grouped by owner, tile filters, expands', (tester) async {
+    await loadRealFonts();
+    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 1400));
+    await saveScreenshot(tester, 'overview-scenario-1500');
+
+    // Three crashlooping pods of deployment web collapse into one row.
+    expect(find.text('3 pods'), findsOneWidget);
+    expect(find.text('web-5c-b'), findsNothing);
+    await tester.tap(find.text('3 pods'));
+    await tester.pump();
+    expect(find.text('web-5c-b'), findsOneWidget);
+    expect(find.text('web-5c-d'), findsOneWidget);
+    await saveScreenshot(tester, 'overview-scenario-expanded');
+
+    // Filter by the "Stuck terminating" tile.
+    await tester.tap(find.text('Stuck terminating'));
+    await tester.pump();
+    expect(find.text('legacy-abc'), findsOneWidget);
+    expect(find.text('img-1'), findsNothing);
+    expect(find.textContaining('Stuck terminating · 1'), findsOneWidget);
+    // Tapping again clears the filter.
+    await tester.tap(find.text('Stuck terminating').first);
+    await tester.pump();
+    expect(find.text('img-1'), findsOneWidget);
+  });
+
+  testWidgets('scenario at 1000x800', (tester) async {
+    await loadRealFonts();
+    await pumpOverview(tester, scenarioFixture(), size: const Size(1000, 800));
+    await saveScreenshot(tester, 'overview-scenario-1000');
+  });
+
+  for (final width in [700.0, 900.0, 1200.0, 1600.0]) {
+    testWidgets('no overflow at ${width.toInt()}px', (tester) async {
+      await pumpOverview(tester, scenarioFixture(), size: Size(width, 3000));
+      // Expand every group too.
+      for (final f in find.textContaining(RegExp(r'^\d+ pods$')).evaluate().toList()) {
+        await tester.tap(find.byWidget(f.widget));
+      }
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('narrow screenshot (700px)', (tester) async {
+    await loadRealFonts();
+    await pumpOverview(tester, scenarioFixture(), size: const Size(700, 1400));
+    await saveScreenshot(tester, 'overview-scenario-700');
+  });
+
+  testWidgets('healthy cluster shows a calm state', (tester) async {
+    await loadRealFonts();
+    await pumpOverview(tester, healthyResponse(), size: const Size(1000, 600));
+    expect(find.text('All healthy'), findsOneWidget);
+    expect(find.text('Nothing needs attention.'), findsOneWidget);
+    expect(find.text('No warning events in the last hour.'), findsOneWidget);
+    await saveScreenshot(tester, 'overview-healthy');
+  });
+
+  testWidgets('restart action fetches the owner and runs restart', (tester) async {
+    final api = RecordingApi(objects: {
+      'deployments.apps/shop/web': {
+        'apiVersion': 'apps/v1',
+        'kind': 'Deployment',
+        'metadata': {'name': 'web', 'namespace': 'shop'},
+        'spec': {'replicas': 4},
+      },
+    });
+    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 1400), api: api);
+    // The Restart button on the "Deployment web · 3 pods" CrashLoopBackOff row.
+    final webRow = find.ancestor(of: find.text('3 pods'), matching: find.byType(InkWell)).first;
+    await tester.tap(find.descendant(of: webRow, matching: find.widgetWithText(OutlinedButton, 'Restart')));
+    await settle(tester);
+    expect(find.text('Restart Deployment web?'), findsOneWidget);
+    expect(find.text('kind-k8sman-dev'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Restart'));
+    await settle(tester);
+    expect(api.actions, ['restart deployments shop/web {}']);
+  });
+
+  testWidgets('force delete for stuck terminating pods and resume for suspended cronjobs', (tester) async {
+    final api = RecordingApi(objects: {
+      'pods/shop/legacy-abc': {
+        'apiVersion': 'v1',
+        'kind': 'Pod',
+        'metadata': {'name': 'legacy-abc', 'namespace': 'shop'},
+      },
+      'cronjobs.batch/batch/reports': {
+        'apiVersion': 'batch/v1',
+        'kind': 'CronJob',
+        'metadata': {'name': 'reports', 'namespace': 'batch'},
+        'spec': {'suspend': true},
+      },
+    });
+    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400), api: api);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Force delete'));
+    await settle(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Force delete'));
+    await settle(tester);
+    final reportsRow = find.ancestor(of: find.text('reports'), matching: find.byType(InkWell)).first;
+    await tester.tap(find.descendant(of: reportsRow, matching: find.widgetWithText(OutlinedButton, 'Resume')));
+    await settle(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Resume'));
+    await settle(tester);
+    expect(api.actions, [
+      'delete pods shop/legacy-abc {"gracePeriodSeconds":0}',
+      'unsuspend cronjobs batch/reports {}',
+    ]);
+  });
+
+  testWidgets('read-only hides actions', (tester) async {
+    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400), readOnly: true);
+    expect(find.byType(OutlinedButton), findsNothing);
+  });
+
+  testWidgets('follows the namespace and auto-refreshes until paused', (tester) async {
+    final (app, source) = await pumpOverview(tester, liveFixture(), namespace: 'demo');
+    expect(source.calls, ['demo']);
+    expect(find.text('demo'), findsWidgets);
+
+    app.setNamespace(null);
+    await tester.pump();
+    await tester.pump();
+    expect(source.calls, ['demo', null]);
+
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump();
+    expect(source.calls.length, 3);
+
+    await tester.tap(find.byTooltip('Pause auto-refresh'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 30));
+    expect(source.calls.length, 3);
+    expect(find.textContaining('Paused'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Refresh now'));
+    await tester.pump();
+    expect(source.calls.length, 4);
+  });
+
+  test('groupIssues groups by owner and category', () {
+    final data = OverviewData.fromJson(scenarioFixture());
+    final groups = groupIssues(data.issues);
+    final web = groups.firstWhere((g) => g.owner?.name == 'web' && g.category == 'crashLoop');
+    expect(web.issues.map((i) => i.name), ['web-5c-d', 'web-5c-c', 'web-5c-b']);
+    expect(groups.where((g) => g.category == 'crashLoop'), hasLength(2)); // web + a bare pod
+    expect(groups.first.severity, IssueSeverity.critical);
+    expect(groups.last.severity, IssueSeverity.info);
+  });
+}

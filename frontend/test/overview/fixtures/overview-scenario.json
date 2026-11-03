@@ -1,0 +1,710 @@
+{
+  "generatedAt": "2026-11-03T12:00:00Z",
+  "namespace": "",
+  "counts": {
+    "pods": {
+      "total": 17,
+      "running": 5,
+      "ready": 4,
+      "pending": 3,
+      "crashLoop": 4,
+      "imagePull": 1,
+      "createContainerConfigError": 1,
+      "oomKilled": 1,
+      "failed": 1,
+      "terminating": 2,
+      "stuckTerminating": 1,
+      "stuckPending": 1,
+      "notReady": 1,
+      "highRestarts": 4,
+      "completed": 0,
+      "initBlocked": 1
+    },
+    "deployments": {
+      "total": 4,
+      "healthy": 2,
+      "unavailable": 1,
+      "progressDeadlineExceeded": 1,
+      "paused": 1,
+      "rolling": 0
+    },
+    "statefulSets": {
+      "total": 1,
+      "healthy": 0,
+      "notReady": 1
+    },
+    "daemonSets": {
+      "total": 1,
+      "healthy": 0,
+      "notReady": 1
+    },
+    "jobs": {
+      "total": 5,
+      "running": 1,
+      "succeeded": 1,
+      "failed": 2,
+      "longRunning": 1,
+      "suspended": 1
+    },
+    "cronJobs": {
+      "total": 3,
+      "suspended": 1,
+      "failing": 1,
+      "overdue": 1
+    },
+    "nodes": {
+      "total": 3,
+      "ready": 2,
+      "notReady": 1,
+      "pressure": 1,
+      "cordoned": 1
+    },
+    "pvcs": {
+      "total": 3,
+      "bound": 1,
+      "pending": 1,
+      "lost": 1
+    }
+  },
+  "categories": [
+    {
+      "id": "nodeNotReady",
+      "label": "Nodes not ready",
+      "section": "nodes",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "crashLoop",
+      "label": "CrashLoopBackOff",
+      "section": "pods",
+      "severity": "critical",
+      "count": 4
+    },
+    {
+      "id": "imagePull",
+      "label": "Image pull errors",
+      "section": "pods",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "createContainerConfigError",
+      "label": "Container config errors",
+      "section": "pods",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "initBlocked",
+      "label": "Init blocked",
+      "section": "pods",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "oomKilled",
+      "label": "OOMKilled (1h)",
+      "section": "pods",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "progressDeadlineExceeded",
+      "label": "Rollouts stalled",
+      "section": "workloads",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "deploymentUnavailable",
+      "label": "Deployments unavailable",
+      "section": "workloads",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "cronJobFailing",
+      "label": "CronJobs failing",
+      "section": "jobs",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "jobFailed",
+      "label": "Failed jobs",
+      "section": "jobs",
+      "severity": "critical",
+      "count": 2
+    },
+    {
+      "id": "pvcLost",
+      "label": "PVCs lost",
+      "section": "storage",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "podFailed",
+      "label": "Failed pods",
+      "section": "pods",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "statefulSetNotReady",
+      "label": "StatefulSets not ready",
+      "section": "workloads",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "daemonSetNotReady",
+      "label": "DaemonSets not ready",
+      "section": "workloads",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "stuckPending",
+      "label": "Stuck pending",
+      "section": "pods",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "stuckTerminating",
+      "label": "Stuck terminating",
+      "section": "pods",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "notReady",
+      "label": "Pods not ready",
+      "section": "pods",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "highRestarts",
+      "label": "High restarts",
+      "section": "pods",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "jobLongRunning",
+      "label": "Jobs running \u003e 1h",
+      "section": "jobs",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "cronJobOverdue",
+      "label": "CronJobs overdue",
+      "section": "jobs",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "nodePressure",
+      "label": "Node pressure",
+      "section": "nodes",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "pvcPending",
+      "label": "PVCs pending",
+      "section": "storage",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "deploymentPaused",
+      "label": "Paused rollouts",
+      "section": "workloads",
+      "severity": "info",
+      "count": 1
+    },
+    {
+      "id": "jobSuspended",
+      "label": "Suspended jobs",
+      "section": "jobs",
+      "severity": "info",
+      "count": 1
+    },
+    {
+      "id": "cronJobSuspended",
+      "label": "Suspended CronJobs",
+      "section": "jobs",
+      "severity": "info",
+      "count": 1
+    },
+    {
+      "id": "nodeCordoned",
+      "label": "Nodes cordoned",
+      "section": "nodes",
+      "severity": "info",
+      "count": 1
+    }
+  ],
+  "issues": [
+    {
+      "severity": "critical",
+      "category": "progressDeadlineExceeded",
+      "kind": "Deployment",
+      "group": "apps",
+      "namespace": "shop",
+      "name": "api",
+      "reason": "ProgressDeadlineExceeded",
+      "message": "ReplicaSet \"api-66\" has timed out progressing; 1/2 updated, 2 available",
+      "since": "2026-11-03T11:55:00Z"
+    },
+    {
+      "severity": "critical",
+      "category": "imagePull",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "img-1",
+      "reason": "ErrImagePull",
+      "message": "container app, image example/app:1: manifest unknown",
+      "since": "2026-11-03T11:51:00Z"
+    },
+    {
+      "severity": "critical",
+      "category": "oomKilled",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "cart-7d9f-oom",
+      "reason": "OOMKilled",
+      "message": "container app was OOMKilled 10m ago; memory limit 128Mi",
+      "since": "2026-11-03T11:50:00Z",
+      "count": 2,
+      "owner": {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "cart"
+      }
+    },
+    {
+      "severity": "critical",
+      "category": "nodeNotReady",
+      "kind": "Node",
+      "group": "",
+      "name": "node-3",
+      "reason": "NodeStatusUnknown",
+      "message": "Kubelet stopped posting node status.",
+      "since": "2026-11-03T11:48:00Z"
+    },
+    {
+      "severity": "critical",
+      "category": "createContainerConfigError",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "api-66-cfg",
+      "reason": "CreateContainerConfigError",
+      "message": "container app: secret \"api-keys\" not found",
+      "since": "2026-11-03T11:46:00Z",
+      "owner": {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "api"
+      }
+    },
+    {
+      "severity": "critical",
+      "category": "initBlocked",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "api-66-init",
+      "reason": "Init:CrashLoopBackOff",
+      "message": "init container wait-for-db: back-off 5m0s restarting failed container",
+      "since": "2026-11-03T11:46:00Z",
+      "owner": {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "api"
+      }
+    },
+    {
+      "severity": "critical",
+      "category": "crashLoop",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "web-5c-d",
+      "reason": "CrashLoopBackOff",
+      "message": "container app last terminated: exit 1, Error; 10 restarts",
+      "since": "2026-11-03T11:21:00Z",
+      "count": 10,
+      "owner": {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "web"
+      }
+    },
+    {
+      "severity": "critical",
+      "category": "crashLoop",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "web-5c-c",
+      "reason": "CrashLoopBackOff",
+      "message": "container app last terminated: exit 1, Error; 11 restarts",
+      "since": "2026-11-03T11:11:00Z",
+      "count": 11,
+      "owner": {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "web"
+      }
+    },
+    {
+      "severity": "critical",
+      "category": "deploymentUnavailable",
+      "kind": "Deployment",
+      "group": "apps",
+      "namespace": "shop",
+      "name": "web",
+      "reason": "Unavailable",
+      "message": "1/4 available, 1 ready; Deployment does not have minimum availability",
+      "since": "2026-11-03T11:05:00Z"
+    },
+    {
+      "severity": "critical",
+      "category": "crashLoop",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "web-5c-b",
+      "reason": "CrashLoopBackOff",
+      "message": "container app last terminated: exit 1, Error; 12 restarts",
+      "since": "2026-11-03T11:01:00Z",
+      "count": 12,
+      "owner": {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "web"
+      }
+    },
+    {
+      "severity": "critical",
+      "category": "cronJobFailing",
+      "kind": "CronJob",
+      "group": "batch",
+      "namespace": "batch",
+      "name": "nightly",
+      "reason": "BackoffLimitExceeded",
+      "message": "Latest job nightly-2900 failed: Job has reached the specified backoff limit",
+      "since": "2026-11-03T10:40:00Z"
+    },
+    {
+      "severity": "critical",
+      "category": "crashLoop",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "worker-restarting",
+      "reason": "Error",
+      "message": "container app exited 3 and is restarting; 3 restarts",
+      "since": "2026-11-03T10:30:00Z",
+      "count": 3
+    },
+    {
+      "severity": "critical",
+      "category": "jobFailed",
+      "kind": "Job",
+      "group": "batch",
+      "namespace": "batch",
+      "name": "one-off",
+      "reason": "BackoffLimitExceeded",
+      "message": "Job has reached the specified backoff limit",
+      "since": "2026-11-03T10:00:00Z"
+    },
+    {
+      "severity": "critical",
+      "category": "pvcLost",
+      "kind": "PersistentVolumeClaim",
+      "group": "",
+      "namespace": "shop",
+      "name": "old-data",
+      "reason": "Lost",
+      "message": "Bound volume pvc-123 no longer exists",
+      "since": "2026-08-05T12:00:00Z"
+    },
+    {
+      "severity": "warning",
+      "category": "nodePressure",
+      "kind": "Node",
+      "group": "",
+      "name": "node-2",
+      "reason": "DiskPressure",
+      "message": "kubelet has disk pressure",
+      "since": "2026-11-03T11:53:00Z"
+    },
+    {
+      "severity": "warning",
+      "category": "stuckTerminating",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "legacy-abc",
+      "reason": "Terminating",
+      "message": "Terminating for 20m; finalizers: example.com/cleanup; node node-1",
+      "since": "2026-11-03T11:40:00Z"
+    },
+    {
+      "severity": "warning",
+      "category": "notReady",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "web-5c-nr",
+      "reason": "NotReady",
+      "message": "Running but not ready: containers with unready status: [app]",
+      "since": "2026-11-03T11:40:00Z",
+      "owner": {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "web"
+      }
+    },
+    {
+      "severity": "warning",
+      "category": "stuckPending",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "gpu-worker-x1",
+      "reason": "Unschedulable",
+      "message": "Pending for 30m: 0/3 nodes are available: 3 Insufficient nvidia.com/gpu.",
+      "since": "2026-11-03T11:30:00Z",
+      "owner": {
+        "group": "apps",
+        "kind": "ReplicaSet",
+        "name": "gpu-worker-55"
+      }
+    },
+    {
+      "severity": "warning",
+      "category": "cronJobOverdue",
+      "kind": "CronJob",
+      "group": "batch",
+      "namespace": "batch",
+      "name": "heartbeat",
+      "reason": "Overdue",
+      "message": "Should have run 55m ago (schedule \"*/5 * * * *\"); last scheduled 1h0m ago",
+      "since": "2026-11-03T11:05:00Z"
+    },
+    {
+      "severity": "warning",
+      "category": "pvcPending",
+      "kind": "PersistentVolumeClaim",
+      "group": "",
+      "namespace": "shop",
+      "name": "data-search-2",
+      "reason": "Pending",
+      "message": "Pending for 1h0m (storage class fast-ssd)",
+      "since": "2026-11-03T11:00:00Z"
+    },
+    {
+      "severity": "warning",
+      "category": "jobFailed",
+      "kind": "Job",
+      "group": "batch",
+      "namespace": "batch",
+      "name": "nightly-2900",
+      "reason": "BackoffLimitExceeded",
+      "message": "Job has reached the specified backoff limit",
+      "since": "2026-11-03T10:40:00Z",
+      "owner": {
+        "group": "batch",
+        "kind": "CronJob",
+        "name": "nightly"
+      }
+    },
+    {
+      "severity": "warning",
+      "category": "podFailed",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "batch",
+      "name": "nightly-2900-abc",
+      "reason": "Error",
+      "message": "container app exited 1",
+      "since": "2026-11-03T10:30:00Z",
+      "owner": {
+        "group": "batch",
+        "kind": "CronJob",
+        "name": "nightly"
+      }
+    },
+    {
+      "severity": "warning",
+      "category": "jobLongRunning",
+      "kind": "Job",
+      "group": "batch",
+      "namespace": "batch",
+      "name": "backfill",
+      "reason": "LongRunning",
+      "message": "Running for 3h0m; 1 active, 0 succeeded, 0 failed",
+      "since": "2026-11-03T09:00:00Z"
+    },
+    {
+      "severity": "warning",
+      "category": "highRestarts",
+      "kind": "Pod",
+      "group": "",
+      "namespace": "shop",
+      "name": "search-0",
+      "reason": "HighRestarts",
+      "message": "9 restarts",
+      "since": "2026-11-03T06:00:00Z",
+      "count": 9,
+      "owner": {
+        "group": "apps",
+        "kind": "StatefulSet",
+        "name": "search"
+      }
+    },
+    {
+      "severity": "warning",
+      "category": "daemonSetNotReady",
+      "kind": "DaemonSet",
+      "group": "apps",
+      "namespace": "kube-system",
+      "name": "log-agent",
+      "reason": "NotReady",
+      "message": "2/3 ready, 1 unavailable",
+      "since": "2026-11-02T12:00:00Z"
+    },
+    {
+      "severity": "warning",
+      "category": "statefulSetNotReady",
+      "kind": "StatefulSet",
+      "group": "apps",
+      "namespace": "shop",
+      "name": "search",
+      "reason": "NotReady",
+      "message": "2/3 ready",
+      "since": "2026-11-02T12:00:00Z"
+    },
+    {
+      "severity": "info",
+      "category": "jobSuspended",
+      "kind": "Job",
+      "group": "batch",
+      "namespace": "batch",
+      "name": "paused-job",
+      "reason": "Suspended",
+      "message": "Job is suspended; no pods will be started",
+      "since": "2026-11-03T09:00:00Z"
+    },
+    {
+      "severity": "info",
+      "category": "deploymentPaused",
+      "kind": "Deployment",
+      "group": "apps",
+      "namespace": "shop",
+      "name": "cart",
+      "reason": "Paused",
+      "message": "Rollout is paused; template changes will not roll out",
+      "since": "2026-11-02T12:00:00Z"
+    },
+    {
+      "severity": "info",
+      "category": "nodeCordoned",
+      "kind": "Node",
+      "group": "",
+      "name": "node-3",
+      "reason": "SchedulingDisabled",
+      "message": "Cordoned; 0 pods still running",
+      "since": "2026-11-01T12:00:00Z"
+    },
+    {
+      "severity": "info",
+      "category": "cronJobSuspended",
+      "kind": "CronJob",
+      "group": "batch",
+      "namespace": "batch",
+      "name": "reports",
+      "reason": "Suspended",
+      "message": "Suspended; schedule \"*/15 * * * *\" will not run (last ran 4d ago)",
+      "since": "2026-10-04T12:00:00Z"
+    }
+  ],
+  "nodes": [
+    {
+      "name": "node-1",
+      "ready": true,
+      "cordoned": false,
+      "roles": [
+        "control-plane"
+      ],
+      "pods": 14
+    },
+    {
+      "name": "node-2",
+      "ready": true,
+      "cordoned": false,
+      "pressure": [
+        "DiskPressure"
+      ],
+      "pods": 0
+    },
+    {
+      "name": "node-3",
+      "ready": false,
+      "cordoned": true,
+      "pods": 0
+    }
+  ],
+  "topWarnings": [
+    {
+      "reason": "BackOff",
+      "count": 75,
+      "objects": 2,
+      "latestMessage": "Back-off restarting failed container app",
+      "lastSeen": "2026-11-03T11:59:30Z",
+      "example": {
+        "kind": "Pod",
+        "group": "",
+        "namespace": "shop",
+        "name": "web-5c-b"
+      }
+    },
+    {
+      "reason": "Unhealthy",
+      "count": 30,
+      "objects": 1,
+      "latestMessage": "Readiness probe failed: HTTP probe failed with statuscode: 503",
+      "lastSeen": "2026-11-03T11:57:00Z",
+      "example": {
+        "kind": "Pod",
+        "group": "",
+        "namespace": "shop",
+        "name": "web-5c-nr"
+      }
+    },
+    {
+      "reason": "FailedScheduling",
+      "count": 12,
+      "objects": 1,
+      "latestMessage": "0/3 nodes are available: 3 Insufficient nvidia.com/gpu.",
+      "lastSeen": "2026-11-03T11:58:00Z",
+      "example": {
+        "kind": "Pod",
+        "group": "",
+        "namespace": "shop",
+        "name": "gpu-worker-x1"
+      }
+    }
+  ]
+}

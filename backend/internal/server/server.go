@@ -46,6 +46,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.routes()
 	s.mutationRoutes()
 	s.actionRoutes()
+	s.overviewRoutes()
 	return s
 }
 
