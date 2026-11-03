@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import 'resource_table.dart' show TableCellView;
 import 'theme.dart';
 import 'widgets/common.dart';
 
@@ -170,7 +171,7 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
                           tooltip: 'Add a default column',
                           onSelected: _add,
                           itemBuilder: (_) => [for (final d in _defaults) PopupMenuItem(value: d, child: Text(d.name))],
-                          child: const Padding(padding: EdgeInsets.all(8), child: Text('Add default column ▾')),
+                          child: const Padding(padding: EdgeInsets.all(8), child: Row(mainAxisSize: MainAxisSize.min, children: [Text('Add default column'), Icon(Icons.arrow_drop_down, size: 18)])),
                         ),
                         const Spacer(),
                         TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
@@ -220,11 +221,12 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
                 ),
                 const SizedBox(width: 8),
                 SizedBox(
-                  width: 110,
+                  width: 128,
                   child: DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: _types.contains(c.type) ? c.type : 'string',
                     decoration: const InputDecoration(labelText: 'Type'),
-                    items: [for (final t in _types) DropdownMenuItem(value: t, child: Text(t))],
+                    items: [for (final t in _types) DropdownMenuItem(value: t, child: Text(t, overflow: TextOverflow.ellipsis))],
                     onChanged: (v) => setState(() => c.type = v ?? 'string'),
                   ),
                 ),
@@ -302,8 +304,7 @@ class _PreviewCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = value == null ? '' : (value is List ? (value as List).join(', ') : '$value');
-    return Text(text, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall);
+    return TableCellView(value: value, column: def);
   }
 }
 

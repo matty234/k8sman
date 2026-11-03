@@ -26,6 +26,9 @@ class AppState extends ChangeNotifier {
   bool loading = true;
   String? error;
 
+  /// Backend started with --read-only: hide mutating UI.
+  bool readOnly = false;
+
   String currentContext = '';
   List<ContextInfo> contexts = const [];
   List<ResourceType> types = const [];
@@ -48,6 +51,7 @@ class AppState extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
+      readOnly = await api.health().then((h) => h['readOnly'] == true, onError: (_) => false);
       final ctx = await api.contexts();
       currentContext = ctx.current;
       contexts = ctx.contexts;
