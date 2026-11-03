@@ -9,12 +9,20 @@ import (
 	"sync"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kcache"
 	"github.com/matty234/k8sman/backend/internal/security"
 )
 
@@ -92,8 +100,8 @@ func gatewayVersion(c *cluster.Clients) (string, map[string]bool) {
 
 func listForSecurity(ctx context.Context, c *cluster.Clients, ns string) (security.Input, map[string]error) {
 	in := security.Input{Now: time.Now(), Namespace: ns}
-	opts := metav1.ListOptions{ResourceVersion: "0"}
-	core, apps, batch, netv1, rbac := c.Typed.CoreV1(), c.Typed.AppsV1(), c.Typed.BatchV1(), c.Typed.NetworkingV1(), c.Typed.RbacV1()
+	// Lists go through the shared watch cache (see listTyped).
+	kc := kcache.For(c)
 
 	var mu sync.Mutex
 	errs := map[string]error{}
@@ -110,143 +118,119 @@ func listForSecurity(ctx context.Context, c *cluster.Clients, ns string) (securi
 		}()
 	}
 	run("pods", func() error {
-		l, err := core.Pods(ns).List(ctx, opts)
-		if err == nil {
-			in.Pods = l.Items
-		}
+		var err error
+		in.Pods, err = listTyped[corev1.Pod](ctx, kc, gvrPods, ns, "")
 		return err
 	})
 	run("namespaces", func() error {
 		if ns != "" {
-			n, err := core.Namespaces().Get(ctx, ns, metav1.GetOptions{})
+			// From a warm namespaces watch when there is one (no round trip),
+			// else a GET (listing every namespace may be forbidden).
+			if snap, ok := kc.Cached(kcache.Key{GVR: gvrNamespaces, FieldSelector: "metadata.name=" + ns}); ok && len(snap.Items) == 1 {
+				var n corev1.Namespace
+				err := runtime.DefaultUnstructuredConverter.FromUnstructured(snap.Items[0].Object, &n)
+				if err == nil {
+					in.Namespaces = append(in.Namespaces, n)
+				}
+				return err
+			}
+			n, err := c.Typed.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
 			if err == nil {
 				in.Namespaces = append(in.Namespaces, *n)
 			}
 			return err
 		}
-		l, err := core.Namespaces().List(ctx, opts)
-		if err == nil {
-			in.Namespaces = l.Items
-		}
+		var err error
+		in.Namespaces, err = listTyped[corev1.Namespace](ctx, kc, gvrNamespaces, "", "")
 		return err
 	})
 	run("deployments", func() error {
-		l, err := apps.Deployments(ns).List(ctx, opts)
-		if err == nil {
-			in.Deployments = l.Items
-		}
+		var err error
+		in.Deployments, err = listTyped[appsv1.Deployment](ctx, kc, gvrDeployments, ns, "")
 		return err
 	})
 	run("statefulsets", func() error {
-		l, err := apps.StatefulSets(ns).List(ctx, opts)
-		if err == nil {
-			in.StatefulSets = l.Items
-		}
+		var err error
+		in.StatefulSets, err = listTyped[appsv1.StatefulSet](ctx, kc, gvrStatefulSets, ns, "")
 		return err
 	})
 	run("daemonsets", func() error {
-		l, err := apps.DaemonSets(ns).List(ctx, opts)
-		if err == nil {
-			in.DaemonSets = l.Items
-		}
+		var err error
+		in.DaemonSets, err = listTyped[appsv1.DaemonSet](ctx, kc, gvrDaemonSets, ns, "")
 		return err
 	})
 	run("replicasets", func() error {
-		l, err := apps.ReplicaSets(ns).List(ctx, opts)
-		if err == nil {
-			in.ReplicaSets = l.Items
-		}
+		var err error
+		in.ReplicaSets, err = listTyped[appsv1.ReplicaSet](ctx, kc, gvrReplicaSets, ns, "")
 		return err
 	})
 	run("jobs", func() error {
-		l, err := batch.Jobs(ns).List(ctx, opts)
-		if err == nil {
-			in.Jobs = l.Items
-		}
+		var err error
+		in.Jobs, err = listTyped[batchv1.Job](ctx, kc, gvrJobs, ns, "")
 		return err
 	})
 	run("cronjobs", func() error {
-		l, err := batch.CronJobs(ns).List(ctx, opts)
-		if err == nil {
-			in.CronJobs = l.Items
-		}
+		var err error
+		in.CronJobs, err = listTyped[batchv1.CronJob](ctx, kc, gvrCronJobs, ns, "")
 		return err
 	})
 	run("services", func() error {
-		l, err := core.Services(ns).List(ctx, opts)
-		if err == nil {
-			in.Services = l.Items
-		}
+		var err error
+		in.Services, err = listTyped[corev1.Service](ctx, kc, gvrServices, ns, "")
 		return err
 	})
 	run("serviceaccounts", func() error {
-		l, err := core.ServiceAccounts(ns).List(ctx, opts)
-		if err == nil {
-			in.ServiceAccounts = l.Items
-		}
+		var err error
+		in.ServiceAccounts, err = listTyped[corev1.ServiceAccount](ctx, kc, gvrServiceAccounts, ns, "")
 		return err
 	})
 	run("ingresses", func() error {
-		l, err := netv1.Ingresses(ns).List(ctx, opts)
-		if err == nil {
-			in.Ingresses = l.Items
-		}
+		var err error
+		in.Ingresses, err = listTyped[networkingv1.Ingress](ctx, kc, gvrIngresses, ns, "")
 		return err
 	})
 	run("networkpolicies", func() error {
-		l, err := netv1.NetworkPolicies(ns).List(ctx, opts)
-		if err == nil {
-			in.NetworkPolicies = l.Items
-		}
+		var err error
+		in.NetworkPolicies, err = listTyped[networkingv1.NetworkPolicy](ctx, kc, gvrNetworkPolicies, ns, "")
 		return err
 	})
 	// RBAC is listed cluster-wide: whether a role is bound, or a
 	// ClusterRoleBinding names a ServiceAccount in ns, needs every binding.
 	run("roles", func() error {
-		l, err := rbac.Roles("").List(ctx, opts)
-		if err == nil {
-			in.Roles = l.Items
-		}
+		var err error
+		in.Roles, err = listTyped[rbacv1.Role](ctx, kc, gvrRoles, "", "")
 		return err
 	})
 	run("rolebindings", func() error {
-		l, err := rbac.RoleBindings("").List(ctx, opts)
-		if err == nil {
-			in.RoleBindings = l.Items
-		}
+		var err error
+		in.RoleBindings, err = listTyped[rbacv1.RoleBinding](ctx, kc, gvrRoleBindings, "", "")
 		return err
 	})
 	run("clusterroles", func() error {
-		l, err := rbac.ClusterRoles().List(ctx, opts)
-		if err == nil {
-			in.ClusterRoles = l.Items
-		}
+		var err error
+		in.ClusterRoles, err = listTyped[rbacv1.ClusterRole](ctx, kc, gvrClusterRoles, "", "")
 		return err
 	})
 	run("clusterrolebindings", func() error {
-		l, err := rbac.ClusterRoleBindings().List(ctx, opts)
-		if err == nil {
-			in.ClusterRoleBindings = l.Items
-		}
+		var err error
+		in.ClusterRoleBindings, err = listTyped[rbacv1.ClusterRoleBinding](ctx, kc, gvrClusterRoleBindings, "", "")
 		return err
 	})
 
 	dyn := func(name string, gvr schema.GroupVersionResource, namespaced bool, dst *[]unstructured.Unstructured) {
 		run(name, func() error {
-			ri := c.Dynamic.Resource(gvr)
-			var l *unstructured.UnstructuredList
-			var err error
+			lns := ""
 			if namespaced {
-				l, err = ri.Namespace(ns).List(ctx, opts)
-			} else {
-				l, err = ri.List(ctx, opts)
+				lns = ns
 			}
+			items, err := listCached(ctx, kc, gvr, lns)
 			if err == nil {
-				mu.Lock()
-				*dst = l.Items
-				if *dst == nil {
-					*dst = []unstructured.Unstructured{}
+				out := make([]unstructured.Unstructured, len(items))
+				for i, it := range items {
+					out[i] = *it // shares the object map: read only
 				}
+				mu.Lock()
+				*dst = out
 				mu.Unlock()
 			}
 			return err

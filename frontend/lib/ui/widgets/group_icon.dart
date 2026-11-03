@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
+import '../../state/startup_gate.dart';
 
 /// Well-known API group domains → icons bundled in assets/icons/ (sources
 /// and licences in assets/icons/ATTRIBUTION.md). A group matches a domain
@@ -134,7 +135,8 @@ class _GroupIconState extends State<GroupIcon> {
       _bytes = known.bytes;
       return;
     }
-    GroupIconCache.load(api, group).then((b) {
+    // At startup, wait until the first table has painted (see StartupGate).
+    StartupGate.ready.then((_) => mounted && widget.group == group ? GroupIconCache.load(api, group) : null).then((b) {
       if (mounted && widget.group == group && b != null) setState(() => _bytes = b);
     });
   }
@@ -149,7 +151,16 @@ class _GroupIconState extends State<GroupIcon> {
     if (asset != null) {
       image = Image.asset(asset, filterQuality: FilterQuality.medium, errorBuilder: (_, _, _) => monogram);
     } else if (_bytes != null) {
-      image = Image.memory(_bytes!, filterQuality: FilterQuality.medium, gaplessPlayback: true, errorBuilder: (_, _, _) => monogram);
+      // Backend icons can be large (Helm chart logos, 512 px+): decode at the
+      // displayed size so the image cache holds a few KB, not megabytes, per
+      // group. Bundled assets are 128 px and stay as they are.
+      final px = (s * MediaQuery.devicePixelRatioOf(context)).ceil();
+      image = Image(
+        image: ResizeImage(MemoryImage(_bytes!), width: px, height: px, policy: ResizeImagePolicy.fit),
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => monogram,
+      );
     } else {
       return monogram;
     }

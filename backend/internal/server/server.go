@@ -25,6 +25,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/columns"
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/icons"
+	"github.com/matty234/k8sman/backend/internal/kcache"
 	"github.com/matty234/k8sman/backend/internal/metrics"
 	"github.com/matty234/k8sman/backend/internal/portforward"
 	"github.com/matty234/k8sman/backend/internal/prom"
@@ -195,6 +196,35 @@ func (rq resourceQuery) client(c *cluster.Clients) dynamic.ResourceInterface {
 	return ri
 }
 
+// cacheKey is the shared-watch key for the query.
+func (rq resourceQuery) cacheKey() kcache.Key {
+	return kcache.Key{GVR: rq.Type.GVR(), Namespace: namespaceFor(rq), LabelSelector: rq.LabelSelector, FieldSelector: rq.FieldSelector}
+}
+
+// listing is a point-in-time list, from the shared watch cache or a LIST.
+type listing struct {
+	items []*unstructured.Unstructured // shared with the cache: read only
+	rv    string
+	memo  memoFunc // nil for a direct LIST
+}
+
+// snapshot answers from a warm shared watch, else with a direct LIST (a
+// one-off read shouldn't start a watch).
+func (s *Server) snapshot(ctx context.Context, c *cluster.Clients, rq resourceQuery) (listing, error) {
+	if snap, ok := kcache.For(c).Cached(rq.cacheKey()); ok {
+		return listing{items: snap.Items, rv: snap.ResourceVersion, memo: snap.Memo}, nil
+	}
+	list, err := rq.client(c).List(ctx, rq.listOptions())
+	if err != nil {
+		return listing{}, err
+	}
+	items := make([]*unstructured.Unstructured, len(list.Items))
+	for i := range list.Items {
+		items[i] = &list.Items[i]
+	}
+	return listing{items: items, rv: list.GetResourceVersion()}, nil
+}
+
 func (rq resourceQuery) listOptions() metav1.ListOptions {
 	return metav1.ListOptions{LabelSelector: rq.LabelSelector, FieldSelector: rq.FieldSelector}
 }
@@ -240,54 +270,117 @@ type tableBuilder struct {
 	// decorate, if set, returns a copy of the object with extra data for the
 	// columns (e.g. `.k8sman.usage` for pods/nodes). Row.Object stays the original.
 	decorate metrics.Decorator
+	// memo, if set, caches rendered rows per object version (see
+	// kcache.Sub.Memo), so re-snapshots and usage ticks only re-evaluate the
+	// jq columns of objects that changed.
+	memo memoFunc
+	tag  rowTag
+}
+
+type memoFunc func(u *unstructured.Unstructured, tag any, extra string, compute func() any) any
+
+// rowTag identifies a column set + rendering options for the row memo.
+type rowTag struct {
+	cols          string
+	includeObject bool
+}
+
+// builtRow is a rendered row, its per-column errors and (for rows without
+// the object) its JSON, encoded once and shared by every watcher.
+type builtRow struct {
+	Row  Row
+	errs []error
+	raw  []byte
 }
 
 func newTableBuilder(cols []columns.Column, includeObject bool) *tableBuilder {
-	return &tableBuilder{eval: columns.NewEvaluator(cols), includeObject: includeObject, colErrs: map[int]string{}}
+	key, _ := json.Marshal(cols)
+	return &tableBuilder{eval: columns.NewEvaluator(cols), includeObject: includeObject, colErrs: map[int]string{},
+		tag: rowTag{cols: string(key), includeObject: includeObject}}
 }
 
-func (b *tableBuilder) row(u *unstructured.Unstructured) Row {
+func (b *tableBuilder) row(u *unstructured.Unstructured) Row { return b.build(u).Row }
+
+func (b *tableBuilder) build(u *unstructured.Unstructured) *builtRow {
 	obj := u.Object
+	extra := ""
 	if b.decorate != nil {
 		obj = b.decorate(obj)
+		if usage, ok := obj[metrics.UsageKey]; ok && b.memo != nil {
+			fp, _ := json.Marshal(usage)
+			extra = string(fp)
+		}
 	}
-	cells, errs := b.eval.Row(obj)
-	for i, e := range errs {
+	compute := func() any {
+		eval := obj
+		if b.memo != nil {
+			// Shared with other goroutines (the watch cache): gojq writes
+			// to its input, so evaluate a private copy.
+			eval = columns.PrivateCopy(obj)
+		}
+		cells, errs := b.eval.Row(eval)
+		r := Row{
+			UID:             string(u.GetUID()),
+			Name:            u.GetName(),
+			Namespace:       u.GetNamespace(),
+			ResourceVersion: u.GetResourceVersion(),
+			Cells:           cells,
+			Controlled:      metav1.GetControllerOf(u) != nil,
+		}
+		br := &builtRow{Row: r, errs: errs}
+		if b.includeObject {
+			br.Row.Object = u.Object
+		} else if b.memo != nil {
+			br.raw, _ = json.Marshal(r)
+		}
+		return br
+	}
+	var br *builtRow
+	if b.memo != nil {
+		br = b.memo(u, b.tag, extra, compute).(*builtRow)
+	} else {
+		br = compute().(*builtRow)
+	}
+	for i, e := range br.errs {
 		if e != nil {
 			if _, seen := b.colErrs[i]; !seen {
 				b.colErrs[i] = e.Error()
 			}
 		}
 	}
-	r := Row{
-		UID:             string(u.GetUID()),
-		Name:            u.GetName(),
-		Namespace:       u.GetNamespace(),
-		ResourceVersion: u.GetResourceVersion(),
-		Cells:           cells,
-		Controlled:      metav1.GetControllerOf(u) != nil,
-	}
-	if b.includeObject {
-		r.Object = u.Object
-	}
-	return r
+	return br
 }
 
 func (b *tableBuilder) table(rt cluster.ResourceType, isDefault bool, list *unstructured.UnstructuredList) Table {
-	t := Table{Resource: rt, Columns: b.eval.Columns(), IsDefault: isDefault, ResourceVersion: list.GetResourceVersion(), Rows: make([]Row, 0, len(list.Items))}
+	items := make([]*unstructured.Unstructured, len(list.Items))
 	for i := range list.Items {
-		t.Rows = append(t.Rows, b.row(&list.Items[i]))
+		items[i] = &list.Items[i]
 	}
-	sort.SliceStable(t.Rows, func(i, j int) bool {
-		if t.Rows[i].Namespace != t.Rows[j].Namespace {
-			return t.Rows[i].Namespace < t.Rows[j].Namespace
+	t, _ := b.tableOf(rt, isDefault, items, list.GetResourceVersion())
+	return t
+}
+
+// tableOf renders items (rows sorted by namespace, name) and also returns
+// each row's builtRow in the same order.
+func (b *tableBuilder) tableOf(rt cluster.ResourceType, isDefault bool, items []*unstructured.Unstructured, rv string) (Table, []*builtRow) {
+	t := Table{Resource: rt, Columns: b.eval.Columns(), IsDefault: isDefault, ResourceVersion: rv, Rows: make([]Row, 0, len(items))}
+	built := make([]*builtRow, 0, len(items))
+	for _, u := range items {
+		built = append(built, b.build(u))
+	}
+	sort.SliceStable(built, func(i, j int) bool {
+		if built[i].Row.Namespace != built[j].Row.Namespace {
+			return built[i].Row.Namespace < built[j].Row.Namespace
 		}
-		return t.Rows[i].Name < t.Rows[j].Name
+		return built[i].Row.Name < built[j].Row.Name
 	})
+	for _, br := range built {
+		t.Rows = append(t.Rows, br.Row)
+	}
 	if len(b.colErrs) > 0 {
 		t.ColumnErrors = b.colErrs
 	}
-	return t
+	return t, built
 }
 
 // ---- handlers --------------------------------------------------------------
@@ -365,7 +458,9 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	list, err := rq.client(c).List(r.Context(), rq.listOptions())
+	// Served from a warm shared watch when one exists (e.g. the table is
+	// open), else listed directly.
+	snap, err := s.snapshot(r.Context(), c, rq)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -373,7 +468,9 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 	cols, isDefault := s.columnsFor(r.Context(), c, rq.Type)
 	b := newTableBuilder(cols, r.URL.Query().Get("includeObject") == "true")
 	b.decorate = s.usageDecorator(r.Context(), c, rq)
-	httpx.WriteJSON(w, 200, b.table(rq.Type, isDefault, list))
+	b.memo = snap.memo
+	t, _ := b.tableOf(rq.Type, isDefault, snap.items, snap.rv)
+	httpx.WriteJSON(w, 200, t)
 }
 
 // handleItems returns raw objects — for panels that need related resources
@@ -384,16 +481,16 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	list, err := rq.client(c).List(r.Context(), rq.listOptions())
+	snap, err := s.snapshot(r.Context(), c, rq)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	items := make([]map[string]any, 0, len(list.Items))
-	for _, it := range list.Items {
+	items := make([]map[string]any, 0, len(snap.items))
+	for _, it := range snap.items {
 		items = append(items, it.Object)
 	}
-	httpx.WriteJSON(w, 200, map[string]any{"resource": rq.Type, "resourceVersion": list.GetResourceVersion(), "items": items})
+	httpx.WriteJSON(w, 200, map[string]any{"resource": rq.Type, "resourceVersion": snap.rv, "items": items})
 }
 
 func (s *Server) handleObject(w http.ResponseWriter, r *http.Request) {

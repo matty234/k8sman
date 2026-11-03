@@ -12,6 +12,7 @@ import '../widgets/common.dart';
 import '../widgets/namespace_picker.dart';
 import 'helm_api.dart';
 import 'release_detail.dart';
+import '../../state/poller.dart';
 
 /// Helm releases: a dense list (problems first) with the selected release's
 /// detail beside it on wide windows, or below it on narrow ones.
@@ -24,7 +25,7 @@ class HelmView extends StatefulWidget {
   State<HelmView> createState() => _HelmViewState();
 }
 
-class _HelmViewState extends State<HelmView> {
+class _HelmViewState extends State<HelmView> with PollingState {
   late final HelmApi _api = widget.api ?? _provided() ?? HelmApi(context.read<ApiClient>());
 
   /// A [HelmApi] from an ancestor Provider (used to inject fakes in app-level tests).
@@ -41,19 +42,15 @@ class _HelmViewState extends State<HelmView> {
   String? _selected; // namespace/name
   String? _loadedNs;
   bool _loadedOnce = false;
-  Timer? _poll;
   int _seq = 0;
 
   @override
   void initState() {
     super.initState();
-    _poll = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
-  }
-
-  @override
-  void dispose() {
-    _poll?.cancel();
-    super.dispose();
+    poll(const Duration(seconds: 10), () async {
+      await _refresh();
+      return _error == null;
+    });
   }
 
   Future<void> _refresh() async {

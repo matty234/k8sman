@@ -3,14 +3,22 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/disk"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -209,27 +217,97 @@ func buildClients(rules *clientcmd.ClientConfigLoadingRules, name string) (*Clie
 	if err != nil {
 		return nil, fmt.Errorf("client config for %q: %w", name, err)
 	}
+	// Watches don't count against QPS; the bursts are discovery on servers
+	// without aggregated discovery (one request per group version) and the
+	// Overview/Security fan-out of ~20 parallel lists.
 	cfg.QPS, cfg.Burst = 50, 100
 	ns, _, _ := cc.Namespace()
 
-	dyn, err := dynamic.NewForConfig(cfg)
+	// One HTTP client (one connection pool; HTTP/2 multiplexes every request
+	// and watch over a single connection) shared by all clients.
+	hc, err := rest.HTTPClientFor(cfg)
 	if err != nil {
 		return nil, err
 	}
-	typed, err := kubernetes.NewForConfig(cfg)
+	dyn, err := dynamic.NewForConfigAndClient(cfg, hc)
 	if err != nil {
 		return nil, err
 	}
-	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	typed, err := kubernetes.NewForConfigAndClient(cfg, hc)
 	if err != nil {
 		return nil, err
 	}
-	return &Clients{
+	meta, err := metadata.NewForConfigAndClient(cfg, hc)
+	if err != nil {
+		return nil, err
+	}
+	c := &Clients{
 		Context:    name,
 		Namespace:  ns,
 		RESTConfig: cfg,
 		Dynamic:    dyn,
 		Typed:      typed,
-		Discovery:  memory.NewMemCacheClient(dc),
-	}, nil
+		Metadata:   meta,
+	}
+	if dir := discoveryCacheDir(cfg.Host); dir != "" {
+		httpDir := filepath.Join(CacheDir, "http")
+		dc, err := disk.NewCachedDiscoveryClientForConfig(cfg, dir, httpDir, discoveryTTL)
+		if err != nil {
+			return nil, err
+		}
+		c.Discovery = dc
+		// A second client on the same directory re-fetches (ETag-revalidated
+		// through the HTTP cache) and rewrites the files; the main client
+		// reads them on its next call.
+		c.refreshDiscovery = func() error {
+			fresh, err := disk.NewCachedDiscoveryClientForConfig(cfg, dir, httpDir, discoveryTTL)
+			if err != nil {
+				return err
+			}
+			fresh.Invalidate()
+			_, _, err = fresh.ServerGroupsAndResources()
+			if err != nil && !discovery.IsGroupDiscoveryFailedError(err) {
+				return err
+			}
+			return nil
+		}
+		return c, nil
+	}
+	dc, err := discovery.NewDiscoveryClientForConfigAndClient(cfg, hc)
+	if err != nil {
+		return nil, err
+	}
+	c.Discovery = memory.NewMemCacheClient(dc)
+	return c, nil
+}
+
+// CacheDir is where discovery results are cached on disk between runs, so a
+// cold start can render the first table without re-discovering every API
+// group. "" keeps discovery in memory only (the default, used by tests); the
+// server sets it from --cache-dir.
+var CacheDir string
+
+// discoveryTTL bounds how stale on-disk discovery may be; a background
+// refresh after start keeps it current anyway (kubectl uses the same TTL).
+const discoveryTTL = 6 * time.Hour
+
+var unsafeHostChars = regexp.MustCompile(`[^\w.-]`)
+
+// discoveryCacheDir is CacheDir/discovery/<host>, one per API server like
+// kubectl's ~/.kube/cache/discovery.
+func discoveryCacheDir(host string) string {
+	if CacheDir == "" {
+		return ""
+	}
+	host = strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
+	return filepath.Join(CacheDir, "discovery", unsafeHostChars.ReplaceAllString(host, "_"))
+}
+
+// DefaultCacheDir is ~/.cache/k8sman.
+func DefaultCacheDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".cache", "k8sman")
 }

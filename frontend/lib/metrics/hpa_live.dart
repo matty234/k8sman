@@ -10,6 +10,7 @@ import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
 import 'metrics_api.dart';
 import 'widgets.dart';
+import '../state/poller.dart';
 
 /// "Live metrics" section for the HPA panel: each metric's current value read
 /// from the metrics APIs (next to the HPA's own status.currentMetrics), the
@@ -33,22 +34,18 @@ class HpaLiveMetrics extends StatefulWidget {
   State<HpaLiveMetrics> createState() => _HpaLiveMetricsState();
 }
 
-class _HpaLiveMetricsState extends State<HpaLiveMetrics> {
+class _HpaLiveMetricsState extends State<HpaLiveMetrics> with PollingState {
   HpaAnalysis? _a;
   Object? _error;
-  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => _load());
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+    poll(const Duration(seconds: 15), () async {
+      await _load();
+      return _error == null;
+    });
   }
 
   Future<void> _load() async {

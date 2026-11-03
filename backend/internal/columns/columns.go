@@ -5,6 +5,7 @@ package columns
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -223,8 +224,43 @@ func NewEvaluator(cols []Column) *Evaluator {
 // Columns returns the evaluator's columns.
 func (e *Evaluator) Columns() []Column { return e.cols }
 
+// PrivateCopy deep-copies an object for evaluation. gojq normalises numbers
+// by writing every map and slice of its input in place, so objects shared
+// between goroutines (the watch cache) must only be evaluated through a
+// copy. Numbers are normalised as gojq would (int64 → int), so its own pass
+// changes nothing.
+func PrivateCopy(obj map[string]any) map[string]any {
+	return privateCopy(obj).(map[string]any)
+}
+
+func privateCopy(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for k, x := range v {
+			out[k] = privateCopy(x)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, x := range v {
+			out[i] = privateCopy(x)
+		}
+		return out
+	case int64:
+		if v >= math.MinInt && v <= math.MaxInt {
+			return int(v)
+		}
+		return v
+	case float32:
+		return float64(v)
+	default:
+		return v
+	}
+}
+
 // Row evaluates every column against obj. errs[i] is non-nil when column i
-// failed for this object.
+// failed for this object. gojq normalises obj in place (see PrivateCopy).
 func (e *Evaluator) Row(obj map[string]any) (cells []any, errs []error) {
 	cells = make([]any, len(e.cols))
 	errs = make([]error, len(e.cols))

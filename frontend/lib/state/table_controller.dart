@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../metrics/quantity.dart';
 import 'cluster_error.dart';
+import 'startup_gate.dart';
 
 /// Keeps a live table for one resource type + namespace via /api/watch,
 /// reconnecting with backoff. Also owns client-side filter and sort state.
@@ -77,6 +79,7 @@ class TableController extends ChangeNotifier {
       _failureTimer = null;
       if (_disposed || failure == null) return;
       failureShown = true;
+      StartupGate.firstContentShown();
       notifyListeners();
     });
   }
@@ -89,6 +92,14 @@ class TableController extends ChangeNotifier {
   }
 
   void _onMessage(WatchMessage m) {
+    // A BATCH frame applies its events in order and notifies once.
+    final prune = m.type == 'BATCH' ? m.events.fold(false, (p, e) => _apply(e) || p) : _apply(m);
+    if (prune) _pruneSelection();
+    notifyListeners();
+  }
+
+  /// Applies one frame; true when the selection may need pruning.
+  bool _apply(WatchMessage m) {
     switch (m.type) {
       case 'SNAPSHOT':
         final t = m.table!;
@@ -98,30 +109,51 @@ class TableController extends ChangeNotifier {
         _rows
           ..clear()
           ..addEntries(t.rows.map((r) => MapEntry(r.uid, r)));
+        _rowsChanged();
         loaded = true;
+        StartupGate.firstContentShown();
         _clearFailure();
         _attempt = 0;
-        _pruneSelection();
+        return true;
       case 'ADDED' || 'MODIFIED':
-        _rows[m.row!.uid] = m.row!;
+        final r = m.row;
+        if (r == null) return false;
+        _rows[r.uid] = r;
+        _rowsChanged();
+        return false;
       case 'DELETED':
-        _rows.remove(m.row!.uid);
-        _pruneSelection();
+        final r = m.row;
+        if (r == null || _rows.remove(r.uid) == null) return false;
+        _rowsChanged();
+        return true;
       case 'ERROR':
         _setFailure(ClusterError.fromWatch(m));
     }
-    notifyListeners();
+    return false;
   }
+
+  /// Base and cap of the reconnect backoff.
+  static const _backoffBase = Duration(milliseconds: 500);
+  static const _backoffCap = Duration(seconds: 16);
+  static final _random = math.Random();
 
   void _onDisconnect(ClusterError? err) {
     if (_disposed) return;
     // A clean close after an ERROR frame keeps that (more specific) error.
     if (err != null) _setFailure(err);
     notifyListeners();
-    final delay = Duration(milliseconds: (500 * (1 << _attempt.clamp(0, 5))));
+    final delay = reconnectDelay(_attempt, _random);
     _attempt++;
     _retry?.cancel();
     _retry = Timer(delay, _connect);
+  }
+
+  /// Exponential backoff (500 ms doubling to 16 s) with "equal jitter": a
+  /// random delay in [d/2, d], so many tables (and windows) that lost the
+  /// backend together don't reconnect in lockstep.
+  static Duration reconnectDelay(int attempt, math.Random random) {
+    final d = math.min(_backoffBase.inMilliseconds * (1 << attempt.clamp(0, 5)), _backoffCap.inMilliseconds);
+    return Duration(milliseconds: d ~/ 2 + random.nextInt(d ~/ 2 + 1));
   }
 
   // ---- selection ----
@@ -137,7 +169,7 @@ class TableController extends ChangeNotifier {
   String? cursor;
 
   /// Selected rows in display order (visible rows only).
-  List<TableRowData> get selectedRows => [for (final r in rows) if (selection.contains(r.uid)) r];
+  List<TableRowData> get selectedRows => selection.isEmpty ? const [] : [for (final r in rows) if (selection.contains(r.uid)) r];
 
   bool isSelected(String uid) => selection.contains(uid);
 
@@ -233,9 +265,33 @@ class TableController extends ChangeNotifier {
 
   int get totalCount => _rows.length;
 
+  /// Bumped whenever [_rows] changes; part of the [rows] memo key.
+  int _rowsVersion = 0;
+  void _rowsChanged() => _rowsVersion++;
+
+  List<TableRowData>? _memo;
+  (int, String, int?, bool, List<ColumnDef>)? _memoKey;
+
   /// Rows after filter + sort. Filter matches any cell (case-insensitive);
   /// a `key=value` filter matches only the named column.
+  ///
+  /// Memoised: recomputed only when the rows, filter, sort or columns
+  /// changed, so the many reads per build (selection helpers, key handling)
+  /// are free. The returned list is read-only.
   List<TableRowData> get rows {
+    final key = (_rowsVersion, filter, sortColumn, sortAscending, columns);
+    final m = _memoKey;
+    if (_memo != null && m != null && m.$1 == key.$1 && m.$2 == key.$2 && m.$3 == key.$3 && m.$4 == key.$4 && identical(m.$5, key.$5)) return _memo!;
+    _memoKey = key;
+    debugRowsComputations++;
+    return _memo = UnmodifiableListView(_computeRows());
+  }
+
+  /// How many times [rows] was actually recomputed (benchmarks, tests).
+  @visibleForTesting
+  int debugRowsComputations = 0;
+
+  List<TableRowData> _computeRows() {
     Iterable<TableRowData> r = _rows.values;
     final f = filter.trim().toLowerCase();
     if (f.isNotEmpty) {

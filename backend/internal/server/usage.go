@@ -81,12 +81,24 @@ func (l *liveUsage) reset(list *unstructured.UnstructuredList, t Table) {
 	if l == nil {
 		return
 	}
+	items := make([]*unstructured.Unstructured, len(list.Items))
+	for i := range list.Items {
+		items[i] = &list.Items[i]
+	}
+	l.resetItems(items, t.Rows)
+}
+
+// resetItems tracks a fresh SNAPSHOT of (shared, read-only) objects.
+func (l *liveUsage) resetItems(items []*unstructured.Unstructured, rows []Row) {
+	if l == nil {
+		return
+	}
 	clear(l.objs)
 	clear(l.cells)
-	for i := range list.Items {
-		l.objs[list.Items[i].GetUID()] = &list.Items[i]
+	for _, u := range items {
+		l.objs[u.GetUID()] = u
 	}
-	for _, r := range t.Rows {
+	for _, r := range rows {
 		l.cells[types.UID(r.UID)] = r.Cells
 	}
 }

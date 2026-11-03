@@ -31,8 +31,24 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | GET | `/api/events` | core/v1 Events for an object, newest first. Filter by `uid` (preferred) or `kind`+`name`, plus `namespace` |
 | GET/PUT/DELETE | `/api/columns` | read `{columns, isDefault, defaults}`, save `{columns}`, or reset the user's column override |
 | POST | `/api/columns/preview[?limit=]` | body `{columns}`: evaluates unsaved columns against live objects and returns a table |
-| WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true` |
+| WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true`. With `batch=true` the server may also send `{type:"BATCH",events:[{type,row},…]}`: deltas from a ~75ms window, in order (apply all, then redraw once). See [Shared watches](#shared-watches) |
 | WS | `/api/logs` | `namespace`, `pod`, `container`, `tailLines` (default 500, `-1` = all), `previous`, `timestamps`, `sinceSeconds`, `follow` (default true). Sends frames `{line}`, ending with `{eof:true}` or `{error}` |
+
+## Shared watches
+
+The server keeps one upstream LIST+WATCH per resource, namespace and
+selector set (per kube context) and shares it between every `/api/watch`
+client; a single-object or label-selector watch rides on an already open
+watch of the same type and is filtered locally. `/api/table` and
+`/api/items` answer from an open watch when there is one (else they LIST),
+and `/api/overview` and `/api/security` list through the same cache, so
+repeated polls cost no API requests. A watch nobody uses is kept for 90s,
+then stopped. Errors are those of the upstream LIST: `Forbidden` and
+`NotFound` end the watch (the socket closes after the ERROR frame), other
+errors are retried with backoff. A watch that ends normally resumes from
+its last resourceVersion; an expired one (410) re-lists and sends a fresh
+SNAPSHOT. A client that falls more than 4,096 events behind gets a fresh
+SNAPSHOT instead of the backlog. See docs/PERFORMANCE.md.
 
 ## Columns
 

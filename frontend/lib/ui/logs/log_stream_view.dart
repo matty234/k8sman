@@ -170,6 +170,20 @@ class _LogStreamViewState extends State<LogStreamView> {
     );
   }
 
+  // Monospace advance for the horizontal extent, measured once per style
+  // rather than laying out a TextPainter on every flush.
+  TextStyle? _charWStyle;
+  double _charW = 0;
+  double _charWidth(TextStyle style) {
+    if (style != _charWStyle) {
+      final p = TextPainter(text: TextSpan(text: 'MMMMMMMMMM', style: style), textDirection: TextDirection.ltr)..layout();
+      _charW = p.width / 10;
+      p.dispose();
+      _charWStyle = style;
+    }
+    return _charW;
+  }
+
   Widget _logList(BuildContext context, List<int>? indices, int count) {
     final style = monoStyle(context, size: 12);
     const lineHeight = 17.0;
@@ -200,12 +214,7 @@ class _LogStreamViewState extends State<LogStreamView> {
         ? list
         : LayoutBuilder(
             builder: (context, box) {
-              final charW =
-                  (TextPainter(
-                    text: TextSpan(text: 'MMMMMMMMMM', style: style),
-                    textDirection: TextDirection.ltr,
-                  )..layout()).width /
-                  10;
+              final charW = _charWidth(style);
               final width = math.max(box.maxWidth, s.maxLen * charW + 24);
               return Scrollbar(
                 controller: _hScroll,

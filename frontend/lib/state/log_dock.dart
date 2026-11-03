@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
@@ -7,6 +8,7 @@ import '../api/models.dart';
 import '../panels/pod/pod_logic.dart';
 import '../util/k8s.dart';
 import 'dock_tab.dart';
+import 'log_buffer.dart';
 
 export 'dock_tab.dart';
 
@@ -42,7 +44,9 @@ class LogStream extends DockTab {
   bool onlyMatching = false;
   String query = '';
 
-  final List<String> lines = [];
+  /// The last [kMaxLogLines] lines, oldest first (a ring buffer: dropping
+  /// the oldest costs nothing per flush).
+  final LogBuffer lines = LogBuffer(kMaxLogLines);
   final List<String> _pending = [];
   int dropped = 0;
   int maxLen = 0;
@@ -82,14 +86,32 @@ class LogStream extends DockTab {
     return (c?.restarts ?? 0) > 0 || (c?.lastTerminated.isNotEmpty ?? false);
   }
 
+  // Matches are kept as line sequence numbers ([LogBuffer.firstSeq]-based)
+  // for [_matchQuery], scanned up to [_matchedTo]: new lines are searched as
+  // they arrive instead of re-lowercasing the whole buffer on every flush.
+  final Queue<int> _matchSeqs = Queue();
+  String? _matchQuery;
+  int _matchedTo = 0;
+
   /// Indices of lines matching [query] (cached until lines/query change).
   List<int> get matching {
     if (_filtered != null) return _filtered!;
     final q = query.toLowerCase();
-    return _filtered = [
-      for (var i = 0; i < lines.length; i++)
-        if (q.isNotEmpty && lines[i].toLowerCase().contains(q)) i,
-    ];
+    if (q.isEmpty) return _filtered = const [];
+    if (q != _matchQuery || _matchedTo < lines.firstSeq) {
+      _matchQuery = q;
+      _matchSeqs.clear();
+      _matchedTo = lines.firstSeq;
+    }
+    while (_matchSeqs.isNotEmpty && _matchSeqs.first < lines.firstSeq) {
+      _matchSeqs.removeFirst();
+    }
+    for (var seq = _matchedTo; seq < lines.nextSeq; seq++) {
+      if (lines[seq - lines.firstSeq].toLowerCase().contains(q)) _matchSeqs.add(seq);
+    }
+    _matchedTo = lines.nextSeq;
+    final first = lines.firstSeq;
+    return _filtered = List.unmodifiable([for (final s in _matchSeqs) s - first]);
   }
 
   void setQuery(String q) {
@@ -211,13 +233,8 @@ class LogStream extends DockTab {
     for (final l in _pending) {
       if (l.length > maxLen) maxLen = l.length;
     }
-    lines.addAll(_pending);
+    dropped += lines.append(_pending);
     _pending.clear();
-    if (lines.length > kMaxLogLines) {
-      final n = lines.length - kMaxLogLines;
-      lines.removeRange(0, n);
-      dropped += n;
-    }
     _filtered = null;
     if (phase == LogPhase.connecting) phase = LogPhase.streaming;
     notifyListeners();

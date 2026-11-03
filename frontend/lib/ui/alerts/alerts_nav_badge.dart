@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
+import '../../state/startup_gate.dart';
 import '../../prometheus/prom_api.dart';
 import '../../state/app_state.dart';
+import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 
@@ -19,8 +21,7 @@ class AlertsNavBadge extends StatefulWidget {
   State<AlertsNavBadge> createState() => _AlertsNavBadgeState();
 }
 
-class _AlertsNavBadgeState extends State<AlertsNavBadge> {
-  Timer? _timer;
+class _AlertsNavBadgeState extends State<AlertsNavBadge> with PollingState {
   int _critical = 0;
   String? _context;
   bool _busy = false;
@@ -28,36 +29,35 @@ class _AlertsNavBadgeState extends State<AlertsNavBadge> {
   @override
   void initState() {
     super.initState();
-    scheduleMicrotask(_poll);
-    _timer = Timer.periodic(widget.interval, (_) => _poll());
+    // First fetch once the first table has painted (see StartupGate).
+    StartupGate.ready.then((_) => _poll());
+    poll(widget.interval, _poll);
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _poll() async {
-    if (!mounted || _busy) return;
+  /// False when the fetch failed (the poll then backs off).
+  Future<bool> _poll() async {
+    if (!mounted || _busy) return true;
     final ApiClient api;
     try {
       api = context.read<ApiClient>();
     } catch (_) {
-      return; // no backend in this tree (tests)
+      return true; // no backend in this tree (tests)
     }
     _busy = true;
     var n = 0;
+    var ok = true;
     try {
       final prom = PromApi.of(api);
       final status = await prom.cachedStatus();
       if (status?.defaultAlertmanager != null) n = (await prom.alerts()).summary.critical;
     } catch (_) {
       n = 0;
+      ok = false;
     } finally {
       _busy = false;
     }
     if (mounted && n != _critical) setState(() => _critical = n);
+    return ok;
   }
 
   @override
