@@ -1,0 +1,173 @@
+{
+  "apiVersion": "apiextensions.k8s.io/v1",
+  "kind": "CustomResourceDefinition",
+  "metadata": {
+    "name": "backups.ops.example.dev",
+    "uid": "6d3b6f0e-1111-4c1e-9d7a-crdbackups01",
+    "generation": 4,
+    "creationTimestamp": "2026-10-01T09:00:00Z"
+  },
+  "spec": {
+    "group": "ops.example.dev",
+    "names": {
+      "kind": "Backup",
+      "listKind": "BackupList",
+      "plural": "backups",
+      "singular": "backup",
+      "shortNames": ["bk", "bkp"],
+      "categories": ["all", "ops"]
+    },
+    "scope": "Namespaced",
+    "conversion": {
+      "strategy": "Webhook",
+      "webhook": {
+        "conversionReviewVersions": ["v1"],
+        "clientConfig": {
+          "service": {"namespace": "ops-system", "name": "backup-operator-webhook", "path": "/convert", "port": 443},
+          "caBundle": "LS0tLS1CRUdJTi..."
+        }
+      }
+    },
+    "versions": [
+      {
+        "name": "v1beta1",
+        "served": true,
+        "storage": false,
+        "deprecated": true,
+        "deprecationWarning": "ops.example.dev/v1beta1 Backup is deprecated; use ops.example.dev/v1",
+        "schema": {
+          "openAPIV3Schema": {
+            "type": "object",
+            "properties": {
+              "spec": {"type": "object", "x-kubernetes-preserve-unknown-fields": true}
+            }
+          }
+        },
+        "subresources": {"status": {}}
+      },
+      {
+        "name": "v1",
+        "served": true,
+        "storage": true,
+        "additionalPrinterColumns": [
+          {"name": "Schedule", "type": "string", "jsonPath": ".spec.schedule"},
+          {"name": "Ready", "type": "string", "jsonPath": ".status.conditions[?(@.type==\"Ready\")].status"},
+          {"name": "Last", "type": "date", "jsonPath": ".status.lastBackupTime", "description": "Time of the last successful backup"},
+          {"name": "Size", "type": "string", "jsonPath": ".status.lastBackupSize", "priority": 1}
+        ],
+        "subresources": {
+          "status": {},
+          "scale": {"specReplicasPath": ".spec.parallelism", "statusReplicasPath": ".status.activeJobs"}
+        },
+        "schema": {
+          "openAPIV3Schema": {
+            "description": "Backup periodically snapshots a database into object storage.",
+            "type": "object",
+            "properties": {
+              "apiVersion": {"type": "string"},
+              "kind": {"type": "string"},
+              "metadata": {"type": "object"},
+              "spec": {
+                "description": "BackupSpec defines the desired backup schedule and target.",
+                "type": "object",
+                "required": ["schedule", "databaseRef", "storage"],
+                "x-kubernetes-validations": [
+                  {"rule": "!has(self.retention) || self.retention.keepLast >= 1", "message": "keepLast must be at least 1"}
+                ],
+                "properties": {
+                  "schedule": {
+                    "description": "Cron schedule in UTC, e.g. \"0 3 * * *\".",
+                    "type": "string",
+                    "pattern": "^(\\S+\\s){4}\\S+$"
+                  },
+                  "suspend": {"description": "Suspend pauses future backups. In-flight backups are not affected.", "type": "boolean", "default": false},
+                  "parallelism": {"description": "Number of concurrent upload streams.", "type": "integer", "format": "int32", "minimum": 1, "maximum": 16, "default": 2},
+                  "databaseRef": {
+                    "description": "Reference to the Database to back up.",
+                    "type": "object",
+                    "required": ["name"],
+                    "x-kubernetes-validations": [{"rule": "self == oldSelf", "message": "databaseRef is immutable"}],
+                    "properties": {
+                      "name": {"type": "string", "minLength": 1},
+                      "namespace": {"type": "string"}
+                    }
+                  },
+                  "storage": {
+                    "description": "Where backups are written.",
+                    "type": "object",
+                    "properties": {
+                      "bucket": {"type": "string", "description": "Bucket name."},
+                      "provider": {"type": "string", "enum": ["s3", "gcs", "azure"], "default": "s3"},
+                      "credentialsSecretName": {"type": "string", "description": "Secret in the Backup's namespace holding access keys."},
+                      "endpoint": {"type": "string", "format": "uri"}
+                    }
+                  },
+                  "retention": {
+                    "type": "object",
+                    "properties": {
+                      "keepLast": {"type": "integer", "minimum": 1},
+                      "maxAge": {"x-kubernetes-int-or-string": true, "anyOf": [{"type": "integer"}, {"type": "string"}], "description": "Maximum age, e.g. 720h."}
+                    }
+                  },
+                  "hooks": {
+                    "description": "Commands executed around the backup.",
+                    "type": "array",
+                    "x-kubernetes-list-type": "map",
+                    "x-kubernetes-list-map-keys": ["name"],
+                    "items": {
+                      "type": "object",
+                      "required": ["name"],
+                      "properties": {
+                        "name": {"type": "string"},
+                        "phase": {"type": "string", "enum": ["Pre", "Post"]},
+                        "command": {"type": "array", "items": {"type": "string"}},
+                        "timeoutSeconds": {"type": "integer", "default": 30}
+                      }
+                    }
+                  },
+                  "podTemplate": {
+                    "description": "Overrides merged into the backup Job's pod template.",
+                    "type": "object",
+                    "x-kubernetes-preserve-unknown-fields": true
+                  },
+                  "labels": {"type": "object", "additionalProperties": {"type": "string"}, "x-kubernetes-map-type": "granular"}
+                }
+              },
+              "status": {
+                "type": "object",
+                "properties": {
+                  "phase": {"type": "string", "enum": ["Pending", "Running", "Succeeded", "Failed"]},
+                  "observedGeneration": {"type": "integer", "format": "int64"},
+                  "lastBackupTime": {"type": "string", "format": "date-time"},
+                  "lastBackupSize": {"type": "string"},
+                  "activeJobs": {"type": "integer"},
+                  "conditions": {
+                    "type": "array",
+                    "x-kubernetes-list-type": "map",
+                    "x-kubernetes-list-map-keys": ["type"],
+                    "items": {"type": "object", "x-kubernetes-preserve-unknown-fields": true}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "status": {
+    "acceptedNames": {
+      "kind": "Backup",
+      "listKind": "BackupList",
+      "plural": "backups",
+      "singular": "backup",
+      "shortNames": ["bk", "bkp"],
+      "categories": ["all", "ops"]
+    },
+    "conditions": [
+      {"type": "NamesAccepted", "status": "True", "reason": "NoConflicts", "message": "no conflicts found", "lastTransitionTime": "2026-10-01T09:00:00Z"},
+      {"type": "Established", "status": "True", "reason": "InitialNamesAccepted", "message": "the initial names have been accepted", "lastTransitionTime": "2026-10-01T09:00:00Z"}
+    ],
+    "storedVersions": ["v1beta1", "v1"]
+  }
+}
