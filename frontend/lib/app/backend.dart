@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../api/client.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
+import 'backend_supervisor.dart';
 
 /// Lifecycle of the backend process.
 enum BackendPhase {
@@ -24,7 +25,7 @@ enum BackendPhase {
   failed,
 
   /// Using a backend we didn't spawn (`--dart-define=K8SMAN_BACKEND=…`,
-  /// or non-macOS platforms).
+  /// or platforms without an embedded backend).
   external,
 }
 
@@ -59,8 +60,9 @@ class BackendStatus {
 
 /// Owns the connection to the backend. In the macOS app it asks the native
 /// side (`BackendSupervisor.swift`, channel `k8sman/backend`) to spawn and
-/// supervise the embedded `k8sman-server`, then points [api] at whatever port
-/// it reports. [onReady] runs on first connect and after every restart (the
+/// supervise the embedded `k8sman-server`; on Windows the Dart
+/// [BackendSupervisor] does the same. Either way it points [api] at whatever
+/// port is reported. [onReady] runs on first connect and after every restart (the
 /// port changes), so the app can reload.
 class BackendController extends ChangeNotifier {
   static const _channel = MethodChannel('k8sman/backend');
@@ -74,15 +76,26 @@ class BackendController extends ChangeNotifier {
   /// True once the backend has been reachable at least once.
   bool everReady = false;
 
-  BackendController(this.api, {this.onReady});
+  /// Supervises the backend from Dart (Windows); null when the native side
+  /// does it (macOS) or there is no embedded backend.
+  BackendSupervisor? supervisor;
 
-  /// Whether this build spawns its own backend: the macOS app, unless a
-  /// backend URL was given with `--dart-define=K8SMAN_BACKEND=…`.
+  BackendController(this.api, {this.onReady, this.supervisor});
+
+  /// Whether this build spawns its own backend: the macOS and Windows apps,
+  /// unless a backend URL was given with `--dart-define=K8SMAN_BACKEND=…`.
   static bool get embedded =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS && ApiClient.definedBackend.isEmpty;
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.windows) &&
+      ApiClient.definedBackend.isEmpty;
 
   Future<void> start() async {
     if (!embedded) return _useExternal();
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      final sup = supervisor ??= BackendSupervisor.bundled();
+      sup.onChange = (m) => _apply(BackendStatus.fromNative(m));
+      return sup.start();
+    }
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'status' && call.arguments is Map) _apply(BackendStatus.fromNative(call.arguments as Map));
       return null;
@@ -104,6 +117,8 @@ class BackendController extends ChangeNotifier {
     }
     status = BackendStatus(BackendPhase.starting, log: status.log, restarts: status.restarts);
     notifyListeners();
+    final sup = supervisor;
+    if (sup != null) return sup.restart();
     await _channel.invokeMethod<void>('restart');
   }
 

@@ -144,14 +144,23 @@ user. **Never commit it.** Nothing in this repo contains a real key.
 2. Tag it. The annotated tag message becomes the release notes, shown in
    Sparkle's window and on GitHub:
    `git tag -a v0.1.1 -m "- Faster tables"` then `git push origin v0.1.1`.
-3. `.github/workflows/release.yml` (on `macos-latest`) does the rest:
-   - checks that the tag matches `pubspec.yaml`
+3. `.github/workflows/release.yml` does the rest:
+   - builds the Windows app first (`.github/workflows/windows.yml` on
+     `windows-latest`): `k8sman-<v>-windows-x64.zip` and the Inno Setup
+     installer `k8sman-<v>-windows-x64-setup.exe`
+   - then, on `macos-latest`, checks that the tag matches `pubspec.yaml`
    - runs `make test`
    - runs `make release REQUIRE_UPDATE_KEY=1` and `make appcast`
    - verifies the signed feed
-   - creates the GitHub release with `k8sman-<v>-macos.zip`, `appcast.xml`
-     and `SHA256SUMS`
+   - creates the GitHub release with `k8sman-<v>-macos.zip`, `appcast.xml`,
+     the two Windows files and `SHA256SUMS`
    - prints the Homebrew cask values
+
+   Windows builds don't use Sparkle: they check `releases/latest` on the
+   GitHub API once a day and link to the release page. Their version comes
+   from `--dart-define=K8SMAN_VERSION`, so local Windows builds never check.
+   To try the Windows build without tagging, run the `windows` workflow by
+   hand (`gh workflow run windows.yml --ref <branch>`).
 
    Tags with a pre-release suffix (`v0.2.0-rc.1`) become GitHub
    pre-releases. `releases/latest` skips those, so no user is offered them.

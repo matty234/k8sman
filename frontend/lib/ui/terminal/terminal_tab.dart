@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:xterm/xterm.dart';
 
 import '../../api/client.dart';
@@ -69,7 +71,7 @@ class TerminalTab extends DockTab {
 
   TerminalTab({required this.transport, required ExecRequest request, int? scrollback}) : _request = request {
     container = request.container;
-    terminal = Terminal(maxLines: scrollback ?? TerminalSettings.scrollback, platform: TerminalTargetPlatform.macos);
+    terminal = Terminal(maxLines: scrollback ?? TerminalSettings.scrollback, platform: terminalPlatform);
     terminal.onOutput = _onTerminalInput;
     terminal.onResize = (w, h, _, _) => _conn?.resize(w, h);
     controller.addListener(notifyListeners); // selection → copy button state
@@ -241,3 +243,10 @@ class _TerminalSink implements Sink<String> {
   @override
   void close() {}
 }
+
+/// The platform xterm emulates keyboard input for.
+TerminalTargetPlatform get terminalPlatform => switch (defaultTargetPlatform) {
+      TargetPlatform.windows => TerminalTargetPlatform.windows,
+      TargetPlatform.linux => TerminalTargetPlatform.linux,
+      _ => TerminalTargetPlatform.macos,
+    };

@@ -7,6 +7,7 @@ import '../../panels/panel.dart';
 import '../../panels/pod/pod_logic.dart';
 import '../../state/log_dock.dart';
 import '../../util/k8s.dart';
+import '../keys.dart';
 
 /// Most pods a workload "Logs" action opens at once.
 const int kMaxWorkloadLogTabs = 5;
@@ -25,7 +26,7 @@ ResourceAction podLogsAction(PanelContext ctx) => ResourceAction(
   id: kLogsActionId,
   label: 'Logs',
   icon: Icons.notes,
-  tooltip: 'Open logs in the bottom panel (⌘J toggles it)',
+  tooltip: 'Open logs in the bottom panel (${shortcutLabel('J')} toggles it)',
   run: (context) async => openPodLogs(context, ctx.object),
 );
 

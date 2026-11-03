@@ -19,6 +19,7 @@ import '../widgets/group_icon.dart';
 import '../portforward/portforward_dialog.dart';
 import 'metadata_section.dart';
 import 'yaml_editor.dart';
+import '../keys.dart';
 
 /// Right-hand sidebar for the current [AppState.detail] target. Keeps the
 /// object live via a single-object watch.
@@ -299,7 +300,7 @@ class _Header extends StatelessWidget {
         IconButton(tooltip: 'Copy name', icon: const Icon(Icons.copy_rounded, size: 14), onPressed: () => copyToClipboard(context, target.name)),
         IconButton(
           key: const ValueKey('inspector-collapse'),
-          tooltip: 'Collapse inspector (⌘I)',
+          tooltip: 'Collapse inspector (${shortcutLabel('I')})',
           icon: const Icon(Icons.last_page_rounded, size: 17),
           onPressed: app.collapseInspector,
         ),

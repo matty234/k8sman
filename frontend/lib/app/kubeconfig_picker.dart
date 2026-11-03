@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:file_selector_platform_interface/file_selector_platform_interface.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,13 +10,25 @@ import '../api/kubeconfig.dart';
 import '../state/app_state.dart';
 import '../ui/theme.dart';
 
-/// Native file helpers in `MainFlutterWindow.swift`.
+/// Native file helpers: `MainFlutterWindow.swift` on macOS; the
+/// file_selector plugin and Explorer on Windows.
 class NativeFiles {
   NativeFiles._();
   static const _channel = MethodChannel('k8sman/files');
 
+  static bool get _windows => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
   /// Shows an open panel (starting in ~/.kube); returns the chosen path.
   static Future<String?> chooseKubeconfig({String? directory}) async {
+    if (_windows) {
+      final profile = Platform.environment['USERPROFILE'];
+      final kube = profile == null ? null : '$profile\\.kube';
+      final file = await FileSelectorPlatform.instance.openFile(
+        initialDirectory: directory ?? (kube != null && Directory(kube).existsSync() ? kube : profile),
+        confirmButtonText: 'Use Kubeconfig',
+      );
+      return file?.path;
+    }
     try {
       return await _channel.invokeMethod<String>('chooseKubeconfig', {'directory': ?directory});
     } on MissingPluginException {
@@ -21,6 +37,11 @@ class NativeFiles {
   }
 
   static Future<void> reveal(String path) async {
+    if (_windows) {
+      // Explorer exits non-zero even when it worked.
+      await Process.run('explorer.exe', ['/select,', path]).catchError((Object _) => ProcessResult(0, 1, '', ''));
+      return;
+    }
     try {
       await _channel.invokeMethod<void>('reveal', path);
     } on MissingPluginException {
@@ -29,11 +50,14 @@ class NativeFiles {
   }
 }
 
+/// "Reveal in Finder" / "Show in Explorer".
+String get revealLabel => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows ? 'Show in Explorer' : 'Reveal in Finder';
+
 const _choose = '\u0000choose';
 const _reveal = '\u0000reveal';
 
 /// Shows the active kubeconfig file; its menu lists the candidate files (with
-/// context counts), "Choose file…" and "Reveal in Finder".
+/// context counts), "Choose file…" and [revealLabel].
 class KubeconfigPicker extends StatefulWidget {
   /// Compact: one line in the nav. Otherwise a button (startup error screen).
   final bool compact;
@@ -110,7 +134,7 @@ class _KubeconfigPickerState extends State<KubeconfigPicker> {
         value: _reveal,
         enabled: list.current.isNotEmpty,
         height: 28,
-        child: const Row(children: [SizedBox(width: 18), Text('Reveal in Finder')]),
+        child: Row(children: [const SizedBox(width: 18), Text(revealLabel)]),
       ),
     ];
   }

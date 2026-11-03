@@ -15,6 +15,7 @@ import '../detail/yaml_editor.dart' show DiffView;
 import '../theme.dart';
 import 'helm_api.dart';
 import 'yaml_view.dart';
+import '../keys.dart';
 
 /// Runs [op] behind a small modal progress dialog, then reports the result
 /// (snackbar) or error. Returns the result, or null on failure.
@@ -283,7 +284,7 @@ class _ValuesEditorDialogState extends State<_ValuesEditorDialog> {
     final size = MediaQuery.sizeOf(context);
     final r = widget.detail.release;
     return CallbackShortcuts(
-      bindings: {const SingleActivator(LogicalKeyboardKey.enter, meta: true): () => _busy ? null : _dryRun()},
+      bindings: {primaryShortcut(LogicalKeyboardKey.enter): () => _busy ? null : _dryRun()},
       child: AlertDialog(
         title: Text('Edit values of ${r.name}'),
         content: SizedBox(

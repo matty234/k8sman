@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'github_releases.dart';
 import 'version.dart';
 
 /// An update offered by the feed (Sparkle's appcast item), as sent by
@@ -114,12 +115,22 @@ String? updatesDisabledReason({required bool releaseMode, required UpdaterInfo i
 /// checks, verifies, installs and relaunches; this schedules the daily
 /// background check, keeps the user's setting, and drives the banner and
 /// About panel.
+///
+/// With [github] (Windows) there is no Sparkle: the daily check asks GitHub
+/// for the latest release and "install" opens its download page.
 class UpdateController extends ChangeNotifier {
   static const channel = MethodChannel('k8sman/updates');
 
   final UpdateSchedule schedule;
   final bool releaseMode;
   final DateTime Function() _now;
+  final GitHubReleases? github;
+
+  /// This app's version when [github] is used.
+  final String version;
+
+  /// Opens a URL (the release page); replaced in tests.
+  final Future<void> Function(Uri) openUrl;
 
   /// Used to show the About panel from the app menu.
   final navigatorKey = GlobalKey<NavigatorState>();
@@ -138,9 +149,19 @@ class UpdateController extends ChangeNotifier {
 
   Timer? _startup, _tick;
 
-  UpdateController({this.schedule = const UpdateSchedule(), bool? releaseMode, DateTime Function()? now})
-      : releaseMode = releaseMode ?? kReleaseMode,
-        _now = now ?? DateTime.now;
+  UpdateController({
+    this.schedule = const UpdateSchedule(),
+    bool? releaseMode,
+    DateTime Function()? now,
+    this.github,
+    this.version = buildVersion,
+    Future<void> Function(Uri)? openUrl,
+  })  : releaseMode = releaseMode ?? kReleaseMode,
+        _now = now ?? DateTime.now,
+        openUrl = openUrl ?? ((_) async {});
+
+  /// Updates are downloaded by hand from the release page (no Sparkle).
+  bool get manualInstall => github != null;
 
   String? get disabledReason => updatesDisabledReason(releaseMode: releaseMode, info: info);
   bool get enabled => disabledReason == null;
@@ -160,6 +181,11 @@ class UpdateController extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    if (github != null) {
+      info = UpdaterInfo(version: version, nativeEnabled: true, lastCheck: info.lastCheck, available: available);
+      notifyListeners();
+      return;
+    }
     try {
       info = UpdaterInfo.fromNative(await channel.invokeMethod<Object?>('info'));
       available ??= info.available;
@@ -184,11 +210,43 @@ class UpdateController extends ChangeNotifier {
   }
 
   /// "Check for Updates…": Sparkle shows its own progress and result.
-  Future<void> checkNow() => _invoke('checkNow');
+  Future<void> checkNow() async {
+    if (github != null) {
+      await _checkGitHub();
+      return;
+    }
+    await _invoke('checkNow');
+  }
 
   /// "Install & Relaunch…": brings Sparkle's window for the pending update
-  /// into focus (release notes, Install; then Install and Relaunch).
-  Future<void> install() => _invoke('install');
+  /// into focus (release notes, Install; then Install and Relaunch). With
+  /// [github]: opens the release page to download it from.
+  Future<void> install() async {
+    if (github != null) {
+      final page = available?.releaseNotes;
+      if (page != null) await openUrl(page);
+      return;
+    }
+    await _invoke('install');
+  }
+
+  /// Asks GitHub for a newer release. Returns whether it asked.
+  Future<bool> _checkGitHub() async {
+    if (checking) return false;
+    checking = true;
+    notifyListeners();
+    try {
+      available = await github!.newerThan(version);
+      lastError = null;
+    } catch (e) {
+      lastError = '$e';
+    } finally {
+      checking = false;
+      info = _withLastCheck(_now());
+      notifyListeners();
+    }
+    return true;
+  }
 
   void dismiss() {
     dismissedVersion = available?.version;
@@ -207,6 +265,7 @@ class UpdateController extends ChangeNotifier {
   Future<bool> checkIfDue() async {
     if (!enabled || !automaticChecks || checking) return false;
     if (!schedule.isDue(now: _now(), lastCheck: info.lastCheck)) return false;
+    if (github != null) return _checkGitHub();
     checking = true;
     try {
       final asked = await channel.invokeMethod<bool>('checkInBackground') ?? false;
@@ -228,7 +287,7 @@ class UpdateController extends ChangeNotifier {
         automaticChecks: info.automaticChecks,
         lastCheck: t,
         feedUrl: info.feedUrl,
-        available: info.available,
+        available: github != null ? available : info.available,
       );
 
   void _reschedule() {
