@@ -6,6 +6,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import 'pod_logic.dart';
 import 'pod_widgets.dart';
+import '../../util/text.dart';
 
 /// One card per container (init, sidecar, regular, ephemeral).
 class ContainerCard extends StatelessWidget {

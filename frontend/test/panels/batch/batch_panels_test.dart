@@ -10,6 +10,7 @@ import 'package:k8sman/util/k8s.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
+import 'package:k8sman/util/text.dart';
 
 Json _load(String path) => jsonDecode(File(path).readAsStringSync()) as Json;
 List<Json> _items(String path) => asMapList(_load(path)['items']);

@@ -7,7 +7,7 @@ import '../../api/models.dart';
 import '../../panels/panel.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
-import 'portforward_view.dart' show openUrl;
+import '../widgets/common.dart' show openUrl;
 
 /// Kinds we can forward to, keyed by `group/Kind` → backend kind.
 const portForwardKinds = {

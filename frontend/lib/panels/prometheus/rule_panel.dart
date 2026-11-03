@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
 import '../../prometheus/prom_api.dart';
-import '../../ui/alerts/alerts_widgets.dart' show openUrl;
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';

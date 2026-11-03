@@ -4,6 +4,7 @@ library;
 
 import '../../api/models.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
 
 enum ContainerKind { init, sidecar, regular, ephemeral }
 
@@ -282,15 +283,6 @@ String probeSentence(Json p) {
     if (succ > 1) 'succeed after $succ',
   ].join(' · ');
 }
-
-final _safeShell = RegExp(r'^[A-Za-z0-9_@%+=:,./-]+$');
-
-/// POSIX-quote and join argv into one pasteable shell line.
-String shellJoin(List<String> argv) => argv.map((a) {
-      if (a.isEmpty) return "''";
-      if (_safeShell.hasMatch(a)) return a;
-      return "'${a.replaceAll("'", "'\\''")}'";
-    }).join(' ');
 
 /// "key=value:NoSchedule op for 300s"
 String tolerationText(Json t) {

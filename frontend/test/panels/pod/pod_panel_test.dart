@@ -14,6 +14,7 @@ import 'package:provider/provider.dart';
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
 import 'package:k8sman/util/pod.dart';
+import 'package:k8sman/util/text.dart';
 
 Json fixture(String name) => jsonDecode(File('../dev/fixtures/$name.json').readAsStringSync()) as Json;
 

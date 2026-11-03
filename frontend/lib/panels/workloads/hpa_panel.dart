@@ -9,18 +9,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'widgets/util.dart';
-
-/// Parses a k8s quantity to a plain number (`500m` → 0.5, `2k` → 2000, `1Gi`).
-double? parseQuantity(dynamic q) {
-  if (q == null) return null;
-  if (q is num) return q.toDouble();
-  final s = '$q'.trim();
-  if (s.endsWith('m')) {
-    final v = double.tryParse(s.substring(0, s.length - 1));
-    return v == null ? null : v / 1000;
-  }
-  return parseBytes(s);
-}
+import '../../metrics/quantity.dart';
 
 /// One HPA metric: what it measures, its target and current value.
 class HpaMetric {

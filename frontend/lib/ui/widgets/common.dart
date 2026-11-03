@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/models.dart';
 import '../../app/window_chrome.dart';
@@ -777,4 +778,10 @@ void copyToClipboard(BuildContext context, String text, {String? label}) {
   ScaffoldMessenger.maybeOf(context)
     ?..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text('Copied $shown'), duration: const Duration(seconds: 1)));
+}
+
+/// Opens [url] in the browser; ignores unparsable URLs.
+Future<void> openUrl(String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri != null) await launchUrl(uri);
 }

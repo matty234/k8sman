@@ -136,8 +136,6 @@ class ObjectChip extends StatelessWidget {
   }
 }
 
-String _plural(int n, String one, [String? many]) => '$n ${n == 1 ? one : (many ?? '${one}s')}';
-
 // ---------------------------------------------------------------------------
 // Summary: score + category tiles
 // ---------------------------------------------------------------------------
@@ -892,5 +890,3 @@ class CveList extends StatelessWidget {
     ]);
   }
 }
-
-String plural(int n, String one, [String? many]) => _plural(n, one, many);

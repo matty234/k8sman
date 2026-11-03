@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/client.dart';
 import '../../api/models.dart';
@@ -10,8 +9,6 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-
-Future<void> openUrl(String url) => launchUrl(Uri.parse(url));
 
 /// Manage persistent port-forwards: live state, open/copy URL, autostart,
 /// start/stop/remove. Polls the backend every 1.5s while visible.
