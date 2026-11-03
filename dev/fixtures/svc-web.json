@@ -1,0 +1,44 @@
+{
+ "apiVersion": "v1",
+ "kind": "Service",
+ "metadata": {
+  "annotations": {
+   "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"annotations\":{},\"labels\":{\"app\":\"web\"},\"name\":\"web\",\"namespace\":\"demo\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80,\"protocol\":\"TCP\",\"targetPort\":\"http\"}],\"selector\":{\"app\":\"web\"}}}\n"
+  },
+  "creationTimestamp": "2026-11-03T11:22:57Z",
+  "labels": {
+   "app": "web"
+  },
+  "name": "web",
+  "namespace": "demo",
+  "resourceVersion": "747",
+  "uid": "7f1e48f8-a9ed-4d0c-9db8-6b981aa349e0"
+ },
+ "spec": {
+  "clusterIP": "10.96.247.109",
+  "clusterIPs": [
+   "10.96.247.109"
+  ],
+  "internalTrafficPolicy": "Cluster",
+  "ipFamilies": [
+   "IPv4"
+  ],
+  "ipFamilyPolicy": "SingleStack",
+  "ports": [
+   {
+    "name": "http",
+    "port": 80,
+    "protocol": "TCP",
+    "targetPort": "http"
+   }
+  ],
+  "selector": {
+   "app": "web"
+  },
+  "sessionAffinity": "None",
+  "type": "ClusterIP"
+ },
+ "status": {
+  "loadBalancer": {}
+ }
+}

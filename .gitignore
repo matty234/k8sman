@@ -1,0 +1,3 @@
+.kubeconfig-dev
+backend/bin/
+.DS_Store

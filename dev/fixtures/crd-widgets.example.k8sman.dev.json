@@ -1,0 +1,154 @@
+{
+ "apiVersion": "apiextensions.k8s.io/v1",
+ "kind": "CustomResourceDefinition",
+ "metadata": {
+  "annotations": {
+   "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apiextensions.k8s.io/v1\",\"kind\":\"CustomResourceDefinition\",\"metadata\":{\"annotations\":{},\"name\":\"widgets.example.k8sman.dev\"},\"spec\":{\"group\":\"example.k8sman.dev\",\"names\":{\"categories\":[\"all\"],\"kind\":\"Widget\",\"plural\":\"widgets\",\"shortNames\":[\"wdg\"],\"singular\":\"widget\"},\"scope\":\"Namespaced\",\"versions\":[{\"additionalPrinterColumns\":[{\"jsonPath\":\".spec.color\",\"name\":\"Color\",\"type\":\"string\"},{\"jsonPath\":\".spec.size\",\"name\":\"Size\",\"type\":\"integer\"},{\"jsonPath\":\".status.phase\",\"name\":\"Phase\",\"type\":\"string\"},{\"jsonPath\":\".metadata.creationTimestamp\",\"name\":\"Age\",\"type\":\"date\"}],\"name\":\"v1alpha1\",\"schema\":{\"openAPIV3Schema\":{\"properties\":{\"spec\":{\"properties\":{\"color\":{\"enum\":[\"red\",\"green\",\"blue\"],\"type\":\"string\"},\"owner\":{\"properties\":{\"email\":{\"type\":\"string\"},\"team\":{\"type\":\"string\"}},\"type\":\"object\"},\"size\":{\"minimum\":1,\"type\":\"integer\"},\"tags\":{\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"type\":\"object\"},\"status\":{\"properties\":{\"conditions\":{\"items\":{\"type\":\"object\",\"x-kubernetes-preserve-unknown-fields\":true},\"type\":\"array\"},\"phase\":{\"type\":\"string\"}},\"type\":\"object\"}},\"type\":\"object\"}},\"served\":true,\"storage\":true,\"subresources\":{\"status\":{}}}]}}\n"
+  },
+  "creationTimestamp": "2026-11-03T11:22:57Z",
+  "generation": 1,
+  "name": "widgets.example.k8sman.dev",
+  "resourceVersion": "813",
+  "uid": "2f5710a9-7fc7-4396-bcd5-270a696b023a"
+ },
+ "spec": {
+  "conversion": {
+   "strategy": "None"
+  },
+  "group": "example.k8sman.dev",
+  "names": {
+   "categories": [
+    "all"
+   ],
+   "kind": "Widget",
+   "listKind": "WidgetList",
+   "plural": "widgets",
+   "shortNames": [
+    "wdg"
+   ],
+   "singular": "widget"
+  },
+  "scope": "Namespaced",
+  "versions": [
+   {
+    "additionalPrinterColumns": [
+     {
+      "jsonPath": ".spec.color",
+      "name": "Color",
+      "type": "string"
+     },
+     {
+      "jsonPath": ".spec.size",
+      "name": "Size",
+      "type": "integer"
+     },
+     {
+      "jsonPath": ".status.phase",
+      "name": "Phase",
+      "type": "string"
+     },
+     {
+      "jsonPath": ".metadata.creationTimestamp",
+      "name": "Age",
+      "type": "date"
+     }
+    ],
+    "name": "v1alpha1",
+    "schema": {
+     "openAPIV3Schema": {
+      "properties": {
+       "spec": {
+        "properties": {
+         "color": {
+          "enum": [
+           "red",
+           "green",
+           "blue"
+          ],
+          "type": "string"
+         },
+         "owner": {
+          "properties": {
+           "email": {
+            "type": "string"
+           },
+           "team": {
+            "type": "string"
+           }
+          },
+          "type": "object"
+         },
+         "size": {
+          "minimum": 1,
+          "type": "integer"
+         },
+         "tags": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         }
+        },
+        "type": "object"
+       },
+       "status": {
+        "properties": {
+         "conditions": {
+          "items": {
+           "type": "object",
+           "x-kubernetes-preserve-unknown-fields": true
+          },
+          "type": "array"
+         },
+         "phase": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      "type": "object"
+     }
+    },
+    "served": true,
+    "storage": true,
+    "subresources": {
+     "status": {}
+    }
+   }
+  ]
+ },
+ "status": {
+  "acceptedNames": {
+   "categories": [
+    "all"
+   ],
+   "kind": "Widget",
+   "listKind": "WidgetList",
+   "plural": "widgets",
+   "shortNames": [
+    "wdg"
+   ],
+   "singular": "widget"
+  },
+  "conditions": [
+   {
+    "lastTransitionTime": "2026-11-03T11:22:57Z",
+    "message": "no conflicts found",
+    "reason": "NoConflicts",
+    "status": "True",
+    "type": "NamesAccepted"
+   },
+   {
+    "lastTransitionTime": "2026-11-03T11:22:57Z",
+    "message": "the initial names have been accepted",
+    "reason": "InitialNamesAccepted",
+    "status": "True",
+    "type": "Established"
+   }
+  ],
+  "storedVersions": [
+   "v1alpha1"
+  ]
+ }
+}

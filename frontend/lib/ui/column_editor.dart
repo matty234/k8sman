@@ -1,0 +1,392 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../api/client.dart';
+import '../api/models.dart';
+import 'theme.dart';
+import 'widgets/common.dart';
+
+/// Opens the column editor. Resolves true if columns were saved or reset.
+Future<bool?> showColumnEditor(BuildContext context, {required ResourceType type, String? namespace}) => showDialog<bool>(
+      context: context,
+      builder: (_) => Provider.value(value: context.read<ApiClient>(), child: ColumnEditorDialog(type: type, namespace: namespace)),
+    );
+
+const _types = ['string', 'number', 'age', 'status', 'bool', 'labels'];
+
+class _EditableColumn {
+  final TextEditingController name;
+  final TextEditingController query;
+  String type;
+  final Key key = UniqueKey();
+  _EditableColumn(ColumnDef c)
+      : name = TextEditingController(text: c.name),
+        query = TextEditingController(text: c.query),
+        type = c.type;
+  ColumnDef toDef() => ColumnDef(name: name.text.trim(), query: query.text.trim(), type: type);
+  void dispose() {
+    name.dispose();
+    query.dispose();
+  }
+}
+
+class ColumnEditorDialog extends StatefulWidget {
+  final ResourceType type;
+  final String? namespace;
+  const ColumnEditorDialog({super.key, required this.type, this.namespace});
+
+  @override
+  State<ColumnEditorDialog> createState() => _ColumnEditorDialogState();
+}
+
+class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
+  List<_EditableColumn> _cols = [];
+  List<ColumnDef> _defaults = [];
+  bool _loading = true;
+  String? _error;
+  TableData? _preview;
+  String? _previewError;
+  Timer? _debounce;
+  Json? _sample;
+  bool _saving = false;
+
+  ApiClient get _api => context.read<ApiClient>();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final cfg = await _api.getColumns(widget.type.ref);
+      final ns = widget.type.namespaced ? widget.namespace : null;
+      final items = await _api.items(widget.type.ref, namespace: ns).catchError((_) => <Json>[]);
+      setState(() {
+        _defaults = cfg.defaults;
+        _cols = [for (final c in cfg.columns) _EditableColumn(c)];
+        _sample = items.isNotEmpty ? items.first : null;
+        _loading = false;
+      });
+      _schedulePreview();
+    } catch (e) {
+      setState(() {
+        _error = '$e';
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    for (final c in _cols) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _schedulePreview() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), _runPreview);
+  }
+
+  Future<void> _runPreview() async {
+    final defs = _cols.map((c) => c.toDef()).toList();
+    try {
+      final t = await _api.previewColumns(widget.type.ref, defs, namespace: widget.type.namespaced ? widget.namespace : null, limit: 15);
+      if (mounted) setState(() => (_preview = t, _previewError = null));
+    } catch (e) {
+      if (mounted) setState(() => _previewError = '$e');
+    }
+  }
+
+  void _add(ColumnDef c) {
+    setState(() => _cols.add(_EditableColumn(c)));
+    _schedulePreview();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await _api.putColumns(widget.type.ref, [for (final c in _cols) c.toDef()]);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      setState(() {
+        _saving = false;
+        _previewError = '$e';
+      });
+    }
+  }
+
+  Future<void> _reset() async {
+    await _api.resetColumns(widget.type.ref);
+    if (mounted) Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Dialog(
+      insetPadding: const EdgeInsets.all(32),
+      child: SizedBox(
+        width: 1100,
+        height: 720,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Padding(padding: const EdgeInsets.all(24), child: InlineMessage(_error!, isError: true))
+                : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                      child: Row(children: [
+                        Text('Columns · ${widget.type.kind}', style: theme.textTheme.titleLarge),
+                        const SizedBox(width: 12),
+                        Text('jq expressions evaluated against each object', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                        const Spacer(),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop(false)),
+                      ]),
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Expanded(flex: 3, child: _columnList(context)),
+                        const VerticalDivider(width: 1),
+                        SizedBox(width: 340, child: _FieldPicker(sample: _sample, onPick: (path) => _add(ColumnDef(name: _nameFor(path), query: path)))),
+                      ]),
+                    ),
+                    const Divider(),
+                    SizedBox(height: 210, child: _previewTable(context)),
+                    const Divider(),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(children: [
+                        TextButton.icon(onPressed: _reset, icon: const Icon(Icons.restart_alt), label: const Text('Reset to defaults')),
+                        const SizedBox(width: 8),
+                        PopupMenuButton<ColumnDef>(
+                          tooltip: 'Add a default column',
+                          onSelected: _add,
+                          itemBuilder: (_) => [for (final d in _defaults) PopupMenuItem(value: d, child: Text(d.name))],
+                          child: const Padding(padding: EdgeInsets.all(8), child: Text('Add default column ▾')),
+                        ),
+                        const Spacer(),
+                        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+                        const SizedBox(width: 8),
+                        FilledButton(onPressed: _saving ? null : _save, child: const Text('Save')),
+                      ]),
+                    ),
+                  ]),
+      ),
+    );
+  }
+
+  Widget _columnList(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(
+        child: ReorderableListView.builder(
+          padding: const EdgeInsets.all(12),
+          buildDefaultDragHandles: false,
+          itemCount: _cols.length,
+          onReorderItem: (a, b) {
+            setState(() => _cols.insert(b, _cols.removeAt(a)));
+            _schedulePreview();
+          },
+          itemBuilder: (context, i) {
+            final c = _cols[i];
+            final err = _preview?.columnErrors[i];
+            return Padding(
+              key: c.key,
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                ReorderableDragStartListener(index: i, child: const Padding(padding: EdgeInsets.only(top: 8), child: Icon(Icons.drag_indicator, size: 18))),
+                const SizedBox(width: 6),
+                SizedBox(
+                  width: 150,
+                  child: TextField(controller: c.name, decoration: const InputDecoration(labelText: 'Name'), onChanged: (_) => _schedulePreview()),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: c.query,
+                    minLines: 1,
+                    maxLines: 4,
+                    style: monoStyle(context),
+                    decoration: InputDecoration(labelText: 'jq query', errorText: err, errorMaxLines: 3),
+                    onChanged: (_) => _schedulePreview(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 110,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _types.contains(c.type) ? c.type : 'string',
+                    decoration: const InputDecoration(labelText: 'Type'),
+                    items: [for (final t in _types) DropdownMenuItem(value: t, child: Text(t))],
+                    onChanged: (v) => setState(() => c.type = v ?? 'string'),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove',
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  onPressed: () {
+                    setState(() => _cols.removeAt(i).dispose());
+                    _schedulePreview();
+                  },
+                ),
+              ]),
+            );
+          },
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text('Add column'),
+            onPressed: () => _add(const ColumnDef(name: 'New', query: '.metadata.name')),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _previewTable(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_previewError != null) return Padding(padding: const EdgeInsets.all(12), child: InlineMessage(_previewError!, isError: true));
+    final p = _preview;
+    if (p == null) return const Center(child: CircularProgressIndicator());
+    if (p.rows.isEmpty) return Center(child: Text('No objects to preview', style: TextStyle(color: theme.hintColor)));
+    final defs = [for (final c in _cols) c.toDef()];
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowHeight: 28,
+          dataRowMinHeight: 24,
+          dataRowMaxHeight: 28,
+          columnSpacing: 18,
+          columns: [for (final c in p.columns) DataColumn(label: Text(c.name, style: theme.textTheme.labelSmall))],
+          rows: [
+            for (final r in p.rows)
+              DataRow(cells: [
+                for (var i = 0; i < p.columns.length; i++)
+                  DataCell(ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 260),
+                    child: _PreviewCell(value: i < r.cells.length ? r.cells[i] : null, def: i < defs.length ? defs[i] : p.columns[i]),
+                  )),
+              ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _nameFor(String path) {
+    final seg = RegExp(r'[A-Za-z0-9_\-]+').allMatches(path).map((m) => m.group(0)!).toList();
+    if (seg.isEmpty) return 'Field';
+    final s = seg.last;
+    return s[0].toUpperCase() + s.substring(1);
+  }
+}
+
+class _PreviewCell extends StatelessWidget {
+  final dynamic value;
+  final ColumnDef def;
+  const _PreviewCell({required this.value, required this.def});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = value == null ? '' : (value is List ? (value as List).join(', ') : '$value');
+    return Text(text, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall);
+  }
+}
+
+/// Lists leaf paths of a sample object; clicking one adds it as a column.
+class _FieldPicker extends StatefulWidget {
+  final Json? sample;
+  final void Function(String path) onPick;
+  const _FieldPicker({required this.sample, required this.onPick});
+
+  @override
+  State<_FieldPicker> createState() => _FieldPickerState();
+}
+
+class _FieldPickerState extends State<_FieldPicker> {
+  String _q = '';
+  late final List<(String, String)> _paths = widget.sample == null ? const [] : _flatten(widget.sample!, '');
+
+  static final _ident = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+
+  static List<(String, String)> _flatten(dynamic v, String prefix) {
+    final out = <(String, String)>[];
+    if (v is Map) {
+      for (final e in v.entries) {
+        if (prefix.isEmpty && e.key == 'metadata' && e.value is Map) {
+          // managedFields is noise for column building.
+          final m = Map<String, dynamic>.from(e.value)..remove('managedFields');
+          out.addAll(_flatten(m, '.metadata'));
+          continue;
+        }
+        final k = '${e.key}';
+        final seg = _ident.hasMatch(k) ? '.$k' : '["$k"]';
+        out.addAll(_flatten(e.value, '$prefix$seg'));
+      }
+    } else if (v is List) {
+      if (v.isEmpty) {
+        out.add((prefix, '[]'));
+      } else {
+        // Offer both the "all items" form and leaves of the first item.
+        out.addAll(_flatten(v.first, '$prefix[]'));
+      }
+    } else {
+      out.add((prefix.isEmpty ? '.' : prefix, '$v'));
+    }
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final q = _q.toLowerCase();
+    final visible = _paths.where((p) => q.isEmpty || p.$1.toLowerCase().contains(q)).take(400).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        child: Text('Fields from a sample object', style: theme.textTheme.titleSmall),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        child: TextField(
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 16), hintText: 'e.g. image, replicas'),
+          onChanged: (v) => setState(() => _q = v),
+        ),
+      ),
+      Expanded(
+        child: widget.sample == null
+            ? Center(child: Text('No objects in scope', style: TextStyle(color: theme.hintColor)))
+            : ListView.builder(
+                itemCount: visible.length,
+                itemBuilder: (context, i) {
+                  final (path, val) = visible[i];
+                  return InkWell(
+                    onTap: () => widget.onPick(path.contains('[]') ? '[$path | tostring] | join(", ")' : path),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(path, style: monoStyle(context, size: 11, color: theme.colorScheme.primary)),
+                        Text(val, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                      ]),
+                    ),
+                  );
+                },
+              ),
+      ),
+    ]);
+  }
+}

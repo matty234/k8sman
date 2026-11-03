@@ -1,0 +1,174 @@
+{
+ "apiVersion": "v1",
+ "kind": "Pod",
+ "metadata": {
+  "annotations": {
+   "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Pod\",\"metadata\":{\"annotations\":{},\"labels\":{\"app\":\"crashy\"},\"name\":\"crashy\",\"namespace\":\"demo\"},\"spec\":{\"containers\":[{\"command\":[\"sh\",\"-c\",\"echo starting; echo 'fatal: config missing' \\u003e\\u00262; exit 3\"],\"image\":\"busybox:1.36\",\"name\":\"app\"}]}}\n"
+  },
+  "creationTimestamp": "2026-11-03T11:22:57Z",
+  "labels": {
+   "app": "crashy"
+  },
+  "name": "crashy",
+  "namespace": "demo",
+  "resourceVersion": "1462",
+  "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+ },
+ "spec": {
+  "containers": [
+   {
+    "command": [
+     "sh",
+     "-c",
+     "echo starting; echo 'fatal: config missing' >&2; exit 3"
+    ],
+    "image": "busybox:1.36",
+    "imagePullPolicy": "IfNotPresent",
+    "name": "app",
+    "resources": {},
+    "terminationMessagePath": "/dev/termination-log",
+    "terminationMessagePolicy": "File",
+    "volumeMounts": [
+     {
+      "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+      "name": "kube-api-access-jmlr7",
+      "readOnly": true
+     }
+    ]
+   }
+  ],
+  "dnsPolicy": "ClusterFirst",
+  "enableServiceLinks": true,
+  "nodeName": "k8sman-dev-control-plane",
+  "preemptionPolicy": "PreemptLowerPriority",
+  "priority": 0,
+  "restartPolicy": "Always",
+  "schedulerName": "default-scheduler",
+  "securityContext": {},
+  "serviceAccount": "default",
+  "serviceAccountName": "default",
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": [
+   {
+    "effect": "NoExecute",
+    "key": "node.kubernetes.io/not-ready",
+    "operator": "Exists",
+    "tolerationSeconds": 300
+   },
+   {
+    "effect": "NoExecute",
+    "key": "node.kubernetes.io/unreachable",
+    "operator": "Exists",
+    "tolerationSeconds": 300
+   }
+  ],
+  "volumes": [
+   {
+    "name": "kube-api-access-jmlr7",
+    "projected": {
+     "defaultMode": 420,
+     "sources": [
+      {
+       "serviceAccountToken": {
+        "expirationSeconds": 3607,
+        "path": "token"
+       }
+      },
+      {
+       "configMap": {
+        "items": [
+         {
+          "key": "ca.crt",
+          "path": "ca.crt"
+         }
+        ],
+        "name": "kube-root-ca.crt"
+       }
+      },
+      {
+       "downwardAPI": {
+        "items": [
+         {
+          "fieldRef": {
+           "apiVersion": "v1",
+           "fieldPath": "metadata.namespace"
+          },
+          "path": "namespace"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "status": {
+  "conditions": [
+   {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2026-11-03T11:22:57Z",
+    "status": "True",
+    "type": "Initialized"
+   },
+   {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2026-11-03T11:22:57Z",
+    "message": "containers with unready status: [app]",
+    "reason": "ContainersNotReady",
+    "status": "False",
+    "type": "Ready"
+   },
+   {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2026-11-03T11:22:57Z",
+    "message": "containers with unready status: [app]",
+    "reason": "ContainersNotReady",
+    "status": "False",
+    "type": "ContainersReady"
+   },
+   {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2026-11-03T11:22:57Z",
+    "status": "True",
+    "type": "PodScheduled"
+   }
+  ],
+  "containerStatuses": [
+   {
+    "containerID": "containerd://a0a7dbcdcddb3f4ba8fe8fc8c333fa4cff65ddba30f45ec549235a97f80cae03",
+    "image": "docker.io/library/busybox:1.36",
+    "imageID": "docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+    "lastState": {
+     "terminated": {
+      "containerID": "containerd://a0a7dbcdcddb3f4ba8fe8fc8c333fa4cff65ddba30f45ec549235a97f80cae03",
+      "exitCode": 3,
+      "finishedAt": "2026-11-03T11:28:37Z",
+      "reason": "Error",
+      "startedAt": "2026-11-03T11:28:37Z"
+     }
+    },
+    "name": "app",
+    "ready": false,
+    "restartCount": 6,
+    "started": false,
+    "state": {
+     "waiting": {
+      "message": "back-off 5m0s restarting failed container=app pod=crashy_demo(327d9fb7-7696-4c09-a53a-779f7986e5fc)",
+      "reason": "CrashLoopBackOff"
+     }
+    }
+   }
+  ],
+  "hostIP": "172.18.0.2",
+  "phase": "Running",
+  "podIP": "10.244.0.10",
+  "podIPs": [
+   {
+    "ip": "10.244.0.10"
+   }
+  ],
+  "qosClass": "BestEffort",
+  "startTime": "2026-11-03T11:22:57Z"
+ }
+}

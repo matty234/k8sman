@@ -1,0 +1,970 @@
+[
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:57Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "name": "bad-image",
+   "namespace": "demo",
+   "resourceVersion": "807",
+   "uid": "918ecf14-a359-49f1-95fe-a803cdeae634"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:57Z",
+  "message": "Successfully assigned demo/bad-image to k8sman-dev-control-plane",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:57Z",
+   "name": "bad-image.18e4852c854de8e7",
+   "namespace": "demo",
+   "resourceVersion": "809",
+   "uid": "0b3885d2-ae01-4767-94fb-edcc3a786846"
+  },
+  "reason": "Scheduled",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "default-scheduler"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 4,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:59Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "bad-image",
+   "namespace": "demo",
+   "resourceVersion": "808",
+   "uid": "918ecf14-a359-49f1-95fe-a803cdeae634"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:24:28Z",
+  "message": "Pulling image \"registry.invalid/nope:latest\"",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:59Z",
+   "name": "bad-image.18e4852cf55d8004",
+   "namespace": "demo",
+   "resourceVersion": "1088",
+   "uid": "a0277113-b515-4a2f-9701-4a619800184c"
+  },
+  "reason": "Pulling",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 4,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:03Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "bad-image",
+   "namespace": "demo",
+   "resourceVersion": "808",
+   "uid": "918ecf14-a359-49f1-95fe-a803cdeae634"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:24:28Z",
+  "message": "Failed to pull image \"registry.invalid/nope:latest\": rpc error: code = Unknown desc = failed to pull and unpack image \"registry.invalid/nope:latest\": failed to resolve reference \"registry.invalid/nope:latest\": failed to do request: Head \"https://registry.invalid/v2/nope/manifests/latest\": dial tcp: lookup registry.invalid on 192.168.65.254:53: no such host",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:03Z",
+   "name": "bad-image.18e4852dca944324",
+   "namespace": "demo",
+   "resourceVersion": "1089",
+   "uid": "c16dac64-f36b-42c5-b25f-55344213deaf"
+  },
+  "reason": "Failed",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Warning"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 4,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:03Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "bad-image",
+   "namespace": "demo",
+   "resourceVersion": "808",
+   "uid": "918ecf14-a359-49f1-95fe-a803cdeae634"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:24:28Z",
+  "message": "Error: ErrImagePull",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:03Z",
+   "name": "bad-image.18e4852dca94749f",
+   "namespace": "demo",
+   "resourceVersion": "1090",
+   "uid": "1232c3de-202c-4f9b-8524-e3d6d89f6ab6"
+  },
+  "reason": "Failed",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Warning"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 21,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:03Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "bad-image",
+   "namespace": "demo",
+   "resourceVersion": "808",
+   "uid": "918ecf14-a359-49f1-95fe-a803cdeae634"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:28:11Z",
+  "message": "Back-off pulling image \"registry.invalid/nope:latest\"",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:03Z",
+   "name": "bad-image.18e4852dee4ff822",
+   "namespace": "demo",
+   "resourceVersion": "1409",
+   "uid": "3bdfd64f-3958-4413-86a0-13960d3d0131"
+  },
+  "reason": "BackOff",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 6,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:03Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "bad-image",
+   "namespace": "demo",
+   "resourceVersion": "808",
+   "uid": "918ecf14-a359-49f1-95fe-a803cdeae634"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:24:53Z",
+  "message": "Error: ImagePullBackOff",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:03Z",
+   "name": "bad-image.18e4852dee50258b",
+   "namespace": "demo",
+   "resourceVersion": "1134",
+   "uid": "9348c6b5-4c20-4ebb-8b90-5edbee85db80"
+  },
+  "reason": "Failed",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Warning"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:57Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "name": "crashy",
+   "namespace": "demo",
+   "resourceVersion": "804",
+   "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:57Z",
+  "message": "Successfully assigned demo/crashy to k8sman-dev-control-plane",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:57Z",
+   "name": "crashy.18e4852c84ffd37b",
+   "namespace": "demo",
+   "resourceVersion": "806",
+   "uid": "086b03b3-3e50-433e-906f-fd82600a2419"
+  },
+  "reason": "Scheduled",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "default-scheduler"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:59Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "crashy",
+   "namespace": "demo",
+   "resourceVersion": "805",
+   "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:59Z",
+  "message": "Pulling image \"busybox:1.36\"",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:59Z",
+   "name": "crashy.18e4852cf55d9651",
+   "namespace": "demo",
+   "resourceVersion": "825",
+   "uid": "2cde3661-236b-4605-94d6-8d1f97d96cd9"
+  },
+  "reason": "Pulling",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:04Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "crashy",
+   "namespace": "demo",
+   "resourceVersion": "805",
+   "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:23:04Z",
+  "message": "Successfully pulled image \"busybox:1.36\" in 4.317165334s",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:04Z",
+   "name": "crashy.18e4852df6bbb15e",
+   "namespace": "demo",
+   "resourceVersion": "880",
+   "uid": "fe95f9c8-67c1-491d-b8ab-00d457f4f0b1"
+  },
+  "reason": "Pulled",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 5,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:04Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "crashy",
+   "namespace": "demo",
+   "resourceVersion": "805",
+   "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:24:35Z",
+  "message": "Created container app",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:04Z",
+   "name": "crashy.18e4852df731c7ff",
+   "namespace": "demo",
+   "resourceVersion": "1101",
+   "uid": "5cb7dd77-b048-45ef-b7ae-e8e7b42f9ee7"
+  },
+  "reason": "Created",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 5,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:04Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "crashy",
+   "namespace": "demo",
+   "resourceVersion": "805",
+   "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:24:35Z",
+  "message": "Started container app",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:04Z",
+   "name": "crashy.18e4852dfa602466",
+   "namespace": "demo",
+   "resourceVersion": "1102",
+   "uid": "54f92c2a-e692-40b2-a8dc-1b73e59d5396"
+  },
+  "reason": "Started",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 4,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:04Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "crashy",
+   "namespace": "demo",
+   "resourceVersion": "805",
+   "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:24:35Z",
+  "message": "Container image \"busybox:1.36\" already present on machine",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:04Z",
+   "name": "crashy.18e4852e2a32a2b0",
+   "namespace": "demo",
+   "resourceVersion": "1100",
+   "uid": "0deea398-c6f5-47a4-b896-5e7075fd2273"
+  },
+  "reason": "Pulled",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 24,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:05Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{app}",
+   "kind": "Pod",
+   "name": "crashy",
+   "namespace": "demo",
+   "resourceVersion": "805",
+   "uid": "327d9fb7-7696-4c09-a53a-779f7986e5fc"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:28:01Z",
+  "message": "Back-off restarting failed container",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:05Z",
+   "name": "crashy.18e4852e665c622f",
+   "namespace": "demo",
+   "resourceVersion": "1396",
+   "uid": "071c97c6-a43f-4737-be11-936a570d798d"
+  },
+  "reason": "BackOff",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Warning"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:57Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "kind": "PersistentVolumeClaim",
+   "name": "data-redis-0",
+   "namespace": "demo",
+   "resourceVersion": "778",
+   "uid": "9d785c8b-67b1-49c9-90b9-2b58c4e2b9cb"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:57Z",
+  "message": "waiting for first consumer to be created before binding",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:57Z",
+   "name": "data-redis-0.18e4852c830952b1",
+   "namespace": "demo",
+   "resourceVersion": "787",
+   "uid": "4ce262f2-3ba4-4a23-9047-c1050b489cd2"
+  },
+  "reason": "WaitForFirstConsumer",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "persistentvolume-controller"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:57Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "kind": "PersistentVolumeClaim",
+   "name": "data-redis-0",
+   "namespace": "demo",
+   "resourceVersion": "788",
+   "uid": "9d785c8b-67b1-49c9-90b9-2b58c4e2b9cb"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:57Z",
+  "message": "waiting for a volume to be created, either by external provisioner \"rancher.io/local-path\" or manually created by system administrator",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:57Z",
+   "name": "data-redis-0.18e4852c839e0edd",
+   "namespace": "demo",
+   "resourceVersion": "793",
+   "uid": "8e293f32-347a-4103-86bc-d214d7c50aab"
+  },
+  "reason": "ExternalProvisioning",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "persistentvolume-controller"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:57Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "kind": "PersistentVolumeClaim",
+   "name": "data-redis-0",
+   "namespace": "demo",
+   "resourceVersion": "788",
+   "uid": "9d785c8b-67b1-49c9-90b9-2b58c4e2b9cb"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:57Z",
+  "message": "External provisioner is provisioning volume for claim \"demo/data-redis-0\"",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:57Z",
+   "name": "data-redis-0.18e4852c84206419",
+   "namespace": "demo",
+   "resourceVersion": "799",
+   "uid": "a655a75f-8003-403e-8dd2-4df9aad5d0d7"
+  },
+  "reason": "Provisioning",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "rancher.io/local-path_local-path-provisioner-684f458cdd-6hjsz_3ebd139f-edbb-4190-98b4-e65bafd097a2"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:02Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "kind": "PersistentVolumeClaim",
+   "name": "data-redis-0",
+   "namespace": "demo",
+   "resourceVersion": "788",
+   "uid": "9d785c8b-67b1-49c9-90b9-2b58c4e2b9cb"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:23:02Z",
+  "message": "Successfully provisioned volume pvc-9d785c8b-67b1-49c9-90b9-2b58c4e2b9cb",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:02Z",
+   "name": "data-redis-0.18e4852db157f540",
+   "namespace": "demo",
+   "resourceVersion": "855",
+   "uid": "885db1f5-b017-4e9f-86a4-d2f169d06fb5"
+  },
+  "reason": "ProvisioningSucceeded",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "rancher.io/local-path_local-path-provisioner-684f458cdd-6hjsz_3ebd139f-edbb-4190-98b4-e65bafd097a2"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:57Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "name": "migrate-db-xgbx9",
+   "namespace": "demo",
+   "resourceVersion": "797",
+   "uid": "fadcc19e-4cbc-4281-9321-c2b0cacdd4ea"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:57Z",
+  "message": "Successfully assigned demo/migrate-db-xgbx9 to k8sman-dev-control-plane",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:57Z",
+   "name": "migrate-db-xgbx9.18e4852c845915ef",
+   "namespace": "demo",
+   "resourceVersion": "802",
+   "uid": "3e63d276-d61b-430e-b2d0-1ddbb5c7f52a"
+  },
+  "reason": "Scheduled",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "default-scheduler"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:59Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{migrate}",
+   "kind": "Pod",
+   "name": "migrate-db-xgbx9",
+   "namespace": "demo",
+   "resourceVersion": "798",
+   "uid": "fadcc19e-4cbc-4281-9321-c2b0cacdd4ea"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:59Z",
+  "message": "Pulling image \"busybox:1.36\"",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:59Z",
+   "name": "migrate-db-xgbx9.18e4852cd0e0d5e4",
+   "namespace": "demo",
+   "resourceVersion": "820",
+   "uid": "0367c08f-791e-42ae-8208-da3b58fe670a"
+  },
+  "reason": "Pulling",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:02Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{migrate}",
+   "kind": "Pod",
+   "name": "migrate-db-xgbx9",
+   "namespace": "demo",
+   "resourceVersion": "798",
+   "uid": "fadcc19e-4cbc-4281-9321-c2b0cacdd4ea"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:23:02Z",
+  "message": "Successfully pulled image \"busybox:1.36\" in 3.450301251s",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:02Z",
+   "name": "migrate-db-xgbx9.18e4852d9e92f502",
+   "namespace": "demo",
+   "resourceVersion": "849",
+   "uid": "3f0ddd62-0d85-4d01-a39c-9cdbe8bf200e"
+  },
+  "reason": "Pulled",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:02Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{migrate}",
+   "kind": "Pod",
+   "name": "migrate-db-xgbx9",
+   "namespace": "demo",
+   "resourceVersion": "798",
+   "uid": "fadcc19e-4cbc-4281-9321-c2b0cacdd4ea"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:23:02Z",
+  "message": "Created container migrate",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:02Z",
+   "name": "migrate-db-xgbx9.18e4852d9f864448",
+   "namespace": "demo",
+   "resourceVersion": "850",
+   "uid": "5c1c3672-faaf-4a3f-a7f3-6d33e69f9f72"
+  },
+  "reason": "Created",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:02Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{migrate}",
+   "kind": "Pod",
+   "name": "migrate-db-xgbx9",
+   "namespace": "demo",
+   "resourceVersion": "798",
+   "uid": "fadcc19e-4cbc-4281-9321-c2b0cacdd4ea"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:23:02Z",
+  "message": "Started container migrate",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:02Z",
+   "name": "migrate-db-xgbx9.18e4852da3d3a1d3",
+   "namespace": "demo",
+   "resourceVersion": "851",
+   "uid": "5b0d58ba-2122-4f71-b649-c16fa472be03"
+  },
+  "reason": "Started",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:57Z",
+  "involvedObject": {
+   "apiVersion": "batch/v1",
+   "kind": "Job",
+   "name": "migrate-db",
+   "namespace": "demo",
+   "resourceVersion": "792",
+   "uid": "476a874c-7dab-48fc-9ca2-70fa090b23c3"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:57Z",
+  "message": "Created pod: migrate-db-xgbx9",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:57Z",
+   "name": "migrate-db.18e4852c8439ba6d",
+   "namespace": "demo",
+   "resourceVersion": "800",
+   "uid": "7cce6234-1073-48b8-b7e0-b9b0dcbcc393"
+  },
+  "reason": "SuccessfulCreate",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "job-controller"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:08Z",
+  "involvedObject": {
+   "apiVersion": "batch/v1",
+   "kind": "Job",
+   "name": "migrate-db",
+   "namespace": "demo",
+   "resourceVersion": "919",
+   "uid": "476a874c-7dab-48fc-9ca2-70fa090b23c3"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:23:08Z",
+  "message": "Job completed",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:08Z",
+   "name": "migrate-db.18e4852efb068bd6",
+   "namespace": "demo",
+   "resourceVersion": "921",
+   "uid": "80f4b760-41b5-4bc3-9522-577ddcfbe437"
+  },
+  "reason": "Completed",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "job-controller"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:57Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "name": "node-agent-h8g6x",
+   "namespace": "demo",
+   "resourceVersion": "785",
+   "uid": "66419d83-94d5-45a9-a45b-3baa7d5e6774"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:57Z",
+  "message": "Successfully assigned demo/node-agent-h8g6x to k8sman-dev-control-plane",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:57Z",
+   "name": "node-agent-h8g6x.18e4852c83ae5fc9",
+   "namespace": "demo",
+   "resourceVersion": "794",
+   "uid": "7172b8f9-91df-4d1e-b12b-d637dad1e774"
+  },
+  "reason": "Scheduled",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "default-scheduler"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:59Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{agent}",
+   "kind": "Pod",
+   "name": "node-agent-h8g6x",
+   "namespace": "demo",
+   "resourceVersion": "791",
+   "uid": "66419d83-94d5-45a9-a45b-3baa7d5e6774"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:59Z",
+  "message": "Pulling image \"busybox:1.36\"",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:59Z",
+   "name": "node-agent-h8g6x.18e4852ce0eb27fe",
+   "namespace": "demo",
+   "resourceVersion": "823",
+   "uid": "abae1559-c925-4ff6-8549-95f0b8ddfb01"
+  },
+  "reason": "Pulling",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:03Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{agent}",
+   "kind": "Pod",
+   "name": "node-agent-h8g6x",
+   "namespace": "demo",
+   "resourceVersion": "791",
+   "uid": "66419d83-94d5-45a9-a45b-3baa7d5e6774"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:23:03Z",
+  "message": "Successfully pulled image \"busybox:1.36\" in 3.889261251s",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:03Z",
+   "name": "node-agent-h8g6x.18e4852dc8c752a7",
+   "namespace": "demo",
+   "resourceVersion": "866",
+   "uid": "b76937b4-104e-493a-865e-0a3168f5eb74"
+  },
+  "reason": "Pulled",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:03Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{agent}",
+   "kind": "Pod",
+   "name": "node-agent-h8g6x",
+   "namespace": "demo",
+   "resourceVersion": "791",
+   "uid": "66419d83-94d5-45a9-a45b-3baa7d5e6774"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:23:03Z",
+  "message": "Created container agent",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:03Z",
+   "name": "node-agent-h8g6x.18e4852dc96075f1",
+   "namespace": "demo",
+   "resourceVersion": "867",
+   "uid": "1e9129fb-b27a-4173-8795-4e22e8d19378"
+  },
+  "reason": "Created",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:23:03Z",
+  "involvedObject": {
+   "apiVersion": "v1",
+   "fieldPath": "spec.containers{agent}",
+   "kind": "Pod",
+   "name": "node-agent-h8g6x",
+   "namespace": "demo",
+   "resourceVersion": "791",
+   "uid": "66419d83-94d5-45a9-a45b-3baa7d5e6774"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:23:03Z",
+  "message": "Started container agent",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:23:03Z",
+   "name": "node-agent-h8g6x.18e4852dcd2ad454",
+   "namespace": "demo",
+   "resourceVersion": "870",
+   "uid": "35bf373b-8f62-4729-adb8-f6f97415a3b9"
+  },
+  "reason": "Started",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "kubelet",
+   "host": "k8sman-dev-control-plane"
+  },
+  "type": "Normal"
+ },
+ {
+  "apiVersion": "v1",
+  "count": 1,
+  "eventTime": null,
+  "firstTimestamp": "2026-11-03T11:22:57Z",
+  "involvedObject": {
+   "apiVersion": "apps/v1",
+   "kind": "DaemonSet",
+   "name": "node-agent",
+   "namespace": "demo",
+   "resourceVersion": "779",
+   "uid": "4d3a9a92-966e-46fa-9837-7e0c2365c21d"
+  },
+  "kind": "Event",
+  "lastTimestamp": "2026-11-03T11:22:57Z",
+  "message": "Created pod: node-agent-h8g6x",
+  "metadata": {
+   "creationTimestamp": "2026-11-03T11:22:57Z",
+   "name": "node-agent.18e4852c836e0915",
+   "namespace": "demo",
+   "resourceVersion": "790",
+   "uid": "2ed6cc36-4c14-4dba-b1d3-4d535b5d692f"
+  },
+  "reason": "SuccessfulCreate",
+  "reportingComponent": "",
+  "reportingInstance": "",
+  "source": {
+   "component": "daemonset-controller"
+  },
+  "type": "Normal"
+ }
+]

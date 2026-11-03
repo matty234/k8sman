@@ -1,0 +1,18 @@
+{
+ "apiVersion": "v1",
+ "data": {
+  "APP_MODE": "production",
+  "nginx.conf": "server { listen 8080; location / { return 200 'ok'; } }\n"
+ },
+ "kind": "ConfigMap",
+ "metadata": {
+  "annotations": {
+   "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"data\":{\"APP_MODE\":\"production\",\"nginx.conf\":\"server { listen 8080; location / { return 200 'ok'; } }\\n\"},\"kind\":\"ConfigMap\",\"metadata\":{\"annotations\":{},\"name\":\"web-config\",\"namespace\":\"demo\"}}\n"
+  },
+  "creationTimestamp": "2026-11-03T11:22:57Z",
+  "name": "web-config",
+  "namespace": "demo",
+  "resourceVersion": "737",
+  "uid": "fc1bb028-c3bf-4776-b59c-cd37fcc960f9"
+ }
+}

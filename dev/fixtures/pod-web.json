@@ -1,0 +1,352 @@
+{
+ "apiVersion": "v1",
+ "kind": "Pod",
+ "metadata": {
+  "creationTimestamp": "2026-11-03T11:22:57Z",
+  "generateName": "web-6fd47b8fcb-",
+  "labels": {
+   "app": "web",
+   "pod-template-hash": "6fd47b8fcb",
+   "tier": "frontend"
+  },
+  "name": "web-6fd47b8fcb-4v4m9",
+  "namespace": "demo",
+  "ownerReferences": [
+   {
+    "apiVersion": "apps/v1",
+    "blockOwnerDeletion": true,
+    "controller": true,
+    "kind": "ReplicaSet",
+    "name": "web-6fd47b8fcb",
+    "uid": "85dae0e1-974e-469f-a368-149c06fc9e6a"
+   }
+  ],
+  "resourceVersion": "912",
+  "uid": "76b715c1-cac1-44c5-9ce2-45ac35f81137"
+ },
+ "spec": {
+  "containers": [
+   {
+    "env": [
+     {
+      "name": "APP_MODE",
+      "valueFrom": {
+       "configMapKeyRef": {
+        "key": "APP_MODE",
+        "name": "web-config"
+       }
+      }
+     },
+     {
+      "name": "API_TOKEN",
+      "valueFrom": {
+       "secretKeyRef": {
+        "key": "API_TOKEN",
+        "name": "web-secret"
+       }
+      }
+     },
+     {
+      "name": "POD_NAME",
+      "valueFrom": {
+       "fieldRef": {
+        "apiVersion": "v1",
+        "fieldPath": "metadata.name"
+       }
+      }
+     },
+     {
+      "name": "LOG_LEVEL",
+      "value": "info"
+     }
+    ],
+    "envFrom": [
+     {
+      "configMapRef": {
+       "name": "web-config"
+      }
+     }
+    ],
+    "image": "nginx:1.27-alpine",
+    "imagePullPolicy": "IfNotPresent",
+    "livenessProbe": {
+     "failureThreshold": 3,
+     "initialDelaySeconds": 5,
+     "periodSeconds": 10,
+     "successThreshold": 1,
+     "tcpSocket": {
+      "port": 8080
+     },
+     "timeoutSeconds": 1
+    },
+    "name": "nginx",
+    "ports": [
+     {
+      "containerPort": 8080,
+      "name": "http",
+      "protocol": "TCP"
+     }
+    ],
+    "readinessProbe": {
+     "failureThreshold": 3,
+     "httpGet": {
+      "path": "/",
+      "port": "http",
+      "scheme": "HTTP"
+     },
+     "periodSeconds": 5,
+     "successThreshold": 1,
+     "timeoutSeconds": 1
+    },
+    "resources": {
+     "limits": {
+      "cpu": "200m",
+      "memory": "128Mi"
+     },
+     "requests": {
+      "cpu": "50m",
+      "memory": "32Mi"
+     }
+    },
+    "terminationMessagePath": "/dev/termination-log",
+    "terminationMessagePolicy": "File",
+    "volumeMounts": [
+     {
+      "mountPath": "/etc/nginx/conf.d",
+      "name": "conf"
+     },
+     {
+      "mountPath": "/var/cache/nginx",
+      "name": "cache"
+     },
+     {
+      "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+      "name": "kube-api-access-qzcqj",
+      "readOnly": true
+     }
+    ]
+   },
+   {
+    "args": [
+     "i=0; while true; do echo \"$(date -Iseconds) heartbeat $i\"; i=$((i+1)); sleep 3; done"
+    ],
+    "command": [
+     "sh",
+     "-c"
+    ],
+    "image": "busybox:1.36",
+    "imagePullPolicy": "IfNotPresent",
+    "name": "log-sidecar",
+    "resources": {
+     "requests": {
+      "cpu": "5m",
+      "memory": "8Mi"
+     }
+    },
+    "terminationMessagePath": "/dev/termination-log",
+    "terminationMessagePolicy": "File",
+    "volumeMounts": [
+     {
+      "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+      "name": "kube-api-access-qzcqj",
+      "readOnly": true
+     }
+    ]
+   }
+  ],
+  "dnsPolicy": "ClusterFirst",
+  "enableServiceLinks": true,
+  "initContainers": [
+   {
+    "command": [
+     "sh",
+     "-c",
+     "echo initialising; sleep 2"
+    ],
+    "image": "busybox:1.36",
+    "imagePullPolicy": "IfNotPresent",
+    "name": "init-wait",
+    "resources": {},
+    "terminationMessagePath": "/dev/termination-log",
+    "terminationMessagePolicy": "File",
+    "volumeMounts": [
+     {
+      "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+      "name": "kube-api-access-qzcqj",
+      "readOnly": true
+     }
+    ]
+   }
+  ],
+  "nodeName": "k8sman-dev-control-plane",
+  "preemptionPolicy": "PreemptLowerPriority",
+  "priority": 0,
+  "restartPolicy": "Always",
+  "schedulerName": "default-scheduler",
+  "securityContext": {},
+  "serviceAccount": "web",
+  "serviceAccountName": "web",
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": [
+   {
+    "effect": "NoExecute",
+    "key": "node.kubernetes.io/not-ready",
+    "operator": "Exists",
+    "tolerationSeconds": 300
+   },
+   {
+    "effect": "NoExecute",
+    "key": "node.kubernetes.io/unreachable",
+    "operator": "Exists",
+    "tolerationSeconds": 300
+   }
+  ],
+  "volumes": [
+   {
+    "configMap": {
+     "defaultMode": 420,
+     "items": [
+      {
+       "key": "nginx.conf",
+       "path": "default.conf"
+      }
+     ],
+     "name": "web-config"
+    },
+    "name": "conf"
+   },
+   {
+    "emptyDir": {},
+    "name": "cache"
+   },
+   {
+    "name": "kube-api-access-qzcqj",
+    "projected": {
+     "defaultMode": 420,
+     "sources": [
+      {
+       "serviceAccountToken": {
+        "expirationSeconds": 3607,
+        "path": "token"
+       }
+      },
+      {
+       "configMap": {
+        "items": [
+         {
+          "key": "ca.crt",
+          "path": "ca.crt"
+         }
+        ],
+        "name": "kube-root-ca.crt"
+       }
+      },
+      {
+       "downwardAPI": {
+        "items": [
+         {
+          "fieldRef": {
+           "apiVersion": "v1",
+           "fieldPath": "metadata.namespace"
+          },
+          "path": "namespace"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "status": {
+  "conditions": [
+   {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2026-11-03T11:23:03Z",
+    "status": "True",
+    "type": "Initialized"
+   },
+   {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2026-11-03T11:23:07Z",
+    "status": "True",
+    "type": "Ready"
+   },
+   {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2026-11-03T11:23:07Z",
+    "status": "True",
+    "type": "ContainersReady"
+   },
+   {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2026-11-03T11:22:57Z",
+    "status": "True",
+    "type": "PodScheduled"
+   }
+  ],
+  "containerStatuses": [
+   {
+    "containerID": "containerd://e1e422db5e4b2bdedff9532afff29c9a605226704c7cecdd9ee25c1e13af7fb1",
+    "image": "docker.io/library/busybox:1.36",
+    "imageID": "docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+    "lastState": {},
+    "name": "log-sidecar",
+    "ready": true,
+    "restartCount": 0,
+    "started": true,
+    "state": {
+     "running": {
+      "startedAt": "2026-11-03T11:23:07Z"
+     }
+    }
+   },
+   {
+    "containerID": "containerd://894eadbf405d1913b2010c64003b15840a85d9f92c139d346eda94936a3d499f",
+    "image": "docker.io/library/nginx:1.27-alpine",
+    "imageID": "docker.io/library/nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+    "lastState": {},
+    "name": "nginx",
+    "ready": true,
+    "restartCount": 0,
+    "started": true,
+    "state": {
+     "running": {
+      "startedAt": "2026-11-03T11:23:07Z"
+     }
+    }
+   }
+  ],
+  "hostIP": "172.18.0.2",
+  "initContainerStatuses": [
+   {
+    "containerID": "containerd://b4ffcc113a8cdc4188ec583ed69c2a11a658b0b6a5678e20273456bdc5a1c667",
+    "image": "docker.io/library/busybox:1.36",
+    "imageID": "docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+    "lastState": {},
+    "name": "init-wait",
+    "ready": true,
+    "restartCount": 0,
+    "state": {
+     "terminated": {
+      "containerID": "containerd://b4ffcc113a8cdc4188ec583ed69c2a11a658b0b6a5678e20273456bdc5a1c667",
+      "exitCode": 0,
+      "finishedAt": "2026-11-03T11:23:03Z",
+      "reason": "Completed",
+      "startedAt": "2026-11-03T11:23:01Z"
+     }
+    }
+   }
+  ],
+  "phase": "Running",
+  "podIP": "10.244.0.5",
+  "podIPs": [
+   {
+    "ip": "10.244.0.5"
+   }
+  ],
+  "qosClass": "Burstable",
+  "startTime": "2026-11-03T11:22:57Z"
+ }
+}

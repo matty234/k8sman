@@ -1,0 +1,16 @@
+# Custom resource instances (applied after the CRD is established).
+apiVersion: example.k8sman.dev/v1alpha1
+kind: Widget
+metadata: {name: sprocket, namespace: demo, labels: {app: web}}
+spec:
+  color: blue
+  size: 3
+  tags: [core, beta]
+  owner: {team: platform, email: platform@example.com}
+---
+apiVersion: example.k8sman.dev/v1alpha1
+kind: Widget
+metadata: {name: gizmo, namespace: demo}
+spec:
+  color: red
+  size: 10

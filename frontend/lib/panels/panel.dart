@@ -1,0 +1,50 @@
+import 'package:flutter/material.dart';
+
+import '../api/client.dart';
+import '../api/models.dart';
+import '../state/app_state.dart';
+import '../util/k8s.dart';
+
+/// Everything a panel needs to render one object.
+class PanelContext {
+  /// The live object (re-delivered on every watch update).
+  final Json object;
+  final ResourceType type;
+  final ApiClient api;
+  final AppState app;
+
+  const PanelContext({required this.object, required this.type, required this.api, required this.app});
+
+  String get name => dig<String>(object, ['metadata', 'name']) ?? '';
+  String? get namespace => dig<String>(object, ['metadata', 'namespace']);
+  String get uid => dig<String>(object, ['metadata', 'uid']) ?? '';
+  Json get spec => asMap(object['spec']);
+  Json get status => asMap(object['status']);
+  Json get metadata => asMap(object['metadata']);
+}
+
+/// An extra tab in the detail sidebar beside Overview / YAML / Events.
+class PanelTab {
+  final String label;
+  final IconData? icon;
+  final Widget Function(BuildContext context, PanelContext ctx) builder;
+  const PanelTab({required this.label, this.icon, required this.builder});
+}
+
+/// Renders kind-specific detail sections. The shell always renders the
+/// shared Metadata section first, then [buildSections] in order.
+///
+/// Sections are rebuilt whenever the object changes (live watch), so any
+/// stateful child must be keyed stably (e.g. `ValueKey(ctx.uid)`) and must
+/// not refetch on every rebuild — cache futures in State keyed by uid.
+abstract class ResourcePanel {
+  const ResourcePanel();
+
+  /// `group/Kind` keys this panel handles, e.g. `{'/Pod'}`, `{'apps/Deployment'}`.
+  Set<String> get kinds;
+
+  List<Widget> buildSections(BuildContext context, PanelContext ctx);
+
+  /// Optional extra tabs (e.g. Logs for pods).
+  List<PanelTab> tabs(PanelContext ctx) => const [];
+}

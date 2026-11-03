@@ -1,0 +1,42 @@
+{
+ "apiVersion": "example.k8sman.dev/v1alpha1",
+ "kind": "Widget",
+ "metadata": {
+  "annotations": {
+   "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"example.k8sman.dev/v1alpha1\",\"kind\":\"Widget\",\"metadata\":{\"annotations\":{},\"labels\":{\"app\":\"web\"},\"name\":\"sprocket\",\"namespace\":\"demo\"},\"spec\":{\"color\":\"blue\",\"owner\":{\"email\":\"platform@example.com\",\"team\":\"platform\"},\"size\":3,\"tags\":[\"core\",\"beta\"]}}\n"
+  },
+  "creationTimestamp": "2026-11-03T11:23:00Z",
+  "generation": 1,
+  "labels": {
+   "app": "web"
+  },
+  "name": "sprocket",
+  "namespace": "demo",
+  "resourceVersion": "831",
+  "uid": "2fd29ae4-0acb-4011-a202-47b80939c89f"
+ },
+ "spec": {
+  "color": "blue",
+  "owner": {
+   "email": "platform@example.com",
+   "team": "platform"
+  },
+  "size": 3,
+  "tags": [
+   "core",
+   "beta"
+  ]
+ },
+ "status": {
+  "conditions": [
+   {
+    "lastTransitionTime": "2026-11-03T10:00:00Z",
+    "message": "widget is spinning",
+    "reason": "Reconciled",
+    "status": "True",
+    "type": "Ready"
+   }
+  ],
+  "phase": "Ready"
+ }
+}
