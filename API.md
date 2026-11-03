@@ -189,3 +189,32 @@ Errors:
 - **409** `AlreadyExists`: install with a release name that's in use.
 - **422** `Invalid`: bad values YAML, a bad `repo`, or an upgrade that isn't safe from the stored chart. Helm doesn't persist subcharts in the release, so when the current manifest contains resources rendered from subcharts (`# Source: <chart>/charts/...`), re-rendering would delete them. `upgradeBlocked` on the release explains this, and the UI disables "Edit values".
 - Upgrades and installs aren't cancelled if the HTTP client disconnects, since cancelling midway is exactly what leaves a release stuck.
+
+## Security overview
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/security[?namespace=&includeSystem=true]` | security findings for one namespace, or all if omitted. Lists namespaces, pods, workloads, services, ServiceAccounts, ingresses, NetworkPolicies, RBAC (always cluster-wide), Gateway API Gateways/HTTPRoutes and Trivy Operator reports (when those CRDs exist) once each, in parallel, and analyses them (`backend/internal/security`). `includeSystem` includes kube-system & co. and Kubernetes' default `system:` RBAC |
+| GET | `/api/security/scanner` | `{operator: {installed, reports:[...], hasReports, scanning}, trivy: {available, path?, version?, hint?}, installHint}`. `scanning` = the operator is installed but no VulnerabilityReport exists yet |
+| POST | `/api/security/scan` | body `{image, force?}`: scans the image with the local `trivy` CLI (`trivy image --format json --quiet --scanners vuln`, 5 min timeout) and caches the result for 1h. Returns `{image, scannedAt, duration, cached, os, counts, vulnerabilities:[CVE] (most severe first, max 300), total}`. 503 `ScannerUnavailable` without trivy, 400 for an invalid image reference, 502 `ScanFailed` if trivy fails |
+
+Response of `GET /api/security`:
+
+```
+{generatedAt, namespace, includeSystem, score,             // score: 100·100/(100+Σweights), critical 10, high 4, medium 1.5, low 0.3
+ categories: [{id: network|rbac|workloads|images|practices, title, total, counts: {critical, high, medium, low, info}}],
+ findings: [{id, check, severity: critical|high|medium|low|info, category, title, detail, remediation,
+             namespace?, objects: [{group, kind, name, namespace?}], checks?: ["baseline: privileged (shell)", ...]}],
+ permissive: [{binding, role, roleMissing?, scope: "cluster"|<namespace>, subjects: [{kind, name, namespace?, exists?, used?}],
+               score, reasons: [...], unused, system}],          // top 60 by risk score
+ network: [{namespace, policies, workloads, ingress, egress, ingressOpen, egressOpen, exposed, psa?}],
+                                                                 // ingress/egress: open | partial | restricted | default-deny
+ images: [{image, workloads: [ref], scanned, source?: trivy-operator|trivy-cli, scannedAt?,
+           counts: {critical, high, medium, low, unknown, fixableCritical, fixableHigh}, topCVEs: [CVE]}],
+ topCVEs: [CVE],                                                 // CVE: {id, severity, package, installed, fixed?, title, link?, score, images?}
+ sources: {trivyOperator, gatewayAPI, reports: {"<resource>": n}},
+ errors?: {"<resource>": "<message>"}}                           // lists that failed; pods failing is a hard error
+```
+
+- Findings are sorted by severity, then category. Workload findings are per top-level owner (Pod → ReplicaSet → Deployment, Pod → Job → CronJob), and best-practice findings are grouped per namespace, so 40 identical pods are one row. `check` is the stable check id; see `docs/SECURITY.md` for the full list and severities.
+- Images scanned on demand (still in the 1h cache) are merged into `images` with `source: "trivy-cli"`.
