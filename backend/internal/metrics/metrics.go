@@ -61,6 +61,9 @@ type Service struct {
 	nodes  *cachedNodes
 	pods   map[string]*cachedPods // by namespace, "" = all
 	status *cachedStatus
+
+	// kubelet holds per-node Summary API samples (see summary.go).
+	kubelet *kubeletCache
 }
 
 type cachedNodes struct {

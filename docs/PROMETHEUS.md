@@ -10,7 +10,9 @@ Alertmanager) as a first-class part of the cluster:
 - detail panels for **PrometheusRule** (with live rule state),
   **ServiceMonitor / PodMonitor** (matching objects and live target health)
   and the **Prometheus / Alertmanager** custom resources
-- **CPU and memory history** charts in the Pod and Node panels
+- **CPU, memory and network history** charts in the Pod, Node and
+  Deployment / StatefulSet / DaemonSet panels, and **PVC usage** (bar,
+  days-to-full trend and history) in the PersistentVolumeClaim panel
 
 Live usage from `metrics.k8s.io` (metrics-server) is a separate feature; this
 document covers only what comes from Prometheus and Alertmanager.
@@ -92,7 +94,7 @@ pod's other issues.
 | Where | What |
 |---|---|
 | `lib/prometheus/prom_api.dart` | `PromApi` client + models. `PromApi.of(api)` shares one per backend; `cachedStatus()` / `hasPrometheus()` cache discovery for a minute |
-| `lib/prometheus/metric_history_chart.dart` | `MetricHistorySection`, `MetricHistoryChart`, `AreaChart` (custom painter with hover readout), and the one-line `podHistory(ctx)` / `nodeHistory(ctx)` |
+| `lib/prometheus/metric_history_chart.dart` | `MetricHistorySection`, `MetricHistoryChart`, `AreaChart` (custom painter with hover readout), and the one-line `podHistory(ctx)` / `nodeHistory(ctx)` / `workloadHistory(ctx)` / `pvcHistory(ctx)` |
 | `lib/ui/alerts/` | the Alerts page, the Silence… dialog (via `confirmAction`), the Silences tab and the nav badge |
 | `lib/panels/prometheus/` | PrometheusRule, ServiceMonitor/PodMonitor and Prometheus/Alertmanager panels |
 
@@ -103,6 +105,21 @@ History queries (rate window = max(2m, 4 × step), ~240 points):
 - pod memory: `sum(container_memory_working_set_bytes{...})`
 - node CPU: `sum(rate(node_cpu_seconds_total{mode!~"idle|iowait|steal"}[w]) * on(instance) group_left(nodename) node_uname_info{nodename="<node>"})`
 - node memory: `node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes`, joined the same way
+- pod network: `sum(max by (interface) (rate(container_network_{receive,transmit}_bytes_total{namespace,pod,interface!="lo"}[w])))`.
+  These series carry no real container label (the sandbox reports them as
+  `container=""`/`"POD"`, some runtimes repeat them per container), so the
+  max per interface counts each NIC once. The two directions come back as one
+  query (`label_replace(...) or label_replace(...)`, label `direction`)
+- node network: `node_network_{receive,transmit}_bytes_total{device!~"lo|veth.*|cali.*|flannel.*|cni.*|docker.*|br-.*|virbr.*|vxlan.*|tunl.*|kube-ipvs.*|cilium.*|lxc.*|genev.*|nodelocaldns.*"}`,
+  joined on nodename like CPU (virtual devices would double count traffic)
+- workloads: the per-pod series above, summed over the workload's pods,
+  matched by owner via kube-state-metrics (`* on (namespace, pod)
+  group_left() max by (namespace, pod) (kube_pod_owner{owner_kind=...})`;
+  Deployments via their ReplicaSets, `owner_name=~"<name>-[a-z0-9]+"`) `or`,
+  without kube-state-metrics, by the controller's pod-name pattern
+- PVC: `max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_{used,capacity,available}_bytes / _inodes / _inodes_used)`;
+  days to full = available / `deriv(kubelet_volume_stats_used_bytes[6h])`
+  (shown when growing and under 30 days)
 
 The charts render nothing when no reachable Prometheus is discovered.
 

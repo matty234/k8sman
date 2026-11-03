@@ -1,4 +1,5 @@
 import '../api/client.dart';
+import 'kubelet_summary.dart';
 import 'metrics_api.dart';
 
 /// Shares recent metrics fetches between widgets of one [ApiClient] (e.g.
@@ -43,6 +44,13 @@ class MetricsCache {
       if (p.name == name) return p;
     }
     return null;
+  }
+
+  /// Kubelet summary (PVC usage, network rates) for [namespace] (null =
+  /// all) on [nodes] (empty = all Ready nodes). Never throws.
+  Future<KubeletSummary> summary(String? namespace, {Iterable<String> nodes = const []}) {
+    final n = nodes.toSet().toList()..sort();
+    return _get('summary/${namespace ?? ''}/${n.join(',')}', () => api.kubeletSummary(namespace: namespace, nodes: n));
   }
 
   Future<MetricsStatus> status({bool force = false}) => _get('status', () => api.metricsStatus(refresh: force), force: force);

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../metrics/volume_usage.dart';
+import '../../prometheus/metric_history_chart.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -26,6 +28,22 @@ class PvcPanel extends ResourcePanel {
         trailing: StatusBadge(status['phase'] as String? ?? 'Unknown', dense: true),
         child: _ClaimBody(ctx: ctx),
       ),
+      DetailSection(
+        title: 'Usage',
+        icon: Icons.data_usage,
+        child: PvcUsageSection(
+          key: ValueKey('usage-${ctx.uid}'),
+          api: ctx.api,
+          namespace: ctx.namespace ?? '',
+          claim: ctx.name,
+          bound: status['phase'] == 'Bound',
+          mountNodes: () async => {
+            for (final m in findMounts(await ctx.api.items(podResource, namespace: ctx.namespace), ctx.name))
+              if (m.node != null && dig<String>(m.pod, ['status', 'phase']) == 'Running') m.node!,
+          },
+        ),
+      ),
+      pvcHistory(ctx),
       DetailSection(
         title: 'Mounted by',
         icon: Icons.link,

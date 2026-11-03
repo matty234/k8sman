@@ -3,6 +3,7 @@ package metrics
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
@@ -28,6 +29,7 @@ func (h *handlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/metrics/external/discover", h.externalDiscover)
 	mux.HandleFunc("GET /api/metrics/external", h.external)
 	mux.HandleFunc("GET /api/metrics/hpa", h.hpa)
+	mux.HandleFunc("GET /api/metrics/summary", h.summary)
 }
 
 type apiError struct {
@@ -152,4 +154,20 @@ func (h *handlers) hpa(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, 200, a)
+}
+
+// summary serves kubelet Summary API data: PVC usage and network rates for
+// the given nodes (repeated or comma-separated `node`; all when absent).
+// Always 200: an unusable source is reported in the body's state.
+func (h *handlers) summary(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	var nodes []string
+	for _, v := range q["node"] {
+		for _, n := range strings.Split(v, ",") {
+			if n = strings.TrimSpace(n); n != "" {
+				nodes = append(nodes, n)
+			}
+		}
+	}
+	httpx.WriteJSON(w, 200, h.svc().Summary(r.Context(), q.Get("namespace"), nodes))
 }
