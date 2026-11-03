@@ -1,0 +1,405 @@
+{
+ "items": [
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "coredns",
+    "namespace": "kube-system",
+    "labels": {
+     "k8s-app": "kube-dns"
+    },
+    "annotations": {}
+   },
+   "spec": {
+    "replicas": 2
+   },
+   "status": {
+    "replicas": 2,
+    "readyReplicas": 2,
+    "availableReplicas": 2
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "metrics-server",
+    "namespace": "kube-system",
+    "labels": {
+     "app.kubernetes.io/instance": "metrics-server",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "metrics-server",
+     "app.kubernetes.io/version": "0.9.0",
+     "helm.sh/chart": "metrics-server-3.14.0"
+    },
+    "annotations": {
+     "meta.helm.sh/release-name": "metrics-server",
+     "meta.helm.sh/release-namespace": "kube-system"
+    }
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "kube-prometheus-stack-grafana",
+    "namespace": "monitoring",
+    "labels": {
+     "app.kubernetes.io/instance": "kube-prometheus-stack",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "grafana",
+     "app.kubernetes.io/version": "13.3.0",
+     "helm.sh/chart": "grafana-14.3.1"
+    },
+    "annotations": {
+     "meta.helm.sh/release-name": "kube-prometheus-stack",
+     "meta.helm.sh/release-namespace": "monitoring"
+    }
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "kube-prometheus-stack-kube-state-metrics",
+    "namespace": "monitoring",
+    "labels": {
+     "app.kubernetes.io/component": "metrics",
+     "app.kubernetes.io/instance": "kube-prometheus-stack",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "kube-state-metrics",
+     "app.kubernetes.io/part-of": "kube-state-metrics",
+     "app.kubernetes.io/version": "2.20.0",
+     "helm.sh/chart": "kube-state-metrics-8.8.0",
+     "release": "kube-prometheus-stack"
+    },
+    "annotations": {
+     "meta.helm.sh/release-name": "kube-prometheus-stack",
+     "meta.helm.sh/release-namespace": "monitoring"
+    }
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "kube-prometheus-stack-operator",
+    "namespace": "monitoring",
+    "labels": {
+     "app": "kube-prometheus-stack-operator",
+     "app.kubernetes.io/component": "prometheus-operator",
+     "app.kubernetes.io/instance": "kube-prometheus-stack",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "kube-prometheus-stack-prometheus-operator",
+     "app.kubernetes.io/part-of": "kube-prometheus-stack",
+     "app.kubernetes.io/version": "92.17.1",
+     "chart": "kube-prometheus-stack-92.17.1",
+     "heritage": "Helm",
+     "release": "kube-prometheus-stack"
+    },
+    "annotations": {
+     "meta.helm.sh/release-name": "kube-prometheus-stack",
+     "meta.helm.sh/release-namespace": "monitoring"
+    }
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "prometheus-adapter",
+    "namespace": "monitoring",
+    "labels": {
+     "app.kubernetes.io/component": "metrics",
+     "app.kubernetes.io/instance": "prometheus-adapter",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "prometheus-adapter",
+     "app.kubernetes.io/part-of": "prometheus-adapter",
+     "app.kubernetes.io/version": "v0.12.0",
+     "helm.sh/chart": "prometheus-adapter-5.3.0"
+    },
+    "annotations": {
+     "meta.helm.sh/release-name": "prometheus-adapter",
+     "meta.helm.sh/release-namespace": "monitoring"
+    }
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "trivy-operator",
+    "namespace": "trivy-system",
+    "labels": {
+     "app.kubernetes.io/instance": "trivy-operator",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "trivy-operator",
+     "app.kubernetes.io/version": "0.36.1",
+     "helm.sh/chart": "trivy-operator-0.38.1"
+    },
+    "annotations": {
+     "meta.helm.sh/release-name": "trivy-operator",
+     "meta.helm.sh/release-namespace": "trivy-system"
+    }
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "argocd-applicationset-controller",
+    "namespace": "argocd",
+    "labels": {
+     "app.kubernetes.io/component": "applicationset-controller",
+     "app.kubernetes.io/name": "argocd-applicationset-controller",
+     "app.kubernetes.io/part-of": "argocd"
+    },
+    "annotations": {}
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "argocd-dex-server",
+    "namespace": "argocd",
+    "labels": {
+     "app.kubernetes.io/component": "dex-server",
+     "app.kubernetes.io/name": "argocd-dex-server",
+     "app.kubernetes.io/part-of": "argocd"
+    },
+    "annotations": {}
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "argocd-notifications-controller",
+    "namespace": "argocd",
+    "labels": {
+     "app.kubernetes.io/component": "notifications-controller",
+     "app.kubernetes.io/name": "argocd-notifications-controller",
+     "app.kubernetes.io/part-of": "argocd"
+    },
+    "annotations": {}
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "argocd-redis",
+    "namespace": "argocd",
+    "labels": {
+     "app.kubernetes.io/component": "redis",
+     "app.kubernetes.io/name": "argocd-redis",
+     "app.kubernetes.io/part-of": "argocd"
+    },
+    "annotations": {}
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "argocd-repo-server",
+    "namespace": "argocd",
+    "labels": {
+     "app.kubernetes.io/component": "repo-server",
+     "app.kubernetes.io/name": "argocd-repo-server",
+     "app.kubernetes.io/part-of": "argocd"
+    },
+    "annotations": {}
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "argocd-server",
+    "namespace": "argocd",
+    "labels": {
+     "app.kubernetes.io/component": "server",
+     "app.kubernetes.io/name": "argocd-server",
+     "app.kubernetes.io/part-of": "argocd"
+    },
+    "annotations": {}
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "envoy-demo-legacy-gw-6de3551c",
+    "namespace": "envoy-gateway-system",
+    "labels": {
+     "app.kubernetes.io/component": "proxy",
+     "app.kubernetes.io/managed-by": "envoy-gateway",
+     "app.kubernetes.io/name": "envoy",
+     "gateway.envoyproxy.io/owning-gateway-name": "legacy-gw",
+     "gateway.envoyproxy.io/owning-gateway-namespace": "demo"
+    },
+    "annotations": {}
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "envoy-gateway",
+    "namespace": "envoy-gateway-system",
+    "labels": {
+     "app.kubernetes.io/instance": "eg",
+     "app.kubernetes.io/managed-by": "Helm",
+     "app.kubernetes.io/name": "gateway-helm",
+     "app.kubernetes.io/version": "v1.2.8",
+     "control-plane": "envoy-gateway",
+     "helm.sh/chart": "gateway-helm-v1.2.8"
+    },
+    "annotations": {
+     "meta.helm.sh/release-name": "eg",
+     "meta.helm.sh/release-namespace": "envoy-gateway-system"
+    }
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  },
+  {
+   "apiVersion": "apps/v1",
+   "kind": "Deployment",
+   "metadata": {
+    "name": "envoy-gateway-demo-demo-gw-93d8de35",
+    "namespace": "envoy-gateway-system",
+    "labels": {
+     "app.kubernetes.io/component": "proxy",
+     "app.kubernetes.io/managed-by": "envoy-gateway",
+     "app.kubernetes.io/name": "envoy",
+     "gateway.envoyproxy.io/owning-gateway-name": "demo-gw",
+     "gateway.envoyproxy.io/owning-gateway-namespace": "gateway-demo",
+     "team": "platform"
+    },
+    "annotations": {}
+   },
+   "spec": {
+    "replicas": 1
+   },
+   "status": {
+    "replicas": 1,
+    "readyReplicas": 1,
+    "availableReplicas": 1
+   }
+  }
+ ]
+}

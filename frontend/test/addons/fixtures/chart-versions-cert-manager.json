@@ -1,0 +1,79 @@
+{
+ "versions": [
+  {
+   "version": "v1.21.3",
+   "appVersion": "v1.21.3",
+   "created": "2026-10-23T20:38:37Z",
+   "description": "A Helm chart for cert-manager"
+  },
+  {
+   "version": "v1.21.2",
+   "appVersion": "v1.21.2",
+   "created": "2026-09-11T06:54:32Z",
+   "description": "A Helm chart for cert-manager"
+  },
+  {
+   "version": "v1.21.1",
+   "appVersion": "v1.21.1",
+   "created": "2026-07-29T14:46:40Z",
+   "description": "A Helm chart for cert-manager"
+  },
+  {
+   "version": "v1.21.0",
+   "appVersion": "v1.21.0",
+   "created": "2026-07-08T22:06:31Z",
+   "description": "A Helm chart for cert-manager"
+  },
+  {
+   "version": "v1.21.0-beta.0",
+   "appVersion": "v1.21.0-beta.0",
+   "created": "2026-07-01T07:45:30Z",
+   "description": "A Helm chart for cert-manager",
+   "prerelease": true
+  },
+  {
+   "version": "v1.21.0-alpha.1",
+   "appVersion": "v1.21.0-alpha.1",
+   "created": "2026-06-08T10:47:03Z",
+   "description": "A Helm chart for cert-manager",
+   "prerelease": true
+  },
+  {
+   "version": "v1.21.0-alpha.0",
+   "appVersion": "v1.21.0-alpha.0",
+   "created": "2026-03-24T15:59:51Z",
+   "description": "A Helm chart for cert-manager",
+   "prerelease": true
+  },
+  {
+   "version": "v1.20.5",
+   "appVersion": "v1.20.5",
+   "created": "2026-10-28T10:36:44Z",
+   "description": "A Helm chart for cert-manager"
+  },
+  {
+   "version": "v1.20.4",
+   "appVersion": "v1.20.4",
+   "created": "2026-09-16T18:05:37Z",
+   "description": "A Helm chart for cert-manager"
+  },
+  {
+   "version": "v1.20.3",
+   "appVersion": "v1.20.3",
+   "created": "2026-06-25T14:01:44Z",
+   "description": "A Helm chart for cert-manager"
+  },
+  {
+   "version": "v1.20.2",
+   "appVersion": "v1.20.2",
+   "created": "2026-04-11T14:59:56Z",
+   "description": "A Helm chart for cert-manager"
+  },
+  {
+   "version": "v1.20.1",
+   "appVersion": "v1.20.1",
+   "created": "2026-03-27T18:40:11Z",
+   "description": "A Helm chart for cert-manager"
+  }
+ ]
+}

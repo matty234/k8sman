@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/cli"
@@ -100,10 +101,6 @@ func Install(ctx context.Context, cfg *action.Configuration, req InstallRequest)
 	if err := chartutil.ValidateReleaseName(req.ReleaseName); err != nil {
 		return nil, invalid("%v", err)
 	}
-	name, oci, err := chartRef(req.Repo, req.Chart)
-	if err != nil {
-		return nil, err
-	}
 	vals := map[string]any{}
 	if strings.TrimSpace(req.Values) != "" {
 		if err := yaml.Unmarshal([]byte(req.Values), &vals); err != nil {
@@ -113,22 +110,13 @@ func Install(ctx context.Context, cfg *action.Configuration, req InstallRequest)
 			vals = map[string]any{}
 		}
 	}
-	settings := envSettings()
-	rc, err := newRegistryClient(settings)
-	if err != nil {
+	if err := useRegistryClient(cfg); err != nil {
 		return nil, err
 	}
-	cfg.RegistryClient = rc
-
 	inst := action.NewInstall(cfg)
-	inst.SetRegistryClient(rc)
 	inst.ReleaseName = req.ReleaseName
 	inst.Namespace = req.Namespace
 	inst.CreateNamespace = req.CreateNamespace == nil || *req.CreateNamespace
-	inst.Version = strings.TrimSpace(req.Version)
-	if !oci {
-		inst.RepoURL = strings.TrimSpace(req.Repo)
-	}
 	inst.DryRun = req.DryRun
 	if req.DryRun {
 		inst.DryRunOption = "client"
@@ -137,21 +125,9 @@ func Install(ctx context.Context, cfg *action.Configuration, req InstallRequest)
 	inst.Timeout = timeout(req.TimeoutSeconds)
 	inst.Description = "Installed from k8sman"
 
-	path, err := inst.LocateChart(name, settings)
+	ch, err := fetchChart(&inst.ChartPathOptions, req.Repo, req.Chart, req.Version)
 	if err != nil {
-		return nil, fmt.Errorf("fetch chart %s: %w", name, err)
-	}
-	ch, err := loader.Load(path)
-	if err != nil {
-		return nil, fmt.Errorf("load chart: %w", err)
-	}
-	if ch.Metadata != nil && ch.Metadata.Type != "" && ch.Metadata.Type != "application" {
-		return nil, invalid("chart %s is a %s chart and can't be installed", ch.Name(), ch.Metadata.Type)
-	}
-	if ch.Metadata != nil && len(ch.Metadata.Dependencies) > 0 {
-		if err := action.CheckDependencies(ch, ch.Metadata.Dependencies); err != nil {
-			return nil, invalid("chart %s is missing dependencies: %v", ch.Name(), err)
-		}
+		return nil, err
 	}
 	rel, err := inst.RunWithContext(ctx, ch, vals)
 	if err != nil {
@@ -168,6 +144,48 @@ func Install(ctx context.Context, cfg *action.Configuration, req InstallRequest)
 		res.Message = fmt.Sprintf("Installed %s %s as %s in %s (%s)", s.Chart, s.ChartVersion, req.ReleaseName, req.Namespace, s.Status)
 	}
 	return res, nil
+}
+
+// useRegistryClient gives cfg (and the actions created from it afterwards)
+// a registry client with the user's credentials, for OCI charts.
+func useRegistryClient(cfg *action.Configuration) error {
+	rc, err := newRegistryClient(envSettings())
+	if err != nil {
+		return err
+	}
+	cfg.RegistryClient = rc
+	return nil
+}
+
+// fetchChart downloads repo/chart at version ("" = latest), or reuses the
+// cached copy, and loads it. cpo is the action's chart options, whose
+// registry client comes from the action's configuration.
+func fetchChart(cpo *action.ChartPathOptions, repoURL, chartName, version string) (*chart.Chart, error) {
+	name, oci, err := chartRef(repoURL, chartName)
+	if err != nil {
+		return nil, err
+	}
+	cpo.Version = strings.TrimSpace(version)
+	if !oci {
+		cpo.RepoURL = strings.TrimSpace(repoURL)
+	}
+	path, err := cpo.LocateChart(name, envSettings())
+	if err != nil {
+		return nil, fmt.Errorf("fetch chart %s: %w", name, err)
+	}
+	ch, err := loader.Load(path)
+	if err != nil {
+		return nil, fmt.Errorf("load chart: %w", err)
+	}
+	if ch.Metadata != nil && ch.Metadata.Type != "" && ch.Metadata.Type != "application" {
+		return nil, invalid("chart %s is a %s chart and can't be installed", ch.Name(), ch.Metadata.Type)
+	}
+	if ch.Metadata != nil && len(ch.Metadata.Dependencies) > 0 {
+		if err := action.CheckDependencies(ch, ch.Metadata.Dependencies); err != nil {
+			return nil, invalid("chart %s is missing dependencies: %v", ch.Name(), err)
+		}
+	}
+	return ch, nil
 }
 
 // ChartVersion is one entry of GET /api/helm/chart-versions.

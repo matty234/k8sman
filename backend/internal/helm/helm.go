@@ -527,10 +527,15 @@ type UpgradeRequest struct {
 	// Values is the complete new set of user-supplied values (YAML).
 	Values string `json:"values"`
 	// ReuseValues merges Values over the release's current user values.
-	ReuseValues    bool `json:"reuseValues"`
-	DryRun         bool `json:"dryRun"`
-	Wait           bool `json:"wait"`
-	TimeoutSeconds int  `json:"timeoutSeconds"`
+	ReuseValues bool `json:"reuseValues"`
+	// Repo and Chart (and Version, "" = latest) upgrade to a chart fetched
+	// like Install does, instead of re-rendering the stored chart.
+	Repo           string `json:"repo,omitempty"`
+	Chart          string `json:"chart,omitempty"`
+	Version        string `json:"version,omitempty"`
+	DryRun         bool   `json:"dryRun"`
+	Wait           bool   `json:"wait"`
+	TimeoutSeconds int    `json:"timeoutSeconds"`
 }
 
 // Result is returned by every mutation.
@@ -686,10 +691,23 @@ func Upgrade(ctx context.Context, cfg *action.Configuration, req UpgradeRequest)
 	if dep, err := cfg.Releases.Deployed(req.Name); err == nil {
 		base = dep
 	}
-	if msg := upgradeBlocked(base); msg != "" {
+	fromSource := strings.TrimSpace(req.Repo) != ""
+	if fromSource {
+		if err := useRegistryClient(cfg); err != nil {
+			return nil, err
+		}
+	} else if msg := upgradeBlocked(base); msg != "" {
 		return nil, invalid("%s", msg)
 	}
 	up := action.NewUpgrade(cfg)
+	ch := base.Chart
+	up.Description = "Upgraded values from k8sman"
+	if fromSource {
+		if ch, err = fetchChart(&up.ChartPathOptions, req.Repo, req.Chart, req.Version); err != nil {
+			return nil, err
+		}
+		up.Description = fmt.Sprintf("Upgraded to %s %s from k8sman", ch.Name(), ch.Metadata.Version)
+	}
 	up.Namespace = base.Namespace
 	up.DryRun = req.DryRun
 	if req.DryRun {
@@ -700,8 +718,7 @@ func Upgrade(ctx context.Context, cfg *action.Configuration, req UpgradeRequest)
 	up.Wait = req.Wait
 	up.Timeout = timeout(req.TimeoutSeconds)
 	up.MaxHistory = maxHistory
-	up.Description = "Upgraded values from k8sman"
-	rel, err := up.RunWithContext(ctx, req.Name, base.Chart, vals)
+	rel, err := up.RunWithContext(ctx, req.Name, ch, vals)
 	if err != nil {
 		return nil, err
 	}
