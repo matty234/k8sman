@@ -31,6 +31,8 @@ type ActionRequest struct {
 	Propagation        string `json:"propagation,omitempty"` // Background|Foreground|Orphan
 	// Run admission/validation without persisting.
 	DryRun bool `json:"dryRun,omitempty"`
+	// argocd-refresh / argocd-sync options (see argocd.go).
+	argoActionRequest
 }
 
 // ActionResult is returned by every action.
@@ -64,6 +66,10 @@ var actionTargets = map[string][]string{
 	"cordon":    {"/nodes"},
 	"uncordon":  {"/nodes"},
 	"delete":    {"*"},
+	// Argo CD (see argocd.go).
+	"argocd-refresh":   {"argoproj.io/applications"},
+	"argocd-sync":      {"argoproj.io/applications"},
+	"argocd-terminate": {"argoproj.io/applications"},
 }
 
 func (s *Server) actionRoutes() {
@@ -207,6 +213,8 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		}
 		err = ri.Delete(ctx, name, opts)
 		res.Message = "Deleted " + name
+	case "argocd-refresh", "argocd-sync", "argocd-terminate":
+		res.Message, err = runArgoAction(ctx, ri, action, name, req.argoActionRequest, patchOpts)
 	}
 	if err != nil {
 		writeErr(w, err)

@@ -1,0 +1,253 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Application",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:24:58Z",
+    "generation": 11,
+    "name": "multi-source",
+    "namespace": "argocd",
+    "resourceVersion": "6998",
+    "uid": "72096c61-50f9-444a-bd0b-91f6d3dec70b"
+  },
+  "spec": {
+    "destination": {
+      "namespace": "multi-source",
+      "server": "https://kubernetes.default.svc"
+    },
+    "project": "default",
+    "sources": [
+      {
+        "helm": {
+          "valueFiles": [
+            "$values/helm-guestbook/values-production.yaml"
+          ]
+        },
+        "path": "helm-guestbook",
+        "repoURL": "https://github.com/argoproj/argocd-example-apps",
+        "targetRevision": "HEAD"
+      },
+      {
+        "ref": "values",
+        "repoURL": "https://github.com/argoproj/argocd-example-apps",
+        "targetRevision": "HEAD"
+      }
+    ],
+    "syncPolicy": {
+      "automated": {
+        "prune": true
+      },
+      "syncOptions": [
+        "CreateNamespace=true"
+      ]
+    }
+  },
+  "status": {
+    "controllerNamespace": "argocd",
+    "health": {
+      "lastTransitionTime": "2026-11-03T12:25:01Z",
+      "status": "Progressing"
+    },
+    "history": [
+      {
+        "deployStartedAt": "2026-11-03T12:25:01Z",
+        "deployedAt": "2026-11-03T12:25:01Z",
+        "id": 0,
+        "initiatedBy": {
+          "automated": true
+        },
+        "revisions": [
+          "8088f4c0d970abb09e250248cc97e35623447cb5",
+          "8088f4c0d970abb09e250248cc97e35623447cb5"
+        ],
+        "source": {
+          "repoURL": ""
+        },
+        "sources": [
+          {
+            "helm": {
+              "valueFiles": [
+                "$values/helm-guestbook/values-production.yaml"
+              ]
+            },
+            "path": "helm-guestbook",
+            "repoURL": "https://github.com/argoproj/argocd-example-apps",
+            "targetRevision": "HEAD"
+          },
+          {
+            "ref": "values",
+            "repoURL": "https://github.com/argoproj/argocd-example-apps",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    ],
+    "operationState": {
+      "finishedAt": "2026-11-03T12:25:01Z",
+      "message": "successfully synced (all tasks run)",
+      "operation": {
+        "initiatedBy": {
+          "automated": true
+        },
+        "retry": {
+          "limit": 5
+        },
+        "sync": {
+          "prune": true,
+          "revisions": [
+            "8088f4c0d970abb09e250248cc97e35623447cb5",
+            "8088f4c0d970abb09e250248cc97e35623447cb5"
+          ],
+          "sources": [
+            {
+              "helm": {
+                "valueFiles": [
+                  "$values/helm-guestbook/values-production.yaml"
+                ]
+              },
+              "path": "helm-guestbook",
+              "repoURL": "https://github.com/argoproj/argocd-example-apps",
+              "targetRevision": "HEAD"
+            },
+            {
+              "ref": "values",
+              "repoURL": "https://github.com/argoproj/argocd-example-apps",
+              "targetRevision": "HEAD"
+            }
+          ],
+          "syncOptions": [
+            "CreateNamespace=true"
+          ]
+        }
+      },
+      "phase": "Succeeded",
+      "startedAt": "2026-11-03T12:25:01Z",
+      "syncResult": {
+        "resources": [
+          {
+            "group": "",
+            "hookPhase": "Running",
+            "kind": "Namespace",
+            "message": "namespace/multi-source created",
+            "name": "multi-source",
+            "namespace": "",
+            "status": "Synced",
+            "syncPhase": "PreSync",
+            "version": "v1"
+          },
+          {
+            "group": "",
+            "hookPhase": "Running",
+            "kind": "Service",
+            "message": "service/multi-source-helm-guestbook created",
+            "name": "multi-source-helm-guestbook",
+            "namespace": "multi-source",
+            "status": "Synced",
+            "syncPhase": "Sync",
+            "version": "v1"
+          },
+          {
+            "group": "apps",
+            "hookPhase": "Running",
+            "images": [
+              "gcr.io/google-samples/gb-frontend:v5"
+            ],
+            "kind": "Deployment",
+            "message": "deployment.apps/multi-source-helm-guestbook created",
+            "name": "multi-source-helm-guestbook",
+            "namespace": "multi-source",
+            "status": "Synced",
+            "syncPhase": "Sync",
+            "version": "v1"
+          }
+        ],
+        "revision": "",
+        "revisions": [
+          "8088f4c0d970abb09e250248cc97e35623447cb5",
+          "8088f4c0d970abb09e250248cc97e35623447cb5"
+        ],
+        "source": {
+          "repoURL": ""
+        },
+        "sources": [
+          {
+            "helm": {
+              "valueFiles": [
+                "$values/helm-guestbook/values-production.yaml"
+              ]
+            },
+            "path": "helm-guestbook",
+            "repoURL": "https://github.com/argoproj/argocd-example-apps",
+            "targetRevision": "HEAD"
+          },
+          {
+            "ref": "values",
+            "repoURL": "https://github.com/argoproj/argocd-example-apps",
+            "targetRevision": "HEAD"
+          }
+        ]
+      }
+    },
+    "reconciledAt": "2026-11-03T12:27:42Z",
+    "resourceHealthSource": "appTree",
+    "resources": [
+      {
+        "kind": "Service",
+        "name": "multi-source-helm-guestbook",
+        "namespace": "multi-source",
+        "status": "Synced",
+        "version": "v1"
+      },
+      {
+        "group": "apps",
+        "kind": "Deployment",
+        "name": "multi-source-helm-guestbook",
+        "namespace": "multi-source",
+        "status": "Synced",
+        "version": "v1"
+      }
+    ],
+    "sourceHydrator": {},
+    "sourceTypes": [
+      "Helm",
+      ""
+    ],
+    "summary": {
+      "images": [
+        "gcr.io/google-samples/gb-frontend:v5"
+      ]
+    },
+    "sync": {
+      "comparedTo": {
+        "destination": {
+          "namespace": "multi-source",
+          "server": "https://kubernetes.default.svc"
+        },
+        "source": {
+          "repoURL": ""
+        },
+        "sources": [
+          {
+            "helm": {
+              "valueFiles": [
+                "$values/helm-guestbook/values-production.yaml"
+              ]
+            },
+            "path": "helm-guestbook",
+            "repoURL": "https://github.com/argoproj/argocd-example-apps",
+            "targetRevision": "HEAD"
+          },
+          {
+            "ref": "values",
+            "repoURL": "https://github.com/argoproj/argocd-example-apps",
+            "targetRevision": "HEAD"
+          }
+        ]
+      },
+      "revisions": [
+        "8088f4c0d970abb09e250248cc97e35623447cb5",
+        "8088f4c0d970abb09e250248cc97e35623447cb5"
+      ],
+      "status": "Synced"
+    }
+  }
+}

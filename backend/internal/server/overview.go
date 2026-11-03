@@ -8,6 +8,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/overview"
@@ -132,6 +133,28 @@ func listForOverview(ctx context.Context, c *cluster.Clients, ns string) (overvi
 		}
 		return err
 	})
+	// Argo CD Applications, only when the CRD is served. Listed across all
+	// namespaces (apps live in the Argo CD namespace) and filtered to those
+	// in, or deploying to, the selected namespace.
+	if rt, err := c.Find(ctx, "argoproj.io", "", "applications"); err == nil {
+		run("applications.argoproj.io", func() error {
+			l, err := c.Dynamic.Resource(rt.GVR()).List(ctx, opts)
+			if err != nil {
+				return err
+			}
+			apps := []map[string]any{}
+			for _, it := range l.Items {
+				dest, _, _ := unstructured.NestedString(it.Object, "spec", "destination", "namespace")
+				if ns == "" || it.GetNamespace() == ns || dest == ns {
+					apps = append(apps, it.Object)
+				}
+			}
+			mu.Lock()
+			in.ArgoApps = apps
+			mu.Unlock()
+			return nil
+		})
+	}
 	wg.Wait()
 	return in, errs
 }

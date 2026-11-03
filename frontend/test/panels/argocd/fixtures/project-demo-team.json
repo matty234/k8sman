@@ -1,0 +1,106 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "AppProject",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:24:58Z",
+    "generation": 1,
+    "name": "demo-team",
+    "namespace": "argocd",
+    "resourceVersion": "6478",
+    "uid": "f0f767d9-d911-48aa-a0f3-b0f4eb029398"
+  },
+  "spec": {
+    "clusterResourceWhitelist": [
+      {
+        "group": "",
+        "kind": "Namespace"
+      }
+    ],
+    "description": "Demo team project with restricted sources, destinations and kinds",
+    "destinations": [
+      {
+        "namespace": "guestbook*",
+        "server": "https://kubernetes.default.svc"
+      },
+      {
+        "namespace": "helm-*",
+        "server": "https://kubernetes.default.svc"
+      },
+      {
+        "namespace": "kustomize-*",
+        "server": "https://kubernetes.default.svc"
+      },
+      {
+        "name": "in-cluster",
+        "namespace": "team-*"
+      }
+    ],
+    "namespaceResourceBlacklist": [
+      {
+        "group": "",
+        "kind": "ResourceQuota"
+      },
+      {
+        "group": "",
+        "kind": "LimitRange"
+      },
+      {
+        "group": "networking.k8s.io",
+        "kind": "NetworkPolicy"
+      }
+    ],
+    "orphanedResources": {
+      "ignore": [
+        {
+          "kind": "ConfigMap",
+          "name": "kube-root-ca.crt"
+        }
+      ],
+      "warn": true
+    },
+    "roles": [
+      {
+        "description": "CI pipeline can sync apps in this project",
+        "groups": [
+          "my-org:ci-bots"
+        ],
+        "name": "ci",
+        "policies": [
+          "p, proj:demo-team:ci, applications, sync, demo-team/*, allow",
+          "p, proj:demo-team:ci, applications, get, demo-team/*, allow"
+        ]
+      },
+      {
+        "description": "Read-only access",
+        "name": "read-only",
+        "policies": [
+          "p, proj:demo-team:read-only, applications, get, demo-team/*, allow"
+        ]
+      }
+    ],
+    "sourceRepos": [
+      "https://github.com/argoproj/argocd-example-apps",
+      "https://github.com/argoproj/argocd-example-apps.git"
+    ],
+    "syncWindows": [
+      {
+        "applications": [
+          "*-prod"
+        ],
+        "duration": "8h",
+        "kind": "deny",
+        "manualSync": true,
+        "schedule": "0 22 * * *",
+        "timeZone": "Europe/London"
+      },
+      {
+        "duration": "9h",
+        "kind": "allow",
+        "namespaces": [
+          "team-*"
+        ],
+        "schedule": "0 9 * * 1-5"
+      }
+    ]
+  }
+}

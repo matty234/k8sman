@@ -1,0 +1,114 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "ApplicationSet",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:24:58Z",
+    "generation": 1,
+    "name": "guestbook-envs",
+    "namespace": "argocd",
+    "resourceVersion": "6492",
+    "uid": "efd7af92-3500-4ba8-93e6-d325eb05b625"
+  },
+  "spec": {
+    "generators": [
+      {
+        "list": {
+          "elements": [
+            {
+              "env": "dev",
+              "revision": "HEAD"
+            },
+            {
+              "env": "staging",
+              "revision": "master"
+            }
+          ]
+        }
+      }
+    ],
+    "goTemplate": true,
+    "goTemplateOptions": [
+      "missingkey=error"
+    ],
+    "syncPolicy": {
+      "preserveResourcesOnDeletion": true
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "env": "{{.env}}"
+        },
+        "name": "guestbook-{{.env}}"
+      },
+      "spec": {
+        "destination": {
+          "namespace": "appset-{{.env}}",
+          "server": "https://kubernetes.default.svc"
+        },
+        "project": "default",
+        "source": {
+          "path": "guestbook",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps",
+          "targetRevision": "{{.revision}}"
+        },
+        "syncPolicy": {
+          "automated": {
+            "prune": true,
+            "selfHeal": true
+          },
+          "syncOptions": [
+            "CreateNamespace=true"
+          ]
+        }
+      }
+    }
+  },
+  "status": {
+    "conditions": [
+      {
+        "lastTransitionTime": "2026-11-03T12:24:59Z",
+        "message": "All applications have been generated successfully",
+        "reason": "ApplicationSetUpToDate",
+        "status": "False",
+        "type": "ErrorOccurred"
+      },
+      {
+        "lastTransitionTime": "2026-11-03T12:24:59Z",
+        "message": "Successfully generated parameters for all Applications",
+        "reason": "ParametersGenerated",
+        "status": "True",
+        "type": "ParametersGenerated"
+      },
+      {
+        "lastTransitionTime": "2026-11-03T12:24:59Z",
+        "message": "All applications have been generated successfully",
+        "reason": "ApplicationSetUpToDate",
+        "status": "True",
+        "type": "ResourcesUpToDate"
+      }
+    ],
+    "health": {
+      "message": "All applications have been generated successfully",
+      "status": "Healthy"
+    },
+    "resources": [
+      {
+        "group": "argoproj.io",
+        "health": {},
+        "kind": "Application",
+        "name": "guestbook-dev",
+        "namespace": "argocd",
+        "version": "v1alpha1"
+      },
+      {
+        "group": "argoproj.io",
+        "health": {},
+        "kind": "Application",
+        "name": "guestbook-staging",
+        "namespace": "argocd",
+        "version": "v1alpha1"
+      }
+    ],
+    "resourcesCount": 2
+  }
+}

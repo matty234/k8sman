@@ -1,0 +1,348 @@
+[
+  {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+      "creationTimestamp": "2026-11-03T12:25:01Z",
+      "generateName": "kustomize-guestbook-ui-56584c887b-",
+      "labels": {
+        "app": "guestbook-ui",
+        "pod-template-hash": "56584c887b"
+      },
+      "name": "kustomize-guestbook-ui-56584c887b-4lmgj",
+      "namespace": "guestbook-degraded",
+      "ownerReferences": [
+        {
+          "apiVersion": "apps/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "ReplicaSet",
+          "name": "kustomize-guestbook-ui-56584c887b",
+          "uid": "38512a8f-0e70-47b0-81dc-f603b8585da7"
+        }
+      ],
+      "resourceVersion": "6793",
+      "uid": "0302e40a-83a9-4af1-b6a8-a63d4110b1aa"
+    },
+    "spec": {
+      "containers": [
+        {
+          "image": "gcr.io/google-samples/gb-frontend:v5",
+          "imagePullPolicy": "IfNotPresent",
+          "name": "guestbook-ui",
+          "ports": [
+            {
+              "containerPort": 80,
+              "protocol": "TCP"
+            }
+          ],
+          "resources": {},
+          "terminationMessagePath": "/dev/termination-log",
+          "terminationMessagePolicy": "File",
+          "volumeMounts": [
+            {
+              "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+              "name": "kube-api-access-bkl2b",
+              "readOnly": true
+            }
+          ]
+        }
+      ],
+      "dnsPolicy": "ClusterFirst",
+      "enableServiceLinks": true,
+      "nodeName": "k8sman-dev-control-plane",
+      "preemptionPolicy": "PreemptLowerPriority",
+      "priority": 0,
+      "restartPolicy": "Always",
+      "schedulerName": "default-scheduler",
+      "securityContext": {},
+      "serviceAccount": "default",
+      "serviceAccountName": "default",
+      "terminationGracePeriodSeconds": 30,
+      "tolerations": [
+        {
+          "effect": "NoExecute",
+          "key": "node.kubernetes.io/not-ready",
+          "operator": "Exists",
+          "tolerationSeconds": 300
+        },
+        {
+          "effect": "NoExecute",
+          "key": "node.kubernetes.io/unreachable",
+          "operator": "Exists",
+          "tolerationSeconds": 300
+        }
+      ],
+      "volumes": [
+        {
+          "name": "kube-api-access-bkl2b",
+          "projected": {
+            "defaultMode": 420,
+            "sources": [
+              {
+                "serviceAccountToken": {
+                  "expirationSeconds": 3607,
+                  "path": "token"
+                }
+              },
+              {
+                "configMap": {
+                  "items": [
+                    {
+                      "key": "ca.crt",
+                      "path": "ca.crt"
+                    }
+                  ],
+                  "name": "kube-root-ca.crt"
+                }
+              },
+              {
+                "downwardAPI": {
+                  "items": [
+                    {
+                      "fieldRef": {
+                        "apiVersion": "v1",
+                        "fieldPath": "metadata.namespace"
+                      },
+                      "path": "namespace"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:25:01Z",
+          "status": "True",
+          "type": "Initialized"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:25:23Z",
+          "status": "True",
+          "type": "Ready"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:25:23Z",
+          "status": "True",
+          "type": "ContainersReady"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:25:01Z",
+          "status": "True",
+          "type": "PodScheduled"
+        }
+      ],
+      "containerStatuses": [
+        {
+          "containerID": "containerd://80cee5277258fa955705604823e1830ac73da38b1511ac7e4844d01c8e41e53b",
+          "image": "gcr.io/google-samples/gb-frontend:v5",
+          "imageID": "gcr.io/google-samples/gb-frontend@sha256:a908df8486ff66f2c4daa0d3d8a2fa09846a1fc8efd65649c0109695c7c5cbff",
+          "lastState": {},
+          "name": "guestbook-ui",
+          "ready": true,
+          "restartCount": 0,
+          "started": true,
+          "state": {
+            "running": {
+              "startedAt": "2026-11-03T12:25:23Z"
+            }
+          }
+        }
+      ],
+      "hostIP": "172.18.0.2",
+      "phase": "Running",
+      "podIP": "10.244.0.48",
+      "podIPs": [
+        {
+          "ip": "10.244.0.48"
+        }
+      ],
+      "qosClass": "BestEffort",
+      "startTime": "2026-11-03T12:25:01Z"
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+      "creationTimestamp": "2026-11-03T12:28:07Z",
+      "generateName": "kustomize-guestbook-ui-755cbff6db-",
+      "labels": {
+        "app": "guestbook-ui",
+        "pod-template-hash": "755cbff6db"
+      },
+      "name": "kustomize-guestbook-ui-755cbff6db-sdzbf",
+      "namespace": "guestbook-degraded",
+      "ownerReferences": [
+        {
+          "apiVersion": "apps/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "ReplicaSet",
+          "name": "kustomize-guestbook-ui-755cbff6db",
+          "uid": "295e5b40-8ec0-4cf8-8099-38161a69ae7e"
+        }
+      ],
+      "resourceVersion": "7853",
+      "uid": "39eacd3f-fbe4-4595-84cc-a1fa7a650834"
+    },
+    "spec": {
+      "containers": [
+        {
+          "image": "gcr.io/google-samples/gb-frontend:does-not-exist",
+          "imagePullPolicy": "IfNotPresent",
+          "name": "guestbook-ui",
+          "ports": [
+            {
+              "containerPort": 80,
+              "protocol": "TCP"
+            }
+          ],
+          "resources": {},
+          "terminationMessagePath": "/dev/termination-log",
+          "terminationMessagePolicy": "File",
+          "volumeMounts": [
+            {
+              "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+              "name": "kube-api-access-rvrx4",
+              "readOnly": true
+            }
+          ]
+        }
+      ],
+      "dnsPolicy": "ClusterFirst",
+      "enableServiceLinks": true,
+      "nodeName": "k8sman-dev-control-plane",
+      "preemptionPolicy": "PreemptLowerPriority",
+      "priority": 0,
+      "restartPolicy": "Always",
+      "schedulerName": "default-scheduler",
+      "securityContext": {},
+      "serviceAccount": "default",
+      "serviceAccountName": "default",
+      "terminationGracePeriodSeconds": 30,
+      "tolerations": [
+        {
+          "effect": "NoExecute",
+          "key": "node.kubernetes.io/not-ready",
+          "operator": "Exists",
+          "tolerationSeconds": 300
+        },
+        {
+          "effect": "NoExecute",
+          "key": "node.kubernetes.io/unreachable",
+          "operator": "Exists",
+          "tolerationSeconds": 300
+        }
+      ],
+      "volumes": [
+        {
+          "name": "kube-api-access-rvrx4",
+          "projected": {
+            "defaultMode": 420,
+            "sources": [
+              {
+                "serviceAccountToken": {
+                  "expirationSeconds": 3607,
+                  "path": "token"
+                }
+              },
+              {
+                "configMap": {
+                  "items": [
+                    {
+                      "key": "ca.crt",
+                      "path": "ca.crt"
+                    }
+                  ],
+                  "name": "kube-root-ca.crt"
+                }
+              },
+              {
+                "downwardAPI": {
+                  "items": [
+                    {
+                      "fieldRef": {
+                        "apiVersion": "v1",
+                        "fieldPath": "metadata.namespace"
+                      },
+                      "path": "namespace"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:28:07Z",
+          "status": "True",
+          "type": "Initialized"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:28:07Z",
+          "message": "containers with unready status: [guestbook-ui]",
+          "reason": "ContainersNotReady",
+          "status": "False",
+          "type": "Ready"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:28:07Z",
+          "message": "containers with unready status: [guestbook-ui]",
+          "reason": "ContainersNotReady",
+          "status": "False",
+          "type": "ContainersReady"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-11-03T12:28:07Z",
+          "status": "True",
+          "type": "PodScheduled"
+        }
+      ],
+      "containerStatuses": [
+        {
+          "image": "gcr.io/google-samples/gb-frontend:does-not-exist",
+          "imageID": "",
+          "lastState": {},
+          "name": "guestbook-ui",
+          "ready": false,
+          "restartCount": 0,
+          "started": false,
+          "state": {
+            "waiting": {
+              "message": "Back-off pulling image \"gcr.io/google-samples/gb-frontend:does-not-exist\"",
+              "reason": "ImagePullBackOff"
+            }
+          }
+        }
+      ],
+      "hostIP": "172.18.0.2",
+      "phase": "Pending",
+      "podIP": "10.244.0.52",
+      "podIPs": [
+        {
+          "ip": "10.244.0.52"
+        }
+      ],
+      "qosClass": "BestEffort",
+      "startTime": "2026-11-03T12:28:07Z"
+    }
+  }
+]
