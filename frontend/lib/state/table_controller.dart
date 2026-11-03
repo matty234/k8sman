@@ -260,8 +260,12 @@ class TableController extends ChangeNotifier {
     if (sc != null && sc < columns.length) {
       final isAge = columns[sc].type == 'age';
       final compare = columns[sc].type == 'quantity' ? compareQuantities : _compare;
+      bool empty(dynamic v) => v == null || (v is String && v.isEmpty);
       list.sort((a, b) {
-        var cmp = compare(a.cells.elementAtOrNull(sc), b.cells.elementAtOrNull(sc));
+        final x = a.cells.elementAtOrNull(sc), y = b.cells.elementAtOrNull(sc);
+        // Empty cells stay at the bottom in both directions.
+        if (empty(x) || empty(y)) return empty(x) == empty(y) ? 0 : (empty(x) ? 1 : -1);
+        var cmp = compare(x, y);
         if (isAge) cmp = -cmp; // newest timestamp = smallest age
         return sortAscending ? cmp : -cmp;
       });
@@ -281,7 +285,9 @@ class TableController extends ChangeNotifier {
     if (a == null) return 1;
     if (b == null) return -1;
     if (a is num && b is num) return a.compareTo(b);
-    final an = num.tryParse('$a'), bn = num.tryParse('$b');
+    // Numbers and Kubernetes quantities ("10Gi" > "2Gi", "500m" < "1")
+    // compare by value, not as text.
+    final an = parseQuantity(a), bn = parseQuantity(b);
     if (an != null && bn != null) return an.compareTo(bn);
     return _cellText(a).compareTo(_cellText(b));
   }
