@@ -134,7 +134,7 @@ void main() {
     await disposeView(tester);
   });
 
-  testWidgets('non-local contexts must type the alert name to silence', (tester) async {
+  testWidgets('non-local contexts show a warning when silencing (no typing)', (tester) async {
     final api = FixturePromApi();
     await pumpAlerts(tester, api: api, context: 'prod-eu-1');
     await tester.tap(find.text('K8smanDemoPodCrashLooping'));
@@ -142,9 +142,7 @@ void main() {
     await tester.tap(find.text('Silence…').first);
     await tester.pumpAndSettle();
     final confirm = find.widgetWithText(FilledButton, 'Silence');
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
-    await tester.enterText(find.byType(TextField).last, 'K8smanDemoPodCrashLooping');
-    await tester.pump();
+    expect(find.textContaining('not a local cluster'), findsOneWidget);
     expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();

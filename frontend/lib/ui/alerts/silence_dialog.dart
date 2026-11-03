@@ -164,8 +164,8 @@ class SilenceForm extends StatelessWidget {
   }
 }
 
-/// The Silence… flow: form + confirmation (typing the alert name on
-/// non-local clusters), then create and report.
+/// The Silence… flow: form + confirmation (with a warning on non-local
+/// clusters), then create and report.
 Future<bool> showSilenceDialog(
   BuildContext context, {
   required PromApi prom,

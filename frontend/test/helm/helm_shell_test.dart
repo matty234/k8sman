@@ -35,7 +35,7 @@ void main() {
       child: const K8sManApp(themeMode: ThemeMode.dark),
     ));
     await tester.pump(const Duration(milliseconds: 50));
-    await tester.tap(find.text('Helm').first); // the nav item
+    app.showView(MainView.helm); // Helm lives under the nav's "More" now
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 60));
     }
