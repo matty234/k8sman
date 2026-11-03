@@ -7,12 +7,16 @@ import (
 	"sync"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kcache"
 	"github.com/matty234/k8sman/backend/internal/overview"
 	"github.com/matty234/k8sman/backend/internal/prom"
 )
@@ -48,9 +52,9 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 
 func listForOverview(ctx context.Context, c *cluster.Clients, ns string) (overview.Input, map[string]error) {
 	in := overview.Input{Now: time.Now()}
-	// ResourceVersion "0" lets the apiserver answer from its watch cache.
-	opts := metav1.ListOptions{ResourceVersion: "0"}
-	core, apps, batch := c.Typed.CoreV1(), c.Typed.AppsV1(), c.Typed.BatchV1()
+	// Lists go through the shared watch cache: the first poll costs one
+	// LIST per type, later polls (every 10s while the page is open) none.
+	kc := kcache.For(c)
 
 	var mu sync.Mutex
 	errs := map[string]error{}
@@ -67,73 +71,53 @@ func listForOverview(ctx context.Context, c *cluster.Clients, ns string) (overvi
 		}()
 	}
 	run("pods", func() error {
-		l, err := core.Pods(ns).List(ctx, opts)
-		if err == nil {
-			in.Pods = l.Items
-		}
+		var err error
+		in.Pods, err = listTyped[corev1.Pod](ctx, kc, gvrPods, ns, "")
 		return err
 	})
 	run("deployments", func() error {
-		l, err := apps.Deployments(ns).List(ctx, opts)
-		if err == nil {
-			in.Deployments = l.Items
-		}
+		var err error
+		in.Deployments, err = listTyped[appsv1.Deployment](ctx, kc, gvrDeployments, ns, "")
 		return err
 	})
 	run("statefulsets", func() error {
-		l, err := apps.StatefulSets(ns).List(ctx, opts)
-		if err == nil {
-			in.StatefulSets = l.Items
-		}
+		var err error
+		in.StatefulSets, err = listTyped[appsv1.StatefulSet](ctx, kc, gvrStatefulSets, ns, "")
 		return err
 	})
 	run("daemonsets", func() error {
-		l, err := apps.DaemonSets(ns).List(ctx, opts)
-		if err == nil {
-			in.DaemonSets = l.Items
-		}
+		var err error
+		in.DaemonSets, err = listTyped[appsv1.DaemonSet](ctx, kc, gvrDaemonSets, ns, "")
 		return err
 	})
 	run("replicasets", func() error {
-		l, err := apps.ReplicaSets(ns).List(ctx, opts)
-		if err == nil {
-			in.ReplicaSets = l.Items
-		}
+		var err error
+		in.ReplicaSets, err = listTyped[appsv1.ReplicaSet](ctx, kc, gvrReplicaSets, ns, "")
 		return err
 	})
 	run("jobs", func() error {
-		l, err := batch.Jobs(ns).List(ctx, opts)
-		if err == nil {
-			in.Jobs = l.Items
-		}
+		var err error
+		in.Jobs, err = listTyped[batchv1.Job](ctx, kc, gvrJobs, ns, "")
 		return err
 	})
 	run("cronjobs", func() error {
-		l, err := batch.CronJobs(ns).List(ctx, opts)
-		if err == nil {
-			in.CronJobs = l.Items
-		}
+		var err error
+		in.CronJobs, err = listTyped[batchv1.CronJob](ctx, kc, gvrCronJobs, ns, "")
 		return err
 	})
 	run("nodes", func() error {
-		l, err := core.Nodes().List(ctx, opts)
-		if err == nil {
-			in.Nodes = l.Items
-		}
+		var err error
+		in.Nodes, err = listTyped[corev1.Node](ctx, kc, gvrNodes, "", "")
 		return err
 	})
 	run("persistentvolumeclaims", func() error {
-		l, err := core.PersistentVolumeClaims(ns).List(ctx, opts)
-		if err == nil {
-			in.PVCs = l.Items
-		}
+		var err error
+		in.PVCs, err = listTyped[corev1.PersistentVolumeClaim](ctx, kc, gvrPVCs, ns, "")
 		return err
 	})
 	run("events", func() error {
-		l, err := core.Events(ns).List(ctx, metav1.ListOptions{ResourceVersion: "0", FieldSelector: "type=Warning"})
-		if err == nil {
-			in.Events = l.Items
-		}
+		var err error
+		in.Events, err = listTyped[corev1.Event](ctx, kc, gvrEvents, ns, "type=Warning")
 		return err
 	})
 	// Argo CD Applications, only when the CRD is served. Listed across all
@@ -141,12 +125,12 @@ func listForOverview(ctx context.Context, c *cluster.Clients, ns string) (overvi
 	// in, or deploying to, the selected namespace.
 	if rt, err := c.Find(ctx, "argoproj.io", "", "applications"); err == nil {
 		run("applications.argoproj.io", func() error {
-			l, err := c.Dynamic.Resource(rt.GVR()).List(ctx, opts)
+			items, err := listCached(ctx, kc, rt.GVR(), "")
 			if err != nil {
 				return err
 			}
 			apps := []map[string]any{}
-			for _, it := range l.Items {
+			for _, it := range items {
 				dest, _, _ := unstructured.NestedString(it.Object, "spec", "destination", "namespace")
 				if ns == "" || it.GetNamespace() == ns || dest == ns {
 					apps = append(apps, it.Object)
@@ -178,15 +162,21 @@ func listGatewayAPI(ctx context.Context, c *cluster.Clients, ns string, in *over
 	}
 	list := func(t cluster.ResourceType) ([]unstructured.Unstructured, error) {
 		gvr := schema.GroupVersionResource{Group: t.Group, Version: t.Version, Resource: t.Resource}
-		l, err := c.Dynamic.Resource(gvr).Namespace(ns).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
+		items, err := listCached(ctx, kcache.For(c), gvr, ns)
 		if err != nil {
 			return nil, err
 		}
-		for i := range l.Items {
-			// Lists leave kind empty on items; the analysis needs it.
-			l.Items[i].SetKind(t.Kind)
+		out := make([]unstructured.Unstructured, len(items))
+		for i, it := range items {
+			out[i] = *it
+			if it.GetKind() == "" {
+				// Lists may leave kind empty on items; the analysis needs it.
+				// Items are shared with the cache, so set it on a copy.
+				out[i] = *it.DeepCopy()
+				out[i].SetKind(t.Kind)
+			}
 		}
-		return l.Items, nil
+		return out, nil
 	}
 	in.Routes = []unstructured.Unstructured{}
 	run("gateways", func() error {
