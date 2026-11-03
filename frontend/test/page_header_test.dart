@@ -9,6 +9,8 @@ import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/nodes/nodes_view.dart';
 import 'package:k8sman/ui/portforward/portforward_view.dart';
 import 'package:k8sman/ui/resource_table.dart';
+import 'package:k8sman/ui/security/security_api.dart';
+import 'package:k8sman/ui/security/security_view.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:k8sman/ui/widgets/common.dart';
 import 'package:provider/provider.dart';
@@ -31,6 +33,7 @@ void main() {
     'table': (t) => ResourceTableView(type: t),
     'nodes': (_) => const NodesView(),
     'port forwards': (_) => const PortForwardView(),
+    'security': (_) => SecurityView(source: _SecurityApi()),
   };
   for (final e in pages.entries) {
     testWidgets('${e.key} header is titlebar height', (tester) async {
@@ -52,4 +55,13 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+}
+
+class _SecurityApi extends SecurityApi {
+  _SecurityApi() : super(_Api());
+  @override
+  Future<SecurityData> fetch({String? namespace, bool includeSystem = false}) async =>
+      SecurityData.fromJson(jsonDecode(File('test/security/fixtures/security-demo.json').readAsStringSync()));
+  @override
+  Future<ScannerStatus> scanner() async => const ScannerStatus();
 }

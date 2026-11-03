@@ -1,0 +1,121 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-11-03T12:40:11.102Z",
+  "ArtifactName": "nginx:1.25",
+  "ArtifactType": "container_image",
+  "Metadata": {
+    "Size": 191987200,
+    "OS": {"Family": "debian", "Name": "12.5"},
+    "ImageID": "sha256:a8758716bb6aa4d90071160d27028fe4eaee7ce8166221a97d30440c8eac2be6",
+    "RepoTags": ["nginx:1.25"],
+    "RepoDigests": ["nginx@sha256:a484819eb60211f5299034ac80f6a681b06f89e65866ce91f356ed7c72af059c"]
+  },
+  "Results": [
+    {
+      "Target": "nginx:1.25 (debian 12.5)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-45491",
+          "PkgID": "libexpat1@2.5.0-1",
+          "PkgName": "libexpat1",
+          "InstalledVersion": "2.5.0-1",
+          "FixedVersion": "2.5.0-1+deb12u1",
+          "Status": "fixed",
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-45491",
+          "Title": "libexpat: Integer Overflow or Wraparound",
+          "Severity": "CRITICAL",
+          "CVSS": {"nvd": {"V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "V3Score": 9.8}}
+        },
+        {
+          "VulnerabilityID": "CVE-2023-45853",
+          "PkgID": "zlib1g@1:1.2.13.dfsg-1",
+          "PkgName": "zlib1g",
+          "InstalledVersion": "1:1.2.13.dfsg-1",
+          "Status": "will_not_fix",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-45853",
+          "Title": "zlib: integer overflow and resultant heap-based buffer overflow in zipOpenNewFileInZip4_6",
+          "Severity": "CRITICAL",
+          "CVSS": {"nvd": {"V3Score": 9.8}}
+        },
+        {
+          "VulnerabilityID": "CVE-2024-6119",
+          "PkgID": "libssl3@3.0.11-1~deb12u2",
+          "PkgName": "libssl3",
+          "InstalledVersion": "3.0.11-1~deb12u2",
+          "FixedVersion": "3.0.14-1~deb12u2",
+          "Status": "fixed",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-6119",
+          "Title": "openssl: Possible denial of service in X.509 name checks",
+          "Severity": "HIGH",
+          "CVSS": {"nvd": {"V3Score": 7.5}, "redhat": {"V3Score": 7.5}}
+        },
+        {
+          "VulnerabilityID": "CVE-2024-6119",
+          "PkgID": "openssl@3.0.11-1~deb12u2",
+          "PkgName": "openssl",
+          "InstalledVersion": "3.0.11-1~deb12u2",
+          "FixedVersion": "3.0.14-1~deb12u2",
+          "Status": "fixed",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-6119",
+          "Title": "openssl: Possible denial of service in X.509 name checks",
+          "Severity": "HIGH",
+          "CVSS": {"redhat": {"V3Score": 7.5}}
+        },
+        {
+          "VulnerabilityID": "CVE-2023-52425",
+          "PkgID": "libexpat1@2.5.0-1",
+          "PkgName": "libexpat1",
+          "InstalledVersion": "2.5.0-1",
+          "Status": "affected",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-52425",
+          "Title": "expat: parsing large tokens can trigger a denial of service",
+          "Severity": "HIGH"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-2511",
+          "PkgID": "libssl3@3.0.11-1~deb12u2",
+          "PkgName": "libssl3",
+          "InstalledVersion": "3.0.11-1~deb12u2",
+          "FixedVersion": "3.0.14-1~deb12u1",
+          "Status": "fixed",
+          "Title": "openssl: Unbounded memory growth with session handling in TLSv1.3",
+          "Severity": "MEDIUM"
+        },
+        {
+          "VulnerabilityID": "CVE-2011-3374",
+          "PkgID": "apt@2.6.1",
+          "PkgName": "apt",
+          "InstalledVersion": "2.6.1",
+          "Status": "affected",
+          "Title": "It was found that apt-key in apt, all versions, do not correctly...",
+          "Severity": "LOW"
+        }
+      ]
+    },
+    {
+      "Target": "usr/local/bin/app",
+      "Class": "lang-pkgs",
+      "Type": "gobinary",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-34156",
+          "PkgName": "stdlib",
+          "InstalledVersion": "v1.21.4",
+          "FixedVersion": "1.22.7, 1.23.1",
+          "Status": "fixed",
+          "Title": "encoding/gob: golang: Calling Decoder.Decode on a message which contains deeply nested structures...",
+          "Severity": "HIGH",
+          "CVSS": {"ghsa": {"V3Score": 7.5}}
+        }
+      ]
+    },
+    {
+      "Target": "usr/share/doc",
+      "Class": "lang-pkgs",
+      "Type": "jar"
+    }
+  ]
+}

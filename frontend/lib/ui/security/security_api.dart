@@ -1,0 +1,450 @@
+/// Client and models for the security endpoints:
+/// `GET /api/security`, `GET /api/security/scanner`, `POST /api/security/scan`.
+library;
+
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import '../../api/client.dart';
+import '../../api/models.dart';
+import '../../util/k8s.dart';
+
+/// Talks to the backend behind an [ApiClient], reusing its base URL. Tests
+/// subclass this to serve canned JSON.
+class SecurityApi {
+  final ApiClient api;
+  final http.Client? _http;
+  SecurityApi(this.api, {http.Client? httpClient}) : _http = httpClient;
+
+  Future<Json> _send(String method, String path, {Map<String, String>? query, Object? body}) async {
+    final uri = api.base.replace(path: path, queryParameters: query == null || query.isEmpty ? null : query);
+    final client = _http ?? http.Client();
+    try {
+      final res = method == 'POST'
+          ? await client.post(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(body ?? {}))
+          : await client.get(uri);
+      if (res.statusCode >= 400) {
+        var msg = res.body;
+        String? reason;
+        try {
+          final j = jsonDecode(res.body) as Map;
+          msg = '${j['error'] ?? msg}';
+          reason = j['reason'] as String?;
+        } catch (_) {}
+        throw ApiException(res.statusCode, msg, reason: reason);
+      }
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    } finally {
+      if (_http == null) client.close();
+    }
+  }
+
+  /// [namespace] null or empty = all namespaces.
+  Future<SecurityData> fetch({String? namespace, bool includeSystem = false}) async {
+    final q = <String, String>{
+      if (namespace != null && namespace.isNotEmpty) 'namespace': namespace,
+      if (includeSystem) 'includeSystem': 'true',
+    };
+    return SecurityData.fromJson(await _send('GET', '/api/security', query: q));
+  }
+
+  Future<ScannerStatus> scanner() async => ScannerStatus.fromJson(await _send('GET', '/api/security/scanner'));
+
+  Future<ScanResult> scan(String image, {bool force = false}) async =>
+      ScanResult.fromJson(await _send('POST', '/api/security/scan', body: {'image': image, if (force) 'force': true}));
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+enum SecSeverity {
+  critical,
+  high,
+  medium,
+  low,
+  info;
+
+  static SecSeverity parse(dynamic s) => switch ('$s'.toLowerCase()) {
+        'critical' => critical,
+        'high' => high,
+        'medium' => medium,
+        'low' => low,
+        _ => info,
+      };
+
+  String get label => switch (this) {
+        critical => 'Critical',
+        high => 'High',
+        medium => 'Medium',
+        low => 'Low',
+        info => 'Info',
+      };
+}
+
+int _int(dynamic v) => (v as num?)?.toInt() ?? 0;
+String _str(dynamic v) => v == null ? '' : '$v';
+List<Json> _maps(dynamic v) => asMapList(v);
+
+ObjectRef refFromJson(Json j) {
+  final ns = _str(j['namespace']);
+  return ObjectRef(group: _str(j['group']), kind: _str(j['kind']), name: _str(j['name']), namespace: ns.isEmpty ? null : ns);
+}
+
+class SecCategory {
+  final String id;
+  final String title;
+  final int total;
+  final Map<SecSeverity, int> counts;
+  const SecCategory({required this.id, required this.title, required this.total, required this.counts});
+
+  factory SecCategory.fromJson(Json j) => SecCategory(
+        id: _str(j['id']),
+        title: _str(j['title']),
+        total: _int(j['total']),
+        counts: {for (final e in asMap(j['counts']).entries) SecSeverity.parse(e.key): _int(e.value)},
+      );
+
+  int count(SecSeverity s) => counts[s] ?? 0;
+
+  /// Most severe level with findings, or null when there are none.
+  SecSeverity? get worst => SecSeverity.values.where((s) => count(s) > 0).firstOrNull;
+}
+
+class SecFinding {
+  final String id;
+  final String check;
+  final SecSeverity severity;
+  final String category;
+  final String title;
+  final String detail;
+  final String remediation;
+  final String? namespace;
+  final List<ObjectRef> objects;
+  final List<String> checks;
+
+  const SecFinding({
+    required this.id,
+    required this.check,
+    required this.severity,
+    required this.category,
+    required this.title,
+    required this.detail,
+    required this.remediation,
+    required this.objects,
+    this.namespace,
+    this.checks = const [],
+  });
+
+  factory SecFinding.fromJson(Json j) => SecFinding(
+        id: _str(j['id']),
+        check: _str(j['check']),
+        severity: SecSeverity.parse(j['severity']),
+        category: _str(j['category']),
+        title: _str(j['title']),
+        detail: _str(j['detail']),
+        remediation: _str(j['remediation']),
+        namespace: _str(j['namespace']).isEmpty ? null : _str(j['namespace']),
+        objects: [for (final o in _maps(j['objects'])) refFromJson(o)],
+        checks: [for (final c in (j['checks'] as List? ?? const [])) '$c'],
+      );
+}
+
+class GrantSubject {
+  final String kind;
+  final String name;
+  final String? namespace;
+  final bool? exists;
+  final bool? used;
+  const GrantSubject({required this.kind, required this.name, this.namespace, this.exists, this.used});
+
+  factory GrantSubject.fromJson(Json j) => GrantSubject(
+        kind: _str(j['kind']),
+        name: _str(j['name']),
+        namespace: _str(j['namespace']).isEmpty ? null : _str(j['namespace']),
+        exists: j['exists'] as bool?,
+        used: j['used'] as bool?,
+      );
+
+  ObjectRef? get ref => kind == 'ServiceAccount' && exists != false ? ObjectRef(kind: 'ServiceAccount', name: name, namespace: namespace) : null;
+}
+
+class Grant {
+  final ObjectRef binding;
+  final ObjectRef role;
+  final bool roleMissing;
+  final String scope;
+  final List<GrantSubject> subjects;
+  final int score;
+  final List<String> reasons;
+  final bool unused;
+  final bool system;
+
+  const Grant({
+    required this.binding,
+    required this.role,
+    required this.scope,
+    required this.subjects,
+    required this.score,
+    required this.reasons,
+    this.roleMissing = false,
+    this.unused = false,
+    this.system = false,
+  });
+
+  factory Grant.fromJson(Json j) => Grant(
+        binding: refFromJson(asMap(j['binding'])),
+        role: refFromJson(asMap(j['role'])),
+        roleMissing: j['roleMissing'] == true,
+        scope: _str(j['scope']),
+        subjects: [for (final s in _maps(j['subjects'])) GrantSubject.fromJson(s)],
+        score: _int(j['score']),
+        reasons: [for (final r in (j['reasons'] as List? ?? const [])) '$r'],
+        unused: j['unused'] == true,
+        system: j['system'] == true,
+      );
+
+  bool get clusterWide => scope == 'cluster';
+}
+
+class NamespaceNetwork {
+  final String namespace;
+  final int policies;
+  final int workloads;
+  final String ingress;
+  final String egress;
+  final int ingressOpen;
+  final int egressOpen;
+  final int exposed;
+  final String? psa;
+
+  const NamespaceNetwork({
+    required this.namespace,
+    required this.policies,
+    required this.workloads,
+    required this.ingress,
+    required this.egress,
+    this.ingressOpen = 0,
+    this.egressOpen = 0,
+    this.exposed = 0,
+    this.psa,
+  });
+
+  factory NamespaceNetwork.fromJson(Json j) => NamespaceNetwork(
+        namespace: _str(j['namespace']),
+        policies: _int(j['policies']),
+        workloads: _int(j['workloads']),
+        ingress: _str(j['ingress']),
+        egress: _str(j['egress']),
+        ingressOpen: _int(j['ingressOpen']),
+        egressOpen: _int(j['egressOpen']),
+        exposed: _int(j['exposed']),
+        psa: _str(j['psa']).isEmpty ? null : _str(j['psa']),
+      );
+}
+
+class VulnCounts {
+  final int critical, high, medium, low, unknown, fixableCritical, fixableHigh;
+  const VulnCounts({this.critical = 0, this.high = 0, this.medium = 0, this.low = 0, this.unknown = 0, this.fixableCritical = 0, this.fixableHigh = 0});
+
+  factory VulnCounts.fromJson(Json j) => VulnCounts(
+        critical: _int(j['critical']),
+        high: _int(j['high']),
+        medium: _int(j['medium']),
+        low: _int(j['low']),
+        unknown: _int(j['unknown']),
+        fixableCritical: _int(j['fixableCritical']),
+        fixableHigh: _int(j['fixableHigh']),
+      );
+
+  int get fixable => fixableCritical + fixableHigh;
+}
+
+class Cve {
+  final String id;
+  final SecSeverity severity;
+  final String package;
+  final String installed;
+  final String? fixed;
+  final String title;
+  final String? link;
+  final double score;
+  final List<String> images;
+
+  const Cve({
+    required this.id,
+    required this.severity,
+    required this.package,
+    required this.installed,
+    this.fixed,
+    this.title = '',
+    this.link,
+    this.score = 0,
+    this.images = const [],
+  });
+
+  factory Cve.fromJson(Json j) => Cve(
+        id: _str(j['id']),
+        severity: SecSeverity.parse(j['severity']),
+        package: _str(j['package']),
+        installed: _str(j['installed']),
+        fixed: _str(j['fixed']).isEmpty ? null : _str(j['fixed']),
+        title: _str(j['title']),
+        link: _str(j['link']).isEmpty ? null : _str(j['link']),
+        score: (j['score'] as num?)?.toDouble() ?? 0,
+        images: [for (final i in (j['images'] as List? ?? const [])) '$i'],
+      );
+}
+
+class ImageSummary {
+  final String image;
+  final List<ObjectRef> workloads;
+  final bool scanned;
+  final String? source;
+  final String? scannedAt;
+  final VulnCounts counts;
+  final List<Cve> topCves;
+
+  const ImageSummary({
+    required this.image,
+    required this.workloads,
+    required this.scanned,
+    required this.counts,
+    this.source,
+    this.scannedAt,
+    this.topCves = const [],
+  });
+
+  factory ImageSummary.fromJson(Json j) => ImageSummary(
+        image: _str(j['image']),
+        workloads: [for (final w in _maps(j['workloads'])) refFromJson(w)],
+        scanned: j['scanned'] == true,
+        source: j['source'] as String?,
+        scannedAt: j['scannedAt'] as String?,
+        counts: VulnCounts.fromJson(asMap(j['counts'])),
+        topCves: [for (final c in _maps(j['topCVEs'])) Cve.fromJson(c)],
+      );
+
+  ImageSummary withScan(ScanResult r) => ImageSummary(
+        image: image,
+        workloads: workloads,
+        scanned: true,
+        source: 'trivy-cli',
+        scannedAt: r.scannedAt,
+        counts: r.counts,
+        topCves: r.vulnerabilities.take(5).toList(),
+      );
+}
+
+class SecurityData {
+  final String generatedAt;
+  final String namespace;
+  final bool includeSystem;
+  final int score;
+  final List<SecCategory> categories;
+  final List<SecFinding> findings;
+  final List<Grant> permissive;
+  final List<NamespaceNetwork> network;
+  final List<ImageSummary> images;
+  final List<Cve> topCves;
+  final bool trivyOperator;
+  final bool gatewayApi;
+  final Map<String, String> errors;
+
+  const SecurityData({
+    required this.generatedAt,
+    required this.namespace,
+    required this.score,
+    required this.categories,
+    required this.findings,
+    this.includeSystem = false,
+    this.permissive = const [],
+    this.network = const [],
+    this.images = const [],
+    this.topCves = const [],
+    this.trivyOperator = false,
+    this.gatewayApi = false,
+    this.errors = const {},
+  });
+
+  factory SecurityData.fromJson(Json j) {
+    final sources = asMap(j['sources']);
+    return SecurityData(
+      generatedAt: _str(j['generatedAt']),
+      namespace: _str(j['namespace']),
+      includeSystem: j['includeSystem'] == true,
+      score: _int(j['score']),
+      categories: [for (final c in _maps(j['categories'])) SecCategory.fromJson(c)],
+      findings: [for (final f in _maps(j['findings'])) SecFinding.fromJson(f)],
+      permissive: [for (final g in _maps(j['permissive'])) Grant.fromJson(g)],
+      network: [for (final n in _maps(j['network'])) NamespaceNetwork.fromJson(n)],
+      images: [for (final i in _maps(j['images'])) ImageSummary.fromJson(i)],
+      topCves: [for (final c in _maps(j['topCVEs'])) Cve.fromJson(c)],
+      trivyOperator: sources['trivyOperator'] == true,
+      gatewayApi: sources['gatewayAPI'] == true,
+      errors: {for (final e in asMap(j['errors']).entries) e.key: '${e.value}'},
+    );
+  }
+
+  int countAll(SecSeverity s) => categories.fold(0, (n, c) => n + c.count(s));
+}
+
+class ScannerStatus {
+  final bool operatorInstalled;
+  final bool operatorHasReports;
+  final bool operatorScanning;
+  final List<String> operatorReports;
+  final bool trivyAvailable;
+  final String? trivyPath;
+  final String? trivyVersion;
+  final String installHint;
+
+  const ScannerStatus({
+    this.operatorInstalled = false,
+    this.operatorHasReports = false,
+    this.operatorScanning = false,
+    this.operatorReports = const [],
+    this.trivyAvailable = false,
+    this.trivyPath,
+    this.trivyVersion,
+    this.installHint = 'Install trivy (`brew install trivy`) to scan images on demand.',
+  });
+
+  factory ScannerStatus.fromJson(Json j) {
+    final op = asMap(j['operator']);
+    final t = asMap(j['trivy']);
+    return ScannerStatus(
+      operatorInstalled: op['installed'] == true,
+      operatorHasReports: op['hasReports'] == true,
+      operatorScanning: op['scanning'] == true,
+      operatorReports: [for (final r in (op['reports'] as List? ?? const [])) '$r'],
+      trivyAvailable: t['available'] == true,
+      trivyPath: t['path'] as String?,
+      trivyVersion: _str(t['version']).isEmpty ? null : _str(t['version']),
+      installHint: _str(j['installHint']).isEmpty ? const ScannerStatus().installHint : _str(j['installHint']),
+    );
+  }
+}
+
+class ScanResult {
+  final String image;
+  final String scannedAt;
+  final bool cached;
+  final String? os;
+  final VulnCounts counts;
+  final List<Cve> vulnerabilities;
+  final int total;
+
+  const ScanResult({required this.image, required this.scannedAt, required this.counts, this.cached = false, this.os, this.vulnerabilities = const [], this.total = 0});
+
+  factory ScanResult.fromJson(Json j) => ScanResult(
+        image: _str(j['image']),
+        scannedAt: _str(j['scannedAt']),
+        cached: j['cached'] == true,
+        os: j['os'] as String?,
+        counts: VulnCounts.fromJson(asMap(j['counts'])),
+        vulnerabilities: [for (final v in _maps(j['vulnerabilities'])) Cve.fromJson(v)],
+        total: _int(j['total']),
+      );
+}

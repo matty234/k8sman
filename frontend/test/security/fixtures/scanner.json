@@ -1,0 +1,1 @@
+{"installHint":"Install trivy (`brew install trivy`) to scan images on demand.","operator":{"installed":true,"reports":["vulnerabilityreports","configauditreports","exposedsecretreports","rbacassessmentreports","clusterrbacassessmentreports"],"hasReports":true,"scanning":false},"trivy":{"available":false,"hint":"Install trivy (`brew install trivy`) to scan images on demand."}}

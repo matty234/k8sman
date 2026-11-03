@@ -11,6 +11,7 @@ import 'overview/overview_view.dart';
 import 'portforward/portforward_view.dart';
 import 'resource_nav.dart';
 import 'resource_table.dart';
+import 'security/security_view.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 
@@ -86,6 +87,7 @@ class _ShellState extends State<Shell> {
                       child: switch (app.view) {
                         MainView.overview => const OverviewView(),
                         MainView.nodes => const NodesView(),
+                        MainView.security => const SecurityView(),
                         MainView.portForwards => const PortForwardView(),
                         MainView.resources => type == null
                             ? WindowDragArea(child: Center(child: Text('Select a resource kind', style: TextStyle(color: theme.hintColor))))
