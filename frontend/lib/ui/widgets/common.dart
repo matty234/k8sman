@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/models.dart';
+import '../../app/window_chrome.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
@@ -212,7 +213,7 @@ class PageHeader extends StatelessWidget {
     final theme = Theme.of(context);
     return WindowDragArea(
       child: SizedBox(
-        height: titlebarHeight,
+        height: toolbarRowHeight(context),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
           child: Row(children: [

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/models.dart';
+import '../app/kubeconfig_picker.dart';
+import '../app/window_chrome.dart';
 import '../state/app_state.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
@@ -92,7 +94,7 @@ class _ResourceNavState extends State<ResourceNav> {
         // Unified titlebar row: traffic lights live here on macOS.
         WindowDragArea(
           child: SizedBox(
-            height: titlebarHeight,
+            height: toolbarRowHeight(context),
             child: Row(children: [
               const Spacer(),
               IconButton(
@@ -283,7 +285,8 @@ class _ContextPicker extends StatelessWidget {
     final current = app.contexts.any((c) => c.name == app.currentContext) ? app.currentContext : null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: MenuButton<String>(
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        MenuButton<String>(
         tooltip: 'Switch cluster context',
         onSelected: (v) => v != app.currentContext ? app.switchContext(v) : null,
         items: () => [
@@ -320,7 +323,10 @@ class _ContextPicker extends StatelessWidget {
               Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
             ]),
           ),
-      ),
+        ),
+        // Which kubeconfig file the contexts above come from.
+        const KubeconfigPicker(),
+      ]),
     );
   }
 }

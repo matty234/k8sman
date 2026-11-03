@@ -1,9 +1,16 @@
 # k8sman backend API
 
 Local-only HTTP/WebSocket API served by `backend/cmd/k8sman-server` on
-`127.0.0.1:7443`. Reads are always available. Edits, actions and starting
+`127.0.0.1:7443` by default. The macOS app embeds the server and runs it with
+`--addr 127.0.0.1:0`; the server prints `K8SMAN_LISTENING <addr>` on stdout
+once it listens. Reads are always available. Edits, actions and starting
 port-forwards are refused (403) when the server runs with `--read-only`. The Dart client in
 `frontend/lib/api/client.dart` wraps all of these endpoints.
+
+If no kubeconfig can be loaded at startup the server still runs, disconnected:
+cluster endpoints return 503 (`reason: "NoKubeconfig"`), while `/api/health`,
+`/api/contexts`, `/api/kubeconfigs*` and `/api/portforwards*` keep working so
+the UI can let the user pick a file.
 
 Resource targets use query params `group` (`""` = core), `version` (optional:
 the server's preferred version is used if omitted) and `resource` (the plural, e.g. `deployments`).
@@ -11,9 +18,11 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/health` | `{ok, context, host}` |
+| GET | `/api/health` | `{ok, connected, context, host, kubeconfig, readOnly, error?}` |
 | GET | `/api/contexts` | `{current, contexts:[{name,cluster,user,namespace}]}` |
-| POST | `/api/contexts/current` | body `{name}`: switch the kube context |
+| POST | `/api/contexts/current` | body `{name}`: switch the kube context (remembered per kubeconfig) |
+| GET | `/api/kubeconfigs` | `{current, context, home, merged?, candidates:[{path, contexts:[names], currentContext, source, error?}]}`. `current` is the active file (`""` = default rules merging the `merged` $KUBECONFIG files). Candidates: each `$KUBECONFIG` entry, `~/.kube/config`, other files under `~/.kube` that parse as kubeconfig (cache dirs skipped), and recently used files. `source` is `KUBECONFIG`, `default`, `kube-dir` or `recent`. Only paths and context names are returned |
+| POST | `/api/kubeconfigs/current` | body `{path}` (absolute or `~/…`): validate the file, make it active and connect to its last used context (else its current-context). Returns the same shape as GET |
 | GET | `/api/resources[?refresh=true]` | discovered listable types `[{group,version,resource,kind,namespaced,verbs,shortNames,categories,custom}]` |
 | GET | `/api/namespaces` | `{namespaces:[...], default}` |
 | GET | `/api/table` | list rendered through the jq columns: `{resource, columns, isDefaultColumns, resourceVersion, rows:[{uid,name,namespace,resourceVersion,cells,object?}], columnErrors:{idx:msg}}`. Accepts `labelSelector`, `fieldSelector`, `includeObject=true` |
@@ -68,12 +77,12 @@ The actions are:
 Forwards are persisted to `~/.config/k8sman/portforwards.json` and supervised.
 Each one resolves to a ready pod (for services: the selector, with
 `targetPort` mapped like kubectl does; for workloads: their selector). It watches
-that pod and reconnects to a fresh pod with backoff if the pod or stream dies.
+that pod and reconnects to a fresh pod with backoff if the pod or stream dies. Each forward stores the kubeconfig file it was created under (`kubeconfig`, "" = default loading rules), so it keeps working after the app switches kubeconfig.
 Forwards with `autoStart` start when the backend launches.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/portforwards` | `{forwards:[{id, context, namespace, kind, name, port, localPort, address, autoStart, label, state, pod, remotePort, error, since, reconnects, connections, url}]}`. `state` is `stopped`, `starting`, `active`, `reconnecting` or `error` |
+| GET | `/api/portforwards` | `{forwards:[{id, context, kubeconfig, namespace, kind, name, port, localPort, address, autoStart, label, state, pod, remotePort, error, since, reconnects, connections, url}]}`. `state` is `stopped`, `starting`, `active`, `reconnecting` or `error` |
 | POST | `/api/portforwards` | create: `{namespace, kind: pod/service/deployment/statefulset/daemonset/replicaset, name, port (number or name), localPort (0 = auto), autoStart, label}` |
 | PATCH | `/api/portforwards/{id}` | `{autoStart?, label?, localPort?}` |
 | POST | `/api/portforwards/{id}/start`, `/api/portforwards/{id}/stop` | start or stop a forward |

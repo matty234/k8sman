@@ -23,6 +23,7 @@ import (
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/columns"
 	"github.com/bargrove/k8sman/backend/internal/portforward"
+	"github.com/bargrove/k8sman/backend/internal/settings"
 )
 
 // Server wires the HTTP API to a cluster manager and column store.
@@ -31,6 +32,7 @@ type Server struct {
 	store    *columns.Store
 	pf       *portforward.Manager
 	readOnly bool
+	settings *settings.Store
 	mux      *http.ServeMux
 }
 
@@ -38,16 +40,29 @@ type Server struct {
 type Options struct {
 	// ReadOnly disables object edits and starting port-forwards.
 	ReadOnly bool
+	// Settings persists the chosen kubeconfig and last context. Optional.
+	Settings *settings.Store
 }
 
 // New builds the server and registers routes.
 func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, opts Options) *Server {
-	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, mux: http.NewServeMux()}
+	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, settings: opts.Settings, mux: http.NewServeMux()}
+	if s.settings == nil {
+		s.settings, _ = settings.Open("")
+	}
 	s.routes()
 	s.mutationRoutes()
 	s.actionRoutes()
 	s.overviewRoutes()
+	s.kubeconfigRoutes()
 	return s
+}
+
+// worksDisconnected lists endpoints that don't need an active context, so
+// the UI can still pick a kubeconfig when none could be loaded.
+func worksDisconnected(path string) bool {
+	return path == "/api/health" || path == "/api/contexts" ||
+		strings.HasPrefix(path, "/api/kubeconfigs") || strings.HasPrefix(path, "/api/portforwards")
 }
 
 func (s *Server) routes() {
@@ -80,6 +95,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	start := time.Now()
+	if s.mgr.Clients() == nil && !worksDisconnected(r.URL.Path) {
+		writeJSON(w, http.StatusServiceUnavailable, apiError{
+			Error:  fmt.Sprintf("no cluster connection: %v", s.mgr.Err()),
+			Code:   http.StatusServiceUnavailable,
+			Reason: "NoKubeconfig",
+		})
+		return
+	}
 	s.mux.ServeHTTP(w, r)
 	if r.URL.Path != "/api/health" {
 		log.Printf("%s %s (%s)", r.Method, r.URL.RequestURI(), time.Since(start).Round(time.Millisecond))
@@ -249,8 +272,13 @@ func (b *tableBuilder) table(rt cluster.ResourceType, isDefault bool, list *unst
 // ---- handlers --------------------------------------------------------------
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	c := s.mgr.Clients()
-	writeJSON(w, 200, map[string]any{"ok": true, "context": c.Context, "host": c.RESTConfig.Host, "readOnly": s.readOnly})
+	out := map[string]any{"ok": true, "readOnly": s.readOnly, "kubeconfig": s.mgr.Kubeconfig(), "connected": false}
+	if c := s.mgr.Clients(); c != nil {
+		out["context"], out["host"], out["connected"] = c.Context, c.RESTConfig.Host, true
+	} else {
+		out["error"] = s.mgr.Err().Error()
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) handleContexts(w http.ResponseWriter, r *http.Request) {
@@ -273,6 +301,9 @@ func (s *Server) handleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	if err := s.mgr.SwitchContext(body.Name); err != nil {
 		writeErr(w, badRequest("%v", err))
 		return
+	}
+	if err := s.settings.SetLastContext(s.mgr.Kubeconfig(), body.Name); err != nil {
+		log.Printf("save settings: %v", err)
 	}
 	s.handleContexts(w, r)
 }

@@ -1,0 +1,176 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import '../api/kubeconfig.dart';
+import '../state/app_state.dart';
+import '../ui/theme.dart';
+
+/// Native file helpers in `MainFlutterWindow.swift`.
+class NativeFiles {
+  NativeFiles._();
+  static const _channel = MethodChannel('k8sman/files');
+
+  /// Shows an open panel (starting in ~/.kube); returns the chosen path.
+  static Future<String?> chooseKubeconfig({String? directory}) async {
+    try {
+      return await _channel.invokeMethod<String>('chooseKubeconfig', {'directory': ?directory});
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  static Future<void> reveal(String path) async {
+    try {
+      await _channel.invokeMethod<void>('reveal', path);
+    } on MissingPluginException {
+      // Not on macOS.
+    }
+  }
+}
+
+const _choose = '\u0000choose';
+const _reveal = '\u0000reveal';
+
+/// Shows the active kubeconfig file; its menu lists the candidate files (with
+/// context counts), "Choose file…" and "Reveal in Finder".
+class KubeconfigPicker extends StatefulWidget {
+  /// Compact: one line in the nav. Otherwise a button (startup error screen).
+  final bool compact;
+  const KubeconfigPicker({super.key, this.compact = true});
+
+  @override
+  State<KubeconfigPicker> createState() => _KubeconfigPickerState();
+}
+
+class _KubeconfigPickerState extends State<KubeconfigPicker> {
+  bool _hover = false;
+
+  Future<void> _open(BuildContext ctx) async {
+    final app = context.read<AppState>();
+    final box = ctx.findRenderObject() as RenderBox?;
+    final overlay = Overlay.of(ctx).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+    // Refresh so newly added files show up (quick: local file reads only).
+    await app.loadKubeconfigs().timeout(const Duration(seconds: 2), onTimeout: () {});
+    if (!ctx.mounted) return;
+    final list = app.kubeconfigs;
+    final topLeft = box.localToGlobal(Offset(0, box.size.height + 4), ancestor: overlay);
+    final v = await showMenu<String>(
+      context: ctx,
+      position: RelativeRect.fromLTRB(topLeft.dx, topLeft.dy, overlay.size.width - topLeft.dx - box.size.width, 0),
+      constraints: BoxConstraints(minWidth: box.size.width.clamp(260, 460), maxWidth: 460),
+      items: _items(ctx, list),
+    );
+    if (v == null || !mounted) return;
+    if (v == _reveal) {
+      if (list.current.isNotEmpty) await NativeFiles.reveal(list.current);
+      return;
+    }
+    final path = v == _choose ? await NativeFiles.chooseKubeconfig() : v;
+    if (path == null || path == list.current) return;
+    final err = await app.switchKubeconfig(path);
+    if (err != null && mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Could not use ${list.shorten(path)}: $err')));
+    }
+  }
+
+  List<PopupMenuEntry<String>> _items(BuildContext context, KubeconfigList list) {
+    final theme = Theme.of(context);
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    return [
+      for (final c in list.candidates)
+        PopupMenuItem<String>(
+          value: c.path,
+          enabled: c.error == null && c.contexts.isNotEmpty,
+          height: 40,
+          child: Row(children: [
+            SizedBox(width: 18, child: c.path == list.current ? Icon(Icons.check, size: 14, color: theme.colorScheme.primary) : null),
+            Expanded(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(list.shorten(c.path), overflow: TextOverflow.ellipsis, maxLines: 1),
+                Text(
+                  c.error ?? _contextsLabel(c),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: c.error != null ? hint?.copyWith(color: theme.colorScheme.error) : hint,
+                ),
+              ]),
+            ),
+          ]),
+        ),
+      if (list.candidates.isNotEmpty) const PopupMenuDivider(height: 8),
+      const PopupMenuItem<String>(
+        value: _choose,
+        height: 28,
+        child: Row(children: [SizedBox(width: 18), Text('Choose file…')]),
+      ),
+      PopupMenuItem<String>(
+        value: _reveal,
+        enabled: list.current.isNotEmpty,
+        height: 28,
+        child: const Row(children: [SizedBox(width: 18), Text('Reveal in Finder')]),
+      ),
+    ];
+  }
+
+  static String _contextsLabel(KubeconfigCandidate c) {
+    final n = c.contexts.length;
+    final label = '$n context${n == 1 ? '' : 's'}';
+    return c.source == 'KUBECONFIG' ? '$label · \$KUBECONFIG' : label;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    final label = app.kubeconfigs.currentLabel;
+    if (!widget.compact) {
+      return Builder(
+        builder: (ctx) => OutlinedButton.icon(
+          onPressed: app.switchingKubeconfig ? null : () => _open(ctx),
+          icon: const Icon(Icons.description_outlined, size: 16),
+          label: Text('Kubeconfig: $label'),
+        ),
+      );
+    }
+    return Tooltip(
+      message: app.kubeconfigs.current.isEmpty ? 'Kubeconfig' : 'Kubeconfig: ${app.kubeconfigs.current}',
+      waitDuration: const Duration(milliseconds: 600),
+      child: Builder(
+        builder: (ctx) => MouseRegion(
+          onEnter: (_) => setState(() => _hover = true),
+          onExit: (_) => setState(() => _hover = false),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: app.switchingKubeconfig ? null : () => _open(ctx),
+            child: Container(
+              height: 24,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(color: _hover ? colors.hover : null, borderRadius: BorderRadius.circular(6)),
+              child: Row(children: [
+                SizedBox(
+                  width: 20,
+                  child: app.switchingKubeconfig
+                      ? const Center(child: SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.5)))
+                      : Icon(Icons.description_outlined, size: 14, color: theme.hintColor),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                  ),
+                ),
+                Icon(Icons.unfold_more, size: 12, color: theme.hintColor),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

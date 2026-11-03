@@ -1,0 +1,15 @@
+name: app_icon_tool
+description: Generates the k8sman macOS app icon (AppIcon.appiconset PNGs).
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

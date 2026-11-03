@@ -181,4 +181,60 @@ class AppState extends ChangeNotifier {
     columnsVersion++;
     notifyListeners();
   }
+
+  // ---- kubeconfig selection and backend (re)connects ----
+
+  /// The active kubeconfig and the files the user can switch to.
+  KubeconfigList kubeconfigs = const KubeconfigList();
+
+  /// Set while a kubeconfig switch is in flight.
+  bool switchingKubeconfig = false;
+
+  bool _connectedOnce = false;
+
+  /// Called when the backend becomes reachable (first launch, or a new port
+  /// after the embedded backend restarted). Reloads everything and makes
+  /// open tables re-subscribe.
+  Future<void> backendConnected() async {
+    final again = _connectedOnce;
+    _connectedOnce = true;
+    await init();
+    if (again) columnsChanged();
+    await loadKubeconfigs();
+  }
+
+  Future<void> loadKubeconfigs() async {
+    try {
+      kubeconfigs = await api.kubeconfigs();
+      notifyListeners();
+    } catch (_) {
+      // Older backends lack the endpoint; the picker just stays empty.
+    }
+  }
+
+  /// Switch to another kubeconfig file and reload types and namespaces.
+  /// Returns an error message, or null on success.
+  Future<String?> switchKubeconfig(String path) async {
+    switchingKubeconfig = true;
+    notifyListeners();
+    try {
+      kubeconfigs = await api.switchKubeconfig(path);
+    } on ApiException catch (e) {
+      switchingKubeconfig = false;
+      notifyListeners();
+      return e.message;
+    } catch (e) {
+      switchingKubeconfig = false;
+      notifyListeners();
+      return '$e';
+    }
+    _detailStack.clear();
+    namespace = null;
+    selectedType = null;
+    types = const [];
+    await init();
+    switchingKubeconfig = false;
+    columnsChanged();
+    return null;
+  }
 }

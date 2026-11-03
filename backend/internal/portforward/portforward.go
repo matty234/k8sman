@@ -40,9 +40,13 @@ import (
 
 // Spec is the persisted definition of a forward.
 type Spec struct {
-	ID        string `json:"id"`
-	Context   string `json:"context"`
-	Namespace string `json:"namespace"`
+	ID      string `json:"id"`
+	Context string `json:"context"`
+	// Kubeconfig is the kubeconfig file the context comes from, so forwards
+	// keep working after the UI switches kubeconfig. "" = default loading
+	// rules ($KUBECONFIG or ~/.kube/config).
+	Kubeconfig string `json:"kubeconfig,omitempty"`
+	Namespace  string `json:"namespace"`
 	// Kind: pod | service | deployment | statefulset | daemonset | replicaset
 	Kind string `json:"kind"`
 	Name string `json:"name"`
@@ -113,6 +117,11 @@ func NewManager(clusters *cluster.Manager, path string) (*Manager, error) {
 		}
 	}
 	for _, s := range specs {
+		if s.Kubeconfig == "" {
+			// Saved before forwards remembered their kubeconfig: they were
+			// created against whatever this backend was started with.
+			s.Kubeconfig = clusters.Kubeconfig()
+		}
 		f := &forward{status: Status{Spec: s, State: Stopped}}
 		m.forwards[s.ID] = f
 		if s.AutoStart {
@@ -170,7 +179,14 @@ func (m *Manager) Create(s Spec) (Status, error) {
 		return Status{}, errors.New("namespace, name and port are required")
 	}
 	if s.Context == "" {
-		s.Context = m.clusters.Clients().Context
+		c := m.clusters.Clients()
+		if c == nil {
+			return Status{}, fmt.Errorf("no cluster connection: %v", m.clusters.Err())
+		}
+		s.Context = c.Context
+	}
+	if s.Kubeconfig == "" {
+		s.Kubeconfig = m.clusters.Kubeconfig()
 	}
 	if s.Address == "" {
 		s.Address = "127.0.0.1"
@@ -391,7 +407,7 @@ func (m *Manager) supervise(ctx context.Context, f *forward) {
 // runOnce resolves the target, forwards, and blocks until the forward breaks
 // or the bound pod stops being usable.
 func (m *Manager) runOnce(ctx context.Context, f *forward, spec Spec) error {
-	c, err := m.clusters.ClientsFor(spec.Context)
+	c, err := m.clusters.ClientsIn(spec.Kubeconfig, spec.Context)
 	if err != nil {
 		return err
 	}
