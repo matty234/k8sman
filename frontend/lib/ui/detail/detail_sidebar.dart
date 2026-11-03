@@ -121,6 +121,8 @@ class _LiveObjectState extends State<_LiveObject> {
                 // Tab count can change between kinds; key forces a fresh controller.
                 key: ValueKey('${t.type.gk}-${extraTabs.length}'),
                 length: 3 + extraTabs.length,
+                // Native-style: tabs switch instantly (no slide, no gliding indicator).
+                animationDuration: Duration.zero,
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   TabBar(
                     isScrollable: true,
@@ -133,7 +135,7 @@ class _LiveObjectState extends State<_LiveObject> {
                     ],
                   ),
                   Expanded(
-                    child: TabBarView(children: [
+                    child: InstantTabView(children: [
                       ListView(
                         key: PageStorageKey('overview-${ctx!.uid}'),
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -362,5 +364,62 @@ class EventList extends StatelessWidget {
           ]),
         ),
     ]);
+  }
+}
+
+
+/// Replacement for [TabBarView] that switches instantly instead of sliding.
+/// Tabs are built lazily on first visit and then kept alive (offstage), so
+/// state such as an in-progress YAML edit or a scroll position survives
+/// switching tabs.
+class InstantTabView extends StatefulWidget {
+  final List<Widget> children;
+  const InstantTabView({super.key, required this.children});
+
+  @override
+  State<InstantTabView> createState() => _InstantTabViewState();
+}
+
+class _InstantTabViewState extends State<InstantTabView> {
+  TabController? _controller;
+  final Set<int> _visited = {};
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final c = DefaultTabController.of(context);
+    if (c != _controller) {
+      _controller?.removeListener(_onTab);
+      _controller = c..addListener(_onTab);
+      _visited
+        ..clear()
+        ..add(c.index);
+    }
+  }
+
+  void _onTab() {
+    final i = _controller!.index;
+    if (!mounted) return;
+    setState(() => _visited.add(i));
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeListener(_onTab);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final index = _controller?.index ?? 0;
+    return IndexedStack(
+      index: index,
+      sizing: StackFit.expand,
+      children: [
+        for (var i = 0; i < widget.children.length; i++)
+          // TickerMode off for hidden tabs so their animations/spinners pause.
+          TickerMode(enabled: i == index, child: _visited.contains(i) ? widget.children[i] : const SizedBox.shrink()),
+      ],
+    );
   }
 }
