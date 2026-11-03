@@ -1,6 +1,7 @@
 package argoapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -160,7 +161,7 @@ func (h *Handler) status(ctx context.Context, e env, appNs string, refresh bool)
 			st.CLILogin = l.Context
 		}
 		if auth == AuthCLI && tok == "" {
-			st.Error = "No argocd CLI login for " + firstNonEmpty(st.ArgoURL, "this Argo CD") + ". Run: argocd login " + firstNonEmpty(st.ArgoURL, "<server>") + " --sso --grpc-web"
+			st.Error = "No argocd CLI login for " + cmp.Or(st.ArgoURL, "this Argo CD") + ". Run: argocd login " + cmp.Or(st.ArgoURL, "<server>") + " --sso --grpc-web"
 		}
 	}
 	if d.reachable && tok != "" {
@@ -228,7 +229,7 @@ func (h *Handler) handleSetToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e := h.env()
-	ctxName := firstNonEmpty(body.Context, e.context)
+	ctxName := cmp.Or(body.Context, e.context)
 	// Check the token first when it is for the current context and Argo is
 	// reachable; a rejected token isn't saved.
 	if ctxName == e.context {
@@ -251,7 +252,7 @@ func (h *Handler) handleSetToken(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleClearToken(w http.ResponseWriter, r *http.Request) {
 	e := h.env()
-	ctxName := firstNonEmpty(r.URL.Query().Get("context"), e.context)
+	ctxName := cmp.Or(r.URL.Query().Get("context"), e.context)
 	h.setSession(ctxName, "")
 	if err := h.tokens.SetArgoCDUseCLI(ctxName, false); err != nil {
 		writeErr(w, &Error{Status: 500, Message: "save settings: " + err.Error()})
@@ -279,7 +280,7 @@ func (h *Handler) handleInitialAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !d.reachable {
-		writeErr(w, &Error{Status: 502, Reason: ReasonUnreachable, Message: firstNonEmpty(d.err, "argocd-server is not reachable")})
+		writeErr(w, &Error{Status: 502, Reason: ReasonUnreachable, Message: cmp.Or(d.err, "argocd-server is not reachable")})
 		return
 	}
 	sec, err := e.typed.CoreV1().Secrets(d.server.Namespace).Get(r.Context(), initialAdminName, metav1.GetOptions{})
@@ -337,7 +338,7 @@ func (h *Handler) handleDiff(w http.ResponseWriter, r *http.Request) {
 	if !d.reachable {
 		// Maybe it came back: rediscover once.
 		if d = h.disc.get(r.Context(), e, appNs, true); !d.reachable {
-			writeErr(w, &Error{Status: 502, Reason: ReasonUnreachable, Message: firstNonEmpty(d.err, "argocd-server is not reachable")})
+			writeErr(w, &Error{Status: 502, Reason: ReasonUnreachable, Message: cmp.Or(d.err, "argocd-server is not reachable")})
 			return
 		}
 	}
@@ -412,7 +413,7 @@ func (h *Handler) handleUseCLI(w http.ResponseWriter, r *http.Request) {
 	e := h.env()
 	d := h.disc.get(r.Context(), e, body.Namespace, false)
 	if d.server == nil {
-		writeErr(w, &Error{Status: 404, Reason: ReasonNotFound, Message: firstNonEmpty(d.err, "argocd-server not found")})
+		writeErr(w, &Error{Status: 404, Reason: ReasonNotFound, Message: cmp.Or(d.err, "argocd-server not found")})
 		return
 	}
 	host := argoURLHost(r.Context(), e, d.server)

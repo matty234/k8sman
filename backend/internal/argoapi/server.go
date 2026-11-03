@@ -15,6 +15,7 @@
 package argoapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -117,7 +118,7 @@ func upstreamErr(code int, raw []byte, err error) error {
 		if code == 503 || code == 502 {
 			reason = ReasonUnreachable
 		}
-		return &Error{Status: code, Reason: reason, Kube: true, Message: "Kubernetes API: " + firstNonEmpty(kube.Message, string(kube.Reason))}
+		return &Error{Status: code, Reason: reason, Kube: true, Message: "Kubernetes API: " + cmp.Or(kube.Message, string(kube.Reason))}
 	}
 	var argo struct {
 		Error   string `json:"error"`
@@ -125,7 +126,7 @@ func upstreamErr(code int, raw []byte, err error) error {
 	}
 	msg := ""
 	if len(raw) > 0 && json.Unmarshal(raw, &argo) == nil {
-		msg = firstNonEmpty(argo.Message, argo.Error)
+		msg = cmp.Or(argo.Message, argo.Error)
 	}
 	if msg == "" {
 		msg = svcproxy.PlainText(raw)
@@ -140,7 +141,7 @@ func upstreamErr(code int, raw []byte, err error) error {
 	if msg == "" && err != nil {
 		msg = err.Error()
 	}
-	e := &Error{Status: code, Message: "Argo CD: " + firstNonEmpty(msg, "request failed")}
+	e := &Error{Status: code, Message: "Argo CD: " + cmp.Or(msg, "request failed")}
 	switch code {
 	case 401:
 		e.Reason = ReasonUnauthorized
@@ -153,15 +154,6 @@ func upstreamErr(code int, raw []byte, err error) error {
 		}
 	}
 	return e
-}
-
-func firstNonEmpty(s ...string) string {
-	for _, x := range s {
-		if x != "" {
-			return x
-		}
-	}
-	return ""
 }
 
 // env is what one request needs from the active kube context.

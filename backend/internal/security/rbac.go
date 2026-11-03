@@ -3,6 +3,7 @@ package security
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 
@@ -88,7 +89,7 @@ func RuleRisks(r rbacv1.PolicyRule) []Risk {
 		return nil // nonResourceURLs only
 	}
 	v, res, g := r.Verbs, r.Resources, r.APIGroups
-	allVerbs, allRes, allGroups := contains(v, "*"), contains(res, "*"), contains(g, "*")
+	allVerbs, allRes, allGroups := slices.Contains(v, "*"), slices.Contains(res, "*"), slices.Contains(g, "*")
 	var out []Risk
 	add := func(p int, reason string) { out = append(out, Risk{p, reason}) }
 
@@ -135,15 +136,6 @@ func RuleRisks(r rbacv1.PolicyRule) []Risk {
 		add(35, "Can create pods or workloads (run as any ServiceAccount in the namespace and mount its Secrets)")
 	}
 	return out
-}
-
-func contains(list []string, v string) bool {
-	for _, s := range list {
-		if s == v {
-			return true
-		}
-	}
-	return false
 }
 
 func anyIn(list []string, set map[string]bool) bool {

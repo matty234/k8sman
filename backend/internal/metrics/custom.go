@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 
@@ -85,7 +86,7 @@ func groupCustomResources(l apiResourceList) []MetricResource {
 		// Adapters list each metric twice (namespaced and cluster-scoped);
 		// remember that it can be namespaced.
 		mr.Namespaced = mr.Namespaced || r.Namespaced
-		if !contains(mr.Metrics, metric) {
+		if !slices.Contains(mr.Metrics, metric) {
 			mr.Metrics = append(mr.Metrics, metric)
 		}
 	}
@@ -101,15 +102,6 @@ func groupCustomResources(l apiResourceList) []MetricResource {
 		return out[i].Resource < out[j].Resource
 	})
 	return out
-}
-
-func contains(xs []string, x string) bool {
-	for _, v := range xs {
-		if v == x {
-			return true
-		}
-	}
-	return false
 }
 
 // ObjectRef identifies the object a custom metric describes.

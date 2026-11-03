@@ -11,6 +11,7 @@
 package prom
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -131,7 +132,7 @@ func upstreamErr(code int, raw []byte, err error) error {
 		Message string `json:"message"`
 	}
 	if len(raw) > 0 && json.Unmarshal(raw, &j) == nil {
-		msg = firstNonEmpty(j.Error, j.Message)
+		msg = cmp.Or(j.Error, j.Message)
 	}
 	if msg == "" {
 		msg = svcproxy.PlainText(raw)
@@ -149,15 +150,6 @@ func upstreamErr(code int, raw []byte, err error) error {
 		msg = "request failed"
 	}
 	return &UpstreamError{Status: code, Message: msg}
-}
-
-func firstNonEmpty(s ...string) string {
-	for _, x := range s {
-		if x != "" {
-			return x
-		}
-	}
-	return ""
 }
 
 // getJSON GETs p from in and decodes the body into out.
@@ -188,7 +180,7 @@ func promGet(ctx context.Context, r requester, in *Instance, p string, q url.Val
 		return nil, nil, err
 	}
 	if env.Status != "success" {
-		return nil, env.Warnings, &UpstreamError{Status: 422, Message: firstNonEmpty(env.Error, "prometheus returned status "+env.Status)}
+		return nil, env.Warnings, &UpstreamError{Status: 422, Message: cmp.Or(env.Error, "prometheus returned status "+env.Status)}
 	}
 	return env.Data, env.Warnings, nil
 }

@@ -1,6 +1,7 @@
 package overview
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 	"time"
@@ -140,7 +141,7 @@ func (a *analyzer) argoApps() {
 			is.Message = msg + " (" + state + ")"
 		case health == "Degraded":
 			is.Severity, is.Category, is.Reason = Critical, "argoDegraded", "Degraded"
-			is.Message = firstNonEmpty(str(app, "status", "health", "message"), "One or more resources are degraded") + " (" + state + ")"
+			is.Message = cmp.Or(str(app, "status", "health", "message"), "One or more resources are degraded") + " (" + state + ")"
 			is.since = healthSince
 		case health == "Missing":
 			is.Severity, is.Category, is.Reason = Warning, "argoMissing", "Missing"
@@ -172,13 +173,4 @@ func orUnknown(s string) string {
 		return "Unknown"
 	}
 	return s
-}
-
-func firstNonEmpty(s ...string) string {
-	for _, x := range s {
-		if x != "" {
-			return x
-		}
-	}
-	return ""
 }

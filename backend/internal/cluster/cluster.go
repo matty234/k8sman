@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -92,7 +93,7 @@ func (c *Clients) Resources(ctx context.Context, refresh bool) ([]ResourceType, 
 			continue
 		}
 		for _, r := range l.APIResources {
-			if strings.Contains(r.Name, "/") || !hasVerb(r.Verbs, "list") {
+			if strings.Contains(r.Name, "/") || !slices.Contains(r.Verbs, "list") {
 				continue
 			}
 			out = append(out, ResourceType{
@@ -196,13 +197,4 @@ func (c *Clients) loadCRDs(ctx context.Context) map[schema.GroupResource]bool {
 	}
 	c.crdSet, c.crdCols = set, cols
 	return set
-}
-
-func hasVerb(verbs []string, v string) bool {
-	for _, x := range verbs {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }

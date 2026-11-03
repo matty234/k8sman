@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -94,7 +95,7 @@ func availableActions(c *cluster.Clients, rt cluster.ResourceType) []string {
 	for action, targets := range actionTargets {
 		for _, t := range targets {
 			ok := t == gr ||
-				(t == "*" && hasVerb(rt.Verbs, "delete")) ||
+				(t == "*" && slices.Contains(rt.Verbs, "delete")) ||
 				(t == "*scale" && rt.Custom && hasScaleSubresource(c, rt))
 			if ok {
 				out = append(out, action)
@@ -113,15 +114,6 @@ func hasScaleSubresource(c *cluster.Clients, rt cluster.ResourceType) bool {
 	}
 	for _, r := range l.APIResources {
 		if r.Name == rt.Resource+"/scale" {
-			return true
-		}
-	}
-	return false
-}
-
-func hasVerb(verbs []string, v string) bool {
-	for _, x := range verbs {
-		if x == v {
 			return true
 		}
 	}
