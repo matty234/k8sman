@@ -1,0 +1,49 @@
+{
+  "apiVersion": "ops.example.dev/v1",
+  "kind": "Backup",
+  "metadata": {
+    "name": "nightly",
+    "namespace": "demo",
+    "uid": "b7f9a1c2-0000-4a5e-8a51-backupnightly",
+    "generation": 5,
+    "creationTimestamp": "2026-10-02T09:00:00Z"
+  },
+  "spec": {
+    "schedule": "0 3 * * *",
+    "suspend": false,
+    "parallelism": 4,
+    "databaseRef": {"name": "orders-db", "namespace": "data"},
+    "storage": {
+      "bucket": "acme-db-backups",
+      "provider": "s3",
+      "credentialsSecretName": "s3-creds",
+      "endpoint": "https://s3.eu-west-1.amazonaws.com"
+    },
+    "serviceAccountName": "backup-runner",
+    "retention": {"keepLast": 14, "maxAge": "720h"},
+    "hooks": [
+      {"name": "flush", "phase": "Pre", "command": ["psql", "-c", "CHECKPOINT"], "timeoutSeconds": 30},
+      {"name": "notify", "phase": "Post", "command": ["curl", "-X", "POST", "$WEBHOOK"], "timeoutSeconds": 10},
+      {"name": "verify", "phase": "Post", "command": ["pg_verifybackup", "/backup"]}
+    ],
+    "volumes": [
+      {"name": "scratch", "persistentVolumeClaim": {"claimName": "backup-scratch"}},
+      {"name": "config", "configMap": {"name": "backup-config"}}
+    ],
+    "envFrom": [{"secretRef": {"name": "backup-env"}}],
+    "postScript": "#!/bin/sh\nset -eu\necho \"backup finished at $(date -u)\"\naws s3 ls s3://acme-db-backups/orders/ | tail -n 5\n",
+    "labels": {"team": "data", "tier": "critical"}
+  },
+  "status": {
+    "phase": "Failed",
+    "observedGeneration": 4,
+    "lastBackupTime": "2026-11-02T03:00:41Z",
+    "lastBackupSize": "12.4Gi",
+    "activeJobs": 0,
+    "lastJobRef": {"apiVersion": "batch/v1", "kind": "Job", "name": "nightly-29372", "namespace": "demo"},
+    "conditions": [
+      {"type": "Ready", "status": "False", "reason": "UploadFailed", "message": "PUT s3://acme-db-backups/orders/2026-11-03.tar.zst: 403 AccessDenied", "lastTransitionTime": "2026-11-03T03:01:12Z", "observedGeneration": 4},
+      {"type": "Scheduled", "status": "True", "reason": "CronValid", "lastTransitionTime": "2026-10-02T09:00:01Z", "observedGeneration": 5}
+    ]
+  }
+}
