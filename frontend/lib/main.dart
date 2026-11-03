@@ -27,6 +27,7 @@ class K8sManApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'k8sman',
         debugShowCheckedModeBanner: false,
+        scrollBehavior: const AppScrollBehavior(),
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
         // Follow the system appearance, like a native app (the window's

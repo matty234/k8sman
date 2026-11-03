@@ -409,3 +409,16 @@ ThemeData buildTheme(Brightness b) {
     badgeTheme: BadgeThemeData(backgroundColor: accent),
   );
 }
+
+/// App-wide scrolling: no rubber-band bounce or overscroll glow/stretch, and
+/// views whose content fits don't scroll at all (macOS defaults to bouncing,
+/// always-scrollable physics, which feels jarring in a dense desktop tool).
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) => const ClampingScrollPhysics();
+
+  @override
+  Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) => child;
+}
