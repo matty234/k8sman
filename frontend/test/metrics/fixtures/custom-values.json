@@ -1,0 +1,4 @@
+{"items":[
+ {"object":{"kind":"Pod","namespace":"demo","name":"web-6fd47b8fcb-442dt","apiVersion":"/v1"},"metric":"http_requests_per_second","value":"2500m","number":2.5,"timestamp":"2026-11-03T12:56:51Z","windowSeconds":60},
+ {"object":{"kind":"Pod","namespace":"demo","name":"web-6fd47b8fcb-4r4gm","apiVersion":"/v1"},"metric":"http_requests_per_second","value":"1100m","number":1.1,"timestamp":"2026-11-03T12:56:51Z","windowSeconds":60}
+]}

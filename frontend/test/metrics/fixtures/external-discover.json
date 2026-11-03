@@ -1,0 +1,1 @@
+{"version":"v1beta1","metrics":[{"name":"s1-cron-Etc-UTC-0xxxx-30xxxx","namespace":"demo","selector":"scaledobject.keda.sh/name=web","source":"hpa","hpa":"web"}]}

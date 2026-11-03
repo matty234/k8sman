@@ -1,0 +1,125 @@
+{
+ "kind": "HorizontalPodAutoscaler",
+ "apiVersion": "autoscaling/v2",
+ "metadata": {
+  "name": "web",
+  "namespace": "demo",
+  "uid": "1c30419e-f612-4cac-94e2-9086574ac0f8",
+  "resourceVersion": "13535",
+  "creationTimestamp": "2026-11-03T11:22:57Z",
+  "labels": {
+   "app.kubernetes.io/managed-by": "keda-operator",
+   "app.kubernetes.io/name": "web",
+   "app.kubernetes.io/part-of": "web",
+   "app.kubernetes.io/version": "2.11.2",
+   "scaledobject.keda.sh/name": "web"
+  },
+  "annotations": {
+   "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"keda.sh/v1alpha1\",\"kind\":\"ScaledObject\",\"metadata\":{\"annotations\":{},\"name\":\"web\",\"namespace\":\"demo\"},\"spec\":{\"advanced\":{\"horizontalPodAutoscalerConfig\":{\"name\":\"web\"}},\"maxReplicaCount\":5,\"minReplicaCount\":2,\"scaleTargetRef\":{\"name\":\"web\"},\"triggers\":[{\"metadata\":{\"value\":\"70\"},\"metricType\":\"Utilization\",\"type\":\"cpu\"},{\"metadata\":{\"desiredReplicas\":\"2\",\"end\":\"30 * * * *\",\"start\":\"0 * * * *\",\"timezone\":\"Etc/UTC\"},\"type\":\"cron\"}]}}\n"
+  },
+  "ownerReferences": [
+   {
+    "apiVersion": "keda.sh/v1alpha1",
+    "kind": "ScaledObject",
+    "name": "web",
+    "uid": "e86cb66c-147d-460c-b04e-b98b7eda4ff1",
+    "controller": true,
+    "blockOwnerDeletion": true
+   }
+  ]
+ },
+ "spec": {
+  "scaleTargetRef": {
+   "kind": "Deployment",
+   "name": "web",
+   "apiVersion": "apps/v1"
+  },
+  "minReplicas": 2,
+  "maxReplicas": 5,
+  "metrics": [
+   {
+    "type": "External",
+    "external": {
+     "metric": {
+      "name": "s1-cron-Etc-UTC-0xxxx-30xxxx",
+      "selector": {
+       "matchLabels": {
+        "scaledobject.keda.sh/name": "web"
+       }
+      }
+     },
+     "target": {
+      "type": "AverageValue",
+      "averageValue": "1"
+     }
+    }
+   },
+   {
+    "type": "Resource",
+    "resource": {
+     "name": "cpu",
+     "target": {
+      "type": "Utilization",
+      "averageUtilization": 70
+     }
+    }
+   }
+  ]
+ },
+ "status": {
+  "currentReplicas": 2,
+  "desiredReplicas": 2,
+  "currentMetrics": [
+   {
+    "type": "External",
+    "external": {
+     "metric": {
+      "name": "s1-cron-Etc-UTC-0xxxx-30xxxx",
+      "selector": {
+       "matchLabels": {
+        "scaledobject.keda.sh/name": "web"
+       }
+      }
+     },
+     "current": {
+      "value": "0",
+      "averageValue": "500m"
+     }
+    }
+   },
+   {
+    "type": "Resource",
+    "resource": {
+     "name": "cpu",
+     "current": {
+      "averageValue": "6m",
+      "averageUtilization": 11
+     }
+    }
+   }
+  ],
+  "conditions": [
+   {
+    "type": "AbleToScale",
+    "status": "True",
+    "lastTransitionTime": "2026-11-03T11:23:12Z",
+    "reason": "ReadyForNewScale",
+    "message": "recommended size matches current size"
+   },
+   {
+    "type": "ScalingActive",
+    "status": "True",
+    "lastTransitionTime": "2026-11-03T12:44:45Z",
+    "reason": "ValidMetricFound",
+    "message": "the HPA was able to successfully calculate a replica count from external metric s1-cron-Etc-UTC-0xxxx-30xxxx(&LabelSelector{MatchLabels:map[string]string{scaledobject.keda.sh/name: web,},MatchExpressions:[]LabelSelectorRequirement{},})"
+   },
+   {
+    "type": "ScalingLimited",
+    "status": "True",
+    "lastTransitionTime": "2026-11-03T12:49:46Z",
+    "reason": "TooFewReplicas",
+    "message": "the desired replica count is less than the minimum replica count"
+   }
+  ]
+ }
+}

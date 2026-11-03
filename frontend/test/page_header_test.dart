@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
+import 'package:k8sman/metrics/metrics_page.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/helm/helm_view.dart';
 import 'package:k8sman/ui/alerts/alerts_view.dart';
@@ -28,6 +29,8 @@ class _Api extends FakeApiClient {
   @override
   Future<List<PortForward>> portForwards() async => [];
   @override
+  Future<Json> metrics(String path, [Map<String, String?> query = const {}]) async => throw ApiException(404, 'metrics.k8s.io is not installed');
+  @override
   Stream<WatchMessage> watch(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
       Stream.value(WatchMessage(type: 'SNAPSHOT', table: TableData.fromJson(jsonDecode(File('../dev/fixtures/api-table-pods.json').readAsStringSync()))));
 }
@@ -40,6 +43,7 @@ void main() {
     'helm': (_) => HelmView(api: FakeHelmApi()),
     'security': (_) => SecurityView(source: _SecurityApi()),
     'alerts': (_) => AlertsView(source: FixturePromApi()),
+    'metrics': (_) => const MetricsPage(),
   };
   for (final e in pages.entries) {
     testWidgets('${e.key} header is titlebar height', (tester) async {

@@ -1,0 +1,18 @@
+{
+ "kind": "Scale",
+ "apiVersion": "autoscaling/v1",
+ "metadata": {
+  "name": "web",
+  "namespace": "demo",
+  "uid": "3da9fffa-3dd5-4b29-a931-46caa39da1bd",
+  "resourceVersion": "3367",
+  "creationTimestamp": "2026-11-03T11:22:57Z"
+ },
+ "spec": {
+  "replicas": 2
+ },
+ "status": {
+  "replicas": 2,
+  "selector": "app=web"
+ }
+}

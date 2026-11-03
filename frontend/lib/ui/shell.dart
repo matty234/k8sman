@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../app/kubeconfig_picker.dart';
 import '../app/window_chrome.dart';
+import '../metrics/metrics_page.dart';
 import '../state/app_state.dart';
 import '../state/log_dock.dart';
 import 'alerts/alerts_view.dart';
@@ -97,6 +98,7 @@ class _ShellState extends State<Shell> {
                         MainView.alerts => const AlertsView(),
                         MainView.nodes => const NodesView(),
                         MainView.security => const SecurityView(),
+                        MainView.metrics => const MetricsPage(),
                         MainView.portForwards => const PortForwardView(),
                         MainView.helm => const HelmView(),
                         MainView.resources => type == null

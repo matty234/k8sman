@@ -19,7 +19,10 @@ class ContainerCard extends StatelessWidget {
   /// Opens a terminal in this container (dock tab). Null hides the link;
   /// it only shows while the container is running.
   final void Function(BuildContext context)? onOpenTerminal;
-  const ContainerCard(this.c, {super.key, this.namespace, this.onViewLogs, this.onOpenTerminal});
+
+  /// Live CPU/memory usage row (lib/metrics), or null to hide it.
+  final Widget? usage;
+  const ContainerCard(this.c, {super.key, this.namespace, this.onViewLogs, this.onOpenTerminal, this.usage});
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +86,7 @@ class ContainerCard extends StatelessWidget {
             if (spec['workingDir'] != null) ('Working dir', MonoValue('${spec['workingDir']}')),
             if (asMapList(spec['ports']).isNotEmpty) ('Ports', _portsWidget(context)),
             if (_hasResources(spec)) ('Resources', _resourcesWidget(context)),
+            if (usage != null) ('Usage', usage!),
             for (final (label, p) in probes) (label, Text(probeSentence(p), style: theme.textTheme.bodySmall)),
             if (asMap(spec['lifecycle']).isNotEmpty) ('Lifecycle', _lifecycleWidget(context)),
             if (asMapList(spec['env']).isNotEmpty) ('Env', _envWidget(context)),

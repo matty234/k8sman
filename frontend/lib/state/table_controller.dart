@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../metrics/quantity.dart';
 
 /// Keeps a live table for one resource type + namespace via /api/watch,
 /// reconnecting with backoff. Also owns client-side filter and sort state.
@@ -118,8 +119,9 @@ class TableController extends ChangeNotifier {
     final sc = sortColumn;
     if (sc != null && sc < columns.length) {
       final isAge = columns[sc].type == 'age';
+      final compare = columns[sc].type == 'quantity' ? compareQuantities : _compare;
       list.sort((a, b) {
-        var cmp = _compare(a.cells.elementAtOrNull(sc), b.cells.elementAtOrNull(sc));
+        var cmp = compare(a.cells.elementAtOrNull(sc), b.cells.elementAtOrNull(sc));
         if (isAge) cmp = -cmp; // newest timestamp = smallest age
         return sortAscending ? cmp : -cmp;
       });

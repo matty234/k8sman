@@ -1,0 +1,13 @@
+{
+ "kind": "ExternalMetricValueList",
+ "apiVersion": "external.metrics.k8s.io/v1beta1",
+ "metadata": {},
+ "items": [
+  {
+   "metricName": "s1-cron-Etc-UTC-0xxxx-30xxxx",
+   "metricLabels": null,
+   "timestamp": "2026-11-03T12:51:42Z",
+   "value": "1"
+  }
+ ]
+}
