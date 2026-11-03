@@ -102,7 +102,7 @@ class _DataEntryState extends State<DataEntry> {
               Icon(_open ? Icons.expand_more : Icons.chevron_right, size: 16, color: theme.hintColor),
               const SizedBox(width: 2),
               Flexible(
-                flex: 0,
+                flex: 2,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 220),
                   child: Text(widget.name, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
@@ -111,6 +111,7 @@ class _DataEntryState extends State<DataEntry> {
               const SizedBox(width: 8),
               if (!_open && singleLine)
                 Expanded(
+                  flex: 3,
                   child: Text(v.trim(), maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11.5, color: theme.hintColor)),
                 )
               else

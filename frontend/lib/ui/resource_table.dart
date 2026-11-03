@@ -225,76 +225,76 @@ class _Toolbar extends StatelessWidget {
         height: titlebarHeight,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
-          child: Row(
-            children: [
-              // Title block shrinks (ellipsis) before the controls do.
-              Expanded(
-                flex: 2,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        t.kind,
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: theme.textTheme.titleLarge,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(count, maxLines: 1, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()])),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        t.apiVersion,
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: theme.textTheme.labelSmall?.copyWith(color: colors.faint, fontWeight: FontWeight.w400),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (t.namespaced) ...[
-                Flexible(
-                  flex: 2,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 190),
-                    child: MenuButton<String>(
-                      tooltip: 'Namespace',
-                      onSelected: (v) => app.setNamespace(v == _allNamespaces ? null : v),
-                      items: () => [
-                        _nsItem(context, _allNamespaces, 'All namespaces', ns == null),
-                        const PopupMenuDivider(height: 9),
-                        for (final n in app.namespaces) _nsItem(context, n, n, n == ns),
-                      ],
-                      builder: (h) => Container(
-                        height: 26,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: theme.inputDecorationTheme.fillColor?.withValues(alpha: h ? 0.14 : null),
-                          borderRadius: BorderRadius.circular(6),
+          child: LayoutBuilder(
+            builder: (context, box) {
+              // Controls get explicit widths (shrinking only when space is
+              // tight) and the title takes all remaining slack, so the
+              // controls stay pinned right on wide windows.
+              final nsWidth = (box.maxWidth * 0.2).clamp(110.0, 190.0);
+              final filterWidth = (box.maxWidth * 0.26).clamp(120.0, 240.0);
+              return Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Flexible(
+                          child: Text(t.kind, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.titleLarge),
                         ),
-                        child: Row(children: [
-                          Icon(Icons.folder_outlined, size: 14, color: theme.hintColor),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(ns ?? 'All namespaces', overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodyMedium),
+                        const SizedBox(width: 8),
+                        Text(
+                          count,
+                          maxLines: 1,
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            t.apiVersion,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: theme.textTheme.labelSmall?.copyWith(color: colors.faint, fontWeight: FontWeight.w400),
                           ),
-                          Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
-                        ]),
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Flexible(
-                flex: 3,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 240),
-                  child: SizedBox(
+                  if (t.namespaced) ...[
+                    SizedBox(
+                      width: nsWidth,
+                      child: MenuButton<String>(
+                        tooltip: 'Namespace',
+                        onSelected: (v) => app.setNamespace(v == _allNamespaces ? null : v),
+                        items: () => [
+                          _nsItem(context, _allNamespaces, 'All namespaces', ns == null),
+                          const PopupMenuDivider(height: 9),
+                          for (final n in app.namespaces) _nsItem(context, n, n, n == ns),
+                        ],
+                        builder: (h) => Container(
+                          height: 26,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: theme.inputDecorationTheme.fillColor?.withValues(alpha: h ? 0.14 : null),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.folder_outlined, size: 14, color: theme.hintColor),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(ns ?? 'All namespaces', overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodyMedium),
+                              ),
+                              Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  SizedBox(
+                    width: filterWidth,
                     height: 26,
                     child: TextField(
                       decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Filter  (or column=value)'),
@@ -302,18 +302,18 @@ class _Toolbar extends StatelessWidget {
                       onChanged: controller.setFilter,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: controller.isDefaultColumns ? 'Customise columns' : 'Customise columns (customised)',
-                icon: Badge(isLabelVisible: !controller.isDefaultColumns, smallSize: 6, child: const Icon(Icons.view_column_outlined)),
-                onPressed: () async {
-                  final changed = await showColumnEditor(context, type: t, namespace: app.namespace);
-                  if (changed == true) app.columnsChanged();
-                },
-              ),
-            ],
+                  const SizedBox(width: 4),
+                  IconButton(
+                    tooltip: controller.isDefaultColumns ? 'Customise columns' : 'Customise columns (customised)',
+                    icon: Badge(isLabelVisible: !controller.isDefaultColumns, smallSize: 6, child: const Icon(Icons.view_column_outlined)),
+                    onPressed: () async {
+                      final changed = await showColumnEditor(context, type: t, namespace: app.namespace);
+                      if (changed == true) app.columnsChanged();
+                    },
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -321,13 +321,15 @@ class _Toolbar extends StatelessWidget {
   }
 
   static PopupMenuItem<String> _nsItem(BuildContext context, String value, String label, bool selected) => PopupMenuItem(
-        value: value,
-        height: 26,
-        child: Row(children: [
-          SizedBox(width: 18, child: selected ? Icon(Icons.check, size: 14, color: Theme.of(context).colorScheme.primary) : null),
-          Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-        ]),
-      );
+    value: value,
+    height: 26,
+    child: Row(
+      children: [
+        SizedBox(width: 18, child: selected ? Icon(Icons.check, size: 14, color: Theme.of(context).colorScheme.primary) : null),
+        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+      ],
+    ),
+  );
 }
 
 class _Header extends StatelessWidget {
@@ -407,10 +409,10 @@ class _Row extends StatelessWidget {
           color: selected
               ? colors.selection
               : hovered
-                  ? colors.hover
-                  : striped
-                      ? colors.stripe
-                      : null,
+              ? colors.hover
+              : striped
+              ? colors.stripe
+              : null,
           borderRadius: BorderRadius.circular(5),
         ),
         child: Row(
@@ -429,6 +431,7 @@ class _Row extends StatelessWidget {
     );
   }
 }
+
 /// Renders one cell according to its column's type hint.
 class TableCellView extends StatelessWidget {
   final dynamic value;
@@ -447,7 +450,10 @@ class TableCellView extends StatelessWidget {
         final t = parseTime(v);
         return Tooltip(
           message: t?.toLocal().toString() ?? '$v',
-          child: Text(t != null ? formatAge(t) : '$v', style: base?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()])),
+          child: Text(
+            t != null ? formatAge(t) : '$v',
+            style: base?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
         );
       case 'status':
         final s = _text(v);
