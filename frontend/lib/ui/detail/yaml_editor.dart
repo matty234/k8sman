@@ -393,7 +393,12 @@ class _FindBar extends StatelessWidget implements PreferredSizeWidget {
 /// Unified diff with collapsed unchanged runs.
 class DiffView extends StatelessWidget {
   final List<DiffLine> lines;
-  const DiffView({super.key, required this.lines});
+
+  /// Size to the content (up to [maxHeight], then scroll) instead of filling
+  /// the parent, for diffs shown inline in a scrolling panel.
+  final bool shrinkWrap;
+  final double maxHeight;
+  const DiffView({super.key, required this.lines, this.shrinkWrap = false, this.maxHeight = 480});
 
   @override
   Widget build(BuildContext context) {
@@ -403,9 +408,10 @@ class DiffView extends StatelessWidget {
       return Center(child: Text('No changes', style: TextStyle(color: theme.hintColor)));
     }
     final add = severityColor(context, Severity.ok), del = severityColor(context, Severity.error);
-    return Container(
+    final box = Container(
       decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLowest, borderRadius: BorderRadius.circular(6), border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
       child: ListView.builder(
+        shrinkWrap: shrinkWrap,
         padding: const EdgeInsets.symmetric(vertical: 6),
         itemCount: items.length,
         itemBuilder: (context, i) {
@@ -432,5 +438,6 @@ class DiffView extends StatelessWidget {
         },
       ),
     );
+    return shrinkWrap ? ConstrainedBox(constraints: BoxConstraints(maxHeight: maxHeight), child: box) : box;
   }
 }

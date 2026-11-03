@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/argocd/app_actions.dart';
+import 'package:k8sman/panels/argocd/app_diff.dart';
 import 'package:k8sman/panels/argocd/app_resources.dart';
 import 'package:k8sman/panels/argocd/application_panel.dart';
 import 'package:k8sman/panels/argocd/applicationset_panel.dart';
@@ -19,6 +20,7 @@ import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
+import 'fake_argo_diff.dart';
 import '../../support/screenshot.dart';
 
 dynamic _raw(String name) => jsonDecode(File('test/panels/argocd/fixtures/$name').readAsStringSync());
@@ -66,9 +68,14 @@ class ArgoFakeApi extends FakeApiClient {
   }
 }
 
-Future<AppState> pumpArgo(WidgetTester tester, Json object, {ApiClient? api, Size size = const Size(560, 2400), bool readOnly = false}) async {
+Future<AppState> pumpArgo(WidgetTester tester, Json object,
+    {ApiClient? api, Size size = const Size(560, 2400), bool readOnly = false, ArgoDiffApi Function(ApiClient)? diffApi}) async {
   final t = typeOf(object);
   final client = api ?? ArgoFakeApi();
+  // No argocd-server unless the test provides one (never real HTTP).
+  ArgoDiffApi.debugOverride = diffApi ?? FakeArgoDiffApi.notFound;
+  ArgoDiffCache.reset();
+  addTearDown(() => ArgoDiffApi.debugOverride = null);
   final app = AppState(client)
     ..types = argoTypes
     ..readOnly = readOnly

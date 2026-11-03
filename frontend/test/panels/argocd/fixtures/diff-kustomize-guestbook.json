@@ -1,0 +1,34 @@
+{
+    "resources": [
+        {
+            "group": "apps",
+            "kind": "Deployment",
+            "namespace": "kustomize-guestbook",
+            "name": "staging-guestbook-ui",
+            "status": "OutOfSync",
+            "hook": false,
+            "requiresPruning": false,
+            "target": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  annotations:\n    argocd.argoproj.io/tracking-id: kustomize-guestbook:apps/Deployment:kustomize-guestbook/staging-guestbook-ui\n  labels:\n    env: staging\n  name: staging-guestbook-ui\n  namespace: kustomize-guestbook\nspec:\n  replicas: 1\n  revisionHistoryLimit: 3\n  selector:\n    matchLabels:\n      app: guestbook-ui\n      env: staging\n  template:\n    metadata:\n      labels:\n        app: guestbook-ui\n        env: staging\n    spec:\n      containers:\n      - image: gcr.io/google-samples/gb-frontend:v5\n        name: guestbook-ui\n        ports:\n        - containerPort: 80\n",
+            "live": null
+        },
+        {
+            "group": "",
+            "kind": "Service",
+            "namespace": "kustomize-guestbook",
+            "name": "staging-guestbook-ui",
+            "status": "OutOfSync",
+            "hook": false,
+            "requiresPruning": false,
+            "target": "apiVersion: v1\nkind: Service\nmetadata:\n  annotations:\n    argocd.argoproj.io/tracking-id: kustomize-guestbook:/Service:kustomize-guestbook/staging-guestbook-ui\n  labels:\n    env: staging\n  name: staging-guestbook-ui\n  namespace: kustomize-guestbook\nspec:\n  ports:\n  - port: 80\n    targetPort: 80\n  selector:\n    app: guestbook-ui\n    env: staging\n",
+            "live": null
+        }
+    ],
+    "server": {
+        "namespace": "argocd",
+        "service": "argocd-server",
+        "port": 443,
+        "scheme": "https",
+        "version": "v3.5.7"
+    },
+    "auth": "session"
+}

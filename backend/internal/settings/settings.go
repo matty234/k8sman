@@ -6,6 +6,7 @@ package settings
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -27,6 +28,10 @@ type Settings struct {
 	// (chart icon URLs and website favicons). nil = automatic: on for local
 	// clusters (kind, k3d, minikube, Docker Desktop, …), off otherwise.
 	RemoteIcons *bool `json:"remoteIcons,omitempty"`
+	// ArgoCDTokens maps kube context → an Argo CD API token the user entered
+	// (for per-resource diffs). The file is written 0600; tokens are never
+	// returned by the API or logged.
+	ArgoCDTokens map[string]string `json:"argocdTokens,omitempty"`
 }
 
 // Store reads and writes the settings file. Methods are safe for concurrent use.
@@ -73,6 +78,7 @@ func (st *Store) Get() Settings {
 			out.LastContext[k] = v
 		}
 	}
+	out.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
 	return out
 }
 
@@ -86,6 +92,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	for k, v := range st.s.LastContext {
 		next.LastContext[k] = v
 	}
+	next.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -113,6 +120,31 @@ func (st *Store) UseKubeconfig(path string) error {
 // SetLastContext remembers the selected context for a kubeconfig path.
 func (st *Store) SetLastContext(kubeconfig, context string) error {
 	return st.Update(func(s *Settings) { s.LastContext[kubeconfig] = context })
+}
+
+// ArgoCDToken returns the Argo CD token saved for a kube context ("" = none).
+func (st *Store) ArgoCDToken(context string) string {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.s.ArgoCDTokens[context]
+}
+
+// SetArgoCDToken saves (or, with an empty token, removes) the Argo CD token
+// for a kube context.
+func (st *Store) SetArgoCDToken(context, token string) error {
+	return st.Update(func(s *Settings) {
+		if token == "" {
+			delete(s.ArgoCDTokens, context)
+			if len(s.ArgoCDTokens) == 0 {
+				s.ArgoCDTokens = nil
+			}
+			return
+		}
+		if s.ArgoCDTokens == nil {
+			s.ArgoCDTokens = map[string]string{}
+		}
+		s.ArgoCDTokens[context] = token
+	})
 }
 
 func (st *Store) write(s Settings) error {

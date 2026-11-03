@@ -1,6 +1,8 @@
 /// "Managed resources" for an Application: `status.resources` grouped by kind
-/// with sync and health badges, problems first, a filter, and an optional
-/// resource tree (Deployment → ReplicaSet → Pod) built from ownerReferences.
+/// with sync and health badges, problems first, a filter, an optional
+/// resource tree (Deployment → ReplicaSet → Pod) built from ownerReferences,
+/// and per-resource Argo CD diffs when the Argo CD API is connected
+/// (app_diff.dart).
 library;
 
 import 'package:flutter/material.dart';
@@ -10,6 +12,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
+import 'app_diff.dart';
 import 'argo_common.dart';
 import 'live_health.dart';
 
@@ -186,18 +189,62 @@ class _ManagedResourcesViewState extends State<ManagedResourcesView> {
   ResourceFilter? _filter;
   bool _tree = false;
 
+  // Diffs: loaded only when something is out of sync, and refetched only
+  // when the sync revision or reconciledAt changes (ArgoDiffCache).
+  ArgoDiffResult? _diffs;
+  bool _diffLoading = false;
+  String? _diffVersion;
+  Future<ArgoDiffResult>? _diffFuture;
+  final Set<String> _open = {};
+  bool _allDiffs = false;
+
   List<Json> get _entries => asMapList(widget.ctx.status['resources']);
+
+  bool get _wantsDiffs => _entries.any((e) => e['status'] != 'Synced' || e['requiresPruning'] == true);
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+    _maybeLoadDiffs();
   }
 
   @override
   void didUpdateWidget(ManagedResourcesView old) {
     super.didUpdateWidget(old);
     if (old.refreshKey != widget.refreshKey) _future = _load();
+    _maybeLoadDiffs();
+  }
+
+  void _maybeLoadDiffs({bool force = false}) {
+    final version = ArgoDiffCache.versionOf(widget.ctx.status);
+    if (!force && version == _diffVersion) return;
+    if (!_wantsDiffs) {
+      _diffVersion = version;
+      _diffs = null;
+      return;
+    }
+    _diffVersion = version;
+    final f = ArgoDiffCache.get(widget.ctx, force: force);
+    _diffFuture = f;
+    _diffLoading = true;
+    f.then((r) {
+      if (!mounted || _diffFuture != f) return;
+      setState(() {
+        _diffs = r;
+        _diffLoading = false;
+      });
+    });
+  }
+
+  void _toggle(String key, Iterable<String> diffable) {
+    setState(() {
+      if (_allDiffs) {
+        _allDiffs = false;
+        _open.addAll(diffable);
+      }
+      if (!_open.remove(key)) _open.add(key);
+    });
   }
 
   Future<LiveIndex> _load() async {
@@ -221,9 +268,23 @@ class _ManagedResourcesViewState extends State<ManagedResourcesView> {
         final filter = _filter ?? ResourceFilter.all;
         final shown = applyFilter(all, filter);
         final hasTree = all.any((r) => (live.children[dig<String>(r.live, ['metadata', 'uid']) ?? ''] ?? const []).isNotEmpty);
+        final diffs = _diffs?.byKey ?? const <String, ArgoResourceDiff>{};
+        ArgoResourceDiff? diffOf(ManagedResource r) {
+          final d = diffs[resourceKey(r.group, r.kind, r.namespace, r.name)];
+          return d != null && d.hasDiff ? d : null;
+        }
+
+        final diffable = [for (final r in all) if (diffOf(r) != null) resourceKey(r.group, r.kind, r.namespace, r.name)];
         return LayoutBuilder(builder: (context, box) {
           final compact = box.maxWidth < 400;
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (_diffs != null && (outOfSync > 0 || _diffs!.ok))
+              ArgoConnectStrip(
+                ctx: widget.ctx,
+                result: _diffs,
+                loading: _diffLoading,
+                onChanged: () => setState(() => _maybeLoadDiffs(force: true)),
+              ),
             Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
               _FilterChip('All ${all.length}', filter == ResourceFilter.all, () => setState(() => _filter = ResourceFilter.all)),
               _FilterChip('Out of sync $outOfSync', filter == ResourceFilter.outOfSync, () => setState(() => _filter = ResourceFilter.outOfSync),
@@ -231,6 +292,11 @@ class _ManagedResourcesViewState extends State<ManagedResourcesView> {
               _FilterChip('Unhealthy $unhealthy', filter == ResourceFilter.unhealthy, () => setState(() => _filter = ResourceFilter.unhealthy),
                   severity: unhealthy > 0 ? Severity.error : null),
               if (hasTree) _FilterChip('Tree', _tree, () => setState(() => _tree = !_tree), icon: Icons.account_tree_outlined),
+              if (diffable.isNotEmpty)
+                _FilterChip('Show all diffs', _allDiffs, () => setState(() {
+                      _allDiffs = !_allDiffs;
+                      _open.clear();
+                    }), icon: Icons.difference_outlined),
               if (snap.connectionState == ConnectionState.waiting && snap.data == null)
                 const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
             ]),
@@ -244,7 +310,18 @@ class _ManagedResourcesViewState extends State<ManagedResourcesView> {
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).hintColor, fontWeight: FontWeight.w600)),
               ),
               for (final r in g.value) ...[
-                _ResourceRow(r, compact: compact, destNs: dig<String>(widget.ctx.spec, ['destination', 'namespace'])),
+                () {
+                  final d = diffOf(r);
+                  final key = resourceKey(r.group, r.kind, r.namespace, r.name);
+                  final open = d != null && (_allDiffs || _open.contains(key));
+                  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    _ResourceRow(r,
+                        compact: compact,
+                        destNs: dig<String>(widget.ctx.spec, ['destination', 'namespace']),
+                        diffToggle: d == null ? null : DiffToggle(key: ValueKey('diff-toggle-$key'), open: open, compact: compact, onTap: () => _toggle(key, diffable))),
+                    if (open) ResourceDiffBlock(key: ValueKey('diff-$key'), diff: d),
+                  ]);
+                }(),
                 if (_tree && r.live != null) ..._treeRows(context, live, r.live!, 1, compact),
               ],
             ],
@@ -311,7 +388,8 @@ class _ResourceRow extends StatelessWidget {
   final ManagedResource r;
   final bool compact;
   final String? destNs;
-  const _ResourceRow(this.r, {required this.compact, this.destNs});
+  final Widget? diffToggle;
+  const _ResourceRow(this.r, {required this.compact, this.destNs, this.diffToggle});
 
   @override
   Widget build(BuildContext context) {
@@ -339,6 +417,7 @@ class _ResourceRow extends StatelessWidget {
               ],
             ]),
           ),
+          if (diffToggle != null) ...[const SizedBox(width: 6), diffToggle!],
           const SizedBox(width: 6),
           _badgeBox(context, ArgoBadge.sync(context, r.sync, tooltip: compact ? r.sync : null, iconOnly: compact), compact, 88),
           _badgeBox(

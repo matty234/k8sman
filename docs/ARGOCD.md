@@ -2,7 +2,9 @@
 
 k8sman treats Argo CD's custom resources as first-class objects. It talks only
 to the Kubernetes API with your kubeconfig. It needs no Argo CD API server, no
-`argocd` CLI login and no SSO.
+`argocd` CLI login and no SSO. The one exception is optional: **per-resource
+diffs** come from the Argo CD API server, reached through the Kubernetes API
+(see [Per-resource diffs](#per-resource-diffs-via-the-argo-cd-api-server)).
 
 ## What's supported
 
@@ -40,7 +42,8 @@ AppProjects. Built-in columns (`backend/internal/columns/builtin.go`):
   a health badge, problems first, and filters for All, Out of sync and
   Unhealthy. Each row links to the live object. A **Tree** toggle shows the
   ReplicaSets and Pods underneath, built from ownerReferences. Resources that
-  need pruning are marked.
+  need pruning are marked. Out-of-sync resources get a **Diff** toggle when
+  the Argo CD API is connected (see below).
 - Sync history from `status.history`.
 - An "Open in Argo CD" link appears when the `argocd-cm` ConfigMap sets `url`.
 
@@ -74,6 +77,80 @@ critical, and so is Degraded. Missing and OutOfSync are warnings. Each app is
 reported once, in its worst category. They only appear when the Application
 CRD is served, and are filtered to apps that live in the selected namespace or
 deploy to it.
+
+## Per-resource diffs, via the Argo CD API server
+
+The diff between git and the cluster is computed by Argo's controller and
+repo-server and is not on the Application CR. k8sman gets it from
+`argocd-server`'s `GET /api/v1/applications/{name}/managed-resources`, the
+same call the Argo CD UI's diff uses (`backend/internal/argoapi`, endpoints in
+[API.md](../API.md#argo-cd-api-per-resource-diffs)).
+
+**How it is reached.** Like the Prometheus integration, k8sman uses the
+Kubernetes API server's service proxy with your kube credentials
+(`/api/v1/namespaces/argocd/services/https:argocd-server:443/proxy/...`), so
+no port-forward is needed. It needs kube RBAC for `services/proxy` in the
+Argo CD namespace. The Service is found by the label
+`app.kubernetes.io/name=argocd-server` (in the app's namespace, then
+cluster-wide, then in `argocd`). It uses https unless `argocd-cmd-params-cm`
+sets `server.insecure: "true"`, and it honours `server.rootpath`. When that
+ConfigMap can't be read, it tries the other scheme. The API server removes the
+`Authorization` header after authenticating you, so the Argo token is sent as
+Argo's own `argocd.token` cookie.
+
+**Authentication.** Argo's API needs its own token. In order of preference:
+
+1. **A token you paste.** "Paste a token…" in the connection strip. It is
+   checked against `/api/v1/session/userinfo` (a rejected token isn't saved)
+   and stored per kube context in `~/.config/k8sman/settings.json` (mode
+   0600). Create one with `argocd account generate-token`, or for a local
+   account with the `apiKey` capability (`accounts.k8sman: apiKey` in
+   `argocd-cm`) with `argocd account generate-token --account k8sman`. It
+   needs Argo RBAC to get applications (`role:readonly` is enough).
+2. **The initial admin password, opt-in.** When
+   `argocd/argocd-initial-admin-secret` exists and your kube RBAC can read
+   it, the strip offers "Use initial admin password". It always asks first
+   ("Use the initial admin password from argocd/argocd-initial-admin-secret?").
+   k8sman then calls `POST /api/v1/session` as `admin` and keeps the session
+   token **in memory only**, for that context, until the backend exits or the
+   session expires. The password is never stored or returned.
+3. Otherwise the strip shows how to create a token, as above.
+
+A 401 from Argo shows "Argo CD rejected the token (it may be expired or
+revoked)", with options to paste another token or forget the saved one. A
+rejected session is dropped. A 403 names Argo RBAC. Tokens and passwords never
+appear in responses or logs, because the backend logs only the request line.
+None of this writes to the cluster, so it works with `--read-only` too.
+
+**What the diff shows.** Like the Argo UI, k8sman compares
+`normalizedLiveState` with `predictedLiveState` when Argo predicted the result
+of a sync (ignoreDifferences and normalisations applied), and otherwise
+`liveState` with `targetState`. Both sides are converted to YAML with the
+noise removed: `status`, `managedFields`, `resourceVersion`, `uid`,
+`generation`, `creationTimestamp`, `last-applied-configuration` and
+`deployment.kubernetes.io/revision`. A resource with no target is **to be
+pruned**. Argo doesn't set `modified` on these, so k8sman marks them
+OutOfSync, but only when the comparison produced targets at all. If the
+comparison failed, every target is null. A resource with no live object is
+**to be created**. Secret data arrives masked (`++++++++`) from Argo.
+
+**In the panel.** Each resource with a diff gets a **Diff** toggle that opens
+the shared unified diff inline (live → desired, collapsed context, line
+numbers, + and − colours). The diff shows the kind/name, the sync status,
+"will be created", "will be pruned" or "hook" badges, and the line counts.
+**Show all diffs** in the filter row opens them all. When diffs aren't
+available, a small strip says "Connect to the Argo CD API to see diffs" with
+the options above. When connected, a quiet line reads "Diffs via
+argocd-server · session" (or "· token"), with a Disconnect link. Diffs are
+only fetched when something is out of sync. They are cached per app and
+refetched only when `status.sync.revision(s)` or `status.reconciledAt`
+changes, or after you connect or disconnect, not on every watch tick.
+
+**Verified on Argo CD v3.5.7** (kind dev cluster): the initial-admin session,
+a rejected token (401, not saved), NoToken after disconnect, a scaled
+Deployment (`replicas: 3` vs `2` after normalisation), a tracked ConfigMap
+that isn't in git (to be pruned), and kustomize-guestbook's resources (to be
+created).
 
 ## Actions, without the Argo CD API server
 
@@ -122,9 +199,10 @@ controller to compare again.
 
 ## Limits
 
-- **No live diff and no rendered manifests.** The diff and manifest
-  generation happen in the repo server and controller, behind Argo's API.
-  k8sman shows which resources are out of sync, but not how they differ.
+- **Diffs need the Argo CD API server** and a token or session (see above).
+  Without them, k8sman shows which resources are out of sync, but not how
+  they differ. There are no rendered manifests for resources that are in
+  sync.
 - **RBAC is kube RBAC, not Argo RBAC.** Anyone whose kubeconfig can patch
   `applications.argoproj.io` can sync any app. Argo's project roles, SSO
   groups and `argocd-rbac-cm` policies don't apply. Sync windows are enforced
@@ -160,7 +238,11 @@ kubectl apply -f dev/argocd/samples.yaml
 The samples:
 
 - `guestbook`: auto-sync, Synced and Healthy.
-- `helm-guestbook`: manual sync, with Helm parameters and values.
+- `helm-guestbook`: manual sync, with Helm parameters and values. It is left
+  OutOfSync for the diff view: the Deployment was scaled to 3 replicas (git
+  says 2), and a ConfigMap `legacy-settings` carries the app's tracking
+  annotation but isn't in git, so it shows as "will be pruned". A sync with
+  prune restores it.
 - `kustomize-guestbook`: manual sync and OutOfSync, with Kustomize images, a
   name prefix and labels.
 - `guestbook-degraded`: a bad image and a 60s progress deadline, so it goes
@@ -175,15 +257,13 @@ The samples:
 
 ## Recommended next steps
 
-1. **Optional Argo CD API server integration.** Let the user log in with a
-   token or port-forward to `argocd-server` to get live diffs
-   (`/api/v1/applications/{name}/managed-resources`), rendered manifests, the
-   full resource tree with health from Redis, app logs, and actions that
-   enforce sync windows and Argo RBAC. Keep the kube-only path as the
-   fallback.
+1. **More from the Argo CD API server** (diffs already use it): rendered
+   manifests, the full resource tree with health from Redis, app logs, and
+   actions that enforce sync windows and Argo RBAC. SSO login as another way
+   to get a token. Keep the kube-only path as the fallback.
 2. **Diff without the API server.** Compare `kubectl.kubernetes.io/last-applied-configuration`,
    or a server-side dry-run apply, against the live object for out-of-sync
-   resources. This is cheap and covers many cases.
+   resources, for clusters where argocd-server isn't reachable.
 3. **Selective sync and rollback.** Sync only the out-of-sync or checked
    resources (`operation.sync.resources`), and roll back to a history ID.
 4. **Multi-cluster destinations.** Map cluster Secrets
