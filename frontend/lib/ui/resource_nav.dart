@@ -23,6 +23,9 @@ const _curated = <String, List<String>>{
 };
 
 /// Source-list glyphs for well-known kinds (others get a generic one).
+/// The nav's icon for a kind (also used by the collapsed inspector tab).
+IconData kindIcon(ResourceType type) => _kindIcons[type.gk] ?? (type.custom ? Icons.extension_outlined : Icons.article_outlined);
+
 const _kindIcons = <String, IconData>{
   '/Pod': Icons.view_in_ar_outlined,
   'apps/Deployment': Icons.layers_outlined,
@@ -247,7 +250,7 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final faint = AppColors.of(context).faint;
     return _SourceListItem(
-      icon: _kindIcons[type.gk] ?? (type.custom ? Icons.extension_outlined : Icons.article_outlined),
+      icon: kindIcon(type),
       label: type.kind,
       selected: selected,
       onTap: () => context.read<AppState>().selectType(type),

@@ -9,6 +9,8 @@ import '../../api/models.dart';
 import '../../panels/registry.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
+import '../logs/open_logs.dart';
+import '../theme.dart';
 import '../widgets/common.dart';
 import '../portforward/portforward_dialog.dart';
 import 'metadata_section.dart';
@@ -102,9 +104,15 @@ class _LiveObjectState extends State<_LiveObject> {
     final ctx = obj == null ? null : PanelContext(object: obj, type: t.type, api: context.read<ApiClient>(), app: app);
     final extraTabs = ctx == null ? const <PanelTab>[] : panel.tabs(ctx);
 
+    final actions = ctx == null || _deleted ? const <ResourceAction>[] : _actionsFor(app, t, panel, ctx);
+    final primary = actions.where((a) => !a.destructive).take(3).toList();
+    final rest = actions.where((a) => !primary.contains(a)).toList();
+
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _Header(target: t, deleted: _deleted),
-      if (ctx != null && !app.readOnly && !_deleted) _ActionBar(actions: [if (portForwardKinds.containsKey(t.type.gk)) portForwardAction(ctx), ...standardActions(ctx), ...panel.actions(ctx)]),
+      // With no primary actions there is no action row: the destructive
+      // ones become header icons instead of a lone ⋯ menu.
+      _Header(target: t, deleted: _deleted, actions: primary.isEmpty ? rest : const []),
+      if (primary.isNotEmpty) _ActionBar(primary: primary, rest: rest),
       const Divider(),
       Expanded(
         child: obj == null
@@ -145,6 +153,21 @@ class _LiveObjectState extends State<_LiveObject> {
     ]);
   }
 
+  /// Header actions: "Logs" first (and the only kind kept in read-only
+  /// mode, since it changes nothing), then port-forward, standard and panel
+  /// extras.
+  static List<ResourceAction> _actionsFor(AppState app, DetailTarget t, ResourcePanel panel, PanelContext ctx) {
+    final extra = panel.actions(ctx);
+    final logs = extra.where((a) => a.id == kLogsActionId).toList();
+    if (app.readOnly) return logs;
+    return [
+      ...logs,
+      if (portForwardKinds.containsKey(t.type.gk)) portForwardAction(ctx),
+      ...standardActions(ctx),
+      ...extra.where((a) => a.id != kLogsActionId),
+    ];
+  }
+
   /// A buggy panel shouldn't take down the whole sidebar.
   List<Widget> _safeSections(BuildContext context, ResourcePanel panel, PanelContext ctx) {
     try {
@@ -159,32 +182,37 @@ class _LiveObjectState extends State<_LiveObject> {
   }
 }
 
-/// First few actions as buttons, the rest (and all destructive ones) in a menu.
+/// The primary (non-destructive) actions as buttons. The rest go in a ⋯
+/// menu when there are two or more, or a single icon button otherwise.
 class _ActionBar extends StatelessWidget {
-  final List<ResourceAction> actions;
-  const _ActionBar({required this.actions});
+  final List<ResourceAction> primary;
+  final List<ResourceAction> rest;
+  const _ActionBar({required this.primary, required this.rest});
 
   @override
   Widget build(BuildContext context) {
-    if (actions.isEmpty) return const SizedBox.shrink();
-    final primary = actions.where((a) => !a.destructive).take(3).toList();
-    final rest = actions.where((a) => !primary.contains(a)).toList();
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 0, 6, 8),
+      padding: const EdgeInsets.fromLTRB(10, 0, 8, 8),
       child: Row(children: [
         Expanded(
           child: Wrap(spacing: 6, runSpacing: 6, children: [
             for (final a in primary)
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10)),
-                icon: Icon(a.icon, size: 15),
-                label: Text(a.label),
-                onPressed: () => a.run(context),
+              Tooltip(
+                message: a.tooltip ?? '',
+                child: OutlinedButton.icon(
+                  key: ValueKey('action-${a.id}'),
+                  style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                  icon: Icon(a.icon, size: 15),
+                  label: Text(a.label),
+                  onPressed: () => a.run(context),
+                ),
               ),
           ]),
         ),
-        if (rest.isNotEmpty)
+        if (rest.length == 1)
+          ActionIconButton(rest.single)
+        else if (rest.length > 1)
           PopupMenuButton<ResourceAction>(
             tooltip: 'More actions',
             icon: const Icon(Icons.more_horiz, size: 18),
@@ -193,6 +221,7 @@ class _ActionBar extends StatelessWidget {
               for (final a in rest)
                 PopupMenuItem(
                   value: a,
+                  height: 30,
                   child: Row(children: [
                     Icon(a.icon, size: 16, color: a.destructive ? theme.colorScheme.error : null),
                     const SizedBox(width: 10),
@@ -206,23 +235,46 @@ class _ActionBar extends StatelessWidget {
   }
 }
 
+/// An action as a compact icon button (red-tinted when destructive).
+class ActionIconButton extends StatelessWidget {
+  final ResourceAction action;
+  const ActionIconButton(this.action, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final error = Theme.of(context).colorScheme.error;
+    return IconButton(
+      key: ValueKey('action-${action.id}'),
+      tooltip: action.tooltip ?? action.label,
+      icon: Icon(action.icon, size: 16, color: action.destructive ? error.withValues(alpha: 0.85) : null),
+      onPressed: () => action.run(context),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   final DetailTarget target;
   final bool deleted;
-  const _Header({required this.target, required this.deleted});
+
+  /// Actions shown as header icons (used when there is no action row).
+  final List<ResourceAction> actions;
+  const _Header({required this.target, required this.deleted, this.actions = const []});
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final theme = Theme.of(context);
+    final colors = AppColors.of(context);
     final meta = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w400);
-    return WindowDragArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
-        child: Row(children: [
-          if (app.canGoBack) IconButton(tooltip: 'Back', icon: const Icon(Icons.chevron_left, size: 20), onPressed: app.back),
-          const SizedBox(width: 6),
-          Expanded(
+    // Only the title is a window-drag area; the controls sit at the right
+    // end (away from the traffic lights) and never depend on the drag area.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
+      child: Row(children: [
+        if (app.canGoBack) IconButton(tooltip: 'Back', icon: const Icon(Icons.chevron_left, size: 20), onPressed: app.back),
+        const SizedBox(width: 6),
+        Expanded(
+          child: WindowDragArea(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Text(target.type.kind, style: meta?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
@@ -233,10 +285,18 @@ class _Header extends StatelessWidget {
               SelectableText(target.name, maxLines: 1, style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
             ]),
           ),
-          IconButton(tooltip: 'Copy name', icon: const Icon(Icons.copy_rounded, size: 14), onPressed: () => copyToClipboard(context, target.name)),
-          IconButton(tooltip: 'Close (Esc)', icon: const Icon(Icons.close, size: 16), onPressed: app.closeDetail),
-        ]),
-      ),
+        ),
+        for (final a in actions) ActionIconButton(a),
+        if (actions.isNotEmpty) Container(width: 1, height: 16, margin: const EdgeInsets.symmetric(horizontal: 6), color: colors.separator),
+        IconButton(tooltip: 'Copy name', icon: const Icon(Icons.copy_rounded, size: 14), onPressed: () => copyToClipboard(context, target.name)),
+        IconButton(
+          key: const ValueKey('inspector-collapse'),
+          tooltip: 'Collapse inspector (⌘I)',
+          icon: const Icon(Icons.last_page_rounded, size: 17),
+          onPressed: app.collapseInspector,
+        ),
+        IconButton(tooltip: 'Close (Esc)', icon: const Icon(Icons.close, size: 16), onPressed: app.closeDetail),
+      ]),
     );
   }
 }

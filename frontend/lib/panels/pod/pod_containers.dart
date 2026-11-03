@@ -11,7 +11,11 @@ import 'pod_widgets.dart';
 class ContainerCard extends StatelessWidget {
   final PodContainer c;
   final String? namespace;
-  const ContainerCard(this.c, {super.key, this.namespace});
+
+  /// Opens this container's logs in the dock (`previous` = the last
+  /// terminated instance). Null hides the Logs row.
+  final void Function(BuildContext context, bool previous)? onViewLogs;
+  const ContainerCard(this.c, {super.key, this.namespace, this.onViewLogs});
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +71,7 @@ class ContainerCard extends StatelessWidget {
           child: KeyValueTable(keyWidth: 84, [
             ('State', _stateWidget(context)),
             if (c.lastTerminated.isNotEmpty) ('Last state', _lastStateWidget(context)),
+            if (onViewLogs != null) ('Logs', _logsWidget(context)),
             if (c.kind == ContainerKind.ephemeral && spec['targetContainerName'] != null) ('Target', MonoValue('${spec['targetContainerName']}')),
             ('Image', _imageWidget(context)),
             if ((c.status['imageID'] ?? '').toString().isNotEmpty) ('Image ID', _imageIdWidget(context, '${c.status['imageID']}')),
@@ -85,6 +90,18 @@ class ContainerCard extends StatelessWidget {
       ]),
     );
   }
+
+  Widget _logsWidget(BuildContext context) => InlineWrap([
+        _LogLink(key: ValueKey('view-logs-${c.name}'), icon: Icons.notes, label: 'View logs', onTap: () => onViewLogs!(context, false)),
+        if (c.restarts > 0 || c.lastTerminated.isNotEmpty)
+          _LogLink(
+            key: ValueKey('view-previous-logs-${c.name}'),
+            icon: Icons.history,
+            label: 'Previous instance',
+            tooltip: 'Logs of the last terminated instance',
+            onTap: () => onViewLogs!(context, true),
+          ),
+      ]);
 
   Widget _stateWidget(BuildContext context) {
     final theme = Theme.of(context);
@@ -163,7 +180,7 @@ class ContainerCard extends StatelessWidget {
     final short = digest.length > 19 ? '${digest.substring(0, 19)}…' : digest;
     return Tooltip(
       message: id,
-      child: Row(children: [MonoValue(short, size: 11, color: Theme.of(context).hintColor), CopyIcon(id)]),
+      child: Row(children: [Flexible(child: Text(short, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: Theme.of(context).hintColor))), CopyIcon(id)]),
     );
   }
 
@@ -344,4 +361,32 @@ Widget securityChips(BuildContext context, Json sc) {
   }
   if (chips.isEmpty) return Hint(sc.keys.join(', '));
   return InlineWrap(chips);
+}
+
+/// A compact link-style button (accent text, hover underline-free tint).
+class _LogLink extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? tooltip;
+  final VoidCallback onTap;
+  const _LogLink({super.key, required this.icon, required this.label, required this.onTap, this.tooltip});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    final link = Hoverable(
+      onTap: onTap,
+      builder: (h) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        decoration: BoxDecoration(color: h ? accent.withValues(alpha: 0.10) : null, borderRadius: BorderRadius.circular(4)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: accent),
+          const SizedBox(width: 4),
+          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: accent)),
+        ]),
+      ),
+    );
+    return tooltip == null ? link : Tooltip(message: tooltip!, child: link);
+  }
 }
