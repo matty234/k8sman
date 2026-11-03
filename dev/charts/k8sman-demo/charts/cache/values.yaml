@@ -1,0 +1,2 @@
+image: redis:7-alpine
+maxMemory: 32mb
