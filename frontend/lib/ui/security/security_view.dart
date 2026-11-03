@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../api/client.dart';
 import '../../state/app_state.dart';
 import '../widgets/common.dart';
+import 'ai_summary.dart';
 import 'security_api.dart';
 import 'security_widgets.dart';
 
@@ -197,6 +198,12 @@ class _SecurityViewState extends State<SecurityView> {
             ),
           ),
         ),
+        TextButton.icon(
+          style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8)),
+          icon: const Icon(Icons.auto_awesome_outlined, size: 15),
+          label: const Text('Copy for AI'),
+          onPressed: _data == null ? null : _copyForAgent,
+        ),
         IconButton(
           tooltip: 'Refresh',
           iconSize: 18,
@@ -206,6 +213,15 @@ class _SecurityViewState extends State<SecurityView> {
         ),
       ],
     );
+  }
+
+  /// Copies the visible findings (respecting the category filter) as a
+  /// Markdown brief ready to paste into an AI agent.
+  void _copyForAgent() {
+    final data = _data;
+    if (data == null) return;
+    final md = securityReportForAgent(data, kubeContext: context.read<AppState>().currentContext, category: _filter);
+    copyToClipboard(context, md, label: 'security summary for an AI agent (${md.split('\n').length} lines of Markdown)');
   }
 
   List<Widget> _body(BuildContext context, SecurityData data) {
