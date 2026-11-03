@@ -35,7 +35,7 @@ class ArgoApiStatus {
   final bool found;
   final bool reachable;
 
-  /// none, configured or session.
+  /// none, configured, session or cli.
   final String auth;
 
   /// Whether Argo accepted the token (null = unknown / no token).
@@ -46,6 +46,12 @@ class ArgoApiStatus {
   final String? serverNamespace;
   final String? serverName;
   final String? version;
+
+  /// Host from argocd-cm `url` (used for the CLI login command).
+  final String? argoUrl;
+
+  /// argocd CLI context with a login for [argoUrl], if any.
+  final String? cliLogin;
 
   const ArgoApiStatus({
     this.found = false,
@@ -58,6 +64,8 @@ class ArgoApiStatus {
     this.serverNamespace,
     this.serverName,
     this.version,
+    this.argoUrl,
+    this.cliLogin,
   });
 
   factory ArgoApiStatus.fromJson(Json j) => ArgoApiStatus(
@@ -71,7 +79,12 @@ class ArgoApiStatus {
         serverNamespace: dig<String>(j, ['server', 'namespace']),
         serverName: dig<String>(j, ['server', 'service']),
         version: dig<String>(j, ['server', 'version']),
+        argoUrl: (j['argoUrl'] as String?)?.isNotEmpty == true ? j['argoUrl'] as String : null,
+        cliLogin: (j['cliLogin'] as String?)?.isNotEmpty == true ? j['cliLogin'] as String : null,
       );
+
+  /// The command that logs the argocd CLI in via SSO for this Argo CD.
+  String? get cliLoginCommand => argoUrl == null ? null : 'argocd login $argoUrl --sso --grpc-web';
 
   String get secretRef => '${serverNamespace ?? 'argocd'}/argocd-initial-admin-secret';
 }
@@ -200,6 +213,11 @@ class ArgoDiffApi {
 
   Future<ArgoApiStatus> clearToken({String? namespace}) async =>
       ArgoApiStatus.fromJson(Map<String, dynamic>.from(await send('DELETE', 'auth', query: {'namespace': namespace})));
+
+  /// Use the argocd CLI's own login for this context (token stays in the
+  /// CLI config; only the choice is saved).
+  Future<ArgoApiStatus> useCli({String? namespace}) async =>
+      ArgoApiStatus.fromJson(Map<String, dynamic>.from(await send('POST', 'auth/cli', body: {'namespace': ?namespace})));
 
   Future<ArgoApiStatus> useInitialAdmin({String? namespace}) async =>
       ArgoApiStatus.fromJson(Map<String, dynamic>.from(await send('POST', 'auth/initial-admin', body: {'namespace': ?namespace})));
@@ -348,7 +366,7 @@ class _ArgoConnectStripState extends State<ArgoConnectStrip> {
 
     if (r.ok) {
       // Connected: one quiet line.
-      final via = r.auth == 'session' ? 'session' : 'token';
+      final via = switch (r.auth) { 'session' => 'session', 'cli' => 'argocd CLI login', _ => 'token' };
       return Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Row(children: [
@@ -365,7 +383,11 @@ class _ArgoConnectStripState extends State<ArgoConnectStrip> {
           const SizedBox(width: 6),
           _LinkText(_busy ? 'Disconnecting…' : 'Disconnect',
               onTap: _busy ? null : () => _run(() => _api.clearToken(namespace: widget.ctx.namespace)),
-              tooltip: r.auth == 'session' ? 'Forget the session' : 'Forget the saved token for this context'),
+              tooltip: switch (r.auth) {
+                'session' => 'Forget the session',
+                'cli' => 'Stop using the argocd CLI login for this context (the CLI stays logged in)',
+                _ => 'Forget the saved token for this context',
+              }),
         ]),
       );
     }
@@ -403,7 +425,23 @@ class _ArgoConnectStripState extends State<ArgoConnectStrip> {
           ),
         ]),
         const SizedBox(height: 6),
+        // SSO setups: reuse the argocd CLI's login (token never leaves its config).
+        if (st?.cliLogin == null && st?.cliLoginCommand != null) ...[
+          Text('Log in with the argocd CLI (opens your browser for SSO), then connect:', style: small?.copyWith(color: hint)),
+          const SizedBox(height: 4),
+          CodeBlock(st!.cliLoginCommand!),
+          const SizedBox(height: 6),
+        ],
         Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          if (st?.cliLogin != null || st?.cliLoginCommand != null)
+            _StripButton(
+              label: st?.cliLogin != null ? 'Use argocd CLI login' : 'I\'ve logged in',
+              icon: Icons.terminal,
+              tooltip: st?.cliLogin != null
+                  ? 'Use the argocd CLI login for ${st!.argoUrl} (CLI context "${st.cliLogin}"). The token stays in the CLI config.'
+                  : 'Connect using the argocd CLI login once you have run the command above',
+              onTap: _busy ? null : () => _run(() => _api.useCli(namespace: widget.ctx.namespace)),
+            ),
           if (st?.initialAdminAvailable == true)
             _StripButton(
               label: 'Use initial admin password',

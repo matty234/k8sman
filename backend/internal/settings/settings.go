@@ -32,6 +32,10 @@ type Settings struct {
 	// (for per-resource diffs). The file is written 0600; tokens are never
 	// returned by the API or logged.
 	ArgoCDTokens map[string]string `json:"argocdTokens,omitempty"`
+	// ArgoCDUseCLI marks kube contexts whose Argo CD auth comes from the
+	// argocd CLI's own login (~/.config/argocd/config). Only the choice is
+	// stored here; the token is read from the CLI config on use.
+	ArgoCDUseCLI map[string]bool `json:"argocdUseCli,omitempty"`
 }
 
 // Store reads and writes the settings file. Methods are safe for concurrent use.
@@ -79,6 +83,7 @@ func (st *Store) Get() Settings {
 		}
 	}
 	out.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
+	out.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
 	return out
 }
 
@@ -93,6 +98,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 		next.LastContext[k] = v
 	}
 	next.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
+	next.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -144,6 +150,30 @@ func (st *Store) SetArgoCDToken(context, token string) error {
 			s.ArgoCDTokens = map[string]string{}
 		}
 		s.ArgoCDTokens[context] = token
+	})
+}
+
+// ArgoCDUseCLI reports whether a kube context uses the argocd CLI's login.
+func (st *Store) ArgoCDUseCLI(context string) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.s.ArgoCDUseCLI[context]
+}
+
+// SetArgoCDUseCLI turns CLI-login auth on or off for a kube context.
+func (st *Store) SetArgoCDUseCLI(context string, on bool) error {
+	return st.Update(func(s *Settings) {
+		if !on {
+			delete(s.ArgoCDUseCLI, context)
+			if len(s.ArgoCDUseCLI) == 0 {
+				s.ArgoCDUseCLI = nil
+			}
+			return
+		}
+		if s.ArgoCDUseCLI == nil {
+			s.ArgoCDUseCLI = map[string]bool{}
+		}
+		s.ArgoCDUseCLI[context] = true
 	})
 }
 

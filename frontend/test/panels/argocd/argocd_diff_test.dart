@@ -28,10 +28,35 @@ void main() {
   setUp(() => argo = FakeArgoDiffApi(ApiClient(base: Uri.parse('http://unused'))));
 
   // One instance per test, like ArgoDiffApi.of's per-client instance.
-  ArgoDiffApi Function(ApiClient) fake({String auth = 'session', bool initialAdmin = true}) {
+  ArgoDiffApi Function(ApiClient) fake({String auth = 'session', bool initialAdmin = true, String? argoUrl, String? cliLogin}) {
     FakeArgoDiffApi? inst;
-    return (api) => inst ??= argo = FakeArgoDiffApi(api, auth: auth, initialAdmin: initialAdmin);
+    return (api) => inst ??= argo = FakeArgoDiffApi(api, auth: auth, initialAdmin: initialAdmin, argoUrl: argoUrl, cliLogin: cliLogin);
   }
+
+  testWidgets('SSO cluster: shows the argocd CLI login command, then connects via the CLI login', (tester) async {
+    await pumpArgo(tester, fx('app-kustomize-guestbook.json'),
+        diffApi: fake(auth: 'none', initialAdmin: false, argoUrl: 'argocd.example.internal'));
+    expect(find.text('argocd login argocd.example.internal --sso --grpc-web'), findsOneWidget);
+    // Not logged in yet: connecting explains what to run.
+    await tester.tap(find.text("I've logged in"));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No argocd CLI login found'), findsOneWidget);
+    // After `argocd login`, the status reports the CLI context and we connect.
+    argo.cliLogin = 'argocd.example.internal';
+    await tester.tap(find.text("I've logged in"));
+    await tester.pumpAndSettle();
+    expect(argo.calls.where((c) => c == 'useCli').length, 2);
+    expect(find.text('Diffs via argocd-server · argocd CLI login'), findsOneWidget);
+  });
+
+  testWidgets('existing CLI login: one click, no command shown', (tester) async {
+    await pumpArgo(tester, fx('app-kustomize-guestbook.json'),
+        diffApi: fake(auth: 'none', initialAdmin: false, argoUrl: 'argocd.example.internal', cliLogin: 'lon'));
+    expect(find.textContaining('argocd login '), findsNothing);
+    await tester.tap(find.text('Use argocd CLI login'));
+    await tester.pumpAndSettle();
+    expect(find.text('Diffs via argocd-server · argocd CLI login'), findsOneWidget);
+  });
 
   testWidgets('out-of-sync diff: modified deployment and resource to prune', (tester) async {
     await loadRealFonts();

@@ -28,6 +28,8 @@ const (
 type tokenStore interface {
 	ArgoCDToken(context string) string
 	SetArgoCDToken(context, token string) error
+	ArgoCDUseCLI(context string) bool
+	SetArgoCDUseCLI(context string, on bool) error
 }
 
 // Handler serves /api/argocd/*.
@@ -35,6 +37,8 @@ type Handler struct {
 	env    func() env
 	disc   *discoverer
 	tokens tokenStore
+	// cliPath locates the argocd CLI config (overridable in tests).
+	cliPath func() string
 
 	mu sync.Mutex
 	// sessions holds session tokens from the initial-admin flow, per kube
@@ -53,6 +57,7 @@ func Register(mux *http.ServeMux, mgr *cluster.Manager, st *settings.Store) *Han
 		},
 		disc:     newDiscoverer(),
 		tokens:   st,
+		cliPath:  cliConfigPath,
 		sessions: map[string]string{},
 	}
 	h.register(mux)
@@ -64,12 +69,16 @@ func (h *Handler) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/argocd/auth", h.handleSetToken)
 	mux.HandleFunc("DELETE /api/argocd/auth", h.handleClearToken)
 	mux.HandleFunc("POST /api/argocd/auth/initial-admin", h.handleInitialAdmin)
+	mux.HandleFunc("POST /api/argocd/auth/cli", h.handleUseCLI)
 	mux.HandleFunc("GET /api/argocd/diff", h.handleDiff)
 }
 
 // token returns the token to use for a context: the session from the
-// initial-admin flow if there is one, else the configured token.
-func (h *Handler) token(contextName string) (string, string) {
+// initial-admin flow if there is one, else the configured token, else the
+// argocd CLI's login when the user chose that (read fresh from the CLI
+// config, matched strictly to this cluster's Argo CD URL).
+func (h *Handler) token(ctx context.Context, e env, srv *Server) (string, string) {
+	contextName := e.context
 	h.mu.Lock()
 	s := h.sessions[contextName]
 	h.mu.Unlock()
@@ -78,6 +87,12 @@ func (h *Handler) token(contextName string) (string, string) {
 	}
 	if t := h.tokens.ArgoCDToken(contextName); t != "" {
 		return t, AuthConfigured
+	}
+	if h.tokens.ArgoCDUseCLI(contextName) {
+		if l, ok := h.cliLoginFor(ctx, e, srv); ok {
+			return l.token, AuthCLI
+		}
+		return "", AuthCLI
 	}
 	return "", AuthNone
 }
@@ -106,8 +121,13 @@ type Status struct {
 	Username  string `json:"username,omitempty"`
 	// InitialAdminAvailable: argocd-initial-admin-secret exists and kube
 	// RBAC lets us read it, so the initial-admin flow can be offered.
-	InitialAdminAvailable bool   `json:"initialAdminAvailable"`
-	Error                 string `json:"error,omitempty"`
+	InitialAdminAvailable bool `json:"initialAdminAvailable"`
+	// ArgoURL is the host from argocd-cm `url` (for the CLI login command).
+	ArgoURL string `json:"argoUrl,omitempty"`
+	// CLILogin: the argocd CLI config has a login for ArgoURL (its CLI
+	// context name), so "Use argocd CLI login" can be offered.
+	CLILogin string `json:"cliLogin,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 // userInfo checks a token with GET /api/v1/session/userinfo.
@@ -128,10 +148,19 @@ func userInfo(ctx context.Context, e env, s *Server, tok string) (bool, string, 
 
 func (h *Handler) status(ctx context.Context, e env, appNs string, refresh bool) Status {
 	d := h.disc.get(ctx, e, appNs, refresh)
-	tok, auth := h.token(e.context)
+	tok, auth := h.token(ctx, e, d.server)
 	st := Status{
 		Context: e.context, Found: d.server != nil, Reachable: d.reachable, Server: d.server,
 		Auth: auth, InitialAdminAvailable: d.initialAdmin, Error: d.err,
+	}
+	if d.server != nil {
+		st.ArgoURL = argoURLHost(ctx, e, d.server)
+		if l, ok := findCLILogin(h.cliFile(), st.ArgoURL); ok {
+			st.CLILogin = l.Context
+		}
+		if auth == AuthCLI && tok == "" {
+			st.Error = "No argocd CLI login for " + firstNonEmpty(st.ArgoURL, "this Argo CD") + ". Run: argocd login " + firstNonEmpty(st.ArgoURL, "<server>") + " --sso --grpc-web"
+		}
 	}
 	if d.reachable && tok != "" {
 		cctx, cancel := context.WithTimeout(ctx, probeTimeout)
@@ -156,6 +185,9 @@ func (h *Handler) status(ctx context.Context, e env, appNs string, refresh bool)
 func authNoun(auth string) string {
 	if auth == AuthSession {
 		return "session (it may have expired)"
+	}
+	if auth == AuthCLI {
+		return "argocd CLI login (it may have expired; run argocd login again)"
 	}
 	return "token (it may be expired or revoked)"
 }
@@ -220,6 +252,10 @@ func (h *Handler) handleClearToken(w http.ResponseWriter, r *http.Request) {
 	e := h.env()
 	ctxName := firstNonEmpty(r.URL.Query().Get("context"), e.context)
 	h.setSession(ctxName, "")
+	if err := h.tokens.SetArgoCDUseCLI(ctxName, false); err != nil {
+		writeErr(w, &Error{Status: 500, Message: "save settings: " + err.Error()})
+		return
+	}
 	if err := h.tokens.SetArgoCDToken(ctxName, ""); err != nil {
 		writeErr(w, &Error{Status: 500, Message: "save settings: " + err.Error()})
 		return
@@ -304,7 +340,7 @@ func (h *Handler) handleDiff(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	tok, auth := h.token(e.context)
+	tok, auth := h.token(r.Context(), e, d.server)
 	if tok == "" {
 		writeErr(w, &Error{Status: 401, Reason: ReasonNoToken, Message: "Connect to the Argo CD API to see diffs"})
 		return
@@ -373,4 +409,50 @@ func writeErr(w http.ResponseWriter, err error) {
 		reason = string(se.Status().Reason)
 	}
 	writeJSON(w, status, apiError{Error: err.Error(), Code: status, Reason: reason})
+}
+
+// handleUseCLI switches a context to the argocd CLI's login. It requires a
+// CLI login for this cluster's Argo CD URL and checks that Argo accepts it.
+// Only the choice is saved; the token stays in the CLI's config.
+func (h *Handler) handleUseCLI(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Namespace string `json:"namespace"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	e := h.env()
+	d := h.disc.get(r.Context(), e, body.Namespace, false)
+	if d.server == nil {
+		writeErr(w, &Error{Status: 404, Reason: ReasonNotFound, Message: firstNonEmpty(d.err, "argocd-server not found")})
+		return
+	}
+	host := argoURLHost(r.Context(), e, d.server)
+	l, ok := findCLILogin(h.cliFile(), host)
+	if !ok {
+		msg := "No argocd CLI login found"
+		if host != "" {
+			msg += " for " + host + ". Run: argocd login " + host + " --sso --grpc-web"
+		} else {
+			msg += ": this Argo CD has no url in argocd-cm, so the CLI login can't be matched safely"
+		}
+		writeErr(w, &Error{Status: 404, Reason: ReasonNoToken, Message: msg})
+		return
+	}
+	if d.reachable {
+		okUser, _, err := userInfo(r.Context(), e, d.server, l.token)
+		if (err == nil && !okUser) || isArgoAuthErr(err) {
+			writeErr(w, &Error{Status: 401, Reason: ReasonUnauthorized, Message: "Argo CD rejected the argocd CLI login (expired?). Run: argocd login " + host + " --sso --grpc-web"})
+			return
+		}
+	}
+	// The newest explicit choice wins.
+	h.setSession(e.context, "")
+	if err := h.tokens.SetArgoCDToken(e.context, ""); err != nil {
+		writeErr(w, &Error{Status: 500, Message: "save settings: " + err.Error()})
+		return
+	}
+	if err := h.tokens.SetArgoCDUseCLI(e.context, true); err != nil {
+		writeErr(w, &Error{Status: 500, Message: "save settings: " + err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.status(r.Context(), e, body.Namespace, false))
 }

@@ -141,7 +141,9 @@ func newRig(t *testing.T, argo *fakeArgo, objs ...runtime.Object) *testRig {
 	st, _ := settings.Open(path)
 	typed := kfake.NewSimpleClientset(objs...)
 	h := &Handler{
-		env:      func() env { return env{context: "kind-dev", typed: typed, req: restRequester{rc: cs.CoreV1().RESTClient()}} },
+		env: func() env {
+			return env{context: "kind-dev", typed: typed, req: restRequester{rc: cs.CoreV1().RESTClient()}}
+		},
 		disc:     newDiscoverer(),
 		tokens:   st,
 		sessions: map[string]string{},

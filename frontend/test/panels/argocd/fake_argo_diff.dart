@@ -12,9 +12,13 @@ class FakeArgoDiffApi extends ArgoDiffApi {
   String auth;
   final bool serverFound;
   final bool initialAdmin;
+
+  /// Argo CD URL host (argocd-cm `url`) and a matching argocd CLI context.
+  final String? argoUrl;
+  String? cliLogin;
   final List<String> calls = [];
 
-  FakeArgoDiffApi(super.api, {this.auth = 'none', this.serverFound = true, this.initialAdmin = true});
+  FakeArgoDiffApi(super.api, {this.auth = 'none', this.serverFound = true, this.initialAdmin = true, this.argoUrl, this.cliLogin});
 
   /// argocd-server isn't installed: the default for panel tests.
   FakeArgoDiffApi.notFound(ApiClient api) : this(api, serverFound: false);
@@ -26,6 +30,8 @@ class FakeArgoDiffApi extends ArgoDiffApi {
         authValid: auth == 'none' ? null : true,
         username: auth == 'none' ? null : 'admin',
         initialAdminAvailable: initialAdmin,
+        argoUrl: argoUrl,
+        cliLogin: cliLogin,
         serverNamespace: 'argocd',
         serverName: 'argocd-server',
         version: 'v3.5.7',
@@ -48,6 +54,14 @@ class FakeArgoDiffApi extends ArgoDiffApi {
   Future<ArgoApiStatus> clearToken({String? namespace}) async {
     calls.add('clearToken');
     auth = 'none';
+    return _status;
+  }
+
+  @override
+  Future<ArgoApiStatus> useCli({String? namespace}) async {
+    calls.add('useCli');
+    if (cliLogin == null) throw ApiException(404, 'No argocd CLI login found for $argoUrl. Run: argocd login $argoUrl --sso --grpc-web', reason: 'NoToken');
+    auth = 'cli';
     return _status;
   }
 
