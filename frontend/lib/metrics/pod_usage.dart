@@ -12,6 +12,7 @@ import 'cache.dart';
 import 'metrics_api.dart';
 import 'quantity.dart';
 import 'widgets.dart';
+import '../state/poller.dart';
 
 /// Loads one pod's usage (shared per namespace, refreshed every 15s).
 class PodUsageLoader extends StatefulWidget {
@@ -24,29 +25,25 @@ class PodUsageLoader extends StatefulWidget {
   State<PodUsageLoader> createState() => _PodUsageLoaderState();
 }
 
-class _PodUsageLoaderState extends State<PodUsageLoader> {
+class _PodUsageLoaderState extends State<PodUsageLoader> with PollingState {
   PodUsage? _usage;
   Object? _error;
   bool _loading = true;
-  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => _load());
+    poll(const Duration(seconds: 15), () async {
+      await _load();
+      return _error == null;
+    });
   }
 
   @override
   void didUpdateWidget(PodUsageLoader old) {
     super.didUpdateWidget(old);
     if (old.name != widget.name || old.namespace != widget.namespace) _load();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
   }
 
   Future<void> _load() async {

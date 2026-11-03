@@ -7,6 +7,7 @@ import '../../addons/addons.dart';
 import '../../api/client.dart';
 import '../../prometheus/prom_api.dart';
 import '../../state/app_state.dart';
+import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -33,7 +34,7 @@ class AlertsView extends StatefulWidget {
   State<AlertsView> createState() => _AlertsViewState();
 }
 
-class _AlertsViewState extends State<AlertsView> {
+class _AlertsViewState extends State<AlertsView> with PollingState {
   PromApi? _source;
   PromApi get prom => _source ??= widget.source ?? PromApi.of(context.read<ApiClient>());
 
@@ -44,7 +45,6 @@ class _AlertsViewState extends State<AlertsView> {
   Object? _error;
   bool _loading = false;
   int _seq = 0;
-  Timer? _timer;
 
   /// Selected Alertmanager id (null = default).
   String? _instance;
@@ -65,15 +65,10 @@ class _AlertsViewState extends State<AlertsView> {
     scheduleMicrotask(() {
       if (mounted) _refresh();
     });
-    _timer = Timer.periodic(widget.interval, (_) {
-      if (!_loading && mounted) _refresh();
+    poll(widget.interval, () async {
+      if (!_loading && mounted) await _refresh();
+      return _error == null;
     });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
   }
 
   Future<void> _refresh({bool rediscover = false}) async {

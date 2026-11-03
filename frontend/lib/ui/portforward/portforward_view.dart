@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
+import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -19,10 +20,9 @@ class PortForwardView extends StatefulWidget {
   State<PortForwardView> createState() => _PortForwardViewState();
 }
 
-class _PortForwardViewState extends State<PortForwardView> {
+class _PortForwardViewState extends State<PortForwardView> with PollingState {
   List<PortForward>? _forwards;
   String? _error;
-  Timer? _poll;
 
   ApiClient get _api => context.read<ApiClient>();
 
@@ -30,13 +30,10 @@ class _PortForwardViewState extends State<PortForwardView> {
   void initState() {
     super.initState();
     _refresh();
-    _poll = Timer.periodic(const Duration(milliseconds: 1500), (_) => _refresh());
-  }
-
-  @override
-  void dispose() {
-    _poll?.cancel();
-    super.dispose();
+    poll(const Duration(milliseconds: 1500), () async {
+      await _refresh();
+      return _error == null;
+    });
   }
 
   Future<void> _refresh() async {

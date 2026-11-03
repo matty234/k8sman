@@ -14,6 +14,7 @@ import '../../panels/cluster/logic.dart';
 import '../../panels/cluster/widgets.dart' show UsageBar;
 import '../../panels/panel.dart';
 import '../../state/app_state.dart';
+import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -86,11 +87,10 @@ List<NodeSummary> summarizeNodes(List<Json> nodes, List<Json> pods) {
   return out;
 }
 
-class _NodesViewState extends State<NodesView> {
+class _NodesViewState extends State<NodesView> with PollingState {
   List<NodeSummary>? _nodes;
   String? _error;
   String _filter = '';
-  Timer? _poll;
   DateTime? _updated;
   Map<String, NodeUsage>? _usage;
   Object? _metricsError;
@@ -101,13 +101,10 @@ class _NodesViewState extends State<NodesView> {
   void initState() {
     super.initState();
     _refresh();
-    _poll = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
-  }
-
-  @override
-  void dispose() {
-    _poll?.cancel();
-    super.dispose();
+    poll(const Duration(seconds: 10), () async {
+      await _refresh();
+      return _error == null;
+    });
   }
 
   Future<void> _refresh() async {

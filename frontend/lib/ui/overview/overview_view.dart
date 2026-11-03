@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
+import '../../state/poller.dart';
 import '../widgets/common.dart';
 import 'overview_api.dart';
 import 'overview_widgets.dart';
@@ -23,7 +24,7 @@ class OverviewView extends StatefulWidget {
   State<OverviewView> createState() => _OverviewViewState();
 }
 
-class _OverviewViewState extends State<OverviewView> {
+class _OverviewViewState extends State<OverviewView> with PollingState {
   OverviewApi? _source;
   OverviewData? _data;
   Object? _error;
@@ -31,7 +32,7 @@ class _OverviewViewState extends State<OverviewView> {
   bool _paused = false;
   DateTime? _updatedAt;
   String? _filter;
-  Timer? _timer;
+  late final Poll _poll;
   int _seq = 0;
 
   /// Namespace the current data (or in-flight request) is for.
@@ -44,15 +45,10 @@ class _OverviewViewState extends State<OverviewView> {
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(widget.interval, (_) {
-      if (!_paused && !_loading && mounted) _refresh();
+    _poll = poll(widget.interval, () async {
+      if (!_paused && !_loading && mounted) await _refresh();
+      return _error == null;
     });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -107,7 +103,7 @@ class _OverviewViewState extends State<OverviewView> {
       loading: _loading,
       paused: _paused,
       interval: widget.interval,
-      onTogglePause: () => setState(() => _paused = !_paused),
+      onTogglePause: () => setState(() => _poll.paused = _paused = !_paused),
       onRefresh: _loading ? null : _refresh,
     );
 

@@ -10,6 +10,7 @@ import 'cache.dart';
 import 'metrics_api.dart';
 import 'quantity.dart';
 import 'widgets.dart';
+import '../state/poller.dart';
 
 /// CPU and memory meters for a node: actual usage filled, requests outlined
 /// (and limits as ticks when [limits] is set), scaled to allocatable. Without
@@ -105,22 +106,18 @@ class NodeUsagePoller extends StatefulWidget {
   State<NodeUsagePoller> createState() => _NodeUsagePollerState();
 }
 
-class _NodeUsagePollerState extends State<NodeUsagePoller> {
+class _NodeUsagePollerState extends State<NodeUsagePoller> with PollingState {
   Map<String, NodeUsage>? _usage;
   Object? _error;
-  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => _load());
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+    poll(const Duration(seconds: 15), () async {
+      await _load();
+      return _error == null;
+    });
   }
 
   Future<void> _load() async {

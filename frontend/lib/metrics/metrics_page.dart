@@ -14,6 +14,7 @@ import 'metrics_api.dart';
 import 'top_view.dart';
 import 'widgets.dart';
 import '../ui/widgets/namespace_picker.dart';
+import '../state/poller.dart';
 
 /// The Metrics page (MainView.metrics): which metrics APIs are served, top
 /// nodes/pods by usage, and browsers for custom and external metrics.
@@ -24,10 +25,9 @@ class MetricsPage extends StatefulWidget {
   State<MetricsPage> createState() => _MetricsPageState();
 }
 
-class _MetricsPageState extends State<MetricsPage> {
+class _MetricsPageState extends State<MetricsPage> with PollingState {
   MetricsStatus? _status;
   Object? _statusError;
-  Timer? _timer;
 
   /// Bumped by the refresh button; tabs reload when it changes.
   int _reload = 0;
@@ -42,13 +42,10 @@ class _MetricsPageState extends State<MetricsPage> {
   void initState() {
     super.initState();
     _loadStatus();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _loadStatus());
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+    poll(const Duration(seconds: 30), () async {
+      await _loadStatus();
+      return _statusError == null;
+    });
   }
 
   Future<void> _loadStatus({bool force = false}) async {

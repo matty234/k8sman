@@ -15,6 +15,7 @@ import 'metrics_api.dart';
 import 'quantity.dart';
 import 'sortable_table.dart';
 import 'widgets.dart';
+import '../state/poller.dart';
 
 /// A node's usage joined with its allocatable.
 class TopNode {
@@ -85,11 +86,10 @@ class TopView extends StatefulWidget {
   State<TopView> createState() => _TopViewState();
 }
 
-class _TopViewState extends State<TopView> with AutomaticKeepAliveClientMixin {
+class _TopViewState extends State<TopView> with AutomaticKeepAliveClientMixin, PollingState {
   List<TopNode>? _nodes;
   List<TopPod>? _pods;
   Object? _error;
-  Timer? _timer;
   DateTime? _updated;
 
   ApiClient get _api => context.read<ApiClient>();
@@ -101,13 +101,10 @@ class _TopViewState extends State<TopView> with AutomaticKeepAliveClientMixin {
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => _load());
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+    poll(const Duration(seconds: 15), () async {
+      await _load();
+      return _error == null;
+    });
   }
 
   Future<void> _load() async {

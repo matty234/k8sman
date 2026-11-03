@@ -14,6 +14,7 @@ import 'metrics_api.dart';
 import 'pod_usage.dart' show usageAgainst;
 import 'quantity.dart';
 import 'widgets.dart';
+import '../state/poller.dart';
 
 /// "Usage" section for a workload panel (Deployment, StatefulSet, DaemonSet):
 /// the summed usage of its pods vs their requests, the per-pod spread and the
@@ -68,30 +69,26 @@ class WorkloadUsage extends StatefulWidget {
   State<WorkloadUsage> createState() => _WorkloadUsageState();
 }
 
-class _WorkloadUsageState extends State<WorkloadUsage> {
+class _WorkloadUsageState extends State<WorkloadUsage> with PollingState {
   List<PodUsageRow>? _rows;
   Object? _metricsError;
   Object? _error;
-  Timer? _timer;
   bool _showAll = false;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => _load());
+    poll(const Duration(seconds: 15), () async {
+      await _load();
+      return _error == null;
+    });
   }
 
   @override
   void didUpdateWidget(WorkloadUsage old) {
     super.didUpdateWidget(old);
     if (old.selector != widget.selector || old.namespace != widget.namespace) _load();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
   }
 
   Future<void> _load() async {
