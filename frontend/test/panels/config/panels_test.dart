@@ -128,16 +128,43 @@ void main() {
     await saveScreenshot(tester, 'config-sa-web');
     expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget);
     expect(find.text('api-7d9f-abcde'), findsNothing); // runs as default
-    expect(find.text('RoleBinding/web-pod-reader'), findsOneWidget);
-    expect(find.text('Role/pod-reader'), findsOneWidget);
-    expect(find.text('pods, pods/log'), findsOneWidget);
-    expect(find.text('via system:serviceaccounts'), findsOneWidget);
+    // "Can do": merged rows per target, neutral verbs.
+    expect(find.text('Can do'), findsOneWidget);
+    expect(find.text('pods'), findsOneWidget);
+    expect(find.text('pods/log'), findsOneWidget);
+    expect(find.text('get · list · watch'), findsNWidgets(2));
+    // "Granted by": role link + binding link, provenance muted.
+    expect(find.text('pod-reader'), findsOneWidget);
+    expect(find.text('web-pod-reader'), findsOneWidget);
     expect(find.textContaining('dangling binding'), findsOneWidget);
-    expect(find.text('2 direct · 1 inherited'), findsOneWidget);
+    expect(find.text('2 grants · 2 bindings'), findsOneWidget);
+    // The built-in issuer-discovery binding is folded into "Default access".
+    expect(find.text('Default access'), findsOneWidget);
+    expect(find.textContaining('/openid/v1/jwks'), findsNothing);
+    await tester.tap(find.text('Default access'));
+    await tester.pump();
+    expect(find.textContaining('/openid/v1/jwks'), findsOneWidget);
 
-    await tester.tap(find.text('Role/pod-reader'));
+    await tester.tap(find.text('pod-reader'));
     await tester.pump();
     expect(app.detail?.type.kind, 'Role');
     expect(app.detail?.namespace, 'demo');
+  });
+
+  testWidgets('ServiceAccount with only default bindings says so plainly', (tester) async {
+    final api = FakeApiClient(itemsByResource: {
+      'pods': const [],
+      'rolebindings.rbac.authorization.k8s.io': const [],
+      'clusterrolebindings.rbac.authorization.k8s.io': [localFixture('crb-sa-issuer-discovery')],
+    }, objects: {
+      'clusterroles.rbac.authorization.k8s.io//system:service-account-issuer-discovery': localFixture('clusterrole-sa-issuer-discovery'),
+    });
+    await loadRealFonts();
+    await pumpPanel(tester, fixture('sa-web'), api: api);
+    await saveScreenshot(tester, 'config-sa-defaults');
+    expect(find.text('defaults only'), findsOneWidget);
+    expect(find.textContaining('Nothing beyond the cluster defaults'), findsOneWidget);
+    expect(find.text('Can do'), findsNothing);
+    expect(find.text('Default access'), findsOneWidget);
   });
 }
