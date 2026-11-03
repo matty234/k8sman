@@ -226,11 +226,7 @@ func (a *analyzer) add(f Finding) {
 // ---- owners -----------------------------------------------------------------
 
 func refFromOwner(ns string, r *metav1.OwnerReference) *ObjectRef {
-	group := ""
-	if i := strings.IndexByte(r.APIVersion, '/'); i >= 0 {
-		group = r.APIVersion[:i]
-	}
-	return &ObjectRef{Group: group, Kind: r.Kind, Name: r.Name, Namespace: ns}
+	return &ObjectRef{Group: kube.Group(r.APIVersion), Kind: r.Kind, Name: r.Name, Namespace: ns}
 }
 
 func (a *analyzer) indexOwners() {

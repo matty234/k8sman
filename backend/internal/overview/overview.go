@@ -318,11 +318,7 @@ func Analyze(in Input) *Result {
 // ---- owners -----------------------------------------------------------------
 
 func ownerFromRef(r *metav1.OwnerReference) *Owner {
-	group := ""
-	if i := strings.IndexByte(r.APIVersion, '/'); i >= 0 {
-		group = r.APIVersion[:i]
-	}
-	return &Owner{Group: group, Kind: r.Kind, Name: r.Name}
+	return &Owner{Group: kube.Group(r.APIVersion), Kind: r.Kind, Name: r.Name}
 }
 
 func (a *analyzer) indexOwners() {
@@ -1241,15 +1237,11 @@ func (a *analyzer) events() {
 		if last.After(r.last) || r.last.IsZero() {
 			r.last = last
 			r.LatestMessage = truncate(strings.TrimSpace(e.Message))
-			group := ""
-			if i := strings.IndexByte(io.APIVersion, '/'); i >= 0 {
-				group = io.APIVersion[:i]
-			}
 			ns := io.Namespace
 			if ns == "" && io.Kind != "Node" && io.Kind != "Namespace" && io.Kind != "PersistentVolume" {
 				ns = e.Namespace // some controllers omit it for namespaced objects
 			}
-			r.Example = ObjectRef{Kind: io.Kind, Group: group, Namespace: ns, Name: io.Name}
+			r.Example = ObjectRef{Kind: io.Kind, Group: kube.Group(io.APIVersion), Namespace: ns, Name: io.Name}
 		}
 	}
 	for reason, r := range by {

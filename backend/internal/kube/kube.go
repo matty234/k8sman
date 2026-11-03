@@ -5,6 +5,7 @@ package kube
 
 import (
 	"fmt"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -15,6 +16,15 @@ import (
 func Str(m map[string]any, path ...string) string {
 	s, _, _ := unstructured.NestedString(m, path...)
 	return s
+}
+
+// Group returns the API group of an apiVersion ("apps/v1" → "apps",
+// "v1" → "").
+func Group(apiVersion string) string {
+	if i := strings.IndexByte(apiVersion, '/'); i >= 0 {
+		return apiVersion[:i]
+	}
+	return ""
 }
 
 // Key is the "<namespace>/<name>" key of an object.
