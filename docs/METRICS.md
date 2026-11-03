@@ -104,9 +104,41 @@ referenced by HPAs, with their selectors (e.g. KEDA's
   filter, refreshed every 15s); **Custom metrics** (pick a resource type and
   metric, optional label selector, values per object); **External metrics**
   (known metrics or a typed name, optional selector). Clicking an object
-  opens it in the inspector.
+  opens it in the inspector. A **Storage** tab lists every PVC in scope with
+  used / capacity / % / inodes, fullest first; a **Network** tab shows node
+  throughput and the busiest pods (receive + transmit).
+- **PVC panel:** a Usage bar (used of capacity, free space, inodes, and with
+  Prometheus a "full in ~N days" trend plus history).
 
-Colour is used only for thresholds: ≥70% amber, ≥90% red.
+Colour is used only for thresholds: ≥70% amber, ≥90% red (PVCs: ≥80% amber,
+≥90% red).
+
+## Storage and network usage
+
+PVC usage and network throughput aren't in `metrics.k8s.io`. k8sman reads
+them from Prometheus when a reachable instance is discovered (see
+[PROMETHEUS.md](PROMETHEUS.md)), else from the **kubelet Summary API**:
+`GET /api/metrics/summary` fetches `/api/v1/nodes/<node>/proxy/stats/summary`
+(needs `get` on `nodes/proxy`) from the asked nodes, or every Ready node, in
+parallel (16 at a time, 10s timeout each) and caches each node for ~12s, so the
+panels and the Metrics tabs share one fetch per node.
+
+- **Volumes:** the pod volumes with a `pvcRef` (`usedBytes`,
+  `capacityBytes`, `availableBytes`, inodes). Kubelets report only volumes
+  mounted by a running pod, so an unbound or idle claim shows "not mounted,
+  usage unknown". Some volume types (e.g. hostPath-backed local-path
+  volumes) report no stats at all.
+- **Network:** cumulative `rxBytes`/`txBytes` per pod and node, summed over
+  non-virtual interfaces. Rates come from the difference between the last two
+  distinct samples (by the kubelet's own timestamp) held in the cache; they
+  are absent until a second sample arrives (~15s), after a counter reset or
+  pod recreation, or when the previous sample is older than 3 minutes.
+  The Pod and Node panels show this live rate only when there is no
+  Prometheus.
+
+It fails soft: no permission or unreachable kubelets give `state:
+"unavailable"` (with per-node `errors` when only some fail), never an HTTP
+error, and the UI shows a quiet note or nothing.
 
 ## Dev cluster
 

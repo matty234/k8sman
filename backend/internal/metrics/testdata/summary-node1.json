@@ -1,0 +1,86 @@
+{
+  "node": {
+    "nodeName": "node1",
+    "startTime": "2026-11-03T10:51:02Z",
+    "network": {
+      "time": "2026-11-03T23:24:10Z",
+      "name": "eth0",
+      "rxBytes": 34725685779,
+      "rxErrors": 0,
+      "txBytes": 917021855,
+      "txErrors": 0,
+      "interfaces": [
+        {"name": "tunl0", "rxBytes": 0, "rxErrors": 0, "txBytes": 0, "txErrors": 0},
+        {"name": "lo", "rxBytes": 999999, "rxErrors": 0, "txBytes": 999999, "txErrors": 0},
+        {"name": "veth04c41ea3", "rxBytes": 5000, "rxErrors": 0, "txBytes": 7000, "txErrors": 0},
+        {"name": "eth0", "rxBytes": 34725685779, "rxErrors": 0, "txBytes": 917021855, "txErrors": 0},
+        {"name": "eth1", "rxBytes": 1000, "rxErrors": 0, "txBytes": 2000, "txErrors": 0}
+      ]
+    }
+  },
+  "pods": [
+    {
+      "podRef": {"name": "redis-0", "namespace": "demo", "uid": "ba31c76b-19fe-40da-8951-c083a0a5ab91"},
+      "startTime": "2026-11-03T11:02:12Z",
+      "network": {
+        "time": "2026-11-03T23:24:04Z",
+        "name": "eth0",
+        "rxBytes": 446000,
+        "rxErrors": 0,
+        "txBytes": 1776000,
+        "txErrors": 0,
+        "interfaces": [
+          {"name": "tunl0", "rxBytes": 0, "rxErrors": 0, "txBytes": 0, "txErrors": 0},
+          {"name": "eth0", "rxBytes": 446000, "rxErrors": 0, "txBytes": 1776000, "txErrors": 0}
+        ]
+      },
+      "volume": [
+        {
+          "time": "2026-11-03T23:24:02Z",
+          "availableBytes": 8217563136,
+          "capacityBytes": 8217575424,
+          "usedBytes": 12288,
+          "inodesFree": 1003113,
+          "inodes": 1003122,
+          "inodesUsed": 9,
+          "name": "kube-api-access-g84ql"
+        },
+        {
+          "time": "2026-11-03T23:24:02Z",
+          "availableBytes": 107374182,
+          "capacityBytes": 1073741824,
+          "usedBytes": 966367642,
+          "inodesFree": 65000,
+          "inodes": 65536,
+          "inodesUsed": 536,
+          "name": "data",
+          "pvcRef": {"name": "data-redis-0", "namespace": "demo"}
+        }
+      ]
+    },
+    {
+      "podRef": {"name": "web-6fd47b8fcb-442dt", "namespace": "demo", "uid": "922d8d6a-691f-4ea5-8859-1b2204df25dc"},
+      "network": {
+        "time": "2026-11-03T23:24:05Z",
+        "name": "eth0",
+        "rxBytes": 10000,
+        "rxErrors": 0,
+        "txBytes": 20000,
+        "txErrors": 0
+      },
+      "volume": [
+        {"time": "2026-11-03T23:24:02Z", "usedBytes": 4096, "capacityBytes": 8217575424, "name": "kube-api-access-x"}
+      ]
+    },
+    {
+      "podRef": {"name": "coredns-7db6d8ff4d-abcde", "namespace": "kube-system", "uid": "c0"},
+      "network": {
+        "time": "2026-11-03T23:24:06Z",
+        "name": "eth0",
+        "rxBytes": 1,
+        "txBytes": 1,
+        "interfaces": [{"name": "eth0", "rxBytes": 1, "txBytes": 1}]
+      }
+    }
+  ]
+}

@@ -11,13 +11,16 @@ import 'cache.dart';
 import 'custom_view.dart';
 import 'external_view.dart';
 import 'metrics_api.dart';
+import 'network_view.dart';
+import 'storage_view.dart';
 import 'top_view.dart';
 import 'widgets.dart';
 import '../ui/widgets/namespace_picker.dart';
 import '../state/poller.dart';
 
 /// The Metrics page (MainView.metrics): which metrics APIs are served, top
-/// nodes/pods by usage, and browsers for custom and external metrics.
+/// nodes/pods by usage, PVC storage usage, network throughput, and browsers
+/// for custom and external metrics.
 class MetricsPage extends StatefulWidget {
   const MetricsPage({super.key});
 
@@ -79,7 +82,7 @@ class _MetricsPageState extends State<MetricsPage> with PollingState {
   Widget build(BuildContext context) {
     final ns = _ns;
     return DefaultTabController(
-      length: 3,
+      length: 5,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -100,6 +103,8 @@ class _MetricsPageState extends State<MetricsPage> with PollingState {
               tabAlignment: TabAlignment.start,
               tabs: [
                 Tab(text: 'Top', height: 34),
+                Tab(text: 'Storage', height: 34),
+                Tab(text: 'Network', height: 34),
                 Tab(text: 'Custom metrics', height: 34),
                 Tab(text: 'External metrics', height: 34),
               ],
@@ -109,6 +114,8 @@ class _MetricsPageState extends State<MetricsPage> with PollingState {
             child: TabBarView(
               children: [
                 TopView(key: ValueKey('top-$ns-$_reload'), namespace: ns, status: _status?.resource),
+                StorageView(key: ValueKey('storage-$ns-$_reload'), namespace: ns),
+                NetworkView(key: ValueKey('network-$ns-$_reload'), namespace: ns),
                 CustomMetricsView(key: ValueKey('custom-$ns-$_reload'), namespace: ns, status: _status?.custom),
                 ExternalMetricsView(key: ValueKey('external-$ns-$_reload'), namespace: ns, status: _status?.external),
               ],

@@ -27,8 +27,15 @@ void main() {
     expect(find.text('Metrics history'), findsOneWidget);
     expect(find.text('CPU'), findsOneWidget);
     expect(find.text('Memory'), findsOneWidget);
-    expect(find.byType(AreaChart), findsNWidgets(2));
-    expect(find.textContaining('now '), findsNWidgets(2));
+    expect(find.text('Network'), findsOneWidget);
+    expect(find.byType(AreaChart), findsNWidgets(3));
+    expect(find.textContaining('now '), findsNWidgets(3));
+    // Network counters: one series per direction, NIC-deduplicated, no lo.
+    final net = prom.queries.firstWhere((q) => q.contains('container_network_receive_bytes_total'));
+    expect(net, contains('container_network_transmit_bytes_total'));
+    expect(net, contains('max by (interface)'));
+    expect(net, contains('interface!="lo"'));
+    expect(net, isNot(contains('container!=')));
     // Scroll the charts into view and hover the CPU chart.
     await tester.ensureVisible(find.text('Metrics history'));
     await tester.pumpAndSettle();
@@ -62,7 +69,17 @@ void main() {
   testWidgets('node panel shows history', (tester) async {
     await pumpPanel(tester, devFixture('node-k8sman-dev-control-plane.json'), size: const Size(560, 2400));
     expect(find.text('Metrics history'), findsOneWidget);
-    expect(find.byType(AreaChart), findsNWidgets(2));
+    expect(find.byType(AreaChart), findsNWidgets(3));
+    expect(prom.queries.where((q) => q.contains('node_network_receive_bytes_total{device!~"lo|veth.*')), hasLength(1));
+  });
+
+  testWidgets('deployment panel sums its pods by owner, falling back to the pod-name pattern', (tester) async {
+    await pumpPanel(tester, devFixture('deploy-web.json'), size: const Size(560, 3200));
+    expect(find.text('Metrics history'), findsOneWidget);
+    expect(find.byType(AreaChart), findsNWidgets(3));
+    final cpu = prom.queries.firstWhere((q) => q.contains('container_cpu_usage_seconds_total'));
+    expect(cpu, contains('kube_pod_owner{namespace="demo",owner_kind="ReplicaSet",owner_name=~"web-[a-z0-9]+"}'));
+    expect(cpu, contains(' or sum (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace="demo",pod=~"web-[a-z0-9]+-[a-z0-9]+"'));
   });
 
   testWidgets('hidden when no Prometheus is reachable', (tester) async {

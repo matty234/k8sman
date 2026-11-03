@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../actions/actions.dart';
 import '../../api/models.dart';
 import '../../prometheus/metric_history_chart.dart';
+import '../../metrics/network_usage.dart';
 import '../../metrics/pod_usage.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/terminal/open_terminal.dart';
@@ -32,6 +33,8 @@ class PodPanel extends ResourcePanel {
     return [
       // CPU / memory history first (hidden when Prometheus isn't available).
       podHistory(ctx),
+      // Live network from the kubelet when there is no Prometheus.
+      liveNetworkSection(ctx),
       DetailSection(title: 'Status', icon: Icons.monitor_heart_outlined, child: _StatusSummary(ctx)),
       DetailSection(
         title: 'Containers',

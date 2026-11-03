@@ -19,11 +19,34 @@ import 'prom_api.dart';
 // One-line entry points for panels
 // ---------------------------------------------------------------------------
 
-String _q(String s) => s.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+/// Escapes a value for a double-quoted PromQL string.
+String promQuote(String s) => s.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+String _q(String s) => promQuote(s);
 
-/// CPU and memory history for a pod, with an optional per-container breakdown.
+/// Escapes regex metacharacters (e.g. the dots in a name) for `=~`.
+String _re(String s) => s.replaceAllMapped(RegExp(r'[.*+?^${}()|\[\]\\]'), (m) => '\\${m[0]}');
+
+/// Two series, "receive" and "transmit", labelled `direction`, from a
+/// builder taking the counter's name.
+String _rxTx(String Function(String metric) rate, String prefix) =>
+    'label_replace(${rate('${prefix}_receive_bytes_total')}, "direction", "receive", "", "") or '
+    'label_replace(${rate('${prefix}_transmit_bytes_total')}, "direction", "transmit", "", "")';
+
+/// Pod network counters carry no real container label (the sandbox reports
+/// them with container="" or "POD", and runtimes may repeat them per
+/// container), so take the max per interface to count each NIC once.
+String _podNet(String sel, String w, String metric, {String by = ''}) =>
+    'max by (${by}interface) (rate($metric{$sel,interface!="lo"}[$w]))';
+
+/// Virtual devices excluded from node throughput: loopback, pod veths, CNI
+/// bridges and tunnels (their traffic is already counted on the NIC).
+const nodeVirtualDevices = 'lo|veth.*|cali.*|flannel.*|cni.*|docker.*|br-.*|virbr.*|vxlan.*|tunl.*|kube-ipvs.*|cilium.*|lxc.*|genev.*|nodelocaldns.*';
+
+/// CPU, memory and network history for a pod, with an optional per-container
+/// breakdown (CPU and memory only: network is per pod).
 Widget podHistory(PanelContext ctx) {
-  final sel = 'namespace="${_q(ctx.namespace ?? '')}",pod="${_q(ctx.name)}",container!="",container!="POD"';
+  final pod = 'namespace="${_q(ctx.namespace ?? '')}",pod="${_q(ctx.name)}"';
+  final sel = '$pod,container!="",container!="POD"';
   return MetricHistorySection(
     key: ValueKey('pod-history-${ctx.uid}'),
     api: ctx.api,
@@ -39,11 +62,18 @@ Widget podHistory(PanelContext ctx) {
         unit: MetricUnit.bytes,
         query: (w, by) => 'sum${by == null ? '' : ' by ($by)'} (container_memory_working_set_bytes{$sel})',
       ),
+      MetricChartSpec(
+        title: 'Network',
+        unit: MetricUnit.bytesPerSec,
+        seriesLabel: 'direction',
+        query: (w, _) => _rxTx((m) => 'sum(${_podNet(pod, w, m)})', 'container_network'),
+      ),
     ],
   );
 }
 
-/// CPU and memory history for a node (node-exporter, joined on nodename).
+/// CPU, memory and network history for a node (node-exporter, joined on
+/// nodename).
 Widget nodeHistory(PanelContext ctx) {
   final node = 'node_uname_info{nodename="${_q(ctx.name)}"}';
   return MetricHistorySection(
@@ -60,6 +90,93 @@ Widget nodeHistory(PanelContext ctx) {
         unit: MetricUnit.bytes,
         query: (w, _) => 'sum((node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) * on(instance) group_left(nodename) $node)',
       ),
+      MetricChartSpec(
+        title: 'Network',
+        unit: MetricUnit.bytesPerSec,
+        seriesLabel: 'direction',
+        query: (w, _) => _rxTx(
+          (m) => 'sum(rate($m{device!~"$nodeVirtualDevices"}[$w]) * on(instance) group_left(nodename) $node)',
+          'node_network',
+        ),
+      ),
+    ],
+  );
+}
+
+/// The pods of a workload in PromQL: by owner via kube-state-metrics'
+/// `kube_pod_owner` when present, else by the controller's pod-name pattern.
+/// Null for kinds that aren't Deployment / StatefulSet / DaemonSet.
+({String owner, String podRegex})? workloadPodMatch(String kind, String namespace, String name) {
+  final ns = 'namespace="${_q(namespace)}"';
+  final n = _q(_re(name));
+  return switch (kind) {
+    // Pods are owned by ReplicaSets named <deployment>-<pod-template-hash>.
+    'Deployment' => (owner: 'kube_pod_owner{$ns,owner_kind="ReplicaSet",owner_name=~"$n-[a-z0-9]+"}', podRegex: '$n-[a-z0-9]+-[a-z0-9]+'),
+    'StatefulSet' => (owner: 'kube_pod_owner{$ns,owner_kind="StatefulSet",owner_name="${_q(name)}"}', podRegex: '$n-[0-9]+'),
+    'DaemonSet' => (owner: 'kube_pod_owner{$ns,owner_kind="DaemonSet",owner_name="${_q(name)}"}', podRegex: '$n-[a-z0-9]{5}'),
+    _ => null,
+  };
+}
+
+/// CPU, memory and network history summed over a workload's pods (with a
+/// per-pod breakdown for CPU and memory). Renders nothing for other kinds.
+Widget workloadHistory(PanelContext ctx) {
+  final ns = ctx.namespace ?? '';
+  final m = workloadPodMatch(ctx.type.kind, ns, ctx.name);
+  if (m == null) return const SizedBox.shrink();
+  final nsSel = 'namespace="${_q(ns)}"';
+  final byNameSel = '$nsSel,pod=~"${m.podRegex}"';
+
+  /// [perPod] yields one series per (namespace, pod) for a pod selector.
+  /// Summed via the owner join, or (no kube-state-metrics) the name pattern.
+  String overPods(String Function(String sel) perPod, String? by) {
+    final agg = by == null ? 'sum' : 'sum by ($by)';
+    return '$agg (${perPod(nsSel)} * on (namespace, pod) group_left() max by (namespace, pod) (${m.owner})) or $agg (${perPod(byNameSel)})';
+  }
+
+  return MetricHistorySection(
+    key: ValueKey('workload-history-${ctx.uid}'),
+    api: ctx.api,
+    breakdownLabel: 'pod',
+    charts: [
+      MetricChartSpec(
+        title: 'CPU',
+        unit: MetricUnit.cores,
+        query: (w, by) =>
+            overPods((s) => 'sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{$s,container!="",container!="POD"}[$w]))', by),
+      ),
+      MetricChartSpec(
+        title: 'Memory',
+        unit: MetricUnit.bytes,
+        query: (w, by) => overPods((s) => 'sum by (namespace, pod) (container_memory_working_set_bytes{$s,container!="",container!="POD"})', by),
+      ),
+      MetricChartSpec(
+        title: 'Network',
+        unit: MetricUnit.bytesPerSec,
+        seriesLabel: 'direction',
+        query: (w, _) => _rxTx((metric) => '(${overPods((s) => 'sum by (namespace, pod) (${_podNet(s, w, metric, by: 'namespace, pod, ')})', null)})', 'container_network'),
+      ),
+    ],
+  );
+}
+
+/// Used vs capacity history of a PVC (kubelet volume stats).
+Widget pvcHistory(PanelContext ctx) {
+  final sel = 'namespace="${_q(ctx.namespace ?? '')}",persistentvolumeclaim="${_q(ctx.name)}"';
+  return MetricHistorySection(
+    key: ValueKey('pvc-history-${ctx.uid}'),
+    api: ctx.api,
+    title: 'Usage history',
+    initialRange: const Duration(days: 1),
+    charts: [
+      MetricChartSpec(
+        title: 'Used',
+        unit: MetricUnit.bytes,
+        seriesLabel: 'series',
+        query: (w, _) =>
+            'label_replace(max(kubelet_volume_stats_used_bytes{$sel}), "series", "used", "", "") or '
+            'label_replace(max(kubelet_volume_stats_capacity_bytes{$sel}), "series", "capacity", "", "")',
+      ),
     ],
   );
 }
@@ -68,7 +185,7 @@ Widget nodeHistory(PanelContext ctx) {
 // Specs and formatting
 // ---------------------------------------------------------------------------
 
-enum MetricUnit { cores, bytes, plain, percent }
+enum MetricUnit { cores, bytes, bytesPerSec, plain, percent }
 
 String formatMetric(double v, MetricUnit unit) {
   switch (unit) {
@@ -88,6 +205,8 @@ String formatMetric(double v, MetricUnit unit) {
         i++;
       }
       return '${x < 10 && i > 0 ? x.toStringAsFixed(1) : x.round()} ${units[i]}';
+    case MetricUnit.bytesPerSec:
+      return '${formatMetric(v, MetricUnit.bytes)}/s';
     case MetricUnit.percent:
       return '${(v * 100).toStringAsFixed(v < 0.1 ? 1 : 0)}%';
     case MetricUnit.plain:
@@ -103,7 +222,13 @@ class MetricChartSpec {
   final String title;
   final MetricUnit unit;
   final String Function(String window, String? by) query;
-  const MetricChartSpec({required this.title, required this.unit, required this.query});
+
+  /// A label that always names the series (e.g. `direction` for receive /
+  /// transmit). Such a chart ignores the section's breakdown, shows each
+  /// series' latest value in its header, and orders series as the query
+  /// mentions their label values.
+  final String? seriesLabel;
+  const MetricChartSpec({required this.title, required this.unit, required this.query, this.seriesLabel});
 }
 
 /// Selectable time ranges.
@@ -251,13 +376,27 @@ class MetricHistoryChart extends StatefulWidget {
 
 class _MetricHistoryChartState extends State<MetricHistoryChart> {
   late final Future<QueryData> _data;
+  late final String _query;
 
   @override
   void initState() {
     super.initState();
     final end = DateTime.now();
     final s = stepFor(widget.range);
-    _data = widget.prom.queryRange(widget.spec.query(s.window, widget.breakdown), start: end.subtract(widget.range), end: end, step: s.step);
+    _query = widget.spec.query(s.window, widget.spec.seriesLabel == null ? widget.breakdown : null);
+    _data = widget.prom.queryRange(_query, start: end.subtract(widget.range), end: end, step: s.step);
+  }
+
+  /// Series in the order the query names their [MetricChartSpec.seriesLabel] values.
+  List<MetricSeries> _ordered(List<MetricSeries> series) {
+    final k = widget.spec.seriesLabel;
+    if (k == null) return series;
+    int pos(MetricSeries s) {
+      final i = _query.indexOf('"${s.metric[k]}"');
+      return i < 0 ? 1 << 30 : i;
+    }
+
+    return [...series]..sort((a, b) => pos(a).compareTo(pos(b)));
   }
 
   @override
@@ -268,12 +407,19 @@ class _MetricHistoryChartState extends State<MetricHistoryChart> {
       future: _data,
       builder: (context, snap) {
         final data = snap.data;
-        final series = data?.series.where((s) => s.points.isNotEmpty).toList() ?? const <MetricSeries>[];
+        final series = _ordered(data?.series.where((s) => s.points.isNotEmpty).toList() ?? const <MetricSeries>[]);
         final latest = series.isEmpty ? null : series.map((s) => s.points.last.$2).fold<double>(0, (a, b) => a + b);
+        final k = widget.spec.seriesLabel;
+        final nowText = latest == null
+            ? null
+            : k == null
+            ? 'now ${formatMetric(latest, widget.spec.unit)}'
+            : 'now ${series.map((s) => '${s.metric[k] ?? ''} ${formatMetric(s.points.last.$2, widget.spec.unit)}').join(' · ')}';
         final header = Row(children: [
           Text(widget.spec.title, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(width: 8),
           const Spacer(),
-          if (latest != null) Text('now ${formatMetric(latest, widget.spec.unit)}', style: hint),
+          if (nowText != null) Flexible(flex: 6, child: Text(nowText, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right, style: hint)),
         ]);
         Widget body;
         if (snap.hasError) {
@@ -283,7 +429,7 @@ class _MetricHistoryChartState extends State<MetricHistoryChart> {
         } else if (series.isEmpty) {
           body = _ChartMessage('No data in this range', height: widget.height);
         } else {
-          body = AreaChart(series: series, unit: widget.spec.unit, height: widget.height, labelKey: widget.breakdown, range: widget.range, seriesName: widget.spec.title);
+          body = AreaChart(series: series, unit: widget.spec.unit, height: widget.height, labelKey: widget.spec.seriesLabel ?? widget.breakdown, range: widget.range, seriesName: widget.spec.title);
         }
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, const SizedBox(height: 4), body]);
       },
