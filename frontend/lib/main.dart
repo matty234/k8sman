@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'api/client.dart';
 import 'state/app_state.dart';
+import 'state/log_dock.dart';
 import 'ui/shell.dart';
 import 'ui/theme.dart';
 
@@ -13,6 +14,7 @@ void main() {
       providers: [
         Provider<ApiClient>.value(value: api),
         ChangeNotifierProvider<AppState>(create: (_) => AppState(api)..init()),
+        ChangeNotifierProvider<LogDock>(create: (_) => LogDock(api)),
       ],
       child: const K8sManApp(),
     ),
