@@ -9,6 +9,7 @@ import '../../util/k8s.dart';
 import '../theme.dart';
 import 'exec_protocol.dart';
 import 'terminal_tab.dart';
+import '../keys.dart';
 
 /// Dark palette used in both app themes (terminals read best dark).
 const terminalTheme = TerminalTheme(
@@ -151,8 +152,7 @@ class _TerminalSessionState extends State<TerminalSession> {
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    final hw = HardwareKeyboard.instance;
-    if (!hw.isMetaPressed) {
+    if (!primaryModifierPressed) {
       // Everything without ⌘ belongs to the terminal: stop app shortcuts
       // but let the platform deliver text (IME) to the terminal.
       return KeyEventResult.skipRemainingHandlers;
@@ -365,12 +365,14 @@ class _Toolbar extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         icon('terminal-restart', 'Restart session', Icons.refresh, onRestart),
-        icon('terminal-copy', 'Copy selection (⌘C)', Icons.copy, onCopy),
-        icon('terminal-paste', 'Paste (⌘V)', Icons.content_paste, onPaste),
-        icon('terminal-clear', 'Clear (⌘K)', Icons.clear_all, onClear),
-        icon('terminal-font-smaller', 'Smaller text (⌘−)', Icons.text_decrease,
+        // On Windows/Linux Ctrl keys belong to the shell (xterm copies with
+        // Ctrl+Shift+C and pastes with Ctrl+V).
+        icon('terminal-copy', useCtrlShortcuts ? 'Copy selection (Ctrl+Shift+C)' : 'Copy selection (⌘C)', Icons.copy, onCopy),
+        icon('terminal-paste', useCtrlShortcuts ? 'Paste (Ctrl+V)' : 'Paste (⌘V)', Icons.content_paste, onPaste),
+        icon('terminal-clear', useCtrlShortcuts ? 'Clear' : 'Clear (⌘K)', Icons.clear_all, onClear),
+        icon('terminal-font-smaller', useCtrlShortcuts ? 'Smaller text' : 'Smaller text (⌘−)', Icons.text_decrease,
             s.fontSize > TerminalSettings.minFontSize ? () => s.setFontSize(s.fontSize - 1) : null),
-        icon('terminal-font-larger', 'Larger text (⌘+)', Icons.text_increase,
+        icon('terminal-font-larger', useCtrlShortcuts ? 'Larger text' : 'Larger text (⌘+)', Icons.text_increase,
             s.fontSize < TerminalSettings.maxFontSize ? () => s.setFontSize(s.fontSize + 1) : null),
         PopupMenuButton<int>(
           popUpAnimationStyle: AnimationStyle.noAnimation,

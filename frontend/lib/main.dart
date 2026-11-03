@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'api/client.dart';
 import 'app/backend.dart';
+import 'app/updates/github_releases.dart';
 import 'app/updates/update_controller.dart';
 import 'app/updates/update_ui.dart';
 import 'app/window_chrome.dart';
@@ -16,11 +19,13 @@ void main() {
   WindowChrome.init();
   final api = ApiClient();
   final app = AppState(api);
-  // Spawns the embedded backend (macOS app) or uses K8SMAN_BACKEND, then
+  // Spawns the embedded backend (macOS/Windows app) or uses K8SMAN_BACKEND, then
   // loads the app state whenever the backend (re)connects.
   final backend = BackendController(api, onReady: app.backendConnected);
-  // Sparkle updates: daily background check, banner, About panel.
-  final updates = UpdateController();
+  // Updates: daily background check, banner, About panel. Sparkle on macOS;
+  // on Windows a GitHub "latest release" check linking to the download.
+  final windows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+  final updates = UpdateController(github: windows ? GitHubReleases() : null, openUrl: launchUrl);
   runApp(
     MultiProvider(
       providers: [

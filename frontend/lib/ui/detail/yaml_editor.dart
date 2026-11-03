@@ -13,6 +13,7 @@ import '../../util/diff.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../keys.dart';
 
 /// YAML tab: syntax-highlighted view, and (unless read-only) an inline editor
 /// with server-side dry-run validation, diff review and conflict-safe apply.
@@ -198,7 +199,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
     final canEdit = !app.readOnly && _t.type.can('update');
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyS, meta: true): _reviewAndApply,
+        primaryShortcut(LogicalKeyboardKey.keyS): _reviewAndApply,
         const SingleActivator(LogicalKeyboardKey.escape): () {
           if (_editing && !_dirty) _discard();
         },
@@ -216,7 +217,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
         if (_editing)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: Text('⌘S review & apply · ⌘F find · Status changes are ignored for kinds with a status subresource.',
+            child: Text('${shortcutLabel('S')} review & apply · ${shortcutLabel('F')} find · Status changes are ignored for kinds with a status subresource.',
                 style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
           ),
       ]),

@@ -22,6 +22,7 @@ import 'resource_table.dart';
 import 'security/security_view.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
+import 'keys.dart';
 
 const _navWidth = 232.0;
 
@@ -66,8 +67,8 @@ class _ShellState extends State<Shell> {
     final collapsed = app.inspectorCollapsed;
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyJ, meta: true): dock.toggle,
-        const SingleActivator(LogicalKeyboardKey.keyI, meta: true): app.toggleInspector,
+        primaryShortcut(LogicalKeyboardKey.keyJ): dock.toggle,
+        primaryShortcut(LogicalKeyboardKey.keyI): app.toggleInspector,
       },
       child: Focus(
         autofocus: true,
@@ -159,7 +160,7 @@ class _CollapsedInspector extends StatelessWidget {
     final colors = AppColors.of(context);
     final app = context.read<AppState>();
     return Tooltip(
-      message: 'Show inspector: ${target.type.kind} ${target.name} (⌘I)',
+      message: 'Show inspector: ${target.type.kind} ${target.name} (${shortcutLabel('I')})',
       waitDuration: const Duration(milliseconds: 600),
       child: Hoverable(
         key: const ValueKey('inspector-collapsed-tab'),

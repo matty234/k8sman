@@ -48,6 +48,7 @@ class _UpdateHostState extends State<UpdateHost> {
           bottom: 16,
           child: UpdateBanner(
             update: update,
+            manual: updates.manualInstall,
             onInstall: updates.install,
             onDismiss: updates.dismiss,
           ),
@@ -67,7 +68,10 @@ class UpdateBanner extends StatelessWidget {
   final VoidCallback onInstall;
   final VoidCallback onDismiss;
   final Future<void> Function(Uri)? openUrl;
-  const UpdateBanner({super.key, required this.update, required this.onInstall, required this.onDismiss, this.openUrl});
+
+  /// No Sparkle (Windows): [onInstall] opens the release page.
+  final bool manual;
+  const UpdateBanner({super.key, required this.update, required this.onInstall, required this.onDismiss, this.openUrl, this.manual = false});
 
   @override
   Widget build(BuildContext context) {
@@ -91,13 +95,13 @@ class UpdateBanner extends StatelessWidget {
             child: Text('Update available: ${update.label}', overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
           ),
           const SizedBox(width: 12),
-          if (notes != null)
+          if (notes != null && !manual)
             TextButton(
               onPressed: () => (openUrl ?? _open)(notes),
               child: const Text('Release Notes'),
             ),
           const SizedBox(width: 4),
-          FilledButton(onPressed: onInstall, child: const Text('Install & Relaunch…')),
+          FilledButton(onPressed: onInstall, child: Text(manual ? 'Download…' : 'Install & Relaunch…')),
           const SizedBox(width: 2),
           // No tooltip: the banner sits above the Navigator (no Overlay).
           IconButton(
@@ -144,31 +148,35 @@ class AboutPanel extends StatelessWidget {
           const SizedBox(height: 2),
           Text('Version ${info.version.isEmpty ? 'unknown' : info.displayVersion}', style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor)),
           const SizedBox(height: 4),
-          Text('A Kubernetes desktop app for macOS', style: faint),
+          Text('A Kubernetes desktop app', style: faint),
           const SizedBox(height: 16),
           Divider(height: 1, color: colors.separator),
           const SizedBox(height: 10),
           if (reason != null)
             Text('Updates are off: $reason.', style: faint, textAlign: TextAlign.center)
           else ...[
-            Row(children: [
-              Expanded(child: Text('Check for updates automatically', style: theme.textTheme.bodyMedium)),
-              Switch(value: u.automaticChecks, onChanged: u.setAutomaticChecks),
-            ]),
+            // Without Sparkle (Windows) the daily check is always on.
+            if (!u.manualInstall)
+              Row(children: [
+                Expanded(child: Text('Check for updates automatically', style: theme.textTheme.bodyMedium)),
+                Switch(value: u.automaticChecks, onChanged: u.setAutomaticChecks),
+              ]),
             Row(children: [
               Expanded(
                 child: Text(
                   u.available != null
                       ? 'Version ${u.available!.label} is available.'
-                      : info.lastCheck == null
+                      : u.manualInstall && u.lastError != null
+                          ? 'Could not check: ${u.lastError}'
+                          : info.lastCheck == null
                           ? 'Not checked yet.'
                           : 'Last checked ${_ago(now().difference(info.lastCheck!))}.',
                   style: faint,
                 ),
               ),
               TextButton(
-                onPressed: u.available != null ? u.install : u.checkNow,
-                child: Text(u.available != null ? 'Install…' : 'Check Now'),
+                onPressed: u.checking ? null : (u.available != null ? u.install : u.checkNow),
+                child: Text(u.available != null ? (u.manualInstall ? 'Download…' : 'Install…') : 'Check Now'),
               ),
             ]),
           ],

@@ -40,7 +40,7 @@ class KubeconfigList {
 
   /// [path] with the home directory replaced by `~`.
   String shorten(String path) {
-    if (home.isNotEmpty && (path == home || path.startsWith('$home/'))) return '~${path.substring(home.length)}';
+    if (home.isNotEmpty && (path == home || path.startsWith('$home/') || path.startsWith('$home\\'))) return '~${path.substring(home.length)}';
     return path;
   }
 

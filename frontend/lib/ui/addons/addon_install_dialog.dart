@@ -23,6 +23,7 @@ import '../helm/helm_api.dart';
 import '../helm/yaml_view.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../keys.dart';
 
 /// How long the backend waits for an install/upgrade to become ready.
 const addonWaitSeconds = 300;
@@ -336,7 +337,7 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
     final busy = _phase == _Phase.rendering || _phase == _Phase.running;
     final finished = _phase == _Phase.done;
     return CallbackShortcuts(
-      bindings: {const SingleActivator(LogicalKeyboardKey.enter, meta: true): () => busy || finished ? null : _apply()},
+      bindings: {primaryShortcut(LogicalKeyboardKey.enter): () => busy || finished ? null : _apply()},
       child: PopScope(
         canPop: !busy,
         child: AlertDialog(

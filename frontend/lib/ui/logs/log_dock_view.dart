@@ -8,6 +8,7 @@ import '../widgets/common.dart';
 import '../terminal/terminal_session.dart';
 import '../terminal/terminal_tab.dart';
 import 'log_stream_view.dart';
+import '../keys.dart';
 
 /// Height of the dock's tab strip (also the whole dock when collapsed).
 const double kLogDockStripHeight = 30;
@@ -134,7 +135,7 @@ class _TabStrip extends StatelessWidget {
               ),
               if (active is LogStream && !narrow) _ActiveStatus(stream: active),
               IconButton(
-                tooltip: dock.collapsed ? 'Expand panel (⌘J)' : 'Collapse panel (⌘J)',
+                tooltip: '${dock.collapsed ? 'Expand' : 'Collapse'} panel (${shortcutLabel('J')})',
                 icon: Icon(dock.collapsed ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 18),
                 onPressed: () => dock.tabs.isEmpty ? dock.toggle() : dock.setCollapsed(!dock.collapsed),
               ),

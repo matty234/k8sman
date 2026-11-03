@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:k8sman/app/updates/github_releases.dart';
 import 'package:k8sman/app/updates/update_controller.dart';
 import 'package:k8sman/app/updates/update_ui.dart';
 import 'package:k8sman/app/updates/version.dart';
@@ -313,5 +318,24 @@ void main() {
       expect(find.text('Check Now'), findsNothing);
       u.dispose();
     });
+  });
+
+  test('without Sparkle (Windows): GitHub latest release, opened to download', () async {
+    final latest = {'tag_name': 'v0.2.0', 'html_url': 'https://github.com/matty234/k8sman/releases/tag/v0.2.0'};
+    expect(GitHubReleases.parseLatest(latest, '0.2.0'), isNull);
+    expect(GitHubReleases.parseLatest({...latest, 'tag_name': 'v0.1.9'}, '0.2.0'), isNull);
+    expect(GitHubReleases.parseLatest(latest, 'not-a-version'), isNull);
+
+    final opened = <Uri>[];
+    final releases = GitHubReleases(client: () => MockClient((_) async => http.Response(jsonEncode(latest), 200)));
+    final u = UpdateController(releaseMode: true, github: releases, version: '0.1.0', openUrl: (url) async => opened.add(url));
+    await u.start();
+    expect(u.enabled, isTrue);
+    expect(await u.checkIfDue(), isTrue);
+    expect(u.bannerUpdate?.label, 'v0.2.0');
+    await u.install();
+    expect(opened.single.path, '/matty234/k8sman/releases/tag/v0.2.0');
+    expect(await u.checkIfDue(), isFalse, reason: 'checked today');
+    u.dispose();
   });
 }
