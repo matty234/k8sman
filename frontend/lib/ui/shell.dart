@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import 'detail/detail_sidebar.dart';
+import 'overview/overview_view.dart';
+import 'portforward/portforward_view.dart';
 import 'resource_nav.dart';
 import 'resource_table.dart';
 import 'widgets/common.dart';
@@ -46,7 +48,11 @@ class _ShellState extends State<Shell> {
           const SizedBox(width: 220, child: ResourceNav()),
           const VerticalDivider(width: 1),
           Expanded(
-            child: type == null ? const Center(child: Text('Select a resource kind')) : ResourceTableView(type: type),
+            child: switch (app.view) {
+              MainView.overview => const OverviewView(),
+              MainView.portForwards => const PortForwardView(),
+              MainView.resources => type == null ? const Center(child: Text('Select a resource kind')) : ResourceTableView(type: type),
+            },
           ),
           if (app.detail != null) ...[
             MouseRegion(

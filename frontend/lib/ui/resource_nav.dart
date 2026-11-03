@@ -48,6 +48,9 @@ class _ResourceNavState extends State<ResourceNav> {
       color: theme.colorScheme.surfaceContainerLowest,
       child: Column(children: [
         const _ContextPicker(),
+        _ViewItem(icon: Icons.monitor_heart_outlined, label: 'Overview', view: MainView.overview, selected: app.view == MainView.overview),
+        _ViewItem(icon: Icons.swap_horiz, label: 'Port Forwards', view: MainView.portForwards, selected: app.view == MainView.portForwards),
+        const SizedBox(height: 4),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
           child: TextField(
@@ -68,7 +71,7 @@ class _ResourceNavState extends State<ResourceNav> {
                     onTap: () => setState(() => _collapsed.contains(g.key) ? _collapsed.remove(g.key) : _collapsed.add(g.key)),
                   ),
                   if (q.isNotEmpty || !_collapsed.contains(g.key))
-                    for (final t in g.value.where(matches)) _NavItem(type: t, selected: app.selectedType == t),
+                    for (final t in g.value.where(matches)) _NavItem(type: t, selected: app.view == MainView.resources && app.selectedType == t),
                 ],
             ],
           ),
@@ -153,6 +156,38 @@ class _NavItem extends StatelessWidget {
             child: Row(children: [
               Expanded(child: Text(type.kind, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium)),
               if (!type.namespaced) Tooltip(message: 'Cluster-scoped', child: Icon(Icons.public, size: 12, color: theme.hintColor)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ViewItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final MainView view;
+  final bool selected;
+  const _ViewItem({required this.icon, required this.label, required this.view, required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Material(
+        color: selected ? theme.colorScheme.primaryContainer.withValues(alpha: 0.6) : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => context.read<AppState>().showView(view),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(children: [
+              Icon(icon, size: 16, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
             ]),
           ),
         ),

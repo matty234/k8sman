@@ -3,6 +3,9 @@ import 'package:flutter/foundation.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 
+/// What the main area shows.
+enum MainView { overview, resources, portForwards }
+
 /// An object shown in the detail sidebar.
 class DetailTarget {
   final ResourceType type;
@@ -38,6 +41,13 @@ class AppState extends ChangeNotifier {
   String? namespace;
 
   ResourceType? selectedType;
+
+  MainView view = MainView.resources;
+
+  void showView(MainView v) {
+    view = v;
+    notifyListeners();
+  }
 
   final List<DetailTarget> _detailStack = [];
   DetailTarget? get detail => _detailStack.isEmpty ? null : _detailStack.last;
@@ -102,6 +112,7 @@ class AppState extends ChangeNotifier {
 
   void selectType(ResourceType t) {
     selectedType = t;
+    view = MainView.resources;
     notifyListeners();
   }
 
