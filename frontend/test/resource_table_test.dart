@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
@@ -9,6 +10,8 @@ import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/resource_table.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
+
+import 'support/table_fakes.dart';
 
 class _TableApi extends ApiClient {
   final String fixture;
@@ -39,6 +42,49 @@ void main() {
         final filterRight = tester.getTopRight(find.byType(TextField).first).dx;
         expect(filterRight, greaterThan(w - 80), reason: 'filter not right-aligned at width $w');
       }
+    });
+  }
+
+  testWidgets('no overflow from 360 to 1800 px with 3 rows selected (bulk bar)', (tester) async {
+    final api = TableFakeApi()
+      ..onWatch = () => [WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [for (final n in ['api', 'cache', 'db', 'web']) fakeRow(n)]))];
+    await pumpTable(tester, api, deployType, size: const Size(1200, 600));
+    await tester.tap(find.text('api'));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.text('db'));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    expect(find.text('3 selected'), findsOneWidget);
+    for (var w = 360.0; w <= 1800; w += 11) {
+      tester.view.physicalSize = Size(w, 600);
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: 'overflow at width $w');
+      expect(find.byKey(const ValueKey('bulk-Delete')), findsOneWidget, reason: 'width $w');
+    }
+  });
+
+  for (final (reason, code) in [('Unreachable', 502), ('Unauthorized', 401), ('Forbidden', 403), ('NotFound', 404), ('Timeout', 504)]) {
+    testWidgets('no overflow from 360 to 1800 px in the $reason error state', (tester) async {
+      final api = TableFakeApi()
+        ..onWatch = () => [
+              WatchMessage(
+                type: 'ERROR',
+                error: 'Get "https://api.cluster-with-a-rather-long-hostname.example.internal:6443/apis/apps/v1/deployments": getting credentials: exec: executable aws failed with exit code 255',
+                reason: reason,
+                code: code,
+                host: 'https://api.cluster-with-a-rather-long-hostname.example.internal:6443',
+              ),
+            ];
+      await pumpTable(tester, api, deployType, size: const Size(1200, 600));
+      await tester.pump(const Duration(milliseconds: 1100));
+      for (var w = 360.0; w <= 1800; w += 11) {
+        tester.view.physicalSize = Size(w, 600);
+        await tester.pump();
+        expect(tester.takeException(), isNull, reason: 'overflow at width $w');
+      }
+      // Let pending reconnect timers fire.
+      await tester.pump(const Duration(seconds: 20));
     });
   }
 }

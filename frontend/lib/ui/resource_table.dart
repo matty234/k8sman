@@ -233,11 +233,15 @@ class _TableBodyState extends State<_TableBody> {
       return PopupMenuItem<VoidCallback>(
         value: run,
         height: 30,
-        child: Row(children: [
-          Icon(icon, size: 15, color: color ?? theme.hintColor),
-          const SizedBox(width: 10),
-          Expanded(child: Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: color))),
-        ]),
+        child: Row(
+          children: [
+            Icon(icon, size: 15, color: color ?? theme.hintColor),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: color)),
+            ),
+          ],
+        ),
       );
     }
 
@@ -255,12 +259,12 @@ class _TableBodyState extends State<_TableBody> {
           height: 26,
           child: Text('${rows.length} ${tc.type.resource} selected', style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)),
         ),
-        for (final a in safe) item(a.icon, '${a.label} ${rows.length}', () => _runBulk(a, rows)),
+        for (final a in safe) item(a.icon, '${a.verb} ${rows.length} ${tc.type.resource}', () => _runBulk(a, rows)),
         const PopupMenuDivider(height: 9),
         item(Icons.content_copy, 'Copy names', () => copyToClipboard(context, names, label: '${rows.length} names')),
         item(Icons.deselect, 'Clear selection', tc.clearSelection),
         if (destructive.isNotEmpty) const PopupMenuDivider(height: 9),
-        for (final a in destructive) item(a.icon, '${a.label} ${rows.length}…', () => _runBulk(a, rows), danger: true),
+        for (final a in destructive) item(a.icon, '${a.verb} ${rows.length} ${tc.type.resource}…', () => _runBulk(a, rows), danger: true),
       ],
     );
     if (chosen != null && context.mounted) chosen();
@@ -414,10 +418,7 @@ class _Toolbar extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (t.namespaced) ...[
-                    SizedBox(width: nsWidth, child: const NamespacePicker()),
-                    const SizedBox(width: 8),
-                  ],
+                  if (t.namespaced) ...[SizedBox(width: nsWidth, child: const NamespacePicker()), const SizedBox(width: 8)],
                   SizedBox(
                     width: filterWidth,
                     height: 26,
@@ -548,7 +549,8 @@ class _Row extends StatelessWidget {
         onTap: onTap,
         builder: (hovered) => Container(
           margin: const EdgeInsets.symmetric(horizontal: 6),
-          padding: const EdgeInsets.only(left: 6),
+          // The inspected-row edge (3 px) replaces part of the inset.
+          padding: EdgeInsets.only(left: selected && inspected ? 3 : 6),
           decoration: BoxDecoration(
             // macOS multi-selection: every selected row tinted with the
             // accent, contiguous rows joined into one block. The inspected
@@ -562,9 +564,7 @@ class _Row extends StatelessWidget {
                 : striped
                 ? colors.stripe
                 : null,
-            borderRadius: selected
-                ? BorderRadius.vertical(top: joinAbove ? Radius.zero : r, bottom: joinBelow ? Radius.zero : r)
-                : const BorderRadius.all(r),
+            borderRadius: selected ? BorderRadius.vertical(top: joinAbove ? Radius.zero : r, bottom: joinBelow ? Radius.zero : r) : const BorderRadius.all(r),
             // Inside a multi-selection, the inspected row gets an inset edge.
             border: selected && inspected ? Border(left: BorderSide(color: theme.colorScheme.primary, width: 3)) : null,
           ),
@@ -606,26 +606,28 @@ class _StaleBanner extends StatelessWidget {
       key: const ValueKey('stale-banner'),
       color: severityColor(context, Severity.warn).withValues(alpha: 0.12),
       padding: const EdgeInsets.fromLTRB(14, 4, 8, 4),
-      child: Row(children: [
-        Icon(Icons.warning_amber_rounded, size: 15, color: severityColor(context, Severity.warn)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Tooltip(
-            message: controller.error ?? '',
-            child: Text(
-              '$what. Showing the last loaded data. ${controller.error ?? ''}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall,
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 15, color: severityColor(context, Severity.warn)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Tooltip(
+              message: controller.error ?? '',
+              child: Text(
+                '$what. Showing the last loaded data. ${controller.error ?? ''}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
             ),
           ),
-        ),
-        TextButton(
-          style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8)),
-          onPressed: controller.retry,
-          child: const Text('Retry'),
-        ),
-      ]),
+          TextButton(
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8)),
+            onPressed: controller.retry,
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -648,41 +650,67 @@ class _SelectionBar extends StatelessWidget {
       height: 32,
       color: theme.colorScheme.primary.withValues(alpha: 0.06),
       padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-      child: ValueListenableBuilder<BulkProgress?>(
-        valueListenable: progress,
-        builder: (context, p, _) => Row(children: [
-          Text('${rows.length} selected',
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: const [FontFeature.tabularFigures()])),
-          Text('  ·  ', style: hint),
-          Hoverable(
-            key: const ValueKey('selection-clear'),
-            onTap: controller.clearSelection,
-            builder: (h) => Text('Clear', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary, decoration: h ? TextDecoration.underline : null)),
-          ),
-          const SizedBox(width: 12),
-          if (p != null) ...[
-            const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
-            const SizedBox(width: 6),
-            Flexible(child: Text('$p', maxLines: 1, overflow: TextOverflow.ellipsis, style: hint)),
-          ],
-          const Spacer(),
-          for (final a in actions)
-            Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: TextButton.icon(
-                key: ValueKey('bulk-${a.label}'),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  foregroundColor: a.destructive ? theme.colorScheme.error : null,
-                  splashFactory: NoSplash.splashFactory,
+      child: LayoutBuilder(
+        builder: (context, box) => ValueListenableBuilder<BulkProgress?>(
+          valueListenable: progress,
+          builder: (context, p, _) {
+            // Narrow: icon-only actions (labels in tooltips).
+            final compact = box.maxWidth < 300 + 110 * actions.length;
+            return Row(
+              children: [
+                Text(
+                  '${rows.length} selected',
+                  maxLines: 1,
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: const [FontFeature.tabularFigures()]),
                 ),
-                onPressed: p != null ? null : () => onRun(a),
-                icon: Icon(a.icon, size: 15),
-                label: Text(a.label),
-              ),
-            ),
-        ]),
+                Text('  ·  ', style: hint),
+                Hoverable(
+                  key: const ValueKey('selection-clear'),
+                  onTap: controller.clearSelection,
+                  builder: (h) => Text(
+                    'Clear',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary, decoration: h ? TextDecoration.underline : null),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (p != null) ...[
+                  const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text('$p', maxLines: 1, overflow: TextOverflow.ellipsis, style: hint),
+                  ),
+                ],
+                const Spacer(),
+                for (final a in actions)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: compact
+                        ? IconButton(
+                            key: ValueKey('bulk-${a.label}'),
+                            tooltip: a.label,
+                            iconSize: 16,
+                            visualDensity: VisualDensity.compact,
+                            color: a.destructive ? theme.colorScheme.error : null,
+                            onPressed: p != null ? null : () => onRun(a),
+                            icon: Icon(a.icon),
+                          )
+                        : TextButton.icon(
+                            key: ValueKey('bulk-${a.label}'),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              foregroundColor: a.destructive ? theme.colorScheme.error : null,
+                              splashFactory: NoSplash.splashFactory,
+                            ),
+                            onPressed: p != null ? null : () => onRun(a),
+                            icon: Icon(a.icon, size: 15),
+                            label: Text(a.label),
+                          ),
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

@@ -274,16 +274,17 @@ class ContextSwitchButton extends StatelessWidget {
       onSelected: (v) => v != app.currentContext ? app.switchContext(v) : null,
       width: 300,
       builder: (h) => Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        height: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          border: Border.all(color: theme.colorScheme.outline.withValues(alpha: h ? 0.8 : 0.5)),
-          borderRadius: BorderRadius.circular(16),
+          color: h ? theme.colorScheme.onSurface.withValues(alpha: 0.04) : null,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(6),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.hub_outlined, size: 15, color: theme.colorScheme.primary),
+          Icon(Icons.hub_outlined, size: 15, color: theme.colorScheme.onSurface),
           const SizedBox(width: 6),
-          Text('Switch context…', style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
+          Text('Switch context…', style: theme.textTheme.labelLarge),
         ]),
       ),
     );

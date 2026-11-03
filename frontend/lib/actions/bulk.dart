@@ -33,6 +33,9 @@ class BulkAction {
   /// Backend action id (`POST /api/actions/<action>`).
   final String action;
   final String label;
+
+  /// The bare verb for "Delete 3 Pods?" ("Delete pods" → "Delete").
+  final String verb;
   final IconData icon;
   final bool destructive;
 
@@ -45,6 +48,7 @@ class BulkAction {
   const BulkAction({
     required this.action,
     required this.label,
+    required this.verb,
     required this.icon,
     required this.doing,
     required this.done,
@@ -66,6 +70,7 @@ List<BulkAction> bulkActionsFor(AppState app, ResourceType type, List<TableRowDa
     out.add(BulkAction(
       action: 'restart',
       label: 'Restart',
+      verb: 'Restart',
       icon: Icons.restart_alt,
       doing: 'Restarting',
       done: 'Restarted',
@@ -77,6 +82,7 @@ List<BulkAction> bulkActionsFor(AppState app, ResourceType type, List<TableRowDa
     out.add(BulkAction(
       action: 'delete',
       label: 'Restart pods',
+      verb: 'Restart',
       icon: Icons.refresh,
       doing: 'Restarting',
       done: 'Restarted',
@@ -88,6 +94,7 @@ List<BulkAction> bulkActionsFor(AppState app, ResourceType type, List<TableRowDa
     out.add(BulkAction(
       action: 'delete',
       label: isPod ? 'Delete pods' : 'Delete',
+      verb: 'Delete',
       icon: Icons.delete_outline,
       doing: 'Deleting',
       done: 'Deleted',
@@ -136,12 +143,12 @@ Future<BulkResult?> runBulkAction(
   final what = n == 1 ? kind : _plural(kind);
   final ok = await confirmAction(
     context,
-    title: '${action.label} $n $what?',
+    title: '${action.verb} $n $what?',
     message: action.message,
     kubeContext: app.currentContext,
     objectName: '$n $what',
     destructive: action.destructive,
-    confirmLabel: '${action.label} $n',
+    confirmLabel: '${action.verb} $n',
     extra: Padding(padding: const EdgeInsets.only(bottom: 12), child: BulkTargetList(targets)),
   );
   if (ok != true || !context.mounted) return null;
@@ -150,7 +157,7 @@ Future<BulkResult?> runBulkAction(
   final notifier = progress ?? ValueNotifier<BulkProgress?>(null);
   notifier.value = BulkProgress(action.doing, 0, n);
   messenger
-    ?..hideCurrentSnackBar()
+    ?..removeCurrentSnackBar()
     ..showSnackBar(SnackBar(
       duration: const Duration(days: 1),
       content: ValueListenableBuilder<BulkProgress?>(
@@ -186,7 +193,7 @@ Future<BulkResult?> runBulkAction(
   failed.sort((a, b) => targets.indexOf(a.$1).compareTo(targets.indexOf(b.$1)));
   final result = BulkResult(succeeded, failed);
 
-  messenger?.hideCurrentSnackBar();
+  messenger?.removeCurrentSnackBar();
   if (failed.isEmpty) {
     messenger?.showSnackBar(SnackBar(content: Text('${action.done} $n $what')));
   } else if (context.mounted) {
@@ -236,7 +243,7 @@ Future<void> showBulkFailures(BuildContext context, {required BulkAction action,
 String bulkSummary(BulkAction action, BulkResult r) {
   final ok = r.succeeded.length;
   if (r.failed.isEmpty) return '${action.done} $ok';
-  if (ok == 0) return '${action.label} failed for all ${r.failed.length}';
+  if (ok == 0) return '${action.verb} failed for all ${r.failed.length}';
   return '${action.done} $ok, ${r.failed.length} failed';
 }
 
