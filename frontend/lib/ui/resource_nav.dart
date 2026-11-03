@@ -13,6 +13,16 @@ import 'widgets/common.dart';
 const _curated = <String, List<String>>{
   'Workloads': ['/Pod', 'apps/Deployment', 'apps/StatefulSet', 'apps/DaemonSet', 'apps/ReplicaSet', 'batch/Job', 'batch/CronJob'],
   'Network': ['/Service', 'networking.k8s.io/Ingress', 'networking.k8s.io/IngressClass', 'discovery.k8s.io/EndpointSlice', '/Endpoints', 'networking.k8s.io/NetworkPolicy'],
+  'Gateway API': [
+    'gateway.networking.k8s.io/GatewayClass',
+    'gateway.networking.k8s.io/Gateway',
+    'gateway.networking.k8s.io/HTTPRoute',
+    'gateway.networking.k8s.io/GRPCRoute',
+    'gateway.networking.k8s.io/TLSRoute',
+    'gateway.networking.k8s.io/TCPRoute',
+    'gateway.networking.k8s.io/UDPRoute',
+    'gateway.networking.k8s.io/ReferenceGrant',
+  ],
   'Config': ['/ConfigMap', '/Secret', '/ServiceAccount', 'autoscaling/HorizontalPodAutoscaler', '/ResourceQuota', '/LimitRange', 'policy/PodDisruptionBudget'],
   'Storage': ['/PersistentVolumeClaim', '/PersistentVolume', 'storage.k8s.io/StorageClass'],
   'Cluster': ['/Node', '/Namespace', '/Event', 'apiextensions.k8s.io/CustomResourceDefinition', 'apiregistration.k8s.io/APIService'],

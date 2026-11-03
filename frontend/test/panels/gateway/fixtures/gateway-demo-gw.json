@@ -1,0 +1,277 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "kind": "Gateway",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:34:53Z",
+    "generation": 1,
+    "labels": {
+      "app.kubernetes.io/part-of": "gateway-demo"
+    },
+    "name": "demo-gw",
+    "namespace": "gateway-demo",
+    "resourceVersion": "9963",
+    "uid": "9f465861-1dcc-493c-a5ba-7e0d5a8fbb85"
+  },
+  "spec": {
+    "gatewayClassName": "eg",
+    "infrastructure": {
+      "annotations": {
+        "example.com/owner": "platform-team"
+      },
+      "labels": {
+        "team": "platform"
+      }
+    },
+    "listeners": [
+      {
+        "allowedRoutes": {
+          "namespaces": {
+            "from": "All"
+          }
+        },
+        "name": "http",
+        "port": 80,
+        "protocol": "HTTP"
+      },
+      {
+        "allowedRoutes": {
+          "namespaces": {
+            "from": "Selector",
+            "selector": {
+              "matchLabels": {
+                "gateway-access": "true"
+              }
+            }
+          }
+        },
+        "hostname": "*.example.com",
+        "name": "https",
+        "port": 443,
+        "protocol": "HTTPS",
+        "tls": {
+          "certificateRefs": [
+            {
+              "group": "",
+              "kind": "Secret",
+              "name": "demo-tls"
+            }
+          ],
+          "mode": "Terminate"
+        }
+      },
+      {
+        "allowedRoutes": {
+          "kinds": [
+            {
+              "group": "gateway.networking.k8s.io",
+              "kind": "HTTPRoute"
+            }
+          ],
+          "namespaces": {
+            "from": "Same"
+          }
+        },
+        "hostname": "admin.example.com",
+        "name": "admin",
+        "port": 8080,
+        "protocol": "HTTP"
+      },
+      {
+        "allowedRoutes": {
+          "kinds": [
+            {
+              "group": "gateway.networking.k8s.io",
+              "kind": "TCPRoute"
+            }
+          ],
+          "namespaces": {
+            "from": "All"
+          }
+        },
+        "name": "redis",
+        "port": 6379,
+        "protocol": "TCP"
+      }
+    ]
+  },
+  "status": {
+    "addresses": [
+      {
+        "type": "IPAddress",
+        "value": "10.96.230.213"
+      }
+    ],
+    "conditions": [
+      {
+        "lastTransitionTime": "2026-11-03T12:35:15Z",
+        "message": "The Gateway has been scheduled by Envoy Gateway",
+        "observedGeneration": 1,
+        "reason": "Accepted",
+        "status": "True",
+        "type": "Accepted"
+      },
+      {
+        "lastTransitionTime": "2026-11-03T12:35:15Z",
+        "message": "Address assigned to the Gateway, 1/1 envoy replicas available",
+        "observedGeneration": 1,
+        "reason": "Programmed",
+        "status": "True",
+        "type": "Programmed"
+      }
+    ],
+    "listeners": [
+      {
+        "attachedRoutes": 4,
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Sending translated listener configuration to the data plane",
+            "observedGeneration": 1,
+            "reason": "Programmed",
+            "status": "True",
+            "type": "Programmed"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Listener has been successfully translated",
+            "observedGeneration": 1,
+            "reason": "Accepted",
+            "status": "True",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Listener references have been resolved",
+            "observedGeneration": 1,
+            "reason": "ResolvedRefs",
+            "status": "True",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "name": "http",
+        "supportedKinds": [
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "HTTPRoute"
+          },
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "GRPCRoute"
+          }
+        ]
+      },
+      {
+        "attachedRoutes": 2,
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Sending translated listener configuration to the data plane",
+            "observedGeneration": 1,
+            "reason": "Programmed",
+            "status": "True",
+            "type": "Programmed"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Listener has been successfully translated",
+            "observedGeneration": 1,
+            "reason": "Accepted",
+            "status": "True",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Listener references have been resolved",
+            "observedGeneration": 1,
+            "reason": "ResolvedRefs",
+            "status": "True",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "name": "https",
+        "supportedKinds": [
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "HTTPRoute"
+          },
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "GRPCRoute"
+          }
+        ]
+      },
+      {
+        "attachedRoutes": 1,
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Sending translated listener configuration to the data plane",
+            "observedGeneration": 1,
+            "reason": "Programmed",
+            "status": "True",
+            "type": "Programmed"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Listener has been successfully translated",
+            "observedGeneration": 1,
+            "reason": "Accepted",
+            "status": "True",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Listener references have been resolved",
+            "observedGeneration": 1,
+            "reason": "ResolvedRefs",
+            "status": "True",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "name": "admin",
+        "supportedKinds": [
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "HTTPRoute"
+          }
+        ]
+      },
+      {
+        "attachedRoutes": 1,
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Sending translated listener configuration to the data plane",
+            "observedGeneration": 1,
+            "reason": "Programmed",
+            "status": "True",
+            "type": "Programmed"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Listener has been successfully translated",
+            "observedGeneration": 1,
+            "reason": "Accepted",
+            "status": "True",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Listener references have been resolved",
+            "observedGeneration": 1,
+            "reason": "ResolvedRefs",
+            "status": "True",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "name": "redis",
+        "supportedKinds": [
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "TCPRoute"
+          }
+        ]
+      }
+    ]
+  }
+}

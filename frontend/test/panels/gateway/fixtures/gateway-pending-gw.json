@@ -1,0 +1,45 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "kind": "Gateway",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:38:25Z",
+    "generation": 1,
+    "name": "pending-gw",
+    "namespace": "gateway-demo",
+    "resourceVersion": "9965",
+    "uid": "1527b79b-69fd-4c39-8442-b5a8b21c2dd3"
+  },
+  "spec": {
+    "gatewayClassName": "orphan",
+    "listeners": [
+      {
+        "allowedRoutes": {
+          "namespaces": {
+            "from": "Same"
+          }
+        },
+        "name": "http",
+        "port": 80,
+        "protocol": "HTTP"
+      }
+    ]
+  },
+  "status": {
+    "conditions": [
+      {
+        "lastTransitionTime": "1970-01-01T00:00:00Z",
+        "message": "Waiting for controller",
+        "reason": "Pending",
+        "status": "Unknown",
+        "type": "Accepted"
+      },
+      {
+        "lastTransitionTime": "1970-01-01T00:00:00Z",
+        "message": "Waiting for controller",
+        "reason": "Pending",
+        "status": "Unknown",
+        "type": "Programmed"
+      }
+    ]
+  }
+}

@@ -16,6 +16,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // Thresholds used by the analysis.
@@ -56,6 +57,10 @@ type Input struct {
 	// ArgoApps are Argo CD Applications (unstructured); nil when the CRD
 	// isn't served, which leaves Argo out of the result entirely.
 	ArgoApps []map[string]any
+	// Gateway API objects; nil when the CRDs aren't served (no analysis,
+	// no counts). Routes holds every route kind (HTTPRoute, GRPCRoute, ...).
+	Gateways []unstructured.Unstructured
+	Routes   []unstructured.Unstructured
 }
 
 // Owner is the top-level controller of an object (Deployment, StatefulSet,
@@ -89,7 +94,7 @@ type Issue struct {
 type Category struct {
 	ID       string `json:"id"`
 	Label    string `json:"label"`
-	Section  string `json:"section"` // pods | workloads | jobs | nodes | storage
+	Section  string `json:"section"` // pods | workloads | jobs | nodes | storage | network
 	Severity string `json:"severity"`
 	Count    int    `json:"count"`
 }
@@ -178,6 +183,8 @@ type Counts struct {
 	Nodes        NodeCounts       `json:"nodes"`
 	PVCs         PVCCounts        `json:"pvcs"`
 	ArgoApps     *ArgoCounts      `json:"argoApps,omitempty"`
+	Gateways     *GatewayCounts   `json:"gateways,omitempty"`
+	Routes       *RouteCounts     `json:"routes,omitempty"`
 }
 
 // NodeHealth is one node in the nodes strip.
@@ -244,6 +251,8 @@ var categoryDefs = []categoryDef{
 	{"pvcLost", "PVCs lost", "storage", Critical},
 	{"argoSyncFailed", "Argo CD sync errors", "argocd", Critical},
 	{"argoDegraded", "Argo CD apps degraded", "argocd", Critical},
+	{"gatewayNotReady", "Gateways not ready", "network", Critical},
+	{"routeNotAccepted", "Routes not accepted", "network", Critical},
 	{"stuckPending", "Stuck pending", "pods", Warning},
 	{"stuckTerminating", "Stuck terminating", "pods", Warning},
 	{"notReady", "Pods not ready", "pods", Warning},
@@ -254,6 +263,8 @@ var categoryDefs = []categoryDef{
 	{"pvcPending", "PVCs pending", "storage", Warning},
 	{"argoMissing", "Argo CD apps missing", "argocd", Warning},
 	{"argoOutOfSync", "Argo CD apps out of sync", "argocd", Warning},
+	{"gatewayListener", "Gateway listener problems", "network", Warning},
+	{"routeUnresolvedRefs", "Routes with unresolved refs", "network", Warning},
 	{"rolling", "Rolling out", "workloads", Info},
 	{"deploymentPaused", "Paused rollouts", "workloads", Info},
 	{"jobSuspended", "Suspended jobs", "jobs", Info},
@@ -287,6 +298,8 @@ func Analyze(in Input) *Result {
 	a.cronJobs()
 	a.nodes()
 	a.pvcs()
+	a.gateways()
+	a.routes()
 	a.events()
 	a.argoApps()
 	a.finish()

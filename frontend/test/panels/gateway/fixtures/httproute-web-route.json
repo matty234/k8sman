@@ -1,0 +1,223 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "kind": "HTTPRoute",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:34:53Z",
+    "generation": 1,
+    "name": "web-route",
+    "namespace": "demo",
+    "resourceVersion": "9969",
+    "uid": "6e6c51dc-ccd6-40a8-aefe-f789f7754ca8"
+  },
+  "spec": {
+    "hostnames": [
+      "app.example.com"
+    ],
+    "parentRefs": [
+      {
+        "group": "gateway.networking.k8s.io",
+        "kind": "Gateway",
+        "name": "demo-gw",
+        "namespace": "gateway-demo",
+        "sectionName": "http"
+      }
+    ],
+    "rules": [
+      {
+        "backendRefs": [
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "web",
+            "port": 80,
+            "weight": 90
+          },
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "web-nodeport",
+            "port": 80,
+            "weight": 10
+          }
+        ],
+        "filters": [
+          {
+            "requestHeaderModifier": {
+              "add": [
+                {
+                  "name": "x-route",
+                  "value": "api-canary"
+                }
+              ],
+              "remove": [
+                "x-debug"
+              ]
+            },
+            "type": "RequestHeaderModifier"
+          }
+        ],
+        "matches": [
+          {
+            "headers": [
+              {
+                "name": "x-canary",
+                "type": "Exact",
+                "value": "true"
+              }
+            ],
+            "path": {
+              "type": "PathPrefix",
+              "value": "/api"
+            }
+          }
+        ],
+        "timeouts": {
+          "request": "10s"
+        }
+      },
+      {
+        "filters": [
+          {
+            "requestRedirect": {
+              "path": {
+                "replaceFullPath": "/new",
+                "type": "ReplaceFullPath"
+              },
+              "statusCode": 301
+            },
+            "type": "RequestRedirect"
+          }
+        ],
+        "matches": [
+          {
+            "path": {
+              "type": "Exact",
+              "value": "/old"
+            }
+          }
+        ]
+      },
+      {
+        "backendRefs": [
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "web",
+            "port": 80,
+            "weight": 1
+          }
+        ],
+        "filters": [
+          {
+            "type": "URLRewrite",
+            "urlRewrite": {
+              "path": {
+                "replacePrefixMatch": "/",
+                "type": "ReplacePrefixMatch"
+              }
+            }
+          }
+        ],
+        "matches": [
+          {
+            "path": {
+              "type": "PathPrefix",
+              "value": "/v2"
+            }
+          }
+        ]
+      },
+      {
+        "backendRefs": [
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "web",
+            "port": 80,
+            "weight": 1
+          }
+        ],
+        "filters": [
+          {
+            "requestMirror": {
+              "backendRef": {
+                "group": "",
+                "kind": "Service",
+                "name": "web-nodeport",
+                "port": 80
+              }
+            },
+            "type": "RequestMirror"
+          }
+        ],
+        "matches": [
+          {
+            "method": "GET",
+            "path": {
+              "type": "PathPrefix",
+              "value": "/"
+            },
+            "queryParams": [
+              {
+                "name": "debug",
+                "type": "Exact",
+                "value": "1"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "backendRefs": [
+          {
+            "group": "",
+            "kind": "Service",
+            "name": "web",
+            "port": 80,
+            "weight": 1
+          }
+        ],
+        "matches": [
+          {
+            "path": {
+              "type": "PathPrefix",
+              "value": "/"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "status": {
+    "parents": [
+      {
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Route is accepted",
+            "observedGeneration": 1,
+            "reason": "Accepted",
+            "status": "True",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:34:54Z",
+            "message": "Resolved all the Object references for the Route",
+            "observedGeneration": 1,
+            "reason": "ResolvedRefs",
+            "status": "True",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "controllerName": "gateway.envoyproxy.io/gatewayclass-controller",
+        "parentRef": {
+          "group": "gateway.networking.k8s.io",
+          "kind": "Gateway",
+          "name": "demo-gw",
+          "namespace": "gateway-demo",
+          "sectionName": "http"
+        }
+      }
+    ]
+  }
+}

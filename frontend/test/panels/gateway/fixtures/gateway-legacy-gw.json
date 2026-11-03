@@ -1,0 +1,148 @@
+{
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "kind": "Gateway",
+  "metadata": {
+    "creationTimestamp": "2026-11-03T12:34:53Z",
+    "generation": 2,
+    "name": "legacy-gw",
+    "namespace": "demo",
+    "resourceVersion": "10086",
+    "uid": "1992a1b6-2b64-4fac-8071-e94e57f08d02"
+  },
+  "spec": {
+    "gatewayClassName": "eg",
+    "listeners": [
+      {
+        "allowedRoutes": {
+          "namespaces": {
+            "from": "Same"
+          }
+        },
+        "name": "web",
+        "port": 80,
+        "protocol": "HTTP"
+      },
+      {
+        "allowedRoutes": {
+          "namespaces": {
+            "from": "Same"
+          }
+        },
+        "hostname": "legacy.example.com",
+        "name": "secure",
+        "port": 443,
+        "protocol": "HTTPS",
+        "tls": {
+          "certificateRefs": [
+            {
+              "group": "",
+              "kind": "Secret",
+              "name": "missing-cert"
+            }
+          ],
+          "mode": "Terminate"
+        }
+      }
+    ]
+  },
+  "status": {
+    "addresses": [
+      {
+        "type": "IPAddress",
+        "value": "10.96.242.235"
+      }
+    ],
+    "conditions": [
+      {
+        "lastTransitionTime": "2026-11-03T12:38:44Z",
+        "message": "The Gateway has been scheduled by Envoy Gateway",
+        "observedGeneration": 2,
+        "reason": "Accepted",
+        "status": "True",
+        "type": "Accepted"
+      },
+      {
+        "lastTransitionTime": "2026-11-03T12:38:44Z",
+        "message": "Address assigned to the Gateway, 1/1 envoy replicas available",
+        "observedGeneration": 2,
+        "reason": "Programmed",
+        "status": "True",
+        "type": "Programmed"
+      }
+    ],
+    "listeners": [
+      {
+        "attachedRoutes": 0,
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:38:33Z",
+            "message": "Sending translated listener configuration to the data plane",
+            "observedGeneration": 2,
+            "reason": "Programmed",
+            "status": "True",
+            "type": "Programmed"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:38:33Z",
+            "message": "Listener has been successfully translated",
+            "observedGeneration": 2,
+            "reason": "Accepted",
+            "status": "True",
+            "type": "Accepted"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:38:33Z",
+            "message": "Listener references have been resolved",
+            "observedGeneration": 2,
+            "reason": "ResolvedRefs",
+            "status": "True",
+            "type": "ResolvedRefs"
+          }
+        ],
+        "name": "web",
+        "supportedKinds": [
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "HTTPRoute"
+          },
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "GRPCRoute"
+          }
+        ]
+      },
+      {
+        "attachedRoutes": 0,
+        "conditions": [
+          {
+            "lastTransitionTime": "2026-11-03T12:38:33Z",
+            "message": "Secret demo/missing-cert does not exist.",
+            "observedGeneration": 2,
+            "reason": "InvalidCertificateRef",
+            "status": "False",
+            "type": "ResolvedRefs"
+          },
+          {
+            "lastTransitionTime": "2026-11-03T12:38:33Z",
+            "message": "Listener is invalid, see other Conditions for details.",
+            "observedGeneration": 2,
+            "reason": "Invalid",
+            "status": "False",
+            "type": "Programmed"
+          }
+        ],
+        "name": "secure",
+        "supportedKinds": [
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "HTTPRoute"
+          },
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "GRPCRoute"
+          }
+        ]
+      }
+    ]
+  }
+}

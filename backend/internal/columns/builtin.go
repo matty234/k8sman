@@ -190,6 +190,30 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Description", Query: `.spec.description // ""`},
 		ageCol,
 	},
+	// Gateway API. Status cells read "True", "False: <reason>",
+	// "Unknown: <reason>" or "Warning: <detail>" so they colour correctly.
+	"gatewayclasses.gateway.networking.k8s.io": {
+		{Name: "Controller", Query: `.spec.controllerName`},
+		{Name: "Accepted", Type: "status", Query: gwCondStatus("Accepted")},
+		ageCol,
+	},
+	"gateways.gateway.networking.k8s.io": {
+		{Name: "Class", Query: `.spec.gatewayClassName`},
+		{Name: "Addresses", Query: `[.status.addresses[]?.value] | join(",")`},
+		{Name: "Listeners", Query: `[.spec.listeners[]? | "\(.port)/\(.protocol)"] | join(",")`},
+		{Name: "Programmed", Type: "status", Query: gwCondStatus("Programmed")},
+		ageCol,
+	},
+	"referencegrants.gateway.networking.k8s.io": {
+		{Name: "From", Query: `[.spec.from[]? | "\(.kind) in \(.namespace)"] | join(",")`},
+		{Name: "To", Query: `[.spec.to[]? | .kind + (if .name then "/\(.name)" else "" end)] | join(",")`},
+		ageCol,
+	},
+	"httproutes.gateway.networking.k8s.io": {gwRouteHostnames, gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
+	"grpcroutes.gateway.networking.k8s.io": {gwRouteHostnames, gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
+	"tlsroutes.gateway.networking.k8s.io":  {gwRouteHostnames, gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
+	"tcproutes.gateway.networking.k8s.io":  {gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
+	"udproutes.gateway.networking.k8s.io":  {gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
 }
 
 // argoShortRepo shortens a repo URL to its last two path segments
@@ -200,3 +224,30 @@ const argoShortRepo = `(.spec.source.repoURL // ([.spec.sources[]? | select(.ref
 // argoGenerator names one ApplicationSet generator; matrix/merge list their children.
 const argoGenerator = `(to_entries | map(select(.key != "selector")) | first // {key: "?"}) as $g
   | if ($g.key == "matrix" or $g.key == "merge") then "\($g.key)(\([$g.value.generators[]? | to_entries | map(select(.key != "selector")) | first.key] | join("+")))" else $g.key end`
+
+// gwCondStatus renders one .status.conditions entry of a Gateway API object.
+func gwCondStatus(t string) string {
+	return `([.status.conditions[]? | select(.type == "` + t + `")][0]) as $c
+| if $c == null then "Unknown"
+  elif $c.status == "True" then "True"
+  else "\($c.status): \($c.reason // "")" end`
+}
+
+const gwNsPrefix = `(if .namespace then "\(.namespace)/" else "" end)`
+
+var (
+	gwRouteHostnames = Column{Name: "Hostnames", Query: `.spec.hostnames // [] | join(",")`}
+	gwRouteParents   = Column{Name: "Parents", Query: `[.spec.parentRefs[]? | ` + gwNsPrefix + ` + .name + (if .sectionName then ":\(.sectionName)" else "" end)] | join(",")`}
+	gwRouteBackends  = Column{Name: "Backends", Query: `[.spec.rules[]?.backendRefs[]? | ` + gwNsPrefix + ` + .name + (if .port then ":\(.port)" else "" end)] | unique | join(",")`}
+	// Accepted aggregated over status.parents; unresolved refs downgrade a
+	// fully accepted route to a warning.
+	gwRouteAccepted = Column{Name: "Accepted", Type: "status", Query: `[.status.parents[]? | ([.conditions[]? | select(.type == "Accepted")][0])] as $a
+| [.status.parents[]? | ([.conditions[]? | select(.type == "ResolvedRefs" and .status == "False")][0]) | select(. != null)] as $u
+| ([$a[] | select(.status == "True")] | length) as $ok
+| ([$a[] | select(.status != "True")] | first) as $bad
+| if ($a | length) == 0 then "Unknown: no status"
+  elif $ok == 0 then "False: \($bad.reason // "NotAccepted")"
+  elif $ok < ($a | length) then "Warning: \($ok)/\($a | length) accepted (\($bad.reason // "NotAccepted"))"
+  elif ($u | length) > 0 then "Warning: \($u[0].reason // "unresolved refs")"
+  else "True" end`}
+)

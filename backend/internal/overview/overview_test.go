@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/bargrove/k8sman/backend/internal/cluster"
@@ -291,8 +292,29 @@ func scenario() Input {
 		ev("FailedMount", "too old", 99, 2*time.Hour, "Pod", "old"),
 		{ObjectMeta: meta("shop", "normal", time.Minute), Type: corev1.EventTypeNormal, Reason: "Pulled", Count: 500, LastTimestamp: ago(time.Minute)},
 	}
+	gwSpec := map[string]any{"gatewayClassName": "eg"}
+	gateways := []unstructured.Unstructured{
+		gwObj("Gateway", "shop", "edge", time.Hour, gwSpec, map[string]any{"conditions": []any{
+			c("Accepted", "True", "Accepted", ""), c("Programmed", "False", "AddressNotAssigned", "No addresses have been assigned to the Gateway"),
+		}}),
+		gwObj("Gateway", "shop", "public", time.Hour, gwSpec, map[string]any{
+			"conditions": []any{c("Accepted", "True", "Accepted", ""), c("Programmed", "True", "Programmed", "")},
+			"listeners":  []any{map[string]any{"name": "https", "conditions": []any{c("ResolvedRefs", "False", "InvalidCertificateRef", "Secret shop/tls does not exist.")}}},
+		}),
+	}
+	parent := map[string]any{"parentRefs": []any{map[string]any{"name": "public", "sectionName": "admin"}}}
+	routes := []unstructured.Unstructured{
+		gwObj("HTTPRoute", "shop", "checkout", time.Hour, parent, map[string]any{"parents": []any{map[string]any{
+			"parentRef": map[string]any{"name": "public", "sectionName": "admin"}, "conditions": []any{c("Accepted", "False", "NoMatchingParent", "No listeners match this parent ref")},
+		}}}),
+		gwObj("HTTPRoute", "shop", "cart-api", time.Hour, parent, map[string]any{"parents": []any{map[string]any{
+			"parentRef": map[string]any{"name": "public"}, "conditions": []any{
+				c("Accepted", "True", "Accepted", ""), c("ResolvedRefs", "False", "RefNotPermitted", "Backend ref to Service billing/api not permitted by any ReferenceGrant."),
+			},
+		}}}),
+	}
 	return Input{Now: now, Pods: pods, Deployments: deps, ReplicaSets: rss, StatefulSets: sts, DaemonSets: dss,
-		Jobs: jobs, CronJobs: cronjobs, Nodes: nodes, PVCs: pvcs, Events: events}
+		Jobs: jobs, CronJobs: cronjobs, Nodes: nodes, PVCs: pvcs, Events: events, Gateways: gateways, Routes: routes}
 }
 
 func issuesBy(res *Result, cat string) []Issue {
@@ -350,6 +372,10 @@ func TestAnalyzeScenario(t *testing.T) {
 		"nodeCordoned":               {"node-3"},
 		"pvcPending":                 {"data-search-2"},
 		"pvcLost":                    {"old-data"},
+		"gatewayNotReady":            {"edge"},
+		"gatewayListener":            {"public"},
+		"routeNotAccepted":           {"checkout"},
+		"routeUnresolvedRefs":        {"cart-api"},
 	}
 	for cat, want := range expect {
 		got := names(issuesBy(res, cat))
