@@ -83,7 +83,10 @@ void main() {
 
     // 2. Backend image.
     expect(image('traefik.io'), findsOneWidget);
-    expect(tester.widget<Image>(find.descendant(of: image('traefik.io'), matching: find.byType(Image))).image, isA<MemoryImage>());
+    // Decoded at the displayed size, from the backend bytes.
+    final provider = tester.widget<Image>(find.descendant(of: image('traefik.io'), matching: find.byType(Image))).image as ResizeImage;
+    expect(provider.imageProvider, isA<MemoryImage>());
+    expect(provider.policy, ResizeImagePolicy.fit);
 
     // 3. No image, or backend error: monogram.
     expect(monogram('none.example.dev'), findsOneWidget);
