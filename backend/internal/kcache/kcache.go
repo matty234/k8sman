@@ -359,8 +359,16 @@ func IsTerminal(err error) bool {
 func (s *stream) run() {
 	defer s.readyOnce.Do(func() { close(s.ready) })
 	backoff := s.c.minBackoff
+	first := true
 	for s.ctx.Err() == nil {
-		list, err := s.ri.List(s.ctx, s.listOptions())
+		// The first LIST is answered from the API server's watch cache
+		// (resourceVersion 0, like client-go reflectors): no etcd quorum read.
+		// Re-lists after an expired watch ask for the latest version.
+		opts := s.listOptions()
+		if first {
+			opts.ResourceVersion = "0"
+		}
+		list, err := s.ri.List(s.ctx, opts)
 		if err != nil {
 			if s.ctx.Err() != nil {
 				return
@@ -377,6 +385,7 @@ func (s *stream) run() {
 			continue
 		}
 		s.replace(list)
+		first = false
 		backoff = s.c.minBackoff
 		// Watch from the listed version; resume after a plain close, re-list
 		// only when the version has expired or the watch can't be opened.

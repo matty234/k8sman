@@ -61,8 +61,10 @@ echo; echo "### Endpoint latency (table watches open on configmaps + pods)"
 "$PERF" latency -base "$BASE" -n "${N:-10}" -warm
 echo; echo "### Memory/CPU"
 "$PERF" idle -pid "$SPID" -dur 20s
+"$PERF" heap -pprof "$PPROF" -label "(after the latency runs)"
 if [ -z "${QUICK:-}" ]; then
   "$PERF" typical -base "$BASE" -pid "$SPID" -dur 60s
+  "$PERF" heap -pprof "$PPROF" -label "(after typical use)"
   for n in 1 10; do
     "$PERF" churn -kubeconfig "$KC_DEV" -rate 20 -dur 30s >/dev/null &
     CH=$!

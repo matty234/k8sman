@@ -45,6 +45,8 @@ func main() {
 		run = churnCmd(fs)
 	case "proxy":
 		run = proxyCmd(fs)
+	case "heap":
+		run = heapCmd(fs)
 	default:
 		usage()
 	}
@@ -56,6 +58,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: perf latency|typical|idle|fanout|leak|coldstart|ctxswitch|churn|proxy [flags]")
+	fmt.Fprintln(os.Stderr, "usage: perf latency|typical|idle|fanout|leak|coldstart|ctxswitch|churn|proxy|heap [flags]")
 	os.Exit(2)
 }

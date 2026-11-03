@@ -17,6 +17,24 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// heapCmd prints the live heap (after a forced GC) and goroutine count.
+func heapCmd(fs *flag.FlagSet) func() error {
+	pp := fs.String("pprof", "127.0.0.1:7575", "backend pprof address")
+	label := fs.String("label", "", "row label")
+	return func() error {
+		h, err := heapInuse(*pp)
+		if err != nil {
+			return err
+		}
+		g, err := goroutines(*pp)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("| heap in use %s | %.1f MiB | goroutines %d |\n", *label, h, g)
+		return nil
+	}
+}
+
 // latencyCmd times the UI-facing endpoints at scale.
 func latencyCmd(fs *flag.FlagSet) func() error {
 	base := fs.String("base", "http://127.0.0.1:7574", "backend URL")
@@ -38,6 +56,7 @@ func latencyCmd(fs *flag.FlagSet) func() error {
 		}
 		eps := []struct{ name, path string }{
 			{"resources", "/api/resources"},
+			{"resources?refresh=true (re-discover)", "/api/resources?refresh=true"},
 			{"table configmaps (ns, 1.5k)", "/api/table?" + q("version", "v1", "resource", "configmaps", "namespace", *ns)},
 			{"table pods (all ns)", "/api/table?" + q("version", "v1", "resource", "pods")},
 			{"items configmaps (ns)", "/api/items?" + q("version", "v1", "resource", "configmaps", "namespace", *ns)},
