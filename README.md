@@ -32,9 +32,11 @@ _Screenshots coming soon._
   `$KUBECONFIG`, `~/.kube` or anywhere on disk (**Choose file…**). k8sman
   remembers the file and the last context you used in each one.
 
-## Install (release build)
+## Install
 
-1. Download or build `dist/k8sman-<version>-macos.zip` and unzip it.
+1. Download `k8sman-<version>-macos.zip` from
+   [Releases](https://github.com/matty234/k8sman/releases/latest) and unzip
+   it. Or build it with `make release`.
 2. Move `k8sman.app` to `/Applications`.
 3. **First launch (Gatekeeper):** release builds are ad-hoc signed, not
    notarized, so macOS blocks the first launch. Control-click the app, choose
@@ -42,6 +44,24 @@ _Screenshots coming soon._
    **System Settings → Privacy & Security** and click **Open Anyway**. For a
    local build, you can also clear the quarantine flag with
    `xattr -dr com.apple.quarantine /Applications/k8sman.app`.
+
+You can check a download against the release's `SHA256SUMS` with
+`shasum -a 256 -c SHA256SUMS`.
+
+## Updates
+
+k8sman updates itself with [Sparkle](https://sparkle-project.org).
+
+- It checks for a new release once a day. You can turn this off in
+  **k8sman → About k8sman**.
+- When there's an update, a small banner offers **Install & Relaunch…**. You
+  can also use **k8sman → Check for Updates…** at any time.
+- Updates are EdDSA-signed and verified before installing. Installed updates
+  open without another Gatekeeper prompt.
+- Port-forwards that were running are restarted after the relaunch.
+- Development builds (`flutter run`) never update.
+
+See [docs/UPDATES.md](docs/UPDATES.md) for how updates and releases work.
 
 The window opens at about 1440×900, centred. Its size and position are
 remembered between launches.
@@ -85,24 +105,28 @@ make icon       # regenerate the app icon PNGs (tools/app_icon)
 ## Release build
 
 ```sh
-make release
+make release    # dist/k8sman-<version>-macos.zip + SHA256SUMS
+make appcast    # dist/appcast.xml: EdDSA-signed update feed (needs the signing key)
+make update-e2e # local update test: two versions, local feed, tamper checks
 ```
 
-This builds a universal (arm64 + x86_64) Release `.app` with the embedded
-backend, verifies its ad-hoc signature, and zips it to
-`dist/k8sman-<version>-macos.zip`. The version comes from
-`frontend/pubspec.yaml`. To distribute outside your machine without
-Gatekeeper prompts, sign it with a Developer ID and notarize it.
+`make release` builds a universal (arm64 + x86_64) Release `.app` with the
+embedded backend and Sparkle, verifies its ad-hoc signature, and zips it. The
+version comes from `frontend/pubspec.yaml`.
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds, signs
+and publishes the GitHub release. See [docs/UPDATES.md](docs/UPDATES.md)
+for the signing keys, release steps and the notarization path.
 
 ## Architecture
 
 ```
 frontend/  Flutter macOS app
-  lib/app/          backend launcher (BackendController), kubeconfig picker, window chrome
+  lib/app/          backend launcher (BackendController), kubeconfig picker, window chrome, updates/
   lib/api/          Dart client for the backend API
   lib/state/        app state (context, types, namespace, selection)
   lib/ui/, panels/  shell, tables, detail sidebar, kind-specific panels
-  macos/Runner/     native window (vibrancy, titlebar), BackendSupervisor.swift
+  macos/Runner/     native window (vibrancy, titlebar), BackendSupervisor.swift, UpdateController.swift (Sparkle)
 backend/   Go server (client-go)
   cmd/k8sman-server/   entry point and flags
   internal/cluster/    kubeconfig loading, context and kubeconfig switching, discovery
@@ -110,7 +134,8 @@ backend/   Go server (client-go)
   internal/portforward supervised port-forwards
   internal/settings/   ~/.config/k8sman/settings.json
   internal/icons/      CRD group icons: Helm chart icons, bundled icons, favicons
-tools/     build-backend.sh, app icon generator
+tools/     build-backend.sh, app icon generator, release/update tooling
+packaging/ Homebrew cask template
 ```
 
 - **API**: see [API.md](API.md) for every endpoint.

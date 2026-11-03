@@ -32,5 +32,21 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- Sparkle updates (see docs/UPDATES.md). The feed and public key come
+	     from Configs/AppInfo.xcconfig; updates are off when the key is empty. -->
+	<key>SUFeedURL</key>
+	<string>$(K8SMAN_UPDATE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+	<!-- The app schedules background checks itself (lib/app/updates), so
+	     Sparkle never asks for permission or checks on its own. -->
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
 </dict>
 </plist>

@@ -6,3 +6,4 @@ dist/
 tools/app_icon/.dart_tool/
 tools/app_icon/build/
 tools/app_icon/.flutter-plugins-dependencies
+/build/

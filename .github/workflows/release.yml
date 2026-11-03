@@ -1,0 +1,107 @@
+# Builds and publishes a release when a v* tag is pushed (docs/UPDATES.md).
+#
+#   1. Bump `version:` in frontend/pubspec.yaml, commit.
+#   2. git tag -a v0.1.1 -m "release notes (Markdown)" && git push origin v0.1.1
+#
+# Assets: k8sman-<version>-macos.zip (universal, ad-hoc signed), appcast.xml
+# (Sparkle feed, EdDSA-signed) and SHA256SUMS. The app's feed URL is
+# releases/latest/download/appcast.xml, so publishing a (non-pre-)release is
+# what rolls an update out. Tags with a pre-release suffix (v0.2.0-rc.1)
+# become GitHub pre-releases, which "latest" skips.
+#
+# Repository settings (Settings → Secrets and variables → Actions):
+#   secret   SPARKLE_PRIVATE_ED_KEY  output of `generate_keys -x <file>` (the file's contents)
+#   variable SPARKLE_PUBLIC_ED_KEY   output of `generate_keys -p` (optional once committed
+#                                    to frontend/macos/Runner/Configs/AppInfo.xcconfig)
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag matches pubspec.yaml
+        id: version
+        run: |
+          version="$(sed -n 's/^version: *\([^+]*\).*/\1/p' frontend/pubspec.yaml)"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pubspec.yaml version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;; *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;; esac
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Test
+        run: make test
+
+      - name: Build the app
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+        run: make release REQUIRE_UPDATE_KEY=1 SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY"
+
+      - name: Release notes
+        run: |
+          # The annotated tag's message, if any.
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/-----BEGIN PGP SIGNATURE-----/,$d' > dist/notes.md
+          cat dist/notes.md
+
+      - name: Sign the update and write the appcast
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_ED_KEY" ]; then
+            echo "::error::secret SPARKLE_PRIVATE_ED_KEY is not set (docs/UPDATES.md)"
+            exit 1
+          fi
+          make appcast RELEASE_NOTES=dist/notes.md GITHUB_REPO="$GITHUB_REPOSITORY"
+          # Sanity check: the signed feed verifies.
+          build/sparkle/bin/sign_update --verify --ed-key-file - dist/appcast.xml <<< "$SPARKLE_PRIVATE_ED_KEY"
+          cat dist/appcast.xml dist/SHA256SUMS
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          flags=()
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          if [ -s dist/notes.md ]; then flags+=(--notes-file dist/notes.md); else flags+=(--generate-notes); fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "k8sman $VERSION" "${flags[@]}" \
+            "dist/k8sman-$VERSION-macos.zip" dist/appcast.xml dist/SHA256SUMS
+
+      - name: Homebrew cask values
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "version \"$VERSION\""
+          echo "sha256 \"$(shasum -a 256 "dist/k8sman-$VERSION-macos.zip" | cut -d' ' -f1)\""
+          echo "Update packaging/homebrew/k8sman.rb in matty234/homebrew-tap with these (see packaging/homebrew/README.md)." >> "$GITHUB_STEP_SUMMARY"
