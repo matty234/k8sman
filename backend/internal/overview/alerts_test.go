@@ -7,7 +7,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/bargrove/k8sman/backend/internal/prom"
+	"github.com/matty234/k8sman/backend/internal/prom"
 )
 
 func alert(name, severity, state string, labels map[string]string, summary string, started time.Duration) prom.Alert {

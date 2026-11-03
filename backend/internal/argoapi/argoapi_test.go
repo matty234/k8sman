@@ -17,7 +17,7 @@ import (
 	kfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 
-	"github.com/bargrove/k8sman/backend/internal/settings"
+	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
 const (

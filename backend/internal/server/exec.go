@@ -24,7 +24,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 	utilexec "k8s.io/client-go/util/exec"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 func (s *Server) execRoutes() {

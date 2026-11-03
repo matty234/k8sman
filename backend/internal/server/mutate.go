@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
-	"github.com/bargrove/k8sman/backend/internal/portforward"
+	"github.com/matty234/k8sman/backend/internal/portforward"
 )
 
 const fieldManager = "k8sman"

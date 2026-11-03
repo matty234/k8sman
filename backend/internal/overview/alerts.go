@@ -6,7 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/bargrove/k8sman/backend/internal/prom"
+	"github.com/matty234/k8sman/backend/internal/prom"
 )
 
 // Alert categories: firing Alertmanager alerts by severity.

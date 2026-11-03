@@ -8,9 +8,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
-	"github.com/bargrove/k8sman/backend/internal/columns"
-	"github.com/bargrove/k8sman/backend/internal/metrics"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/columns"
+	"github.com/matty234/k8sman/backend/internal/metrics"
 )
 
 var podsType = cluster.ResourceType{Group: "", Version: "v1", Resource: "pods", Kind: "Pod", Namespaced: true}

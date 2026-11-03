@@ -12,8 +12,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
-	"github.com/bargrove/k8sman/backend/internal/settings"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
 // Auth states.

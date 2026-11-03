@@ -14,8 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
-	"github.com/bargrove/k8sman/backend/internal/columns"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/columns"
 )
 
 var now = time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)

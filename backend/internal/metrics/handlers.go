@@ -7,7 +7,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 // Register adds the /api/metrics/* routes. Each request uses the active kube

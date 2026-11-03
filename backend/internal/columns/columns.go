@@ -13,7 +13,7 @@ import (
 
 	"github.com/itchyny/gojq"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 // Column is one table column. Query is a jq expression run against the full

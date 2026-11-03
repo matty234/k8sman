@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 func (s *Server) kubeconfigRoutes() {

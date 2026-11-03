@@ -35,7 +35,7 @@ import (
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 // Spec is the persisted definition of a forward.

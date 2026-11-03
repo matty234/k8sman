@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
-	"github.com/bargrove/k8sman/backend/internal/columns"
-	"github.com/bargrove/k8sman/backend/internal/portforward"
-	"github.com/bargrove/k8sman/backend/internal/settings"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/columns"
+	"github.com/matty234/k8sman/backend/internal/portforward"
+	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
 func writeKubeconfig(t *testing.T, path string, contexts ...string) string {

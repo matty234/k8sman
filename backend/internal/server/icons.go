@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
-	"github.com/bargrove/k8sman/backend/internal/icons"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/icons"
 )
 
 func (s *Server) iconRoutes(opts Options) {

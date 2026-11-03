@@ -18,7 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/bargrove/k8sman/backend/internal/prom"
+	"github.com/matty234/k8sman/backend/internal/prom"
 )
 
 // Thresholds used by the analysis.

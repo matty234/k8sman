@@ -16,7 +16,7 @@ import (
 
 	"k8s.io/client-go/rest"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 // API groups and the versions k8sman reads.

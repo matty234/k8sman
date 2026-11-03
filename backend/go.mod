@@ -1,4 +1,4 @@
-module github.com/bargrove/k8sman/backend
+module github.com/matty234/k8sman/backend
 
 go 1.24.5
 

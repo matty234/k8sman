@@ -20,14 +20,14 @@ import (
 	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/yaml"
 
-	"github.com/bargrove/k8sman/backend/internal/argoapi"
-	"github.com/bargrove/k8sman/backend/internal/cluster"
-	"github.com/bargrove/k8sman/backend/internal/columns"
-	"github.com/bargrove/k8sman/backend/internal/icons"
-	"github.com/bargrove/k8sman/backend/internal/metrics"
-	"github.com/bargrove/k8sman/backend/internal/portforward"
-	"github.com/bargrove/k8sman/backend/internal/prom"
-	"github.com/bargrove/k8sman/backend/internal/settings"
+	"github.com/matty234/k8sman/backend/internal/argoapi"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/columns"
+	"github.com/matty234/k8sman/backend/internal/icons"
+	"github.com/matty234/k8sman/backend/internal/metrics"
+	"github.com/matty234/k8sman/backend/internal/portforward"
+	"github.com/matty234/k8sman/backend/internal/prom"
+	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
 // Server wires the HTTP API to a cluster manager and column store.

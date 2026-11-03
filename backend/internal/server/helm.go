@@ -11,8 +11,8 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"k8s.io/client-go/restmapper"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
-	"github.com/bargrove/k8sman/backend/internal/helm"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/helm"
 )
 
 func (s *Server) helmRoutes() {

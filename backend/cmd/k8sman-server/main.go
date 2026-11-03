@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
-	"github.com/bargrove/k8sman/backend/internal/columns"
-	"github.com/bargrove/k8sman/backend/internal/icons"
-	"github.com/bargrove/k8sman/backend/internal/portforward"
-	"github.com/bargrove/k8sman/backend/internal/server"
-	"github.com/bargrove/k8sman/backend/internal/settings"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/columns"
+	"github.com/matty234/k8sman/backend/internal/icons"
+	"github.com/matty234/k8sman/backend/internal/portforward"
+	"github.com/matty234/k8sman/backend/internal/server"
+	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
 func main() {

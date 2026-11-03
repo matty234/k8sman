@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 // restGetter adapts a cluster.Clients snapshot to the RESTClientGetter the

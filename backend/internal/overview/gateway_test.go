@@ -10,8 +10,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/bargrove/k8sman/backend/internal/cluster"
-	"github.com/bargrove/k8sman/backend/internal/columns"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/columns"
 )
 
 // Real objects captured from the dev cluster (Envoy Gateway v1.2.8).
