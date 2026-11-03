@@ -23,6 +23,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/argoapi"
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/columns"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/icons"
 	"github.com/matty234/k8sman/backend/internal/metrics"
 	"github.com/matty234/k8sman/backend/internal/portforward"
@@ -112,7 +113,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	start := time.Now()
 	if s.mgr.Clients() == nil && !worksDisconnected(r.URL.Path) {
-		writeJSON(w, http.StatusServiceUnavailable, apiError{
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{
 			Error:  fmt.Sprintf("no cluster connection: %v", s.mgr.Err()),
 			Code:   http.StatusServiceUnavailable,
 			Reason: "NoKubeconfig",
@@ -139,33 +140,17 @@ type apiError struct {
 	Causes []map[string]string `json:"causes,omitempty"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	reason := ""
-	var se apierrors.APIStatus
 	if r, c := classifyError(err); r != "" {
 		status, reason = c, r
-	} else if errors.As(err, &se) {
-		if c := int(se.Status().Code); c >= 400 {
-			status = c
-		}
-		reason = string(se.Status().Reason)
-	} else if errors.Is(err, errBadRequest) {
+	} else if c, r, ok := httpx.KubeStatus(err, status); ok {
+		status, reason = c, r
+	} else if errors.Is(err, httpx.ErrBadRequest) {
 		status = http.StatusBadRequest
 	}
-	writeJSON(w, status, apiError{Error: err.Error(), Code: status, Reason: reason, Causes: statusCauses(err)})
-}
-
-var errBadRequest = errors.New("bad request")
-
-func badRequest(format string, a ...any) error {
-	return fmt.Errorf("%w: %s", errBadRequest, fmt.Sprintf(format, a...))
+	httpx.WriteJSON(w, status, apiError{Error: err.Error(), Code: status, Reason: reason, Causes: statusCauses(err)})
 }
 
 // resourceQuery is the common ?group=&version=&resource=&namespace= target.
@@ -181,7 +166,7 @@ func (s *Server) parseResource(ctx context.Context, r *http.Request) (*cluster.C
 	c := s.mgr.Clients()
 	res := q.Get("resource")
 	if res == "" {
-		return c, resourceQuery{}, badRequest("resource is required")
+		return c, resourceQuery{}, httpx.BadRequest("resource is required")
 	}
 	rt, err := c.Find(ctx, q.Get("group"), q.Get("version"), res)
 	if err != nil {
@@ -192,7 +177,7 @@ func (s *Server) parseResource(ctx context.Context, r *http.Request) (*cluster.C
 		if strings.Contains(err.Error(), "not found") {
 			return c, resourceQuery{}, fmt.Errorf("%w: %v", errNotServed, err)
 		}
-		return c, resourceQuery{}, badRequest("%v", err)
+		return c, resourceQuery{}, httpx.BadRequest("%v", err)
 	}
 	return c, resourceQuery{
 		Type:          rt,
@@ -314,7 +299,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	} else {
 		out["error"] = s.mgr.Err().Error()
 	}
-	writeJSON(w, 200, out)
+	httpx.WriteJSON(w, 200, out)
 }
 
 func (s *Server) handleContexts(w http.ResponseWriter, r *http.Request) {
@@ -323,7 +308,7 @@ func (s *Server) handleContexts(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"current": current, "contexts": ctxs})
+	httpx.WriteJSON(w, 200, map[string]any{"current": current, "contexts": ctxs})
 }
 
 func (s *Server) handleSwitchContext(w http.ResponseWriter, r *http.Request) {
@@ -331,11 +316,11 @@ func (s *Server) handleSwitchContext(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
-		writeErr(w, badRequest("body must be {\"name\": \"<context>\"}"))
+		writeErr(w, httpx.BadRequest("body must be {\"name\": \"<context>\"}"))
 		return
 	}
 	if err := s.mgr.SwitchContext(body.Name); err != nil {
-		writeErr(w, badRequest("%v", err))
+		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
 	if err := s.settings.SetLastContext(s.mgr.Kubeconfig(), body.Name); err != nil {
@@ -351,7 +336,7 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, discoveryErr(err))
 		return
 	}
-	writeJSON(w, 200, types)
+	httpx.WriteJSON(w, 200, types)
 }
 
 func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
@@ -360,7 +345,7 @@ func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Users without cluster-wide namespace list still get their default.
 		if apierrors.IsForbidden(err) && c.Namespace != "" {
-			writeJSON(w, 200, map[string]any{"namespaces": []string{c.Namespace}, "default": c.Namespace})
+			httpx.WriteJSON(w, 200, map[string]any{"namespaces": []string{c.Namespace}, "default": c.Namespace})
 			return
 		}
 		writeErr(w, err)
@@ -371,7 +356,7 @@ func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 		names = append(names, n.Name)
 	}
 	sort.Strings(names)
-	writeJSON(w, 200, map[string]any{"namespaces": names, "default": c.Namespace})
+	httpx.WriteJSON(w, 200, map[string]any{"namespaces": names, "default": c.Namespace})
 }
 
 func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
@@ -388,7 +373,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 	cols, isDefault := s.columnsFor(r.Context(), c, rq.Type)
 	b := newTableBuilder(cols, r.URL.Query().Get("includeObject") == "true")
 	b.decorate = s.usageDecorator(r.Context(), c, rq)
-	writeJSON(w, 200, b.table(rq.Type, isDefault, list))
+	httpx.WriteJSON(w, 200, b.table(rq.Type, isDefault, list))
 }
 
 // handleItems returns raw objects — for panels that need related resources
@@ -408,7 +393,7 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 	for _, it := range list.Items {
 		items = append(items, it.Object)
 	}
-	writeJSON(w, 200, map[string]any{"resource": rq.Type, "resourceVersion": list.GetResourceVersion(), "items": items})
+	httpx.WriteJSON(w, 200, map[string]any{"resource": rq.Type, "resourceVersion": list.GetResourceVersion(), "items": items})
 }
 
 func (s *Server) handleObject(w http.ResponseWriter, r *http.Request) {
@@ -419,7 +404,7 @@ func (s *Server) handleObject(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.URL.Query().Get("name")
 	if name == "" {
-		writeErr(w, badRequest("name is required"))
+		writeErr(w, httpx.BadRequest("name is required"))
 		return
 	}
 	obj, err := rq.client(c).Get(r.Context(), name, metav1.GetOptions{})
@@ -441,7 +426,7 @@ func (s *Server) handleObject(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(b)
 		return
 	}
-	writeJSON(w, 200, obj.Object)
+	httpx.WriteJSON(w, 200, obj.Object)
 }
 
 // handleEvents returns core/v1 events for an involved object (by uid, or
@@ -477,7 +462,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sort.SliceStable(items, func(i, j int) bool { return last(i).After(last(j)) })
-	writeJSON(w, 200, map[string]any{"items": items})
+	httpx.WriteJSON(w, 200, map[string]any{"items": items})
 }
 
 func (s *Server) handleGetColumns(w http.ResponseWriter, r *http.Request) {
@@ -488,7 +473,7 @@ func (s *Server) handleGetColumns(w http.ResponseWriter, r *http.Request) {
 	}
 	cols, isDefault := s.columnsFor(r.Context(), c, rq.Type)
 	defaults := columns.Defaults(rq.Type, c.PrinterColumns(r.Context(), rq.Type.GVR()))
-	writeJSON(w, 200, map[string]any{"columns": cols, "isDefault": isDefault, "defaults": defaults})
+	httpx.WriteJSON(w, 200, map[string]any{"columns": cols, "isDefault": isDefault, "defaults": defaults})
 }
 
 func (s *Server) handlePutColumns(w http.ResponseWriter, r *http.Request) {
@@ -501,14 +486,14 @@ func (s *Server) handlePutColumns(w http.ResponseWriter, r *http.Request) {
 		Columns []columns.Column `json:"columns"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, badRequest("invalid body: %v", err))
+		writeErr(w, httpx.BadRequest("invalid body: %v", err))
 		return
 	}
 	if err := s.store.Set(columns.Key(rq.Type.Group, rq.Type.Resource), body.Columns); err != nil {
-		writeErr(w, badRequest("%v", err))
+		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
-	writeJSON(w, 200, map[string]any{"columns": body.Columns, "isDefault": false})
+	httpx.WriteJSON(w, 200, map[string]any{"columns": body.Columns, "isDefault": false})
 }
 
 func (s *Server) handleDeleteColumns(w http.ResponseWriter, r *http.Request) {
@@ -522,7 +507,7 @@ func (s *Server) handleDeleteColumns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cols, _ := s.columnsFor(r.Context(), c, rq.Type)
-	writeJSON(w, 200, map[string]any{"columns": cols, "isDefault": true})
+	httpx.WriteJSON(w, 200, map[string]any{"columns": cols, "isDefault": true})
 }
 
 // handlePreviewColumns evaluates an unsaved column set against live objects
@@ -537,7 +522,7 @@ func (s *Server) handlePreviewColumns(w http.ResponseWriter, r *http.Request) {
 		Columns []columns.Column `json:"columns"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, badRequest("invalid body: %v", err))
+		writeErr(w, httpx.BadRequest("invalid body: %v", err))
 		return
 	}
 	limit := int64(25)
@@ -553,5 +538,5 @@ func (s *Server) handlePreviewColumns(w http.ResponseWriter, r *http.Request) {
 	}
 	b := newTableBuilder(body.Columns, false)
 	b.decorate = s.usageDecorator(r.Context(), c, rq)
-	writeJSON(w, 200, b.table(rq.Type, false, list))
+	httpx.WriteJSON(w, 200, b.table(rq.Type, false, list))
 }

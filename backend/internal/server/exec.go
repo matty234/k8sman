@@ -25,6 +25,7 @@ import (
 	utilexec "k8s.io/client-go/util/exec"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 )
 
 func (s *Server) execRoutes() {
@@ -70,7 +71,7 @@ func execCommand(q map[string][]string) (cmd []string, auto bool, err error) {
 	raw := q["command"]
 	if len(raw) == 1 && strings.HasPrefix(strings.TrimSpace(raw[0]), "[") {
 		if err := json.Unmarshal([]byte(raw[0]), &cmd); err != nil {
-			return nil, false, badRequest("command: invalid JSON array: %v", err)
+			return nil, false, httpx.BadRequest("command: invalid JSON array: %v", err)
 		}
 	} else {
 		for _, c := range raw {
@@ -81,7 +82,7 @@ func execCommand(q map[string][]string) (cmd []string, auto bool, err error) {
 	}
 	if len(cmd) > 0 {
 		if cmd[0] == "" {
-			return nil, false, badRequest("command: empty executable")
+			return nil, false, httpx.BadRequest("command: empty executable")
 		}
 		return cmd, false, nil
 	}
@@ -90,7 +91,7 @@ func execCommand(q map[string][]string) (cmd []string, auto bool, err error) {
 		shell = strings.TrimSpace(v[0])
 	}
 	if shell != "" && shell != "auto" && !shellName.MatchString(shell) {
-		return nil, false, badRequest("shell: %q is not a plain shell name or path", shell)
+		return nil, false, httpx.BadRequest("shell: %q is not a plain shell name or path", shell)
 	}
 	return []string{"/bin/sh", "-c", shellScript(shell)}, true, nil
 }
@@ -295,13 +296,13 @@ func newExecutor(c *cluster.Clients, ns, pod string, opts *corev1.PodExecOptions
 // shell (auto | zsh | bash | ...), cols, rows (initial size).
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	if s.readOnly {
-		writeJSON(w, http.StatusForbidden, apiError{Error: "exec is disabled in read-only mode", Code: http.StatusForbidden, Reason: "Forbidden"})
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: "exec is disabled in read-only mode", Code: http.StatusForbidden, Reason: "Forbidden"})
 		return
 	}
 	q := r.URL.Query()
 	ns, podName := q.Get("namespace"), q.Get("pod")
 	if ns == "" || podName == "" {
-		writeErr(w, badRequest("namespace and pod are required"))
+		writeErr(w, httpx.BadRequest("namespace and pod are required"))
 		return
 	}
 	cmd, auto, err := execCommand(q)
@@ -449,23 +450,23 @@ var debugMu sync.Mutex // serialises ephemeral container updates per server
 // The UI then execs into it. Ephemeral containers can't be removed.
 func (s *Server) handleDebugContainer(w http.ResponseWriter, r *http.Request) {
 	if s.readOnly {
-		writeJSON(w, http.StatusForbidden, apiError{Error: "debug containers are disabled in read-only mode", Code: http.StatusForbidden, Reason: "Forbidden"})
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: "debug containers are disabled in read-only mode", Code: http.StatusForbidden, Reason: "Forbidden"})
 		return
 	}
 	var req DebugContainerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, badRequest("invalid body: %v", err))
+		writeErr(w, httpx.BadRequest("invalid body: %v", err))
 		return
 	}
 	if req.Namespace == "" || req.Pod == "" {
-		writeErr(w, badRequest("namespace and pod are required"))
+		writeErr(w, httpx.BadRequest("namespace and pod are required"))
 		return
 	}
 	if req.Image == "" {
 		req.Image = defaultDebugImage
 	}
 	if strings.ContainsAny(req.Image, " \t\n") {
-		writeErr(w, badRequest("image %q is invalid", req.Image))
+		writeErr(w, httpx.BadRequest("image %q is invalid", req.Image))
 		return
 	}
 	c := s.mgr.Clients()
@@ -478,11 +479,11 @@ func (s *Server) handleDebugContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := waitEphemeralRunning(ctx, c, req.Namespace, req.Pod, name); err != nil {
-		writeJSON(w, http.StatusGatewayTimeout, apiError{Error: err.Error(), Code: http.StatusGatewayTimeout, Reason: "DebugContainerNotRunning"})
+		httpx.WriteJSON(w, http.StatusGatewayTimeout, apiError{Error: err.Error(), Code: http.StatusGatewayTimeout, Reason: "DebugContainerNotRunning"})
 		return
 	}
 	log.Printf("debug container %s added to %s/%s (image %s, target %q)", name, req.Namespace, req.Pod, req.Image, req.TargetContainer)
-	writeJSON(w, http.StatusOK, map[string]any{"name": name, "image": req.Image, "context": c.Context})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"name": name, "image": req.Image, "context": c.Context})
 }
 
 func (s *Server) addDebugContainer(ctx context.Context, c *cluster.Clients, req DebugContainerRequest) (string, error) {
@@ -499,7 +500,7 @@ func (s *Server) addDebugContainer(ctx context.Context, c *cluster.Clients, req 
 			found = found || ct.Name == req.TargetContainer
 		}
 		if !found {
-			return "", badRequest("target container %q not found in pod %s", req.TargetContainer, req.Pod)
+			return "", httpx.BadRequest("target container %q not found in pod %s", req.TargetContainer, req.Pod)
 		}
 	}
 	name := debugContainerName(pod)

@@ -1,13 +1,11 @@
 package metrics
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 )
 
 // Register adds the /api/metrics/* routes. Each request uses the active kube
@@ -40,19 +38,10 @@ type apiError struct {
 	Group string `json:"group,omitempty"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-var errBadRequest = errors.New("bad request")
-
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	body := apiError{Error: err.Error()}
 	var ue *UnavailableError
-	var se apierrors.APIStatus
 	switch {
 	case errors.As(err, &ue):
 		body.State, body.Group = ue.Status.State, ue.Status.Group
@@ -60,19 +49,17 @@ func writeErr(w http.ResponseWriter, err error) {
 		if ue.Status.State == StateNotInstalled {
 			status = http.StatusNotFound
 		}
-	case errors.Is(err, errBadRequest):
+	case errors.Is(err, httpx.ErrBadRequest):
 		status = http.StatusBadRequest
-	case errors.As(err, &se):
-		if c := int(se.Status().Code); c >= 400 {
-			status = c
-		}
+	default:
+		status, _, _ = httpx.KubeStatus(err, status)
 	}
 	body.Code = status
-	writeJSON(w, status, body)
+	httpx.WriteJSON(w, status, body)
 }
 
 func (h *handlers) status(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, h.svc().Status(r.Context(), r.URL.Query().Get("refresh") == "true"))
+	httpx.WriteJSON(w, 200, h.svc().Status(r.Context(), r.URL.Query().Get("refresh") == "true"))
 }
 
 func (h *handlers) nodes(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +68,7 @@ func (h *handlers) nodes(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": items})
+	httpx.WriteJSON(w, 200, map[string]any{"items": items})
 }
 
 func (h *handlers) pods(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +81,7 @@ func (h *handlers) pods(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []PodUsage{}
 	}
-	writeJSON(w, 200, map[string]any{"items": items})
+	httpx.WriteJSON(w, 200, map[string]any{"items": items})
 }
 
 func (h *handlers) customDiscover(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +90,7 @@ func (h *handlers) customDiscover(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, d)
+	httpx.WriteJSON(w, 200, d)
 }
 
 func (h *handlers) custom(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +105,7 @@ func (h *handlers) custom(w http.ResponseWriter, r *http.Request) {
 		MetricSelector: q.Get("metricSelector"),
 	}
 	if cq.Resource == "" || cq.Metric == "" {
-		writeErr(w, errors.Join(errBadRequest, errors.New("resource and metric are required")))
+		writeErr(w, errors.Join(httpx.ErrBadRequest, errors.New("resource and metric are required")))
 		return
 	}
 	items, err := h.svc().Custom(r.Context(), cq)
@@ -126,7 +113,7 @@ func (h *handlers) custom(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": items})
+	httpx.WriteJSON(w, 200, map[string]any{"items": items})
 }
 
 func (h *handlers) externalDiscover(w http.ResponseWriter, r *http.Request) {
@@ -135,14 +122,14 @@ func (h *handlers) externalDiscover(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, d)
+	httpx.WriteJSON(w, 200, d)
 }
 
 func (h *handlers) external(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	eq := ExternalQuery{Namespace: q.Get("namespace"), Metric: q.Get("metric"), Selector: q.Get("labelSelector")}
 	if eq.Namespace == "" || eq.Metric == "" {
-		writeErr(w, errors.Join(errBadRequest, errors.New("namespace and metric are required")))
+		writeErr(w, errors.Join(httpx.ErrBadRequest, errors.New("namespace and metric are required")))
 		return
 	}
 	items, err := h.svc().External(r.Context(), eq)
@@ -150,13 +137,13 @@ func (h *handlers) external(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": items})
+	httpx.WriteJSON(w, 200, map[string]any{"items": items})
 }
 
 func (h *handlers) hpa(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if q.Get("namespace") == "" || q.Get("name") == "" {
-		writeErr(w, errors.Join(errBadRequest, errors.New("namespace and name are required")))
+		writeErr(w, errors.Join(httpx.ErrBadRequest, errors.New("namespace and name are required")))
 		return
 	}
 	a, err := h.svc().AnalyzeHPA(r.Context(), q.Get("namespace"), q.Get("name"))
@@ -164,5 +151,5 @@ func (h *handlers) hpa(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, a)
+	httpx.WriteJSON(w, 200, a)
 }

@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -84,7 +85,7 @@ func (s *Server) handleListActions(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"actions": availableActions(c, rq.Type), "readOnly": s.readOnly})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"actions": availableActions(c, rq.Type), "readOnly": s.readOnly})
 }
 
 func availableActions(c *cluster.Clients, rt cluster.ResourceType) []string {
@@ -129,7 +130,7 @@ func hasVerb(verbs []string, v string) bool {
 
 func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	if s.readOnly {
-		writeJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
 		return
 	}
 	action := r.PathValue("action")
@@ -140,13 +141,13 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.URL.Query().Get("name")
 	if name == "" {
-		writeErr(w, badRequest("name is required"))
+		writeErr(w, httpx.BadRequest("name is required"))
 		return
 	}
 	var req ActionRequest
 	if r.ContentLength != 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeErr(w, badRequest("invalid body: %v", err))
+			writeErr(w, httpx.BadRequest("invalid body: %v", err))
 			return
 		}
 	}
@@ -155,7 +156,7 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		allowed = allowed || a == action
 	}
 	if !allowed {
-		writeErr(w, badRequest("action %q is not supported for %s", action, rq.Type.Resource))
+		writeErr(w, httpx.BadRequest("action %q is not supported for %s", action, rq.Type.Resource))
 		return
 	}
 
@@ -176,7 +177,7 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "scale":
 		if req.Replicas == nil || *req.Replicas < 0 {
-			writeErr(w, badRequest("replicas (>= 0) is required"))
+			writeErr(w, httpx.BadRequest("replicas (>= 0) is required"))
 			return
 		}
 		err = merge(map[string]any{"spec": map[string]any{"replicas": *req.Replicas}}, "scale")
@@ -223,7 +224,7 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	if req.DryRun {
 		res.Message = "Dry run OK: " + res.Message
 	}
-	writeJSON(w, http.StatusOK, res)
+	httpx.WriteJSON(w, http.StatusOK, res)
 }
 
 // triggerCronJob creates a Job from the CronJob's template (`kubectl create
@@ -313,12 +314,12 @@ func rollbackDeployment(ctx context.Context, c *cluster.Clients, ns, name string
 	}
 	if target == nil {
 		if toRevision == 0 {
-			return 0, badRequest("no previous revision to roll back to")
+			return 0, httpx.BadRequest("no previous revision to roll back to")
 		}
-		return 0, badRequest("revision %d not found", toRevision)
+		return 0, httpx.BadRequest("revision %d not found", toRevision)
 	}
 	if target.rev == current {
-		return 0, badRequest("revision %d is already current", current)
+		return 0, httpx.BadRequest("revision %d is already current", current)
 	}
 	tmpl := rss.Items[target.idx].Spec.Template.DeepCopy()
 	delete(tmpl.Labels, "pod-template-hash")
