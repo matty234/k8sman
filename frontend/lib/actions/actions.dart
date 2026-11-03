@@ -97,6 +97,8 @@ Future<bool?> confirmAction(
   required String title,
   String? message,
   required String kubeContext,
+
+  /// Kept for API compatibility (no longer typed in to confirm).
   required String objectName,
   bool destructive = false,
   String? confirmLabel,
@@ -104,45 +106,55 @@ Future<bool?> confirmAction(
   double width = 460,
 }) {
   final local = isLocalContext(kubeContext);
-  final mustType = destructive && !local;
-  final typed = TextEditingController();
   return showDialog<bool>(
     context: context,
     builder: (context) {
       final theme = Theme.of(context);
-      return StatefulBuilder(builder: (context, setState) {
-        final canConfirm = !mustType || typed.text.trim() == objectName;
-        return AlertDialog(
-          title: Text(title),
-          content: SizedBox(
-            width: width,
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (message != null) ...[Text(message), const SizedBox(height: 12)],
-              ?extra,
+      final warn = severityColor(context, Severity.warn);
+      return AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: width,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (message != null) ...[Text(message), const SizedBox(height: 12)],
+            ?extra,
+            if (local)
               Row(children: [
-                Icon(local ? Icons.computer : Icons.warning_amber_rounded, size: 16, color: local ? theme.hintColor : severityColor(context, Severity.warn)),
+                Icon(Icons.computer, size: 15, color: theme.hintColor),
                 const SizedBox(width: 6),
                 Text('Context: ', style: theme.textTheme.bodySmall),
-                Flexible(child: Text(kubeContext, style: monoStyle(context, size: 12, color: local ? null : severityColor(context, Severity.warn)))),
-              ]),
-              if (mustType) ...[
-                const SizedBox(height: 12),
-                Text('This is not a local cluster. Type "$objectName" to confirm.', style: theme.textTheme.bodySmall),
-                const SizedBox(height: 6),
-                TextField(controller: typed, autofocus: true, onChanged: (_) => setState(() {}), style: monoStyle(context)),
-              ],
-            ]),
+                Flexible(child: Text(kubeContext, style: monoStyle(context, size: 12))),
+              ])
+            else
+              // Non-local clusters get a clear, unmissable note instead of a
+              // typed confirmation.
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: warn.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: warn.withValues(alpha: 0.45)),
+                ),
+                child: Row(children: [
+                  Icon(Icons.warning_amber_rounded, size: 16, color: warn),
+                  const SizedBox(width: 8),
+                  Text('You are changing ', style: theme.textTheme.bodySmall),
+                  Flexible(child: Text(kubeContext, style: monoStyle(context, size: 12, color: warn).copyWith(fontWeight: FontWeight.w600))),
+                  Text(', not a local cluster.', style: theme.textTheme.bodySmall),
+                ]),
+              ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            autofocus: true, // Return confirms, Esc cancels.
+            style: destructive ? FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError) : null,
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmLabel ?? 'Confirm'),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(
-              style: destructive ? FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError) : null,
-              onPressed: canConfirm ? () => Navigator.pop(context, true) : null,
-              child: Text(confirmLabel ?? 'Confirm'),
-            ),
-          ],
-        );
-      });
+        ],
+      );
     },
   );
 }

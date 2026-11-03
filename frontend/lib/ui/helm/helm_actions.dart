@@ -1,6 +1,6 @@
 /// Helm mutations (rollback, upgrade with new values, uninstall, recovering
 /// stuck releases). Every one goes through [confirmAction], which names the
-/// kube context and requires typing the release name on non-local clusters.
+/// kube context (with a prominent warning on non-local clusters).
 library;
 
 import 'package:flutter/material.dart';

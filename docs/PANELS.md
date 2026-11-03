@@ -49,8 +49,8 @@ so you never touch `registry.dart`.
     - `ScaleControl(ctx)`: a − N + stepper, e.g. next to the replica bar
     - `ActionButton(ctx, action: 'rollback', body: {'revision': 3}, label: 'Roll back', icon: Icons.history, title: 'Roll back web to revision 3?', destructive: true)`
   - For anything custom, use `runResourceAction(context, ctx, action, title:, message:, destructive:, body:)`.
-  All of these confirm the action, show the kube context, require typing the
-  name for destructive actions on non-local clusters, and report the result.
+  All of these confirm the action, show the kube context (with a prominent
+  warning on non-local clusters), and report the result.
   - Override `actions(ctx)` on your panel only for kind-specific extras that
     aren't in `standardActions`.
   - Hide mutating UI when `ctx.app.readOnly` is true.
