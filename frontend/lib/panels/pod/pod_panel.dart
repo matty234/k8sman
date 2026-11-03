@@ -1,3 +1,5 @@
+import '../../ui/portforward/quick_forward.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../actions/actions.dart';
@@ -33,28 +35,37 @@ class PodPanel extends ResourcePanel {
         title: 'Containers',
         icon: Icons.view_in_ar_outlined,
         trailing: Hint(_containerCounts(containers)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (final c in containers)
-            ContainerCard(
-              c,
-              namespace: ctx.namespace,
-              onViewLogs: (context, previous) => openPodLogs(context, ctx.object, container: c.name, previous: previous),
-              onOpenTerminal: ctx.app.readOnly ? null : (context) => openPodTerminal(context, ctx.object, container: c.name),
-              usage: c.isRunning ? ContainerUsageLine(pod: ctx.object, container: c.name, spec: c.spec) : null,
-            ),
-          if (containers.isEmpty) const Hint('No containers'),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final c in containers)
+              ContainerCard(
+                c,
+                namespace: ctx.namespace,
+                onViewLogs: (context, previous) => openPodLogs(context, ctx.object, container: c.name, previous: previous),
+                onOpenTerminal: ctx.app.readOnly ? null : (context) => openPodTerminal(context, ctx.object, container: c.name),
+                usage: c.isRunning ? ContainerUsageLine(pod: ctx.object, container: c.name, spec: c.spec) : null,
+                // One-click forward per port (only while the container runs).
+                portAction: c.isRunning
+                    ? (p) => QuickForwardButton(
+                        api: ctx.api,
+                        app: ctx.app,
+                        namespace: ctx.namespace ?? 'default',
+                        kind: 'pod',
+                        name: ctx.name,
+                        port: '${p['containerPort']}',
+                        protocol: p['protocol'] as String?,
+                      )
+                    : null,
+              ),
+            if (containers.isEmpty) const Hint('No containers'),
+          ],
+        ),
       ),
       podHistory(ctx),
       if (volumes.isNotEmpty)
-        DetailSection(
-          title: 'Volumes',
-          icon: Icons.storage_outlined,
-          trailing: Hint('${volumes.length}'),
-          child: _Volumes(volumes, containers, ctx.namespace),
-        ),
-      if (scheduling.isNotEmpty)
-        DetailSection(title: 'Scheduling', icon: Icons.account_tree_outlined, child: KeyValueTable(scheduling, keyWidth: 110)),
+        DetailSection(title: 'Volumes', icon: Icons.storage_outlined, trailing: Hint('${volumes.length}'), child: _Volumes(volumes, containers, ctx.namespace)),
+      if (scheduling.isNotEmpty) DetailSection(title: 'Scheduling', icon: Icons.account_tree_outlined, child: KeyValueTable(scheduling, keyWidth: 110)),
       DetailSection(title: 'Conditions', icon: Icons.fact_check_outlined, child: ConditionsTable(ctx.status['conditions'] as List?)),
     ];
   }
@@ -82,9 +93,16 @@ class PodPanel extends ResourcePanel {
     final theme = Theme.of(context);
     final small = theme.textTheme.bodySmall;
     final mono = monoStyle(context, size: 11);
-    Widget lines(List<String> ls) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          for (final l in ls) Padding(padding: const EdgeInsets.only(bottom: 2), child: SelectableText(l, style: mono)),
-        ]);
+    Widget lines(List<String> ls) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final l in ls)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: SelectableText(l, style: mono),
+          ),
+      ],
+    );
 
     final aff = asMap(spec['affinity']);
     final na = asMap(aff['nodeAffinity']);
@@ -94,10 +112,10 @@ class PodPanel extends ResourcePanel {
         'preferred (w${p['weight']}): ${nodeSelectorTermText(asMap(p['preference']))}',
     ];
     List<String> podAff(Json a) => [
-          for (final t in asMapList(a['requiredDuringSchedulingIgnoredDuringExecution'])) 'required: ${_podAffTerm(t)}',
-          for (final p in asMapList(a['preferredDuringSchedulingIgnoredDuringExecution']))
-            'preferred (w${p['weight']}): ${_podAffTerm(asMap(p['podAffinityTerm']))}',
-        ];
+      for (final t in asMapList(a['requiredDuringSchedulingIgnoredDuringExecution'])) 'required: ${_podAffTerm(t)}',
+      for (final p in asMapList(a['preferredDuringSchedulingIgnoredDuringExecution']))
+        'preferred (w${p['weight']}): ${_podAffTerm(asMap(p['podAffinityTerm']))}',
+    ];
     final pa = podAff(asMap(aff['podAffinity']));
     final paa = podAff(asMap(aff['podAntiAffinity']));
 
@@ -115,14 +133,21 @@ class PodPanel extends ResourcePanel {
       if (tols.isNotEmpty)
         (
           'Tolerations',
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            for (final t in custom) Padding(padding: const EdgeInsets.only(bottom: 2), child: SelectableText(tolerationText(t), style: mono)),
-            if (defaults > 0)
-              Tooltip(
-                message: tols.where(isDefaultToleration).map(tolerationText).join('\n'),
-                child: Hint('${custom.isEmpty ? '' : '+ '}$defaults default (not-ready / unreachable, NoExecute)'),
-              ),
-          ])
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final t in custom)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: SelectableText(tolerationText(t), style: mono),
+                ),
+              if (defaults > 0)
+                Tooltip(
+                  message: tols.where(isDefaultToleration).map(tolerationText).join('\n'),
+                  child: Hint('${custom.isEmpty ? '' : '+ '}$defaults default (not-ready / unreachable, NoExecute)'),
+                ),
+            ],
+          ),
         ),
       if (tsc.isNotEmpty)
         (
@@ -132,7 +157,7 @@ class PodPanel extends ResourcePanel {
               'maxSkew ${t['maxSkew']} on ${t['topologyKey']} · ${t['whenUnsatisfiable']}'
                   '${selectorToString(t['labelSelector']).isEmpty ? '' : ' · ${selectorToString(t['labelSelector'])}'}'
                   '${t['minDomains'] != null ? ' · minDomains ${t['minDomains']}' : ''}',
-          ])
+          ]),
         ),
       if (scheduler != null && scheduler != 'default-scheduler') ('Scheduler', Text('$scheduler', style: small)),
       if (spec['runtimeClassName'] != null) ('Runtime class', Text('${spec['runtimeClassName']}', style: small)),
@@ -173,73 +198,91 @@ class _StatusSummary extends StatelessWidget {
     final sa = (spec['serviceAccountName'] ?? spec['serviceAccount']) as String?;
     final qos = status['qosClass'] as String?;
     final podSc = asMap(spec['securityContext']);
-    final hostNs = [
-      if (spec['hostNetwork'] == true) 'hostNetwork',
-      if (spec['hostPID'] == true) 'hostPID',
-      if (spec['hostIPC'] == true) 'hostIPC',
-    ];
+    final hostNs = [if (spec['hostNetwork'] == true) 'hostNetwork', if (spec['hostPID'] == true) 'hostPID', if (spec['hostIPC'] == true) 'hostIPC'];
     final inits = containers.where((c) => c.kind == ContainerKind.init).toList();
     final initsDone = inits.where((c) => c.isTerminated && c.terminated['exitCode'] == 0).length;
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        StatusBadge(effective),
-        if (effective != phase && phase.isNotEmpty) Hint('phase $phase'),
-        StatusBadge('$readyCount/${main.length} ready',
-            severity: phase == 'Succeeded' ? Severity.neutral : (readyCount == main.length ? Severity.ok : Severity.error)),
-        if (inits.isNotEmpty)
-          StatusBadge('init $initsDone/${inits.length}', severity: initsDone == inits.length ? Severity.ok : Severity.warn),
-        StatusBadge('$restarts restart${restarts == 1 ? '' : 's'}', severity: restarts > 0 ? Severity.warn : Severity.neutral),
-      ]),
-      const SizedBox(height: 10),
-      if (insights.isNotEmpty)
-        InsightList(insights)
-      else if (phase == 'Running')
-        InsightList([PodInsight(Severity.ok, 'Healthy: all ${main.length} container${main.length == 1 ? '' : 's'} running and ready')])
-      else if (phase == 'Succeeded')
-        const InsightList([PodInsight(Severity.ok, 'Completed: all containers exited successfully')]),
-      const SizedBox(height: 4),
-      KeyValueTable(keyWidth: 110, [
-        (
-          'Node',
-          node == null
-              ? Text(status['nominatedNodeName'] != null ? 'unscheduled (nominated ${status['nominatedNodeName']})' : 'unscheduled',
-                  style: small?.copyWith(color: severityColor(context, Severity.warn)))
-              : ResourceLink(ObjectRef(kind: 'Node', name: node), label: node),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            StatusBadge(effective),
+            if (effective != phase && phase.isNotEmpty) Hint('phase $phase'),
+            StatusBadge(
+              '$readyCount/${main.length} ready',
+              severity: phase == 'Succeeded' ? Severity.neutral : (readyCount == main.length ? Severity.ok : Severity.error),
+            ),
+            if (inits.isNotEmpty) StatusBadge('init $initsDone/${inits.length}', severity: initsDone == inits.length ? Severity.ok : Severity.warn),
+            StatusBadge('$restarts restart${restarts == 1 ? '' : 's'}', severity: restarts > 0 ? Severity.warn : Severity.neutral),
+          ],
         ),
-        if (ips.isNotEmpty) ('Pod IP', InlineWrap([for (final ip in ips) Chipish(text: ip, copyValue: ip)])),
-        if (status['hostIP'] != null) ('Host IP', InlineWrap([Chipish(text: '${status['hostIP']}', copyValue: '${status['hostIP']}')])),
-        if (status['startTime'] != null)
+        const SizedBox(height: 10),
+        if (insights.isNotEmpty)
+          InsightList(insights)
+        else if (phase == 'Running')
+          InsightList([PodInsight(Severity.ok, 'Healthy: all ${main.length} container${main.length == 1 ? '' : 's'} running and ready')])
+        else if (phase == 'Succeeded')
+          const InsightList([PodInsight(Severity.ok, 'Completed: all containers exited successfully')]),
+        const SizedBox(height: 4),
+        KeyValueTable(keyWidth: 110, [
           (
-            'Started',
-            InlineWrap([AgeText(status['startTime'], suffix: ' ago', style: small), Hint(parseTime(status['startTime'])!.toLocal().toString().split('.').first)])
+            'Node',
+            node == null
+                ? Text(
+                    status['nominatedNodeName'] != null ? 'unscheduled (nominated ${status['nominatedNodeName']})' : 'unscheduled',
+                    style: small?.copyWith(color: severityColor(context, Severity.warn)),
+                  )
+                : ResourceLink(
+                    ObjectRef(kind: 'Node', name: node),
+                    label: node,
+                  ),
           ),
-        ('Usage', PodUsageSummary(pod: pod)),
-        if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), Hint(_qosHint(qos))])),
-        (
-          'Priority',
-          InlineWrap([
-            Text('${spec['priority'] ?? 0}', style: small),
-            if (spec['priorityClassName'] != null) Hint('class ${spec['priorityClassName']}'),
-            if (spec['preemptionPolicy'] == 'Never') const Hint('never preempts'),
-          ])
-        ),
-        if (sa != null)
-          ('Service account', ResourceLink(ObjectRef(kind: 'ServiceAccount', name: sa, namespace: ctx.namespace), label: sa)),
-        ('Restart policy', Text('${spec['restartPolicy'] ?? 'Always'} · grace ${spec['terminationGracePeriodSeconds'] ?? 30}s', style: small)),
-        if (hostNs.isNotEmpty)
-          ('Host namespaces', InlineWrap([for (final h in hostNs) Chipish(text: h, color: severityColor(context, Severity.warn))])),
-        if (podSc.isNotEmpty) ('Pod security', securityChips(context, podSc)),
-      ]),
-    ]);
+          if (ips.isNotEmpty) ('Pod IP', InlineWrap([for (final ip in ips) Chipish(text: ip, copyValue: ip)])),
+          if (status['hostIP'] != null) ('Host IP', InlineWrap([Chipish(text: '${status['hostIP']}', copyValue: '${status['hostIP']}')])),
+          if (status['startTime'] != null)
+            (
+              'Started',
+              InlineWrap([
+                AgeText(status['startTime'], suffix: ' ago', style: small),
+                Hint(parseTime(status['startTime'])!.toLocal().toString().split('.').first),
+              ]),
+            ),
+          ('Usage', PodUsageSummary(pod: pod)),
+          if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), Hint(_qosHint(qos))])),
+          (
+            'Priority',
+            InlineWrap([
+              Text('${spec['priority'] ?? 0}', style: small),
+              if (spec['priorityClassName'] != null) Hint('class ${spec['priorityClassName']}'),
+              if (spec['preemptionPolicy'] == 'Never') const Hint('never preempts'),
+            ]),
+          ),
+          if (sa != null)
+            (
+              'Service account',
+              ResourceLink(
+                ObjectRef(kind: 'ServiceAccount', name: sa, namespace: ctx.namespace),
+                label: sa,
+              ),
+            ),
+          ('Restart policy', Text('${spec['restartPolicy'] ?? 'Always'} · grace ${spec['terminationGracePeriodSeconds'] ?? 30}s', style: small)),
+          if (hostNs.isNotEmpty) ('Host namespaces', InlineWrap([for (final h in hostNs) Chipish(text: h, color: severityColor(context, Severity.warn))])),
+          if (podSc.isNotEmpty) ('Pod security', securityChips(context, podSc)),
+        ]),
+      ],
+    );
   }
 
   static String _qosHint(String q) => switch (q) {
-        'BestEffort' => 'no requests/limits · evicted first',
-        'Burstable' => 'requests < limits',
-        'Guaranteed' => 'requests = limits · evicted last',
-        _ => '',
-      };
+    'BestEffort' => 'no requests/limits · evicted first',
+    'Burstable' => 'requests < limits',
+    'Guaranteed' => 'requests = limits · evicted last',
+    _ => '',
+  };
 }
 
 class _Volumes extends StatelessWidget {
@@ -251,12 +294,15 @@ class _Volumes extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (final (i, v) in volumes.indexed) ...[
-        if (i > 0) Divider(height: 12, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
-        _volume(context, v),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, v) in volumes.indexed) ...[
+          if (i > 0) Divider(height: 12, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+          _volume(context, v),
+        ],
       ],
-    ]);
+    );
   }
 
   Widget _volume(BuildContext context, Json v) {
@@ -269,26 +315,35 @@ class _Volumes extends StatelessWidget {
         for (final m in asMapList(c.spec['volumeMounts']))
           if (m['name'] == name) '${c.name}:${m['mountPath']}${m['readOnly'] == true ? ' (ro)' : ''}',
     ];
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Flexible(child: SelectableText(name, maxLines: 1, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600))),
-        const SizedBox(width: 8),
-        Chipish(text: type),
-      ]),
-      const SizedBox(height: 3),
-      Padding(padding: const EdgeInsets.only(left: 8), child: _source(context, type, src)),
-      if (mounts.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(left: 8, top: 2),
-          child: Text('mounted by ${mounts.join(', ')}', style: monoStyle(context, size: 10.5, color: theme.hintColor)),
-        )
-      else
-        const Padding(padding: EdgeInsets.only(left: 8, top: 2), child: Hint('not mounted by any container')),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Flexible(
+              child: SelectableText(name, maxLines: 1, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(width: 8),
+            Chipish(text: type),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Padding(padding: const EdgeInsets.only(left: 8), child: _source(context, type, src)),
+        if (mounts.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 8, top: 2),
+            child: Text('mounted by ${mounts.join(', ')}', style: monoStyle(context, size: 10.5, color: theme.hintColor)),
+          )
+        else
+          const Padding(padding: EdgeInsets.only(left: 8, top: 2), child: Hint('not mounted by any container')),
+      ],
+    );
   }
 
-  Widget _link(String kind, String? name, {String? label}) =>
-      ResourceLink(ObjectRef(kind: kind, name: name ?? '', namespace: namespace), label: label ?? '$kind/$name');
+  Widget _link(String kind, String? name, {String? label}) => ResourceLink(
+    ObjectRef(kind: kind, name: name ?? '', namespace: namespace),
+    label: label ?? '$kind/$name',
+  );
 
   Widget _items(BuildContext context, Json src) {
     final items = asMapList(src['items']);
@@ -309,47 +364,50 @@ class _Volumes extends StatelessWidget {
           if (src['readOnly'] == true) const Hint('read-only'),
         ]);
       case 'emptyDir':
-        return Hint([
-          src['medium'] == 'Memory' ? 'tmpfs (memory-backed)' : 'node disk',
-          if (src['sizeLimit'] != null) 'limit ${src['sizeLimit']}',
-        ].join(' · '));
+        return Hint([src['medium'] == 'Memory' ? 'tmpfs (memory-backed)' : 'node disk', if (src['sizeLimit'] != null) 'limit ${src['sizeLimit']}'].join(' · '));
       case 'hostPath':
         return InlineWrap([MonoValue('${src['path']}', size: 11), if (src['type'] != null && src['type'] != '') Hint('${src['type']}')]);
       case 'downwardAPI':
         return _downward(context, src);
       case 'projected':
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          for (final s in asMapList(src['sources'])) Padding(padding: const EdgeInsets.only(bottom: 2), child: _projectedSource(context, s)),
-        ]);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [for (final s in asMapList(src['sources'])) Padding(padding: const EdgeInsets.only(bottom: 2), child: _projectedSource(context, s))],
+        );
       case 'ephemeral':
         final t = asMap(dig(src, ['volumeClaimTemplate', 'spec']));
-        return Hint([
-          'generic ephemeral PVC',
-          if (t['storageClassName'] != null) 'class ${t['storageClassName']}',
-          if (dig(t, ['resources', 'requests', 'storage']) != null) '${dig(t, ['resources', 'requests', 'storage'])}',
-          if (t['accessModes'] is List) (t['accessModes'] as List).join(','),
-        ].join(' · '));
+        return Hint(
+          [
+            'generic ephemeral PVC',
+            if (t['storageClassName'] != null) 'class ${t['storageClassName']}',
+            if (dig(t, ['resources', 'requests', 'storage']) != null) '${dig(t, ['resources', 'requests', 'storage'])}',
+            if (t['accessModes'] is List) (t['accessModes'] as List).join(','),
+          ].join(' · '),
+        );
       case 'csi':
-        return InlineWrap([
-          Hint('driver ${src['driver']}'),
-          for (final e in asMap(src['volumeAttributes']).entries) Chipish(text: '${e.key}=${e.value}'),
-        ]);
+        return InlineWrap([Hint('driver ${src['driver']}'), for (final e in asMap(src['volumeAttributes']).entries) Chipish(text: '${e.key}=${e.value}')]);
       case 'nfs':
         return MonoValue('${src['server']}:${src['path']}${src['readOnly'] == true ? ' (ro)' : ''}', size: 11);
       case 'image':
-        return InlineWrap([Chipish(text: '${src['reference']}', copyValue: '${src['reference']}'), if (src['pullPolicy'] != null) Hint('pull ${src['pullPolicy']}')]);
+        return InlineWrap([
+          Chipish(text: '${src['reference']}', copyValue: '${src['reference']}'),
+          if (src['pullPolicy'] != null) Hint('pull ${src['pullPolicy']}'),
+        ]);
       default:
         return Hint(src.entries.map((e) => '${e.key}: ${e.value}').join(' · '));
     }
   }
 
-  Widget _downward(BuildContext context, Json src) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (final i in asMapList(src['items']))
-          Text(
-            '${i['path']} ← ${dig(i, ['fieldRef', 'fieldPath']) ?? dig(i, ['resourceFieldRef', 'resource']) ?? '?'}',
-            style: monoStyle(context, size: 10.5, color: Theme.of(context).hintColor),
-          ),
-      ]);
+  Widget _downward(BuildContext context, Json src) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (final i in asMapList(src['items']))
+        Text(
+          '${i['path']} ← ${dig(i, ['fieldRef', 'fieldPath']) ?? dig(i, ['resourceFieldRef', 'resource']) ?? '?'}',
+          style: monoStyle(context, size: 10.5, color: Theme.of(context).hintColor),
+        ),
+    ],
+  );
 
   Widget _projectedSource(BuildContext context, Json s) {
     if (s['configMap'] is Map) {
@@ -362,17 +420,22 @@ class _Volumes extends StatelessWidget {
     }
     if (s['serviceAccountToken'] is Map) {
       final t = asMap(s['serviceAccountToken']);
-      return Hint([
-        'serviceAccountToken at ${t['path']}',
-        if (t['expirationSeconds'] != null) 'expires ${formatDuration(Duration(seconds: (t['expirationSeconds'] as num).toInt()))}',
-        if (t['audience'] != null) 'aud ${t['audience']}',
-      ].join(' · '));
+      return Hint(
+        [
+          'serviceAccountToken at ${t['path']}',
+          if (t['expirationSeconds'] != null) 'expires ${formatDuration(Duration(seconds: (t['expirationSeconds'] as num).toInt()))}',
+          if (t['audience'] != null) 'aud ${t['audience']}',
+        ].join(' · '),
+      );
     }
     if (s['downwardAPI'] is Map) {
-      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Hint('downwardAPI  '),
-        Flexible(child: _downward(context, asMap(s['downwardAPI']))),
-      ]);
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Hint('downwardAPI  '),
+          Flexible(child: _downward(context, asMap(s['downwardAPI']))),
+        ],
+      );
     }
     if (s['clusterTrustBundle'] is Map) {
       final b = asMap(s['clusterTrustBundle']);

@@ -106,12 +106,15 @@ Future<AppState> pumpPanel(
   ApiClient? api,
   ResourceType? type,
   Size size = const Size(560, 2400),
+  bool readOnly = false,
 }) async {
   final apiVersion = '${object['apiVersion']}';
   final group = apiVersion.contains('/') ? apiVersion.split('/').first : '';
   final t = type ?? testType(group, '${object['kind']}');
   final client = api ?? FakeApiClient();
-  final app = AppState(client)..types = testTypes;
+  final app = AppState(client)
+    ..types = testTypes
+    ..readOnly = readOnly;
   final panel = panelFor(t);
   // Seed a detail so openRef pushes (canGoBack becomes true on navigation).
   app.openDetail(DetailTarget(type: t, name: '${object['metadata']?['name']}', namespace: object['metadata']?['namespace']));

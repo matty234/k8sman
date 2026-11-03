@@ -1,3 +1,5 @@
+import '../../ui/portforward/quick_forward.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
@@ -36,7 +38,10 @@ ResolvedTarget resolveTargetPort(Json port, {List<Json>? pods, List<Json> slices
   final asInt = int.tryParse(name);
   if (asInt != null) return ResolvedTarget(name);
   for (final pod in pods ?? const <Json>[]) {
-    for (final c in [...asMapList(dig(pod, ['spec', 'containers'])), ...asMapList(dig(pod, ['spec', 'initContainers']))]) {
+    for (final c in [
+      ...asMapList(dig(pod, ['spec', 'containers'])),
+      ...asMapList(dig(pod, ['spec', 'initContainers'])),
+    ]) {
       for (final cp in asMapList(c['ports'])) {
         if (cp['name'] == name) return ResolvedTarget('$name → ${cp['containerPort']}', note: 'container ${c['name']}');
       }
@@ -70,8 +75,11 @@ ServiceDiagnosis? diagnoseService(Json svc, ServiceBackends b) {
   final selector = asMap(spec['selector']);
   if (selector.isEmpty) {
     if (addrs.isEmpty) {
-      return const ServiceDiagnosis(Severity.error, 'Service has no selector (manual endpoints)',
-          'No EndpointSlices labelled with this service name exist, so traffic goes nowhere. Create an EndpointSlice/Endpoints object, or add a selector.');
+      return const ServiceDiagnosis(
+        Severity.error,
+        'Service has no selector (manual endpoints)',
+        'No EndpointSlices labelled with this service name exist, so traffic goes nowhere. Create an EndpointSlice/Endpoints object, or add a selector.',
+      );
     }
     if (ready == 0) {
       return const ServiceDiagnosis(Severity.error, 'Service has no selector (manual endpoints)', 'Manually managed endpoints exist but none are ready.');
@@ -83,21 +91,34 @@ ServiceDiagnosis? diagnoseService(Json svc, ServiceBackends b) {
   if (ready > 0) {
     final notReady = addrs.length - ready;
     if (notReady > 0) {
-      return ServiceDiagnosis(Severity.warn, '$notReady of ${addrs.length} endpoints not ready', 'Traffic only goes to the $ready ready endpoint${ready == 1 ? '' : 's'}.');
+      return ServiceDiagnosis(
+        Severity.warn,
+        '$notReady of ${addrs.length} endpoints not ready',
+        'Traffic only goes to the $ready ready endpoint${ready == 1 ? '' : 's'}.',
+      );
     }
     return null;
   }
   if (pods.isEmpty) {
-    return ServiceDiagnosis(Severity.error, 'Selector matches 0 pods',
-        'No pod in ${dig<String>(svc, ['metadata', 'namespace']) ?? 'this namespace'} has labels $sel. Check for a typo in the selector or pod template labels.');
+    return ServiceDiagnosis(
+      Severity.error,
+      'Selector matches 0 pods',
+      'No pod in ${dig<String>(svc, ['metadata', 'namespace']) ?? 'this namespace'} has labels $sel. Check for a typo in the selector or pod template labels.',
+    );
   }
   final readyPods = pods.where(podReady).length;
   if (readyPods == 0) {
-    return ServiceDiagnosis(Severity.error, pods.length == 1 ? '1 pod matches but it is not ready' : '${pods.length} pods match but none are ready',
-        'Endpoints are only added once a pod passes its readiness probe. Check the pods below.');
+    return ServiceDiagnosis(
+      Severity.error,
+      pods.length == 1 ? '1 pod matches but it is not ready' : '${pods.length} pods match but none are ready',
+      'Endpoints are only added once a pod passes its readiness probe. Check the pods below.',
+    );
   }
-  return ServiceDiagnosis(Severity.warn, '$readyPods ready pod${readyPods == 1 ? '' : 's'} match but there are no ready endpoints',
-      'The endpoint controller may be lagging, or the pods lack the target port.');
+  return ServiceDiagnosis(
+    Severity.warn,
+    '$readyPods ready pod${readyPods == 1 ? '' : 's'} match but there are no ready endpoints',
+    'The endpoint controller may be lagging, or the pods lack the target port.',
+  );
 }
 
 class ServicePanel extends ResourcePanel {
@@ -119,36 +140,46 @@ class ServicePanel extends ResourcePanel {
       DetailSection(
         title: 'Service',
         icon: Icons.lan_outlined,
-        trailing: Wrap(spacing: 4, children: [
-          StatusBadge(type, dense: true, severity: Severity.info),
-          if (headless) const StatusBadge('Headless', dense: true, severity: Severity.neutral),
-        ]),
+        trailing: Wrap(
+          spacing: 4,
+          children: [
+            StatusBadge(type, dense: true, severity: Severity.info),
+            if (headless) const StatusBadge('Headless', dense: true, severity: Severity.neutral),
+          ],
+        ),
         child: _summary(context, ctx, type, headless),
       ),
       DetailSection(
         title: 'Access',
         icon: Icons.terminal,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          CopyLine(dns, label: 'DNS'),
-          if (type == 'ExternalName' && spec['externalName'] != null) CopyLine('${spec['externalName']}', label: 'CNAME'),
-          if (type != 'ExternalName')
-            for (final p in ports.take(4))
-              if ((p['protocol'] ?? 'TCP') == 'TCP') CopyLine('kubectl -n $ns port-forward svc/${ctx.name} ${p['port']}:${p['port']}', label: 'Forward'),
-          if (type != 'ExternalName' && ports.isNotEmpty && !headless)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Muted('In-cluster: http://$dns:${ports.first['port']}'
-                  '${ports.any((p) => p['nodePort'] != null) ? '  ·  every node: ${ports.where((p) => p['nodePort'] != null).map((p) => ':${p['nodePort']}').join(' ')}' : ''}'),
-            ),
-          if (headless) const Padding(padding: EdgeInsets.only(top: 2), child: Muted('Headless: DNS returns the ready pod IPs directly; no virtual IP or kube-proxy load-balancing.')),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            CopyLine(dns, label: 'DNS'),
+            if (type == 'ExternalName' && spec['externalName'] != null) CopyLine('${spec['externalName']}', label: 'CNAME'),
+            if (type != 'ExternalName')
+              for (final p in ports.take(4))
+                if ((p['protocol'] ?? 'TCP') == 'TCP') CopyLine('kubectl -n $ns port-forward svc/${ctx.name} ${p['port']}:${p['port']}', label: 'Forward'),
+            if (type != 'ExternalName' && ports.isNotEmpty && !headless)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Muted(
+                  'In-cluster: http://$dns:${ports.first['port']}'
+                  '${ports.any((p) => p['nodePort'] != null) ? '  ·  every node: ${ports.where((p) => p['nodePort'] != null).map((p) => ':${p['nodePort']}').join(' ')}' : ''}',
+                ),
+              ),
+            if (headless)
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Muted('Headless: DNS returns the ready pod IPs directly; no virtual IP or kube-proxy load-balancing.'),
+              ),
+          ],
+        ),
       ),
       DetailSection(
         title: 'Selector',
         icon: Icons.filter_alt_outlined,
-        child: selector.isEmpty
-            ? const InlineMessage('No selector: endpoints are managed manually (or by another controller).')
-            : LabelChips(selector),
+        child: selector.isEmpty ? const InlineMessage('No selector: endpoints are managed manually (or by another controller).') : LabelChips(selector),
       ),
       _ServiceBackendsView(key: ValueKey('${ctx.uid}/backends'), ctx: ctx, ports: ports, headless: headless, dns: dns),
       RoutedBySection(key: ValueKey('${ctx.uid}/routed-by'), ctx: ctx),
@@ -157,7 +188,9 @@ class ServicePanel extends ResourcePanel {
 
   Widget _summary(BuildContext context, PanelContext ctx, String type, bool headless) {
     final spec = ctx.spec;
-    final ips = [for (final ip in (spec['clusterIPs'] as List? ?? [if (spec['clusterIP'] != null) spec['clusterIP']])) '$ip'];
+    final ips = [
+      for (final ip in (spec['clusterIPs'] as List? ?? [if (spec['clusterIP'] != null) spec['clusterIP']])) '$ip',
+    ];
     final lbIngress = asMapList(dig(ctx.status, ['loadBalancer', 'ingress']));
     final externalIPs = [for (final ip in (spec['externalIPs'] as List? ?? const [])) '$ip'];
     final families = [for (final f in (spec['ipFamilies'] as List? ?? const [])) '$f'].join(', ');
@@ -170,8 +203,14 @@ class ServicePanel extends ResourcePanel {
         type == 'ExternalName'
             ? null
             : headless
-                ? Row(children: [const StatusBadge('None', dense: true, severity: Severity.neutral), const SizedBox(width: 6), const Expanded(child: Muted('headless'))])
-                : ipWrap(ips),
+            ? Row(
+                children: [
+                  const StatusBadge('None', dense: true, severity: Severity.neutral),
+                  const SizedBox(width: 6),
+                  const Expanded(child: Muted('headless')),
+                ],
+              )
+            : ipWrap(ips),
       ),
       ('External name', spec['externalName'] != null ? CopyText('${spec['externalName']}') : null),
       ('IP families', families.isEmpty ? null : '$families${spec['ipFamilyPolicy'] != null ? '  ·  ${spec['ipFamilyPolicy']}' : ''}'),
@@ -181,8 +220,8 @@ class ServicePanel extends ResourcePanel {
         type != 'LoadBalancer'
             ? null
             : lbIngress.isEmpty
-                ? const StatusBadge('Pending', dense: true, severity: Severity.warn)
-                : ipWrap([for (final i in lbIngress) '${i['ip'] ?? i['hostname'] ?? ''}']),
+            ? const StatusBadge('Pending', dense: true, severity: Severity.warn)
+            : ipWrap([for (final i in lbIngress) '${i['ip'] ?? i['hostname'] ?? ''}']),
       ),
       ('LB class', spec['loadBalancerClass'] as String?),
       ('LB source ranges', (spec['loadBalancerSourceRanges'] as List?)?.join(', ')),
@@ -205,9 +244,17 @@ class _ServiceBackendsView extends StatelessWidget {
     final ns = ctx.namespace;
     final selector = asMap(ctx.spec['selector']);
     final results = await Future.wait([
-      ctx.api.items(const ResourceRef(group: 'discovery.k8s.io', resource: 'endpointslices'),
-          namespace: ns, labelSelector: 'kubernetes.io/service-name=${ctx.name}'),
-      if (selector.isNotEmpty) ctx.api.items(const ResourceRef(resource: 'pods'), namespace: ns, labelSelector: selectorToString(selector)),
+      ctx.api.items(
+        const ResourceRef(group: 'discovery.k8s.io', resource: 'endpointslices'),
+        namespace: ns,
+        labelSelector: 'kubernetes.io/service-name=${ctx.name}',
+      ),
+      if (selector.isNotEmpty)
+        ctx.api.items(
+          const ResourceRef(resource: 'pods'),
+          namespace: ns,
+          labelSelector: selectorToString(selector),
+        ),
     ]);
     return ServiceBackends(slices: results[0], pods: selector.isEmpty ? null : results[1]);
   }
@@ -220,26 +267,30 @@ class _ServiceBackendsView extends StatelessWidget {
       load: _load,
       builder: (context, snap, reload) {
         final data = snap.data;
-        final children = <Widget>[
-          DetailSection(title: 'Ports', icon: Icons.settings_ethernet, child: _portsTable(context, data)),
-        ];
+        final children = <Widget>[DetailSection(title: 'Ports', icon: Icons.settings_ethernet, child: _portsTable(context, data))];
         if (!external) {
           final addrs = data == null ? const <EndpointAddr>[] : EndpointAddr.fromSlices(data.slices);
           final ready = addrs.where((a) => a.ready).length;
           final diag = data == null ? null : diagnoseService(ctx.object, data);
-          children.add(DetailSection(
-            title: 'Endpoints',
-            icon: Icons.hub_outlined,
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (data != null) CountBadge(ready: ready, total: addrs.length),
-              const SizedBox(width: 4),
-              RefreshButton(reload),
-            ]),
-            child: snap.hasError
-                ? InlineMessage('${snap.error}', isError: true)
-                : data == null
-                    ? spinner
-                    : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          children.add(
+            DetailSection(
+              title: 'Endpoints',
+              icon: Icons.hub_outlined,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (data != null) CountBadge(ready: ready, total: addrs.length),
+                  const SizedBox(width: 4),
+                  RefreshButton(reload),
+                ],
+              ),
+              child: snap.hasError
+                  ? InlineMessage('${snap.error}', isError: true)
+                  : data == null
+                  ? spinner
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                         if (diag != null) Callout(severity: diag.severity, title: diag.title, detail: diag.detail),
                         if (addrs.isNotEmpty)
                           EndpointList(addrs, namespace: ctx.namespace, headlessDnsSuffix: headless ? dns : null)
@@ -252,27 +303,45 @@ class _ServiceBackendsView extends StatelessWidget {
                           for (final p in data.pods!.take(20))
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 2),
-                              child: Row(children: [
-                                StatusBadge(podReady(p) ? 'Ready' : 'NotReady · ${dig(p, ['status', 'phase']) ?? 'Unknown'}', dense: true,
-                                    severity: podReady(p) ? Severity.ok : Severity.error),
-                                const SizedBox(width: 6),
-                                Flexible(child: ResourceLink(ObjectRef(kind: 'Pod', name: '${dig(p, ['metadata', 'name'])}', namespace: ctx.namespace))),
-                              ]),
+                              child: Row(
+                                children: [
+                                  StatusBadge(
+                                    podReady(p) ? 'Ready' : 'NotReady · ${dig(p, ['status', 'phase']) ?? 'Unknown'}',
+                                    dense: true,
+                                    severity: podReady(p) ? Severity.ok : Severity.error,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: ResourceLink(ObjectRef(kind: 'Pod', name: '${dig(p, ['metadata', 'name'])}', namespace: ctx.namespace)),
+                                  ),
+                                ],
+                              ),
                             ),
                         ],
                         if (data.slices.isNotEmpty) ...[
                           const SizedBox(height: 6),
-                          Wrap(spacing: 8, runSpacing: 2, children: [
-                            const Muted('Slices:'),
-                            for (final s in data.slices)
-                              ResourceLink(
-                                ObjectRef(group: 'discovery.k8s.io', kind: 'EndpointSlice', name: '${dig(s, ['metadata', 'name'])}', namespace: ctx.namespace),
-                                label: '${dig(s, ['metadata', 'name'])}',
-                              ),
-                          ]),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 2,
+                            children: [
+                              const Muted('Slices:'),
+                              for (final s in data.slices)
+                                ResourceLink(
+                                  ObjectRef(
+                                    group: 'discovery.k8s.io',
+                                    kind: 'EndpointSlice',
+                                    name: '${dig(s, ['metadata', 'name'])}',
+                                    namespace: ctx.namespace,
+                                  ),
+                                  label: '${dig(s, ['metadata', 'name'])}',
+                                ),
+                            ],
+                          ),
                         ],
-                      ]),
-          ));
+                      ],
+                    ),
+            ),
+          );
         }
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
       },
@@ -284,9 +353,11 @@ class _ServiceBackendsView extends StatelessWidget {
     final hasNodePort = ports.any((p) => p['nodePort'] != null);
     final hasApp = ports.any((p) => p['appProtocol'] != null);
     final warn = severityColor(context, Severity.warn);
+    // One-click forward needs pods behind a selector (not ExternalName / manual endpoints).
+    final canForward = !ctx.app.readOnly && asMap(ctx.spec['selector']).isNotEmpty && ctx.spec['type'] != 'ExternalName';
     return NetTable(
-      headers: ['Name', 'Port', 'Target', if (hasNodePort) 'NodePort', 'Proto', if (hasApp) 'App'],
-      flex: [null, null, null, if (hasNodePort) null, hasApp ? null : 1, if (hasApp) 1],
+      headers: ['Name', 'Port', 'Target', if (hasNodePort) 'NodePort', 'Proto', if (hasApp) 'App', if (canForward) ''],
+      flex: [null, null, null, if (hasNodePort) null, hasApp ? null : 1, if (hasApp) 1, if (canForward) null],
       rows: [
         for (final p in ports)
           () {
@@ -296,14 +367,27 @@ class _ServiceBackendsView extends StatelessWidget {
               Mono('${p['port']}'),
               _maybeTip(
                 t.note,
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (t.unresolved) ...[Icon(Icons.warning_amber_rounded, size: 13, color: warn), const SizedBox(width: 3)],
-                  Flexible(child: Mono(t.text, color: t.unresolved ? warn : null)),
-                ]),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (t.unresolved) ...[Icon(Icons.warning_amber_rounded, size: 13, color: warn), const SizedBox(width: 3)],
+                    Flexible(child: Mono(t.text, color: t.unresolved ? warn : null)),
+                  ],
+                ),
               ),
               if (hasNodePort) Mono(p['nodePort'] != null ? '${p['nodePort']}' : '—'),
               Mono('${p['protocol'] ?? 'TCP'}'),
               if (hasApp) Mono('${p['appProtocol'] ?? '—'}'),
+              if (canForward)
+                QuickForwardButton(
+                  api: ctx.api,
+                  app: ctx.app,
+                  namespace: ctx.namespace ?? 'default',
+                  kind: 'service',
+                  name: ctx.name,
+                  port: '${p['port']}',
+                  protocol: p['protocol'] as String?,
+                ),
             ];
           }(),
       ],

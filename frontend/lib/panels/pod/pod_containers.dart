@@ -23,7 +23,9 @@ class ContainerCard extends StatelessWidget {
 
   /// Live CPU/memory usage row (lib/metrics), or null to hide it.
   final Widget? usage;
-  const ContainerCard(this.c, {super.key, this.namespace, this.onViewLogs, this.onOpenTerminal, this.usage});
+  /// Optional per-port trailing action (e.g. one-click port-forward).
+  final Widget Function(Json port)? portAction;
+  const ContainerCard(this.c, {super.key, this.namespace, this.onViewLogs, this.onOpenTerminal, this.usage, this.portAction});
 
   @override
   Widget build(BuildContext context) {
@@ -206,14 +208,17 @@ class ContainerCard extends StatelessWidget {
 
   Widget _portsWidget(BuildContext context) => InlineWrap([
         for (final p in asMapList(c.spec['ports']))
-          Chipish(
-            text: [
-              if (p['name'] != null) '${p['name']}',
-              '${p['containerPort']}/${p['protocol'] ?? 'TCP'}',
-              if (p['hostPort'] != null) 'host ${p['hostIP'] ?? ''}:${p['hostPort']}',
-            ].join(' '),
-            copyValue: '${p['containerPort']}',
-          ),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Chipish(
+              text: [
+                if (p['name'] != null) '${p['name']}',
+                '${p['containerPort']}/${p['protocol'] ?? 'TCP'}',
+                if (p['hostPort'] != null) 'host ${p['hostIP'] ?? ''}:${p['hostPort']}',
+              ].join(' '),
+              copyValue: '${p['containerPort']}',
+            ),
+            if (portAction != null) ...[const SizedBox(width: 2), portAction!(p)],
+          ]),
       ]);
 
   static bool _hasResources(Json spec) {
