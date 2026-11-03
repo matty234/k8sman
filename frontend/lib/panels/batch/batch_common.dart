@@ -7,6 +7,7 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
 
 /// Clock used for derived timings (overridable in tests).
 DateTime Function() batchNow = DateTime.now;
@@ -52,15 +53,6 @@ String formatSeconds(int s) {
   if (s < 60) return '${s}s';
   return '${s}s (${formatDuration(Duration(seconds: s))})';
 }
-
-final _safeArg = RegExp(r'^[A-Za-z0-9_@%+=:,./-]+$');
-
-/// POSIX-shell quoting of an argument list, for copy/paste.
-String shellJoin(List<dynamic> args) => args.map((a) {
-      final s = '$a';
-      if (s.isNotEmpty && _safeArg.hasMatch(s)) return s;
-      return "'${s.replaceAll("'", r"'\''")}'";
-    }).join(' ');
 
 int _int(dynamic v) => v is num ? v.toInt() : 0;
 
@@ -175,13 +167,7 @@ class Callout extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final c = severityColor(context, severity);
-    final ic = icon ??
-        switch (severity) {
-          Severity.error => Icons.error_outline,
-          Severity.warn => Icons.warning_amber_rounded,
-          Severity.ok => Icons.check_circle_outline,
-          _ => Icons.info_outline,
-        };
+    final ic = icon ?? severityIcon(severity);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),

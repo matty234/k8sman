@@ -30,6 +30,14 @@ TextStyle monoStyle(BuildContext context, {double size = 12, Color? color}) => T
       color: color ?? Theme.of(context).colorScheme.onSurface,
     );
 
+/// The outline icon callouts use for [s].
+IconData severityIcon(Severity s) => switch (s) {
+  Severity.error => Icons.error_outline,
+  Severity.warn => Icons.warning_amber_rounded,
+  Severity.ok => Icons.check_circle_outline,
+  _ => Icons.info_outline,
+};
+
 Color severityColor(BuildContext context, Severity s) {
   final dark = Theme.of(context).brightness == Brightness.dark;
   switch (s) {

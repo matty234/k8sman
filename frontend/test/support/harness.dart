@@ -205,3 +205,17 @@ Future<LogDock> pumpLogDock(
   }
   return dock;
 }
+
+/// Equality-only label selector matching (`a=b,c=d`), enough for the fixtures.
+bool matchesLabelSelector(Json item, String? selector) {
+  if (selector == null || selector.isEmpty) return true;
+  final labels = (item['metadata']?['labels'] as Map?) ?? const {};
+  for (final part in selector.split(',')) {
+    final kv = part.split('=');
+    if (kv.length != 2 || labels[kv[0]]?.toString() != kv[1]) return false;
+  }
+  return true;
+}
+
+/// A [FakeApiClient.itemsFilter] that honours label selectors.
+bool labelSelectorFilter(ResourceRef r, Json item, String? labelSelector, String? fieldSelector) => matchesLabelSelector(item, labelSelector);

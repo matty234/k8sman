@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/matty234/k8sman/backend/internal/httpx"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -80,7 +81,7 @@ func argoSyncPatch(app map[string]any, req argoActionRequest) (map[string]any, e
 		return nil, fmt.Errorf("%w: %s (pass force to replace it)", errArgoBusy, why)
 	}
 	if ts, ok, _ := unstructured.NestedString(app, "metadata", "deletionTimestamp"); ok && ts != "" {
-		return nil, badRequest("application is being deleted")
+		return nil, httpx.BadRequest("application is being deleted")
 	}
 	spec, _, _ := unstructured.NestedMap(app, "spec")
 	automated := false
@@ -99,7 +100,7 @@ func argoSyncPatch(app map[string]any, req argoActionRequest) (map[string]any, e
 	}
 	if multi {
 		if req.TargetRevision != "" {
-			return nil, badRequest("targetRevision is not supported for multi-source applications")
+			return nil, httpx.BadRequest("targetRevision is not supported for multi-source applications")
 		}
 		sync["sources"] = sources
 	} else {
@@ -111,7 +112,7 @@ func argoSyncPatch(app map[string]any, req argoActionRequest) (map[string]any, e
 		rev := target
 		if req.TargetRevision != "" && req.TargetRevision != target {
 			if automated && !req.SyncDryRun {
-				return nil, badRequest("cannot sync to %s: auto-sync is set to %s", req.TargetRevision, target)
+				return nil, httpx.BadRequest("cannot sync to %s: auto-sync is set to %s", req.TargetRevision, target)
 			}
 			rev = req.TargetRevision
 		}
@@ -150,10 +151,10 @@ func argoSyncPatch(app map[string]any, req argoActionRequest) (map[string]any, e
 func argoTerminatePatch(app map[string]any) (map[string]any, error) {
 	phase, _, _ := unstructured.NestedString(app, "status", "operationState", "phase")
 	if app["operation"] == nil || phase == "" {
-		return nil, badRequest("no operation is in progress")
+		return nil, httpx.BadRequest("no operation is in progress")
 	}
 	if phase != "Running" {
-		return nil, badRequest("the operation is %s, not Running", phase)
+		return nil, httpx.BadRequest("the operation is %s, not Running", phase)
 	}
 	rv, _, _ := unstructured.NestedString(app, "metadata", "resourceVersion")
 	return map[string]any{
@@ -205,7 +206,7 @@ func runArgoAction(ctx context.Context, ri dynamic.ResourceInterface, action, na
 		p, err = argoTerminatePatch(app.Object)
 		msg = "Terminating the running operation of " + name
 	default:
-		return "", badRequest("unknown action %q", action)
+		return "", httpx.BadRequest("unknown action %q", action)
 	}
 	if err != nil {
 		return "", err

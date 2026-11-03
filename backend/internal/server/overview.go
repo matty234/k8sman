@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/overview"
 	"github.com/matty234/k8sman/backend/internal/prom"
 )
@@ -42,7 +43,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			res.Errors[k] = e.Error()
 		}
 	}
-	writeJSON(w, 200, res)
+	httpx.WriteJSON(w, 200, res)
 }
 
 func listForOverview(ctx context.Context, c *cluster.Clients, ns string) (overview.Input, map[string]error) {

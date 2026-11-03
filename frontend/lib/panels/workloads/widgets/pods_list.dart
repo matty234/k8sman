@@ -7,39 +7,10 @@ import '../../../ui/widgets/common.dart';
 import '../../../util/k8s.dart';
 import '../../panel.dart';
 import 'util.dart';
+import '../../../util/pod.dart';
 
 const podsRef = ResourceRef(resource: 'pods');
 const replicaSetsRef = ResourceRef(group: 'apps', resource: 'replicasets');
-
-/// Pod status string, same logic as the pod table's Status column:
-/// Terminating, then the first failing init container (`Init:<reason>`),
-/// then the first container waiting/terminated reason, then the phase.
-String podStatus(Json pod) {
-  if (dig(pod, ['metadata', 'deletionTimestamp']) != null) return 'Terminating';
-  for (final s in asMapList(dig(pod, ['status', 'initContainerStatuses']))) {
-    final waiting = dig<Map>(s, ['state', 'waiting']);
-    final term = asMap(dig(s, ['state', 'terminated']));
-    final exit = asInt(term['exitCode']) ?? 0;
-    if (exit != 0 || waiting != null) {
-      return 'Init:${waiting?['reason'] ?? term['reason'] ?? 'Error'}';
-    }
-  }
-  for (final s in asMapList(dig(pod, ['status', 'containerStatuses']))) {
-    final w = dig<String>(s, ['state', 'waiting', 'reason']);
-    if (w != null) return w;
-    final term = dig<Map>(s, ['state', 'terminated']);
-    if (term != null && term['reason'] != null) return '${term['reason']}';
-  }
-  return dig<String>(pod, ['status', 'phase']) ?? 'Unknown';
-}
-
-({int ready, int total}) podReady(Json pod) {
-  final total = asMapList(dig(pod, ['spec', 'containers'])).length;
-  final ready = asMapList(dig(pod, ['status', 'containerStatuses'])).where((s) => s['ready'] == true).length;
-  return (ready: ready, total: total);
-}
-
-int podRestarts(Json pod) => asMapList(dig(pod, ['status', 'containerStatuses'])).fold(0, (a, s) => a + (asInt(s['restartCount']) ?? 0));
 
 /// Filters [pods] to those owned by any uid in [ownerUids].
 List<Json> filterPodsByOwner(List<Json> pods, Set<String> ownerUids) => [
@@ -202,7 +173,7 @@ class PodRows extends StatelessWidget {
     final name = '${dig(p, ['metadata', 'name'])}';
     final ns = dig<String>(p, ['metadata', 'namespace']);
     final status = podStatus(p);
-    final r = podReady(p);
+    final r = podReadyCount(p);
     final restarts = podRestarts(p);
     final node = dig<String>(p, ['spec', 'nodeName']);
     final readySev = r.total > 0 && r.ready == r.total

@@ -9,9 +9,8 @@ import (
 	"sync"
 	"time"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 )
 
 // shared caches discovery for the HTTP handlers and the overview.
@@ -59,16 +58,9 @@ type apiError struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
 func writeErr(w http.ResponseWriter, err error) {
 	status, reason := http.StatusBadGateway, ""
 	var ue *UpstreamError
-	var se apierrors.APIStatus
 	switch {
 	case errors.As(err, &ue):
 		switch {
@@ -83,26 +75,19 @@ func writeErr(w http.ResponseWriter, err error) {
 		case ue.Status == 403:
 			status = http.StatusForbidden
 		}
-	case errors.As(err, &se):
-		if c := int(se.Status().Code); c >= 400 {
-			status = c
+	default:
+		if c, r, ok := httpx.KubeStatus(err, status); ok {
+			status, reason = c, r
+		} else if errors.Is(err, httpx.ErrBadRequest) {
+			status = http.StatusBadRequest
 		}
-		reason = string(se.Status().Reason)
-	case errors.Is(err, errBadRequest):
-		status = http.StatusBadRequest
 	}
-	writeJSON(w, status, apiError{Error: err.Error(), Code: status, Reason: reason})
-}
-
-var errBadRequest = errors.New("bad request")
-
-func badRequest(format string, a ...any) error {
-	return fmt.Errorf("%w: %s", errBadRequest, fmt.Sprintf(format, a...))
+	httpx.WriteJSON(w, status, apiError{Error: err.Error(), Code: status, Reason: reason})
 }
 
 func (h *Handler) refuseReadOnly(w http.ResponseWriter) bool {
 	if h.readOnly {
-		writeJSON(w, http.StatusForbidden, apiError{Error: "the server is running read-only", Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: "the server is running read-only", Code: http.StatusForbidden})
 		return true
 	}
 	return false
@@ -125,7 +110,7 @@ func (h *Handler) pick(ctx context.Context, e env, kind, id string) (*Instance, 
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s := h.disc.get(r.Context(), h.env(), r.URL.Query().Get("refresh") == "true")
-	writeJSON(w, 200, s)
+	httpx.WriteJSON(w, 200, s)
 }
 
 // Alerts returns Alertmanager's alerts (amID selects the instance, "" =
@@ -188,7 +173,7 @@ func (h *Handler) alerts(ctx context.Context, e env, amID, promID string) *Alert
 
 func (h *Handler) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	writeJSON(w, 200, h.alerts(r.Context(), h.env(), q.Get("instance"), q.Get("prometheus")))
+	httpx.WriteJSON(w, 200, h.alerts(r.Context(), h.env(), q.Get("instance"), q.Get("prometheus")))
 }
 
 func (h *Handler) handleSilences(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +190,7 @@ func (h *Handler) handleSilences(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"alertmanager": am, "silences": sil})
+	httpx.WriteJSON(w, 200, map[string]any{"alertmanager": am, "silences": sil})
 }
 
 func (h *Handler) handleCreateSilence(w http.ResponseWriter, r *http.Request) {
@@ -214,12 +199,12 @@ func (h *Handler) handleCreateSilence(w http.ResponseWriter, r *http.Request) {
 	}
 	var body SilenceRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		writeErr(w, badRequest("invalid body: %v", err))
+		writeErr(w, httpx.BadRequest("invalid body: %v", err))
 		return
 	}
 	payload, err := body.build(h.now())
 	if err != nil {
-		writeErr(w, badRequest("%v", err))
+		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
 	e := h.env()
@@ -235,7 +220,7 @@ func (h *Handler) handleCreateSilence(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"silenceID": id, "alertmanager": am.ID, "startsAt": payload["startsAt"], "endsAt": payload["endsAt"]})
+	httpx.WriteJSON(w, 200, map[string]any{"silenceID": id, "alertmanager": am.ID, "startsAt": payload["startsAt"], "endsAt": payload["endsAt"]})
 }
 
 func (h *Handler) handleExpireSilence(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +229,7 @@ func (h *Handler) handleExpireSilence(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 	if !silenceIDRe.MatchString(id) {
-		writeErr(w, badRequest("invalid silence id"))
+		writeErr(w, httpx.BadRequest("invalid silence id"))
 		return
 	}
 	e := h.env()
@@ -259,7 +244,7 @@ func (h *Handler) handleExpireSilence(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"expired": id, "alertmanager": am.ID})
+	httpx.WriteJSON(w, 200, map[string]any{"expired": id, "alertmanager": am.ID})
 }
 
 func (h *Handler) handleRules(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +279,7 @@ func (h *Handler) handleRules(w http.ResponseWriter, r *http.Request) {
 		res.Groups = []RuleGroup{}
 	}
 	countRules(res)
-	writeJSON(w, 200, res)
+	httpx.WriteJSON(w, 200, res)
 }
 
 func (h *Handler) handleTargets(w http.ResponseWriter, r *http.Request) {
@@ -314,21 +299,21 @@ func (h *Handler) handleTargets(w http.ResponseWriter, r *http.Request) {
 	}
 	res := GroupTargets(raw, TargetFilter{Kind: q.Get("kind"), Namespace: q.Get("namespace"), Name: q.Get("name")})
 	res.Prometheus = p
-	writeJSON(w, 200, res)
+	httpx.WriteJSON(w, 200, res)
 }
 
 func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	query := q.Get("query")
 	if err := validateQuery(query); err != nil {
-		writeErr(w, badRequest("%v", err))
+		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
 	at := ""
 	if v := q.Get("time"); v != "" {
 		t, err := parseTimeParam(v, h.now())
 		if err != nil {
-			writeErr(w, badRequest("%v", err))
+			writeErr(w, httpx.BadRequest("%v", err))
 			return
 		}
 		at = unix(t)
@@ -346,19 +331,19 @@ func (h *Handler) handleQuery(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, res)
+	httpx.WriteJSON(w, 200, res)
 }
 
 func (h *Handler) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	query := q.Get("query")
 	if err := validateQuery(query); err != nil {
-		writeErr(w, badRequest("%v", err))
+		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
 	rp, err := ParseRange(q, h.now())
 	if err != nil {
-		writeErr(w, badRequest("%v", err))
+		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
 	e := h.env()
@@ -374,7 +359,7 @@ func (h *Handler) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, res)
+	httpx.WriteJSON(w, 200, res)
 }
 
 // ActiveAlerts returns the firing (not silenced or inhibited) alerts of the

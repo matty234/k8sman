@@ -1,7 +1,8 @@
 # Security overview
 
 The **Security** page (sidebar, under Overview and Nodes) summarises a
-cluster's security posture for the selected namespace, or all namespaces. It
+cluster's security posture for all namespaces, or the one picked in the page
+header (its own scope, independent of the table's namespace). It
 is backed by `GET /api/security` (see `API.md`), implemented as a pure analysis
 package in `backend/internal/security/` that is unit-tested with constructed
 objects, plus a real Trivy Operator report captured from the dev cluster

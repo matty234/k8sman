@@ -9,13 +9,12 @@
 /// - [ResourceDiffBlock]: one resource's diff (shared [DiffView]).
 library;
 
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import '../../actions/actions.dart';
+import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../ui/detail/yaml_editor.dart' show DiffView;
@@ -170,40 +169,15 @@ class ArgoDiffResult {
 /// JSON.
 class ArgoDiffApi {
   final ApiClient api;
-  final http.Client _http;
-  ArgoDiffApi(this.api, {http.Client? httpClient}) : _http = httpClient ?? http.Client();
+  final BackendHttp _http;
+  ArgoDiffApi(this.api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/argocd/', httpClient: httpClient);
 
   static ArgoDiffApi Function(ApiClient api)? debugOverride;
   static final Expando<ArgoDiffApi> _byClient = Expando('ArgoDiffApi');
   static ArgoDiffApi of(ApiClient api) => debugOverride?.call(api) ?? (_byClient[api] ??= ArgoDiffApi(api));
 
-  Uri _uri(String path, [Map<String, String?> query = const {}]) {
-    final q = <String, String>{
-      for (final e in query.entries)
-        if (e.value != null && e.value!.isNotEmpty) e.key: e.value!,
-    };
-    return api.base.replace(path: '/api/argocd/$path', queryParameters: q.isEmpty ? null : q);
-  }
-
-  Future<dynamic> send(String method, String path, {Map<String, String?> query = const {}, Object? body}) async {
-    final req = http.Request(method, _uri(path, query));
-    if (body != null) {
-      req.headers['Content-Type'] = 'application/json';
-      req.body = jsonEncode(body);
-    }
-    final res = await http.Response.fromStream(await _http.send(req));
-    if (res.statusCode >= 400) {
-      var msg = res.body;
-      String? reason;
-      try {
-        final j = jsonDecode(res.body) as Map;
-        msg = '${j['error'] ?? msg}';
-        reason = j['reason'] as String?;
-      } catch (_) {}
-      throw ApiException(res.statusCode, msg, reason: reason);
-    }
-    return res.body.isEmpty ? null : jsonDecode(res.body);
-  }
+  Future<dynamic> send(String method, String path, {Map<String, String?> query = const {}, Object? body}) async =>
+      jsonBody(await _http.send(method, path, query: query, body: body));
 
   Future<ArgoApiStatus> status({String? namespace}) async =>
       ArgoApiStatus.fromJson(Map<String, dynamic>.from(await send('GET', 'status', query: {'namespace': namespace})));

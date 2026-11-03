@@ -1,6 +1,7 @@
 package prom
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"net/url"
@@ -289,7 +290,7 @@ func GroupAlerts(alerts []Alert) ([]AlertGroup, AlertSummary) {
 			}
 			return x.Fingerprint < y.Fingerprint
 		})
-		g.Summary = firstNonEmpty(g.Alerts[0].Annotations["summary"], g.Alerts[0].Annotations["description"], g.Alerts[0].Annotations["message"])
+		g.Summary = cmp.Or(g.Alerts[0].Annotations["summary"], g.Alerts[0].Annotations["description"], g.Alerts[0].Annotations["message"])
 		groups = append(groups, *g)
 	}
 	sort.SliceStable(groups, func(i, j int) bool {

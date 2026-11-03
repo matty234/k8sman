@@ -191,12 +191,7 @@ class Callout extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final c = severityColor(context, severity);
-    final icon = switch (severity) {
-      Severity.error => Icons.error_outline,
-      Severity.warn => Icons.warning_amber_rounded,
-      Severity.ok => Icons.check_circle_outline,
-      _ => Icons.info_outline,
-    };
+    final icon = severityIcon(severity);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
@@ -406,7 +401,3 @@ bool labelsMatch(Json? labels, Json selector) {
   final l = labels ?? const {};
   return selector.entries.every((e) => l[e.key]?.toString() == e.value?.toString());
 }
-
-/// True when a pod's Ready condition is True.
-bool podReady(Json pod) =>
-    asMapList(dig(pod, ['status', 'conditions'])).any((c) => c['type'] == 'Ready' && c['status'] == 'True');

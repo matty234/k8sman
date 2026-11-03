@@ -17,19 +17,8 @@ Json clone(Json o, [void Function(Json c)? edit]) {
   return c;
 }
 
-/// Equality-only label selector matching (`a=b,c=d`), enough for the fixtures.
-bool matchesSelector(Json item, String? selector) {
-  if (selector == null || selector.isEmpty) return true;
-  final labels = (item['metadata']?['labels'] as Map?) ?? const {};
-  for (final part in selector.split(',')) {
-    final kv = part.split('=');
-    if (kv.length != 2 || labels[kv[0]] != kv[1]) return false;
-  }
-  return true;
-}
-
 FakeApiClient fakeApi(Map<String, List<Json>> items) =>
-    FakeApiClient(itemsByResource: items, itemsFilter: (r, item, label, field) => matchesSelector(item, label));
+    FakeApiClient(itemsByResource: items, itemsFilter: labelSelectorFilter);
 
 const pdbType = ResourceType(group: 'policy', version: 'v1', resource: 'poddisruptionbudgets', kind: 'PodDisruptionBudget');
 

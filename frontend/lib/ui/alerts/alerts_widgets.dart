@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/models.dart';
 import '../../prometheus/prom_api.dart';
@@ -56,11 +55,6 @@ void openAlertTarget(BuildContext context, ObjectRef ref) {
   final t = app.typeFor(ref.group, ref.kind);
   if (t == null) return;
   app.openDetail(DetailTarget(type: t, name: ref.name, namespace: t.namespaced ? ref.namespace : null));
-}
-
-Future<void> openUrl(String url) async {
-  final uri = Uri.tryParse(url);
-  if (uri != null) await launchUrl(uri);
 }
 
 /// Severity name in a quiet pill.

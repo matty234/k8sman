@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import '../support/harness.dart';
 import '../support/screenshot.dart';
 import 'prom_fixtures.dart';
+import 'package:k8sman/ui/widgets/namespace_picker.dart';
 
 Future<AppState> pumpAlerts(
   WidgetTester tester, {
@@ -18,14 +19,19 @@ Future<AppState> pumpAlerts(
   Size size = const Size(1200, 900),
   String context = 'kind-k8sman-dev',
   String? namespace,
+  String? scope,
   bool silences = false,
   bool readOnly = false,
 }) async {
+  // The Alerts page's own scope (session-wide), independent of app.namespace.
+  PageScope.reset();
+  PageScope.set('alerts', scope);
   final prom = api ?? FixturePromApi();
   final client = FakeApiClient();
   final app = AppState(client)
     ..types = testTypes
     ..currentContext = context
+    ..namespaces = ['default', 'demo', 'kube-system']
     ..namespace = namespace
     ..readOnly = readOnly;
   tester.view.physicalSize = size;
@@ -92,14 +98,39 @@ void main() {
     await disposeView(tester);
   });
 
-  testWidgets('namespace filter follows the app namespace, with All', (tester) async {
-    await pumpAlerts(tester, namespace: 'demo');
+  testWidgets('has its own scope: defaults to all namespaces, ignores app.namespace, picker refetches', (tester) async {
+    final api = FixturePromApi();
+    final app = await pumpAlerts(tester, api: api, namespace: 'kube-system');
+    // Independent of the table's namespace: starts cluster-wide.
+    expect(find.text('All namespaces'), findsOneWidget);
+    expect(find.text('K8smanDemoPodCrashLooping'), findsOneWidget);
+    expect(find.text('NodeClockNotSynchronising'), findsOneWidget);
+    final fetches = api.alertFetches;
+
+    // Changing the table's namespace doesn't change the page scope.
+    app.setNamespace('default');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('NodeClockNotSynchronising'), findsOneWidget);
+    expect(api.alertFetches, fetches);
+
+    // Picking a namespace in the header scopes the list and refetches.
+    await tester.tap(find.byKey(const ValueKey('page-scope-picker')));
+    await tester.pump();
+    await tester.tap(find.text('demo').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(api.alertFetches, fetches + 1);
+    expect(PageScope.of('alerts'), 'demo');
     expect(find.text('K8smanDemoPodCrashLooping'), findsOneWidget);
     expect(find.text('NodeClockNotSynchronising'), findsNothing);
+
+    // "Show all" goes back to all namespaces.
     expect(find.text('Show all'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('ns-all')));
+    await tester.tap(find.text('Show all'));
     await tester.pump();
     expect(find.text('NodeClockNotSynchronising'), findsOneWidget);
+    expect(PageScope.of('alerts'), isNull);
     await disposeView(tester);
   });
 
@@ -161,7 +192,7 @@ void main() {
   testWidgets('no overflow from 360 to 1800px, expanded and on both tabs', (tester) async {
     for (final w in [360.0, 480.0, 700.0, 1000.0, 1400.0, 1800.0]) {
       for (final silences in [false, true]) {
-        await pumpAlerts(tester, size: Size(w, 900), silences: silences, namespace: w < 500 ? 'demo' : null);
+        await pumpAlerts(tester, size: Size(w, 900), silences: silences, scope: w < 500 ? 'demo' : null);
         if (!silences) {
           await tester.tap(find.text('K8smanDemoPodCrashLooping'));
           await tester.pump();

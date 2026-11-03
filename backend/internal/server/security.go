@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/security"
 )
 
@@ -64,7 +65,7 @@ func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *secu
 			res.Errors[k] = e.Error()
 		}
 	}
-	writeJSON(w, 200, res)
+	httpx.WriteJSON(w, 200, res)
 }
 
 // servedResources returns the resources served for group/version, or nil.
@@ -316,7 +317,7 @@ func (s *Server) handleScannerStatus(w http.ResponseWriter, r *http.Request, sc 
 			op.Scanning = !op.HasReports
 		}
 	}
-	writeJSON(w, 200, map[string]any{
+	httpx.WriteJSON(w, 200, map[string]any{
 		"operator":    op,
 		"trivy":       sc.Status(ctx),
 		"installHint": security.InstallHint,
@@ -329,18 +330,18 @@ func handleScan(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
 		Force bool   `json:"force"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-		writeErr(w, badRequest("invalid body: %v", err))
+		writeErr(w, httpx.BadRequest("invalid body: %v", err))
 		return
 	}
 	res, err := sc.Scan(r.Context(), body.Image, body.Force)
 	switch {
 	case errors.Is(err, security.ErrBadImage):
-		writeErr(w, badRequest("%v: %q", err, body.Image))
+		writeErr(w, httpx.BadRequest("%v: %q", err, body.Image))
 	case errors.Is(err, security.ErrNoTrivy):
-		writeJSON(w, http.StatusServiceUnavailable, apiError{Error: err.Error(), Code: http.StatusServiceUnavailable, Reason: "ScannerUnavailable"})
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{Error: err.Error(), Code: http.StatusServiceUnavailable, Reason: "ScannerUnavailable"})
 	case err != nil:
-		writeJSON(w, http.StatusBadGateway, apiError{Error: err.Error(), Code: http.StatusBadGateway, Reason: "ScanFailed"})
+		httpx.WriteJSON(w, http.StatusBadGateway, apiError{Error: err.Error(), Code: http.StatusBadGateway, Reason: "ScanFailed"})
 	default:
-		writeJSON(w, 200, res)
+		httpx.WriteJSON(w, 200, res)
 	}
 }

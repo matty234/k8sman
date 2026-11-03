@@ -10,8 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/gorilla/websocket"
+	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -238,7 +239,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	ns, pod := q.Get("namespace"), q.Get("pod")
 	if ns == "" || pod == "" {
-		writeErr(w, badRequest("namespace and pod are required"))
+		writeErr(w, httpx.BadRequest("namespace and pod are required"))
 		return
 	}
 	opts := &corev1.PodLogOptions{

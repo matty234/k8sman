@@ -8,6 +8,8 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'overview_actions.dart';
 import 'overview_api.dart';
+import '../../util/text.dart';
+import '../widgets/namespace_picker.dart';
 
 Color issueColor(BuildContext context, IssueSeverity s) => severityColor(context, s.badge);
 
@@ -25,8 +27,6 @@ void openObject(BuildContext context, ObjectRef ref) {
   app.openDetail(DetailTarget(type: t, name: ref.name, namespace: t.namespaced ? ref.namespace : null));
 }
 
-String _plural(int n, String one, [String? many]) => '$n ${n == 1 ? one : (many ?? '${one}s')}';
-
 String _kindPlural(String kind) {
   final k = kind == 'PersistentVolumeClaim' ? 'PVC' : kind;
   return k.endsWith('s') ? '${k}es' : '${k}s';
@@ -36,14 +36,8 @@ String _kindPlural(String kind) {
 // Header
 // ---------------------------------------------------------------------------
 
-/// Sentinel for "all namespaces" in the scope picker.
-const _all = '\u0000all';
-
 class OverviewHeader extends StatelessWidget {
   final String? namespace;
-
-  /// Namespaces offered in the scope picker (null selection = all).
-  final List<String> namespaces;
   final ValueChanged<String?>? onNamespaceChanged;
   final DateTime? updatedAt;
   final bool loading;
@@ -55,7 +49,6 @@ class OverviewHeader extends StatelessWidget {
   const OverviewHeader({
     super.key,
     required this.namespace,
-    this.namespaces = const [],
     this.onNamespaceChanged,
     required this.updatedAt,
     required this.loading,
@@ -73,15 +66,7 @@ class OverviewHeader extends StatelessWidget {
       title: 'Overview',
       subtitle: onNamespaceChanged == null
           ? Text(namespace ?? 'All namespaces')
-          : MenuSelect<String>(
-              tooltip: 'Scope',
-              value: namespace ?? _all,
-              options: [
-                (_all, const Text('All namespaces')),
-                for (final ns in namespaces) (ns, Text(ns, overflow: TextOverflow.ellipsis)),
-              ],
-              onChanged: (v) => onNamespaceChanged!(v == _all ? null : v),
-            ),
+          : PageScopePicker(value: namespace, onChanged: onNamespaceChanged!),
       actions: [
         if (loading) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
         if (updatedAt != null)
@@ -210,8 +195,8 @@ class SummaryTiles extends StatelessWidget {
       final owners = {for (final i in issues) if (i.owner != null) '${i.namespace}/${i.owner!.kind}/${i.owner!.name}'};
       final bare = issues.where((i) => i.owner == null).length;
       if (issues.length == 1) return first.owner != null ? 'pod of ${first.owner!.name}' : 'pod ${first.name}';
-      if (owners.length == 1 && bare == 0) return '${_plural(issues.length, 'pod')} of ${first.owner!.name}';
-      return '${_plural(issues.length, 'pod')} · ${_plural(owners.length + bare, 'workload')}';
+      if (owners.length == 1 && bare == 0) return '${plural(issues.length, 'pod')} of ${first.owner!.name}';
+      return '${plural(issues.length, 'pod')} · ${plural(owners.length + bare, 'workload')}';
     }
     if (issues.length == 1) return '${first.kind == 'PersistentVolumeClaim' ? 'PVC' : first.kind.toLowerCase()} ${first.name}';
     return '${issues.length} ${_kindPlural(first.kind).toLowerCase()}';
@@ -428,7 +413,7 @@ class IssueGroupTile extends StatelessWidget {
       _IssueRow(
         issue: first,
         title: ownerRef,
-        countLabel: _plural(group.issues.length, kindWord),
+        countLabel: plural(group.issues.length, kindWord),
         since: group.latestSince,
         expanded: expanded,
         onToggle: onToggle,
@@ -626,7 +611,7 @@ class _NodeChip extends StatelessWidget {
             ),
             if (node.roles.isNotEmpty) ...[const SizedBox(width: 6), Text(node.roles.join(','), style: hint)],
             const SizedBox(width: 10),
-            Text(_plural(node.pods, 'pod'), style: hint),
+            Text(plural(node.pods, 'pod'), style: hint),
             if (!node.ready) ...[const SizedBox(width: 8), const StatusBadge('NotReady', dense: true, severity: Severity.error)],
             for (final p in node.pressure) ...[const SizedBox(width: 6), StatusBadge(p, dense: true, severity: Severity.warn)],
             if (node.cordoned) ...[const SizedBox(width: 6), const StatusBadge('Cordoned', dense: true, severity: Severity.warn)],

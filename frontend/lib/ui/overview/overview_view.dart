@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
-import '../../state/app_state.dart';
 import '../widgets/common.dart';
 import 'overview_api.dart';
 import 'overview_widgets.dart';
+import '../widgets/namespace_picker.dart';
 
 /// Cluster health overview: what is crashlooping, stuck, failing or
 /// unhealthy, grouped by owning workload, with quick fixes.
@@ -37,9 +37,6 @@ class _OverviewViewState extends State<OverviewView> {
   /// Namespace the current data (or in-flight request) is for.
   String? _ns;
 
-  /// Overview has its own scope (independent of the table's namespace),
-  /// defaulting to all namespaces and remembered for the session.
-  static String? _sessionScope;
   bool _started = false;
 
   OverviewApi get source => _source ??= widget.source ?? OverviewApi(context.read<ApiClient>());
@@ -83,10 +80,11 @@ class _OverviewViewState extends State<OverviewView> {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
     if (!_started) {
       _started = true;
-      _ns = _sessionScope;
+      // Overview has its own scope (independent of the table's namespace),
+      // defaulting to all namespaces and remembered for the session.
+      _ns = PageScope.of('overview');
       scheduleMicrotask(() {
         if (mounted) _refresh();
       });
@@ -96,11 +94,11 @@ class _OverviewViewState extends State<OverviewView> {
 
     final header = OverviewHeader(
       namespace: _ns,
-      namespaces: app.namespaces,
       onNamespaceChanged: (ns) {
         if (ns == _ns) return;
+        PageScope.set('overview', ns);
         setState(() {
-          _ns = _sessionScope = ns;
+          _ns = ns;
           _data = null; // don't show another scope's numbers
         });
         _refresh();

@@ -4,6 +4,7 @@ import '../../panels/panel.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../../util/text.dart';
 
 /// Shared metadata block shown first for every object.
 ///
@@ -42,8 +43,6 @@ class _MetadataSectionState extends State<MetadataSection> {
           const SizedBox(width: 4),
           Flexible(child: DefaultTextStyle.merge(style: muted, child: child)),
         ]);
-    String plural(int n, String s) => '$n $s${n == 1 ? '' : 's'}';
-
     final facts = <Widget>[
       if (deleting != null) StatusBadge('Terminating · ${formatAge(parseTime(deleting))}', severity: Severity.warn, dense: true),
       if (m['namespace'] != null) fact(Icons.folder_outlined, Text('${m['namespace']}', overflow: TextOverflow.ellipsis)),

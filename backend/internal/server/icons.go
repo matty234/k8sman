@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/icons"
 )
 
@@ -42,14 +43,14 @@ func (s *Server) iconCluster(c *cluster.Clients) icons.Cluster {
 func (s *Server) handleIcon(w http.ResponseWriter, r *http.Request) {
 	group := r.PathValue("group")
 	if !icons.ValidGroup(group) {
-		writeErr(w, badRequest("invalid API group %q", group))
+		writeErr(w, httpx.BadRequest("invalid API group %q", group))
 		return
 	}
 	c := s.mgr.Clients()
 	res := s.icons.Resolve(r.Context(), s.iconCluster(c), group)
 	w.Header().Set("X-Icon-Source", res.Source)
 	if len(res.Data) == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]any{
+		httpx.WriteJSON(w, http.StatusNotFound, map[string]any{
 			"error": "no icon image for " + group, "code": http.StatusNotFound,
 			"source": res.Source, "asset": res.Asset,
 		})
@@ -98,5 +99,5 @@ func (s *Server) handleIconIndex(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	wg.Wait()
-	writeJSON(w, http.StatusOK, out)
+	httpx.WriteJSON(w, http.StatusOK, out)
 }

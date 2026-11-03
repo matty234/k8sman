@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'backend_http.dart';
 import 'kubeconfig.dart';
 import 'models.dart';
 
@@ -45,13 +46,7 @@ class ApiClient {
       : base = base ?? Uri.parse(definedBackend.isNotEmpty ? definedBackend : defaultBackend),
         _http = httpClient ?? http.Client();
 
-  Uri _uri(String path, [Map<String, String?> query = const {}]) {
-    final q = <String, String>{
-      for (final e in query.entries)
-        if (e.value != null && e.value!.isNotEmpty) e.key: e.value!,
-    };
-    return base.replace(path: '/api/$path', queryParameters: q.isEmpty ? null : q);
-  }
+  Uri _uri(String path, [Map<String, String?> query = const {}]) => backendUri(base, '/api/$path', query);
 
   Future<dynamic> _get(String path, [Map<String, String?> query = const {}]) async {
     final res = await _http.get(_uri(path, query));
@@ -69,18 +64,7 @@ class ApiClient {
   }
 
   dynamic _decode(http.Response res) {
-    if (res.statusCode >= 400) {
-      String msg = res.body;
-      String? reason;
-      var causes = <Map<String, dynamic>>[];
-      try {
-        final j = jsonDecode(res.body) as Map;
-        msg = j['error'] ?? msg;
-        reason = j['reason'];
-        causes = [for (final c in (j['causes'] as List? ?? const [])) Map<String, dynamic>.from(c)];
-      } catch (_) {}
-      throw ApiException(res.statusCode, msg, reason: reason, causes: causes);
-    }
+    throwIfFailed(res);
     if (res.statusCode == 204 || res.body.isEmpty) return null;
     if (res.headers['content-type']?.contains('json') ?? false) return jsonDecode(res.body);
     return res.body;

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/httpx"
 )
 
 func (s *Server) kubeconfigRoutes() {
@@ -33,7 +34,7 @@ func (s *Server) handleKubeconfigs(w http.ResponseWriter, r *http.Request) {
 	} else {
 		out["error"] = s.mgr.Err().Error()
 	}
-	writeJSON(w, 200, out)
+	httpx.WriteJSON(w, 200, out)
 }
 
 // handleSwitchKubeconfig makes another kubeconfig file active and connects to
@@ -43,18 +44,18 @@ func (s *Server) handleSwitchKubeconfig(w http.ResponseWriter, r *http.Request) 
 		Path string `json:"path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Path == "" {
-		writeErr(w, badRequest("body must be {\"path\": \"<kubeconfig file>\"}"))
+		writeErr(w, httpx.BadRequest("body must be {\"path\": \"<kubeconfig file>\"}"))
 		return
 	}
 	home, _ := os.UserHomeDir()
 	path := filepath.Clean(cluster.ExpandHome(body.Path, home))
 	if !filepath.IsAbs(path) {
-		writeErr(w, badRequest("path must be absolute"))
+		writeErr(w, httpx.BadRequest("path must be absolute"))
 		return
 	}
 	last := s.settings.Get().LastContext[path]
 	if err := s.mgr.SwitchKubeconfig(path, last); err != nil {
-		writeErr(w, badRequest("%v", err))
+		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
 	if err := s.settings.UseKubeconfig(path); err != nil {

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -43,7 +44,7 @@ func cond(conds []any, t string) map[string]any {
 }
 
 func condTime(c map[string]any) time.Time {
-	t, _ := time.Parse(time.RFC3339, str(c, "lastTransitionTime"))
+	t, _ := time.Parse(time.RFC3339, kube.Str(c, "lastTransitionTime"))
 	if t.Year() <= 1970 {
 		return time.Time{}
 	}
@@ -54,10 +55,10 @@ func describeCond(c map[string]any, fallback string) string {
 	if c == nil {
 		return fallback
 	}
-	if m := str(c, "message"); m != "" {
+	if m := kube.Str(c, "message"); m != "" {
 		return m
 	}
-	return nonEmpty(str(c, "reason"), fallback)
+	return nonEmpty(kube.Str(c, "reason"), fallback)
 }
 
 func (a *analyzer) fresh(o *unstructured.Unstructured) bool {
@@ -82,17 +83,17 @@ func (a *analyzer) gateways() {
 				t string
 				c map[string]any
 			}{{"Accepted", accepted}, {"Programmed", programmed}} {
-				if str(cc.c, "status") == "True" {
+				if kube.Str(cc.c, "status") == "True" {
 					continue
 				}
 				is := base
 				is.Severity, is.Category = Critical, "gatewayNotReady"
-				is.Reason = nonEmpty(str(cc.c, "reason"), "Not"+cc.t)
+				is.Reason = nonEmpty(kube.Str(cc.c, "reason"), "Not"+cc.t)
 				if is.Reason == "Pending" {
 					is.Reason = "Not" + cc.t
 				}
 				is.Message = fmt.Sprintf("Not %s: %s", strings.ToLower(cc.t), describeCond(cc.c, "no status from any controller"))
-				if str(cc.c, "reason") == "Pending" || cc.c == nil {
+				if kube.Str(cc.c, "reason") == "Pending" || cc.c == nil {
 					class, _, _ := unstructured.NestedString(g.Object, "spec", "gatewayClassName")
 					is.Message = fmt.Sprintf("No controller has reconciled it; is the controller for GatewayClass %s running?", class)
 				}
@@ -106,15 +107,15 @@ func (a *analyzer) gateways() {
 		for _, l := range listeners {
 			lm, _ := l.(map[string]any)
 			lconds, _ := lm["conditions"].([]any)
-			name := str(lm, "name")
+			name := kube.Str(lm, "name")
 			var problem map[string]any
-			if c := cond(lconds, "Conflicted"); str(c, "status") == "True" {
+			if c := cond(lconds, "Conflicted"); kube.Str(c, "status") == "True" {
 				problem = c
-			} else if c := cond(lconds, "ResolvedRefs"); str(c, "status") == "False" {
+			} else if c := cond(lconds, "ResolvedRefs"); kube.Str(c, "status") == "False" {
 				problem = c
-			} else if c := cond(lconds, "Accepted"); str(c, "status") == "False" {
+			} else if c := cond(lconds, "Accepted"); kube.Str(c, "status") == "False" {
 				problem = c
-			} else if c := cond(lconds, "Programmed"); str(c, "status") == "False" {
+			} else if c := cond(lconds, "Programmed"); kube.Str(c, "status") == "False" {
 				problem = c
 			}
 			if problem == nil {
@@ -122,8 +123,8 @@ func (a *analyzer) gateways() {
 			}
 			is := base
 			is.Severity, is.Category = Warning, "gatewayListener"
-			is.Reason = nonEmpty(str(problem, "reason"), str(problem, "type"))
-			is.Message = fmt.Sprintf("Listener %s: %s", name, describeCond(problem, str(problem, "type")))
+			is.Reason = nonEmpty(kube.Str(problem, "reason"), kube.Str(problem, "type"))
+			is.Message = fmt.Sprintf("Listener %s: %s", name, describeCond(problem, kube.Str(problem, "type")))
 			is.since = firstNonZero(condTime(problem), g.GetCreationTimestamp().Time)
 			a.add(is)
 			bad = true
@@ -131,7 +132,7 @@ func (a *analyzer) gateways() {
 		if bad {
 			c.Problem++
 		}
-		if str(programmed, "status") == "True" {
+		if kube.Str(programmed, "status") == "True" {
 			c.Programmed++
 		}
 	}
@@ -155,7 +156,7 @@ func (a *analyzer) routes() {
 			pm, _ := p.(map[string]any)
 			pconds, _ := pm["conditions"].([]any)
 			ref, _ := pm["parentRef"].(map[string]any)
-			if ac := cond(pconds, "Accepted"); str(ac, "status") == "True" {
+			if ac := cond(pconds, "Accepted"); kube.Str(ac, "status") == "True" {
 				accepted++
 			} else {
 				notAccepted++
@@ -163,7 +164,7 @@ func (a *analyzer) routes() {
 					firstBad, badParent = ac, parentName(ref, r.GetNamespace())
 				}
 			}
-			if rc := cond(pconds, "ResolvedRefs"); str(rc, "status") == "False" && firstUnresolved == nil {
+			if rc := cond(pconds, "ResolvedRefs"); kube.Str(rc, "status") == "False" && firstUnresolved == nil {
 				firstUnresolved, unresolvedParent = rc, parentName(ref, r.GetNamespace())
 			}
 		}
@@ -187,7 +188,7 @@ func (a *analyzer) routes() {
 				is.Message = fmt.Sprintf("No parent has accepted it (no status from any controller for %s)", parentName(asMap(parentRefs[0]), r.GetNamespace()))
 				is.since = r.GetCreationTimestamp().Time
 			} else {
-				is.Reason = nonEmpty(str(firstBad, "reason"), "NotAccepted")
+				is.Reason = nonEmpty(kube.Str(firstBad, "reason"), "NotAccepted")
 				is.Message = fmt.Sprintf("Not accepted by %s: %s", badParent, describeCond(firstBad, "not accepted"))
 				is.since = firstNonZero(condTime(firstBad), r.GetCreationTimestamp().Time)
 			}
@@ -196,7 +197,7 @@ func (a *analyzer) routes() {
 		case notAccepted > 0:
 			is := base
 			is.Severity, is.Category = Warning, "routeNotAccepted"
-			is.Reason = nonEmpty(str(firstBad, "reason"), "NotAccepted")
+			is.Reason = nonEmpty(kube.Str(firstBad, "reason"), "NotAccepted")
 			is.Message = fmt.Sprintf("Accepted by %d of %d parents; %s: %s", accepted, accepted+notAccepted, badParent, describeCond(firstBad, "not accepted"))
 			is.since = firstNonZero(condTime(firstBad), r.GetCreationTimestamp().Time)
 			a.add(is)
@@ -205,7 +206,7 @@ func (a *analyzer) routes() {
 		if firstUnresolved != nil {
 			is := base
 			is.Severity, is.Category = Warning, "routeUnresolvedRefs"
-			is.Reason = nonEmpty(str(firstUnresolved, "reason"), "ResolvedRefs")
+			is.Reason = nonEmpty(kube.Str(firstUnresolved, "reason"), "ResolvedRefs")
 			is.Message = strings.TrimSuffix(describeCond(firstUnresolved, "unresolved references"), ".") + " (via " + unresolvedParent + ")"
 			is.since = firstNonZero(condTime(firstUnresolved), r.GetCreationTimestamp().Time)
 			a.add(is)
@@ -224,10 +225,10 @@ func asMap(v any) map[string]any {
 
 // parentName renders a parentRef as "Gateway ns/name" (plus the listener).
 func parentName(ref map[string]any, routeNS string) string {
-	kind := nonEmpty(str(ref, "kind"), "Gateway")
-	ns := nonEmpty(str(ref, "namespace"), routeNS)
-	s := fmt.Sprintf("%s %s/%s", kind, ns, str(ref, "name"))
-	if sec := str(ref, "sectionName"); sec != "" {
+	kind := nonEmpty(kube.Str(ref, "kind"), "Gateway")
+	ns := nonEmpty(kube.Str(ref, "namespace"), routeNS)
+	s := fmt.Sprintf("%s %s/%s", kind, ns, kube.Str(ref, "name"))
+	if sec := kube.Str(ref, "sectionName"); sec != "" {
 		s += " listener " + sec
 	}
 	return s

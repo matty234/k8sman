@@ -11,17 +11,16 @@
 package prom
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"path"
 	"strings"
 	"time"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/matty234/k8sman/backend/internal/svcproxy"
 	"k8s.io/client-go/rest"
 )
 
@@ -110,22 +109,11 @@ func (r restRequester) do(ctx context.Context, method string, in *Instance, p st
 	if in == nil {
 		return nil, errNoInstance
 	}
-	req := r.rc.Verb(method).AbsPath(in.ProxyPath(p))
-	for k, vs := range q {
-		for _, v := range vs {
-			req = req.Param(k, v)
-		}
-	}
-	if body != nil {
-		req = req.SetHeader("Content-Type", "application/json").Body(body)
-	}
-	var code int
-	res := req.Do(ctx).StatusCode(&code)
-	raw, err := res.Raw()
+	raw, code, err := svcproxy.Do(ctx, r.rc, method, in.ProxyPath(p), q, nil, body)
 	if err == nil {
 		return raw, nil
 	}
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if svcproxy.TimedOut(ctx, err) {
 		return nil, &UpstreamError{Status: 504, Message: fmt.Sprintf("%s %s/%s timed out", in.Kind, in.Namespace, in.Name)}
 	}
 	return nil, upstreamErr(code, raw, err)
@@ -137,29 +125,22 @@ var errNoInstance = &UpstreamError{Status: 404, Message: "no instance found", No
 // Prometheus' {"error": ...}, Alertmanager's plain text or {"message": ...},
 // or the API server's Status.
 func upstreamErr(code int, raw []byte, err error) error {
-	var se apierrors.APIStatus
-	if code == 0 && errors.As(err, &se) {
-		code = int(se.Status().Code)
-	}
+	code = svcproxy.StatusCode(code, err)
 	msg := ""
 	var j struct {
 		Error   string `json:"error"`
 		Message string `json:"message"`
 	}
 	if len(raw) > 0 && json.Unmarshal(raw, &j) == nil {
-		msg = firstNonEmpty(j.Error, j.Message)
+		msg = cmp.Or(j.Error, j.Message)
 	}
-	if msg == "" && len(raw) > 0 && len(raw) < 512 && !strings.HasPrefix(strings.TrimSpace(string(raw)), "<") {
-		msg = strings.TrimSpace(string(raw))
+	if msg == "" {
+		msg = svcproxy.PlainText(raw)
 	}
 	// client-go folds non-Status error bodies into a StatusError cause.
-	if msg == "" && errors.As(err, &se) {
-		if d := se.Status().Details; d != nil {
-			for _, c := range d.Causes {
-				if c.Type == metav1.CauseTypeUnexpectedServerResponse && c.Message != "" {
-					return upstreamErr(code, []byte(c.Message), nil)
-				}
-			}
+	if msg == "" {
+		if body, ok := svcproxy.UnexpectedResponse(err); ok {
+			return upstreamErr(code, []byte(body), nil)
 		}
 	}
 	if msg == "" && err != nil {
@@ -169,15 +150,6 @@ func upstreamErr(code int, raw []byte, err error) error {
 		msg = "request failed"
 	}
 	return &UpstreamError{Status: code, Message: msg}
-}
-
-func firstNonEmpty(s ...string) string {
-	for _, x := range s {
-		if x != "" {
-			return x
-		}
-	}
-	return ""
 }
 
 // getJSON GETs p from in and decodes the body into out.
@@ -208,7 +180,7 @@ func promGet(ctx context.Context, r requester, in *Instance, p string, q url.Val
 		return nil, nil, err
 	}
 	if env.Status != "success" {
-		return nil, env.Warnings, &UpstreamError{Status: 422, Message: firstNonEmpty(env.Error, "prometheus returned status "+env.Status)}
+		return nil, env.Warnings, &UpstreamError{Status: 422, Message: cmp.Or(env.Error, "prometheus returned status "+env.Status)}
 	}
 	return env.Data, env.Warnings, nil
 }

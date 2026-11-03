@@ -2,10 +2,9 @@
 /// `GET /api/security`, `GET /api/security/scanner`, `POST /api/security/scan`.
 library;
 
-import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 
+import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../util/k8s.dart';
@@ -14,31 +13,8 @@ import '../../util/k8s.dart';
 /// subclass this to serve canned JSON.
 class SecurityApi {
   final ApiClient api;
-  final http.Client? _http;
-  SecurityApi(this.api, {http.Client? httpClient}) : _http = httpClient;
-
-  Future<Json> _send(String method, String path, {Map<String, String>? query, Object? body}) async {
-    final uri = api.base.replace(path: path, queryParameters: query == null || query.isEmpty ? null : query);
-    final client = _http ?? http.Client();
-    try {
-      final res = method == 'POST'
-          ? await client.post(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(body ?? {}))
-          : await client.get(uri);
-      if (res.statusCode >= 400) {
-        var msg = res.body;
-        String? reason;
-        try {
-          final j = jsonDecode(res.body) as Map;
-          msg = '${j['error'] ?? msg}';
-          reason = j['reason'] as String?;
-        } catch (_) {}
-        throw ApiException(res.statusCode, msg, reason: reason);
-      }
-      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
-    } finally {
-      if (_http == null) client.close();
-    }
-  }
+  final BackendHttp _http;
+  SecurityApi(this.api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/security', httpClient: httpClient);
 
   /// [namespace] null or empty = all namespaces.
   Future<SecurityData> fetch({String? namespace, bool includeSystem = false}) async {
@@ -46,13 +22,13 @@ class SecurityApi {
       if (namespace != null && namespace.isNotEmpty) 'namespace': namespace,
       if (includeSystem) 'includeSystem': 'true',
     };
-    return SecurityData.fromJson(await _send('GET', '/api/security', query: q));
+    return SecurityData.fromJson(jsonObjectBody(await _http.get('', q)));
   }
 
-  Future<ScannerStatus> scanner() async => ScannerStatus.fromJson(await _send('GET', '/api/security/scanner'));
+  Future<ScannerStatus> scanner() async => ScannerStatus.fromJson(jsonObjectBody(await _http.get('/scanner')));
 
   Future<ScanResult> scan(String image, {bool force = false}) async =>
-      ScanResult.fromJson(await _send('POST', '/api/security/scan', body: {'image': image, if (force) 'force': true}));
+      ScanResult.fromJson(jsonObjectBody(await _http.send('POST', '/scan', body: {'image': image, if (force) 'force': true})));
 }
 
 // ---------------------------------------------------------------------------

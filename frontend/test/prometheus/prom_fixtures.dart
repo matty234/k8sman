@@ -17,6 +17,9 @@ class FixturePromApi extends PromApi {
   /// PromQL passed to query / query_range.
   final List<String> queries = [];
 
+  /// Number of `alerts` fetches.
+  int alertFetches = 0;
+
   FixturePromApi({this.missing = false}) : super(ApiClient(base: Uri.parse('http://fake')));
 
   @override
@@ -30,6 +33,7 @@ class FixturePromApi extends PromApi {
       case 'status':
         return promFixture('status');
       case 'alerts':
+        alertFetches++;
         return promFixture('alerts');
       case 'silences':
         return promFixture('silences');

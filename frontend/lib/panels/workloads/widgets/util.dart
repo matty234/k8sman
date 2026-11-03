@@ -201,29 +201,6 @@ String workloadRefreshKey(PanelContext ctx) {
   ].join('|');
 }
 
-/// Like AsyncSection, but keeps showing the previous data while a refetch is
-/// in flight (no spinner flash on live refreshes).
-class KeepingAsync<T> extends StatelessWidget {
-  final Future<T> future;
-  final Widget Function(BuildContext, T) builder;
-  const KeepingAsync({super.key, required this.future, required this.builder});
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<T>(
-    future: future,
-    builder: (context, snap) {
-      if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
-      if (!snap.hasData) {
-        return const Padding(
-          padding: EdgeInsets.all(8),
-          child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
-        );
-      }
-      return builder(context, snap.data as T);
-    },
-  );
-}
-
 /// Bordered callout with an icon, text and an optional trailing action.
 class Callout extends StatelessWidget {
   final Severity severity;

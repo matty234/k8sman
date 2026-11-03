@@ -6,6 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/prom"
 )
 
@@ -40,7 +41,7 @@ func (a *analyzer) alerts() {
 	pods := map[string]*corev1.Pod{}
 	for i := range a.in.Pods {
 		p := &a.in.Pods[i]
-		pods[key(p.Namespace, p.Name)] = p
+		pods[kube.Key(p.Namespace, p.Name)] = p
 	}
 	for _, al := range a.in.Alerts {
 		if al.State != "" && al.State != prom.StateFiring {
@@ -61,7 +62,7 @@ func (a *analyzer) alerts() {
 		if t := al.Target; t != nil {
 			is.Kind, is.Group, is.Namespace, is.Name = t.Kind, t.Group, t.Namespace, t.Name
 			if t.Kind == "Pod" {
-				if p := pods[key(t.Namespace, t.Name)]; p != nil {
+				if p := pods[kube.Key(t.Namespace, t.Name)]; p != nil {
 					is.Owner = a.topOwner(p.Namespace, p.OwnerReferences)
 				}
 			}

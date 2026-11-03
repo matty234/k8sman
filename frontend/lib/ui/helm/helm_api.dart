@@ -2,10 +2,9 @@
 /// API.md). Reuses the [ApiClient]'s base URL; errors are [ApiException]s.
 library;
 
-import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 
+import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../util/k8s.dart';
@@ -288,39 +287,13 @@ class HelmChartVersion {
 
 /// Thin client for `/api/helm/*`. Subclass it in tests to serve fixtures.
 class HelmApi {
-  final Uri base;
-  final http.Client _http;
+  final BackendHttp _http;
 
-  HelmApi(ApiClient api, {http.Client? httpClient})
-      : base = api.base,
-        _http = httpClient ?? http.Client();
+  HelmApi(ApiClient api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/helm/', httpClient: httpClient);
 
-  Uri _uri(String path, [Map<String, String?> query = const {}]) {
-    final q = <String, String>{
-      for (final e in query.entries)
-        if (e.value != null && e.value!.isNotEmpty) e.key: e.value!,
-    };
-    return base.replace(path: '/api/helm/$path', queryParameters: q.isEmpty ? null : q);
-  }
+  Future<Json> _get(String path, [Map<String, String?> query = const {}]) async => jsonObjectBody(await _http.get(path, query));
 
-  Future<Json> _get(String path, [Map<String, String?> query = const {}]) async => _decode(await _http.get(_uri(path, query)));
-
-  Future<Json> _post(String path, Json body) async =>
-      _decode(await _http.post(_uri(path), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body)));
-
-  Json _decode(http.Response res) {
-    if (res.statusCode >= 400) {
-      var msg = res.body;
-      String? reason;
-      try {
-        final j = jsonDecode(res.body) as Map;
-        msg = '${j['error'] ?? msg}';
-        reason = j['reason'] as String?;
-      } catch (_) {}
-      throw ApiException(res.statusCode, msg, reason: reason);
-    }
-    return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
-  }
+  Future<Json> _post(String path, Json body) async => jsonObjectBody(await _http.send('POST', path, body: body));
 
   /// Latest revision of every release; [namespace] null = all namespaces.
   Future<HelmReleaseList> releases({String? namespace}) async => HelmReleaseList.fromJson(await _get('releases', {'namespace': namespace}));

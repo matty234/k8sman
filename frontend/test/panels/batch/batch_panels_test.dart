@@ -10,6 +10,7 @@ import 'package:k8sman/util/k8s.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
+import 'package:k8sman/util/text.dart';
 
 Json _load(String path) => jsonDecode(File(path).readAsStringSync()) as Json;
 List<Json> _items(String path) => asMapList(_load(path)['items']);
@@ -20,18 +21,8 @@ List<Json> get liveJobs => _items('test/panels/batch/fixtures/jobs-demo.json');
 List<Json> get reportPods => _items('test/panels/batch/fixtures/pods-report.json');
 List<Json> get migratePods => _items('test/panels/batch/fixtures/pods-migrate-db.json');
 
-/// Honours simple `k=v[,k=v]` label selectors like the real backend.
-bool _labelFilter(ResourceRef r, Json item, String? labelSelector, String? fieldSelector) {
-  if (labelSelector == null || labelSelector.isEmpty) return true;
-  final labels = asMap(dig(item, ['metadata', 'labels']));
-  return labelSelector.split(',').every((t) {
-    final kv = t.split('=');
-    return labels[kv[0]] == kv[1];
-  });
-}
-
 FakeApiClient _api({List<Json> pods = const [], List<Json> jobs = const []}) =>
-    FakeApiClient(itemsByResource: {'pods': pods, 'jobs.batch': jobs}, itemsFilter: _labelFilter);
+    FakeApiClient(itemsByResource: {'pods': pods, 'jobs.batch': jobs}, itemsFilter: labelSelectorFilter);
 
 const _failedUid = '9f0c1a2b-0000-4000-8000-00000000f00d';
 

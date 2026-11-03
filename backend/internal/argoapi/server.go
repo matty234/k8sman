@@ -15,6 +15,7 @@
 package argoapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/matty234/k8sman/backend/internal/svcproxy"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -92,24 +94,15 @@ type requester interface {
 type restRequester struct{ rc rest.Interface }
 
 func (r restRequester) do(ctx context.Context, method string, s *Server, p string, q url.Values, body []byte, token string) ([]byte, error) {
-	req := r.rc.Verb(method).AbsPath(s.ProxyPath(p))
-	for k, vs := range q {
-		for _, v := range vs {
-			req = req.Param(k, v)
-		}
-	}
+	var header map[string]string
 	if token != "" {
-		req = req.SetHeader("Cookie", tokenCookie+"="+token)
+		header = map[string]string{"Cookie": tokenCookie + "=" + token}
 	}
-	if body != nil {
-		req = req.SetHeader("Content-Type", "application/json").Body(body)
-	}
-	var code int
-	raw, err := req.Do(ctx).StatusCode(&code).Raw()
+	raw, code, err := svcproxy.Do(ctx, r.rc, method, s.ProxyPath(p), q, header, body)
 	if err == nil {
 		return raw, nil
 	}
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if svcproxy.TimedOut(ctx, err) {
 		return nil, &Error{Status: 504, Reason: ReasonUnreachable, Message: "argocd-server did not answer in time"}
 	}
 	return nil, upstreamErr(code, raw, err)
@@ -118,17 +111,14 @@ func (r restRequester) do(ctx context.Context, method string, s *Server, p strin
 // upstreamErr tells an Argo CD error ({"error","code","message"}) from one
 // of the API server's own (a v1 Status: proxy forbidden, no endpoints...).
 func upstreamErr(code int, raw []byte, err error) error {
-	var se apierrors.APIStatus
-	if code == 0 && errors.As(err, &se) {
-		code = int(se.Status().Code)
-	}
+	code = svcproxy.StatusCode(code, err)
 	var kube metav1.Status
 	if json.Unmarshal(raw, &kube) == nil && kube.Kind == "Status" {
 		reason := "Kube" + string(kube.Reason)
 		if code == 503 || code == 502 {
 			reason = ReasonUnreachable
 		}
-		return &Error{Status: code, Reason: reason, Kube: true, Message: "Kubernetes API: " + firstNonEmpty(kube.Message, string(kube.Reason))}
+		return &Error{Status: code, Reason: reason, Kube: true, Message: "Kubernetes API: " + cmp.Or(kube.Message, string(kube.Reason))}
 	}
 	var argo struct {
 		Error   string `json:"error"`
@@ -136,25 +126,22 @@ func upstreamErr(code int, raw []byte, err error) error {
 	}
 	msg := ""
 	if len(raw) > 0 && json.Unmarshal(raw, &argo) == nil {
-		msg = firstNonEmpty(argo.Message, argo.Error)
+		msg = cmp.Or(argo.Message, argo.Error)
 	}
-	if msg == "" && len(raw) > 0 && len(raw) < 512 && !strings.HasPrefix(strings.TrimSpace(string(raw)), "<") {
-		msg = strings.TrimSpace(string(raw))
+	if msg == "" {
+		msg = svcproxy.PlainText(raw)
 	}
+	var se apierrors.APIStatus
 	if msg == "" && errors.As(err, &se) {
-		if d := se.Status().Details; d != nil {
-			for _, c := range d.Causes {
-				if c.Type == metav1.CauseTypeUnexpectedServerResponse && c.Message != "" {
-					return upstreamErr(code, []byte(c.Message), nil)
-				}
-			}
+		if body, ok := svcproxy.UnexpectedResponse(err); ok {
+			return upstreamErr(code, []byte(body), nil)
 		}
 		msg = se.Status().Message
 	}
 	if msg == "" && err != nil {
 		msg = err.Error()
 	}
-	e := &Error{Status: code, Message: "Argo CD: " + firstNonEmpty(msg, "request failed")}
+	e := &Error{Status: code, Message: "Argo CD: " + cmp.Or(msg, "request failed")}
 	switch code {
 	case 401:
 		e.Reason = ReasonUnauthorized
@@ -167,15 +154,6 @@ func upstreamErr(code int, raw []byte, err error) error {
 		}
 	}
 	return e
-}
-
-func firstNonEmpty(s ...string) string {
-	for _, x := range s {
-		if x != "" {
-			return x
-		}
-	}
-	return ""
 }
 
 // env is what one request needs from the active kube context.
@@ -223,16 +201,6 @@ func (d *discoverer) get(ctx context.Context, e env, appNs string, refresh bool)
 	d.cache[key] = c
 	d.mu.Unlock()
 	return c
-}
-
-func (d *discoverer) forget(contextName string) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	for k := range d.cache {
-		if strings.HasPrefix(k, contextName+"\x00") {
-			delete(d.cache, k)
-		}
-	}
 }
 
 // findService looks for the argocd-server Service in the app's namespace,

@@ -10,6 +10,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'logic.dart';
 import 'widgets.dart';
+import '../../util/pod.dart';
 
 const _pressureTypes = ['MemoryPressure', 'DiskPressure', 'PIDPressure', 'NetworkUnavailable'];
 
@@ -299,10 +300,7 @@ class _NodePodsState extends State<_NodePods> {
         Widget body(Widget Function(List<Json>) f) {
           if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
           if (!snap.hasData) {
-            return const Padding(
-              padding: EdgeInsets.all(8),
-              child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
-            );
+            return const SectionSpinner();
           }
           return f(snap.data!);
         }
@@ -383,7 +381,7 @@ class _PodList extends StatelessWidget {
     final active = pods.where((p) => !isTerminalPod(p)).toList();
     final terminal = pods.length - active.length;
     if (active.isEmpty) return InlineMessage('No running pods${terminal > 0 ? ' ($terminal completed)' : ''}');
-    final rows = [for (final p in active) (p, podStatus(p), podResources(p))]
+    final rows = [for (final p in active) (p, podKubectlStatus(p), podResources(p))]
       ..sort((a, b) {
         final r = _rank(a.$2).compareTo(_rank(b.$2));
         if (r != 0) return r;

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/client.dart';
-import '../state/app_state.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
@@ -14,6 +13,7 @@ import 'external_view.dart';
 import 'metrics_api.dart';
 import 'top_view.dart';
 import 'widgets.dart';
+import '../ui/widgets/namespace_picker.dart';
 
 /// The Metrics page (MainView.metrics): which metrics APIs are served, top
 /// nodes/pods by usage, and browsers for custom and external metrics.
@@ -31,6 +31,10 @@ class _MetricsPageState extends State<MetricsPage> {
 
   /// Bumped by the refresh button; tabs reload when it changes.
   int _reload = 0;
+
+  /// The page's own scope (independent of the table's namespace), defaulting
+  /// to all namespaces and remembered for the session.
+  String? _ns = PageScope.of('metrics');
 
   ApiClient get _api => context.read<ApiClient>();
 
@@ -67,10 +71,16 @@ class _MetricsPageState extends State<MetricsPage> {
     setState(() => _reload++);
   }
 
+  void _setScope(String? ns) {
+    if (ns == _ns) return;
+    PageScope.set('metrics', ns);
+    // The tabs are keyed by scope, so they drop the old data and refetch.
+    setState(() => _ns = ns);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final ns = app.namespace;
+    final ns = _ns;
     return DefaultTabController(
       length: 3,
       child: Column(
@@ -78,7 +88,7 @@ class _MetricsPageState extends State<MetricsPage> {
         children: [
           PageHeader(
             title: 'Metrics',
-            subtitle: Text(ns == null ? 'all namespaces' : 'namespace $ns'),
+            subtitle: PageScopePicker(value: ns, onChanged: _setScope),
             actions: [IconButton(tooltip: 'Refresh', iconSize: 18, icon: const Icon(Icons.refresh), onPressed: _refresh)],
           ),
           const Divider(),
@@ -102,7 +112,7 @@ class _MetricsPageState extends State<MetricsPage> {
             child: TabBarView(
               children: [
                 TopView(key: ValueKey('top-$ns-$_reload'), namespace: ns, status: _status?.resource),
-                CustomMetricsView(key: ValueKey('custom-$_reload'), namespace: ns, status: _status?.custom),
+                CustomMetricsView(key: ValueKey('custom-$ns-$_reload'), namespace: ns, status: _status?.custom),
                 ExternalMetricsView(key: ValueKey('external-$ns-$_reload'), namespace: ns, status: _status?.external),
               ],
             ),

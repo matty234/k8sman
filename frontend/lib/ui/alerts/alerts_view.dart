@@ -13,6 +13,7 @@ import '../widgets/common.dart';
 import 'alerts_widgets.dart';
 import 'silence_dialog.dart';
 import 'silences_tab.dart';
+import '../widgets/namespace_picker.dart';
 
 /// Alertmanager alerts (plus Prometheus' pending ones) grouped by alertname,
 /// with filters, silencing, and a Silences tab.
@@ -52,9 +53,10 @@ class _AlertsViewState extends State<AlertsView> {
   final Set<AlertSeverity> _sev = {AlertSeverity.critical, AlertSeverity.warning, AlertSeverity.info};
   final Set<AlertState> _states = {AlertState.firing, AlertState.pending, AlertState.silenced};
 
-  /// Show every namespace even though the app has one selected.
-  bool _allNamespaces = false;
-  String? _appNs;
+  /// The page's own scope (independent of the table's namespace), defaulting
+  /// to all namespaces and remembered for the session. Alerts are fetched
+  /// cluster-wide and filtered here.
+  String? _ns = PageScope.of('alerts');
   final Set<String> _expanded = {};
 
   @override
@@ -118,7 +120,7 @@ class _AlertsViewState extends State<AlertsView> {
   bool _stateOn(AlertState s) => _states.contains(s == AlertState.inhibited ? AlertState.silenced : s);
 
   List<PromAlert> _inNamespace(Iterable<PromAlert> alerts) {
-    final ns = _allNamespaces ? null : _appNs;
+    final ns = _ns;
     if (ns == null) return alerts.toList();
     return alerts.where((a) => a.namespace == ns).toList();
   }
@@ -129,6 +131,13 @@ class _AlertsViewState extends State<AlertsView> {
       ];
 
   // ---- actions ----
+
+  void _setScope(String? ns) {
+    if (ns == _ns) return;
+    PageScope.set('alerts', ns);
+    setState(() => _ns = ns);
+    _refresh();
+  }
 
   String? get _amId => _data?.alertmanager?.id;
 
@@ -148,10 +157,6 @@ class _AlertsViewState extends State<AlertsView> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    if (app.namespace != _appNs) {
-      _appNs = app.namespace;
-      _allNamespaces = false;
-    }
     final data = _data;
     final scoped = data == null ? const <PromAlert>[] : _inNamespace([for (final g in data.groups) ...g.alerts]);
     final firing = scoped.where((a) => a.state == AlertState.firing).length;
@@ -160,7 +165,10 @@ class _AlertsViewState extends State<AlertsView> {
 
     final header = PageHeader(
       title: 'Alerts',
-      subtitle: data == null || data.stackMissing ? null : Text('$firing firing · $pending pending'),
+      subtitle: Row(mainAxisSize: MainAxisSize.min, children: [
+        Flexible(child: PageScopePicker(value: _ns, onChanged: _setScope)),
+        if (data != null && !data.stackMissing) ...[const SizedBox(width: 10), Flexible(child: Text('$firing firing · $pending pending'))],
+      ]),
       actions: [
         if (ams.length > 1)
           MenuButton<String>(
@@ -266,12 +274,10 @@ class _AlertsViewState extends State<AlertsView> {
       children.add(_filters(context, scoped));
       children.add(const SizedBox(height: 6));
       final groups = _visibleGroups(data);
-      final hiddenElsewhere = _appNs != null && !_allNamespaces
-          ? allAlerts.where((a) => a.namespace != _appNs && a.state == AlertState.firing).length
-          : 0;
+      final hiddenElsewhere = _ns != null ? allAlerts.where((a) => a.namespace != _ns && a.state == AlertState.firing).length : 0;
       if (groups.isEmpty) {
         children.add(_Empty(
-          text: scoped.isEmpty ? 'No alerts${_appNs != null && !_allNamespaces ? ' in $_appNs' : ''}.' : 'No alerts match the filters.',
+          text: scoped.isEmpty ? 'No alerts${_ns != null ? ' in $_ns' : ''}.' : 'No alerts match the filters.',
         ));
       } else {
         for (final (i, (g, alerts)) in groups.indexed) {
@@ -297,7 +303,7 @@ class _AlertsViewState extends State<AlertsView> {
               child: Text('$hiddenElsewhere firing alert${hiddenElsewhere == 1 ? '' : 's'} in other namespaces or cluster-wide.',
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
             ),
-            TextButton(onPressed: () => setState(() => _allNamespaces = true), child: const Text('Show all')),
+            TextButton(onPressed: () => _setScope(null), child: const Text('Show all')),
           ]),
         ));
       }
@@ -313,7 +319,6 @@ class _AlertsViewState extends State<AlertsView> {
     int sevCount(AlertSeverity s) => scoped.where((a) => a.severity == s && _stateOn(a.state)).length;
     int stateCount(AlertState s) => scoped.where((a) => (a.state == s || (s == AlertState.silenced && a.state == AlertState.inhibited)) && _sev.contains(a.severity)).length;
     void toggle<T>(Set<T> set, T v) => setState(() => set.contains(v) ? set.remove(v) : set.add(v));
-    final ns = _appNs;
 
     return Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
       for (final s in AlertSeverity.values)
@@ -334,11 +339,6 @@ class _AlertsViewState extends State<AlertsView> {
           selected: _states.contains(s),
           onTap: () => toggle(_states, s),
         ),
-      if (ns != null) ...[
-        Container(width: 1, height: 16, margin: const EdgeInsets.symmetric(horizontal: 4), color: AppColors.of(context).separator),
-        FilterPill(key: const ValueKey('ns-current'), label: ns, selected: !_allNamespaces, onTap: () => setState(() => _allNamespaces = false)),
-        FilterPill(key: const ValueKey('ns-all'), label: 'All namespaces', selected: _allNamespaces, onTap: () => setState(() => _allNamespaces = true)),
-      ],
     ]);
   }
 

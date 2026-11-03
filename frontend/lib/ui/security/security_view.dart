@@ -9,6 +9,7 @@ import '../widgets/common.dart';
 import 'ai_summary.dart';
 import 'security_api.dart';
 import 'security_widgets.dart';
+import '../widgets/namespace_picker.dart';
 
 /// Security overview: network exposure, permissive/unused RBAC, workload
 /// hardening (Pod Security Standards), best practices and image
@@ -92,6 +93,16 @@ class _SecurityViewState extends State<SecurityView> {
     }
   }
 
+  void _setScope(String? ns) {
+    if (ns == _ns) return;
+    PageScope.set('security', ns);
+    setState(() {
+      _ns = ns;
+      _data = null; // don't show another scope's numbers
+    });
+    _refresh();
+  }
+
   Future<void> _scan(String image) async {
     setState(() {
       _scanning.add(image);
@@ -111,12 +122,11 @@ class _SecurityViewState extends State<SecurityView> {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    if (!_started || app.namespace != _ns) {
-      final changed = _started;
+    if (!_started) {
+      // Security has its own scope (independent of the table's namespace),
+      // defaulting to all namespaces and remembered for the session.
       _started = true;
-      _ns = app.namespace;
-      if (changed) _data = null;
+      _ns = PageScope.of('security');
       scheduleMicrotask(() {
         if (mounted) _refresh();
       });
@@ -165,7 +175,7 @@ class _SecurityViewState extends State<SecurityView> {
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     return PageHeader(
       title: 'Security',
-      subtitle: Text(_ns ?? 'All namespaces'),
+      subtitle: PageScopePicker(value: _ns, onChanged: _setScope),
       actions: [
         if (_loading) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
         if (_updatedAt != null) AgeText(_updatedAt!.toUtc().toIso8601String(), suffix: ' ago'),

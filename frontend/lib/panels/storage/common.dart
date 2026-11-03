@@ -63,12 +63,7 @@ class Callout extends StatelessWidget {
   final Widget? child;
   const Callout({super.key, required this.severity, required this.text, this.title, this.child});
 
-  IconData get _icon => switch (severity) {
-        Severity.error => Icons.error_outline,
-        Severity.warn => Icons.warning_amber_rounded,
-        Severity.ok => Icons.check_circle_outline,
-        _ => Icons.info_outline,
-      };
+  IconData get _icon => severityIcon(severity);
 
   @override
   Widget build(BuildContext context) {
@@ -241,47 +236,6 @@ class NodeSelectorView extends StatelessWidget {
         'Lt' => '<',
         _ => op,
       };
-}
-
-/// Runs a fetch once per [deps] value (not on every live re-render).
-class FetchOnce<T> extends StatefulWidget {
-  final Object? deps;
-  final Future<T> Function() fetch;
-  final Widget Function(BuildContext context, T data) builder;
-  final Widget Function(BuildContext context, Object error)? errorBuilder;
-  final Widget? loading;
-  const FetchOnce({super.key, required this.deps, required this.fetch, required this.builder, this.errorBuilder, this.loading});
-
-  @override
-  State<FetchOnce<T>> createState() => _FetchOnceState<T>();
-}
-
-class _FetchOnceState<T> extends State<FetchOnce<T>> {
-  late Future<T> _future = widget.fetch();
-
-  @override
-  void didUpdateWidget(covariant FetchOnce<T> old) {
-    super.didUpdateWidget(old);
-    if (old.deps != widget.deps) _future = widget.fetch();
-  }
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<T>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return widget.errorBuilder?.call(context, snap.error!) ?? InlineMessage('${snap.error}', isError: true);
-          }
-          if (snap.connectionState != ConnectionState.done) {
-            return widget.loading ??
-                const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
-                );
-          }
-          return widget.builder(context, snap.data as T);
-        },
-      );
 }
 
 /// Small "N" count pill for section headers.

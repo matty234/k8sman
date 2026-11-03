@@ -84,10 +84,10 @@ void main() {
     });
   });
 
-  group('podStatus', () {
+  group('podKubectlStatus', () {
     test('waiting reason wins over phase', () {
       expect(
-          podStatus({
+          podKubectlStatus({
             'status': {
               'phase': 'Running',
               'containerStatuses': [
@@ -96,8 +96,8 @@ void main() {
             },
           }),
           'CrashLoopBackOff');
-      expect(podStatus({'metadata': {'deletionTimestamp': 'x'}, 'status': {'phase': 'Running'}}), 'Terminating');
-      expect(podStatus({'status': {'phase': 'Succeeded'}}), 'Succeeded');
+      expect(podKubectlStatus({'metadata': {'deletionTimestamp': 'x'}, 'status': {'phase': 'Running'}}), 'Terminating');
+      expect(podKubectlStatus({'status': {'phase': 'Succeeded'}}), 'Succeeded');
     });
   });
 

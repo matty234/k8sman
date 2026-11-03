@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 
 import '../support/harness.dart';
 import '../support/screenshot.dart';
+import 'package:k8sman/ui/widgets/namespace_picker.dart';
 
 /// Real responses captured from the kind dev cluster with the Trivy Operator
 /// installed and the deliberately insecure `security-demo` namespace applied
@@ -64,12 +65,17 @@ Future<(AppState, FakeSecurityApi)> pumpSecurity(
   Json response, {
   Json? scanner,
   Size size = const Size(1000, 900),
+  String? scope,
   String? namespace,
 }) async {
+  // The page's own scope (session-wide), independent of app.namespace.
+  PageScope.reset();
+  if (scope != null) PageScope.set('security', scope);
   final client = FakeApiClient();
   final app = AppState(client)
     ..types = [...testTypes, ...extraTypes]
     ..currentContext = 'kind-k8sman-dev'
+    ..namespaces = ['default', 'kube-system', 'security-demo']
     ..namespace = namespace;
   final source = FakeSecurityApi(response, scanner ?? fixture('scanner'), client);
   tester.view.physicalSize = size;
@@ -136,11 +142,34 @@ void main() {
 
   testWidgets('wide screenshot with an expanded finding', (tester) async {
     await loadRealFonts();
-    await pumpSecurity(tester, fixture('security-demo'), size: const Size(1500, 2200), namespace: 'security-demo');
+    await pumpSecurity(tester, fixture('security-demo'), size: const Size(1500, 2200), scope: 'security-demo');
     await tester.tap(find.textContaining('fails the baseline Pod Security profile'));
     await tester.pump();
     expect(find.textContaining('privileged (shell)'), findsWidgets);
     await saveScreenshot(tester, 'security-ns-1500');
+  });
+
+  testWidgets('has its own scope: defaults to all namespaces, ignores app.namespace, picker refetches', (tester) async {
+    final (app, source) = await pumpSecurity(tester, fixture('security'), size: const Size(1000, 1600), namespace: 'kube-system');
+    // Independent of the table's namespace: starts cluster-wide.
+    expect(source.calls, [(null, false)]);
+    expect(find.text('All namespaces'), findsOneWidget);
+
+    // Changing the table's namespace doesn't change the page scope.
+    app.setNamespace('default');
+    await tester.pump();
+    await tester.pump();
+    expect(source.calls, [(null, false)]);
+
+    // Picking a namespace in the header refetches with it.
+    await tester.tap(find.byKey(const ValueKey('page-scope-picker')));
+    await tester.pump();
+    await tester.tap(find.text('security-demo').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(source.calls.last, ('security-demo', false));
+    expect(PageScope.of('security'), 'security-demo');
+    PageScope.reset();
   });
 
   testWidgets('tiles filter the list and the tables', (tester) async {
@@ -158,7 +187,7 @@ void main() {
   });
 
   testWidgets('expanding a finding shows remediation and opens objects in the inspector', (tester) async {
-    final (app, _) = await pumpSecurity(tester, fixture('security-demo'), size: const Size(1000, 1600), namespace: 'security-demo');
+    final (app, _) = await pumpSecurity(tester, fixture('security-demo'), size: const Size(1000, 1600), scope: 'security-demo');
     await tester.tap(find.textContaining('LoadBalancer Service web-public'));
     await tester.pump();
     expect(find.textContaining('loadBalancerSourceRanges'), findsOneWidget);
@@ -169,7 +198,7 @@ void main() {
   });
 
   testWidgets('include system toggle refetches with includeSystem', (tester) async {
-    final (_, source) = await pumpSecurity(tester, fixture('security-demo'), namespace: 'security-demo');
+    final (_, source) = await pumpSecurity(tester, fixture('security-demo'), scope: 'security-demo');
     await tester.tap(find.byType(Switch));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
@@ -178,7 +207,7 @@ void main() {
 
   testWidgets('no operator: install button and the trivy CLI hint', (tester) async {
     await loadRealFonts();
-    await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(operator: false), size: const Size(1000, 1600), namespace: 'security-demo');
+    await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(operator: false), size: const Size(1000, 1600), scope: 'security-demo');
     await tester.tap(find.text('Images').first);
     await tester.pump();
     expect(find.text('Install Trivy Operator'), findsOneWidget);
@@ -194,7 +223,7 @@ void main() {
   });
 
   testWidgets('operator installed but still scanning', (tester) async {
-    await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(scanning: true), namespace: 'security-demo');
+    await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(scanning: true), scope: 'security-demo');
     await tester.tap(find.text('Images').first);
     await tester.pump();
     expect(find.textContaining('Trivy Operator is scanning'), findsOneWidget);
@@ -202,7 +231,7 @@ void main() {
   });
 
   testWidgets('on-demand scan with the local trivy', (tester) async {
-    final (_, source) = await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(operator: false, trivy: true), size: const Size(1000, 1400), namespace: 'security-demo');
+    final (_, source) = await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(operator: false, trivy: true), size: const Size(1000, 1400), scope: 'security-demo');
     await tester.tap(find.text('Images').first);
     await tester.pump();
     expect(find.textContaining('Local trivy 0.57.1'), findsOneWidget);

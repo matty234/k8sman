@@ -4,12 +4,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/models.dart';
 import '../../app/window_chrome.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
+
+export 'async.dart';
 
 /// A titled, collapsible block in the detail sidebar. Every panel section
 /// should be one of these.
@@ -747,28 +750,6 @@ class InlineMessage extends StatelessWidget {
   }
 }
 
-/// Runs [future] and renders loading / error / data states.
-class AsyncSection<T> extends StatelessWidget {
-  final Future<T> future;
-  final Widget Function(BuildContext, T) builder;
-  const AsyncSection({super.key, required this.future, required this.builder});
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<T>(
-        future: future,
-        builder: (context, snap) {
-          if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
-          if (snap.connectionState != ConnectionState.done && !snap.hasData) {
-            return const Padding(
-              padding: EdgeInsets.all(8),
-              child: Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))),
-            );
-          }
-          return builder(context, snap.data as T);
-        },
-      );
-}
-
 /// Copies [text]. The snackbar echoes the value unless [label] is given —
 /// always pass a label for sensitive values (e.g. `label: 'decoded API_TOKEN'`).
 void copyToClipboard(BuildContext context, String text, {String? label}) {
@@ -777,4 +758,10 @@ void copyToClipboard(BuildContext context, String text, {String? label}) {
   ScaffoldMessenger.maybeOf(context)
     ?..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text('Copied $shown'), duration: const Duration(seconds: 1)));
+}
+
+/// Opens [url] in the browser; ignores unparsable URLs.
+Future<void> openUrl(String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri != null) await launchUrl(uri);
 }

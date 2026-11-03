@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
+	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/portforward"
 )
 
@@ -35,7 +36,7 @@ func (s *Server) mutationRoutes() {
 // ?dryRun=true runs server-side validation/admission without persisting.
 func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
 	if s.readOnly {
-		writeJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
 		return
 	}
 	c, rq, err := s.parseResource(r.Context(), r)
@@ -46,31 +47,31 @@ func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 	if err != nil {
-		writeErr(w, badRequest("read body: %v", err))
+		writeErr(w, httpx.BadRequest("read body: %v", err))
 		return
 	}
 	js, err := yaml.YAMLToJSON(body)
 	if err != nil {
-		writeErr(w, badRequest("invalid YAML: %v", err))
+		writeErr(w, httpx.BadRequest("invalid YAML: %v", err))
 		return
 	}
 	obj := &unstructured.Unstructured{}
 	if err := obj.UnmarshalJSON(js); err != nil {
-		writeErr(w, badRequest("invalid object: %v", err))
+		writeErr(w, httpx.BadRequest("invalid object: %v", err))
 		return
 	}
 	switch {
 	case obj.GetName() != name:
-		writeErr(w, badRequest("metadata.name %q doesn't match %q (renaming isn't supported)", obj.GetName(), name))
+		writeErr(w, httpx.BadRequest("metadata.name %q doesn't match %q (renaming isn't supported)", obj.GetName(), name))
 		return
 	case rq.Type.Namespaced && obj.GetNamespace() != "" && obj.GetNamespace() != rq.Namespace:
-		writeErr(w, badRequest("metadata.namespace %q doesn't match %q", obj.GetNamespace(), rq.Namespace))
+		writeErr(w, httpx.BadRequest("metadata.namespace %q doesn't match %q", obj.GetNamespace(), rq.Namespace))
 		return
 	case obj.GetResourceVersion() == "":
-		writeErr(w, badRequest("metadata.resourceVersion is required (it protects against overwriting concurrent changes)"))
+		writeErr(w, httpx.BadRequest("metadata.resourceVersion is required (it protects against overwriting concurrent changes)"))
 		return
 	case obj.GetKind() == "" || obj.GetAPIVersion() == "":
-		writeErr(w, badRequest("apiVersion and kind are required"))
+		writeErr(w, httpx.BadRequest("apiVersion and kind are required"))
 		return
 	}
 	opts := metav1.UpdateOptions{FieldManager: fieldManager}
@@ -85,7 +86,7 @@ func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
 	}
 	out.SetManagedFields(nil)
 	y, _ := yaml.Marshal(out.Object)
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"dryRun":          dryRun,
 		"resourceVersion": out.GetResourceVersion(),
 		"yaml":            string(y),
@@ -96,25 +97,25 @@ func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
 // ---- port-forwards ---------------------------------------------------------
 
 func (s *Server) handleListForwards(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"forwards": s.pf.List()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"forwards": s.pf.List()})
 }
 
 func (s *Server) handleCreateForward(w http.ResponseWriter, r *http.Request) {
 	if s.readOnly {
-		writeJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
 		return
 	}
 	var spec portforward.Spec
 	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
-		writeErr(w, badRequest("invalid body: %v", err))
+		writeErr(w, httpx.BadRequest("invalid body: %v", err))
 		return
 	}
 	st, err := s.pf.Create(spec)
 	if err != nil {
-		writeErr(w, badRequest("%v", err))
+		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
-	writeJSON(w, http.StatusCreated, st)
+	httpx.WriteJSON(w, http.StatusCreated, st)
 }
 
 func (s *Server) handleUpdateForward(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +125,7 @@ func (s *Server) handleUpdateForward(w http.ResponseWriter, r *http.Request) {
 		LocalPort *int    `json:"localPort"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, badRequest("invalid body: %v", err))
+		writeErr(w, httpx.BadRequest("invalid body: %v", err))
 		return
 	}
 	st, err := s.pf.Update(r.PathValue("id"), body.AutoStart, body.Label, body.LocalPort)
@@ -132,7 +133,7 @@ func (s *Server) handleUpdateForward(w http.ResponseWriter, r *http.Request) {
 		s.forwardErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	httpx.WriteJSON(w, http.StatusOK, st)
 }
 
 func (s *Server) handleForwardAction(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +141,7 @@ func (s *Server) handleForwardAction(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if r.URL.Path[len(r.URL.Path)-5:] == "start" {
 		if s.readOnly {
-			writeJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+			httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
 			return
 		}
 		err = s.pf.Start(id)
@@ -152,7 +153,7 @@ func (s *Server) handleForwardAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st, _ := s.pf.Get(id)
-	writeJSON(w, http.StatusOK, st)
+	httpx.WriteJSON(w, http.StatusOK, st)
 }
 
 func (s *Server) handleDeleteForward(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +166,7 @@ func (s *Server) handleDeleteForward(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) forwardErr(w http.ResponseWriter, err error) {
 	if portforward.IsNotFound(err) {
-		writeJSON(w, http.StatusNotFound, apiError{Error: err.Error(), Code: http.StatusNotFound})
+		httpx.WriteJSON(w, http.StatusNotFound, apiError{Error: err.Error(), Code: http.StatusNotFound})
 		return
 	}
 	writeErr(w, err)

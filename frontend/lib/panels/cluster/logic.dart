@@ -100,9 +100,11 @@ NodeAllocation nodeAllocation(List<Json> pods) {
   return NodeAllocation(total: total, activePods: active, terminatedPods: terminated);
 }
 
-/// A kubectl-ish one-word status for a pod (Terminating, the first container
-/// waiting/terminated reason, else the phase).
-String podStatus(Json pod) {
+/// A kubectl-ish one-word status for a pod (Terminating, the pod's reason,
+/// the first container waiting/terminated reason, NotReady, else the phase).
+/// Unlike the table's `podStatus` (util/pod.dart) it surfaces Evicted and
+/// NotReady, which the node and namespace panels want.
+String podKubectlStatus(Json pod) {
   if (dig(pod, ['metadata', 'deletionTimestamp']) != null) return 'Terminating';
   final st = asMap(pod['status']);
   if (st['reason'] is String && (st['reason'] as String).isNotEmpty) return st['reason'];
@@ -120,14 +122,6 @@ String podStatus(Json pod) {
     if (css.isNotEmpty && css.any((c) => c['ready'] != true)) return 'NotReady';
   }
   return phase;
-}
-
-int podRestarts(Json pod) {
-  var n = 0;
-  for (final cs in asMapList(dig(pod, ['status', 'containerStatuses']))) {
-    n += (cs['restartCount'] as num?)?.toInt() ?? 0;
-  }
-  return n;
 }
 
 // ---------------------------------------------------------------------------

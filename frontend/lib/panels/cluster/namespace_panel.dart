@@ -133,7 +133,7 @@ List<(String, Severity, int)> inventoryHealth(String resource, List<Json> items)
     final st = asMap(i['status']);
     switch (resource) {
       case 'pods':
-        final s = podStatus(i);
+        final s = podKubectlStatus(i);
         final sev = severityOf(s);
         if (s == 'Running') {
           add('running', Severity.ok);

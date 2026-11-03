@@ -120,10 +120,7 @@ class _UsedBySectionState extends State<UsedBySection> {
           child: () {
             if (snap.hasError) return InlineMessage('Could not list pods: ${snap.error}', isError: true);
             if (usages == null) {
-              return const Padding(
-                padding: EdgeInsets.all(8),
-                child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
-              );
+              return const SectionSpinner();
             }
             return _UsageList(usages: usages, missing: missing, existingKeys: widget.existingKeys, kindLabel: widget.kind == RefKind.configMap ? 'ConfigMap' : 'Secret');
           }(),

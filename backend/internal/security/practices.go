@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -60,7 +61,7 @@ func (a *analyzer) groupPractice(check, sev, whatOne, whatMany, detail, remediat
 			notes = append(notes, n)
 		}
 		a.add(Finding{ID: check + "/" + ns, Check: check, Severity: sev, Category: CatPractices, Namespace: ns,
-			Title:       fmt.Sprintf("%s in %s %s", plural(len(hs), "workload", "workloads"), ns, map[bool]string{true: whatOne, false: whatMany}[len(hs) == 1]),
+			Title:       fmt.Sprintf("%s in %s %s", kube.Plural(len(hs), "workload", "workloads"), ns, map[bool]string{true: whatOne, false: whatMany}[len(hs) == 1]),
 			Detail:      detail + " Affected: " + joinLimit(notes, 6) + ".",
 			Remediation: remediation,
 			Objects:     objs})
@@ -259,7 +260,7 @@ func (a *analyzer) deprecatedAPIs() {
 		return
 	}
 	a.add(Finding{ID: "practices.deprecated-api", Check: "practices.deprecated-api", Severity: Low, Category: CatPractices, Namespace: a.in.Namespace,
-		Title:       fmt.Sprintf("%s %s last applied with removed API versions", plural(len(refs), "object", "objects"), verb(len(refs), "was", "were")),
+		Title:       fmt.Sprintf("%s %s last applied with removed API versions", kube.Plural(len(refs), "object", "objects"), verb(len(refs), "was", "were")),
 		Detail:      fmt.Sprintf("Their `kubectl apply` manifests use API versions that newer Kubernetes releases no longer serve, so re-applying them will fail after an upgrade: %s. (Detected from the last-applied-configuration annotation only.)", joinLimit(notes, 6)),
 		Remediation: "Update the source manifests or charts to the current API versions (e.g. with `kubectl convert` or `pluto`).",
 		Objects:     refs})
