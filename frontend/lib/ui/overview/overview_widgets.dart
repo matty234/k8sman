@@ -60,53 +60,34 @@ class OverviewHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    final title = Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(Icons.monitor_heart_outlined, size: 22, color: theme.colorScheme.primary),
-      const SizedBox(width: 10),
-      Text('Cluster health', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
-      const SizedBox(width: 12),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(12),
+    return PageHeader(
+      title: 'Overview',
+      subtitle: Text(namespace ?? 'All namespaces'),
+      actions: [
+        if (loading) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+        if (updatedAt != null)
+          Tooltip(
+            message: paused ? 'Auto-refresh paused' : 'Refreshes every ${interval.inSeconds}s',
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (paused) Text('Paused · ', style: hint),
+              AgeText(updatedAt!.toUtc().toIso8601String(), suffix: ' ago'),
+            ]),
+          ),
+        IconButton(
+          tooltip: paused ? 'Resume auto-refresh (every ${interval.inSeconds}s)' : 'Pause auto-refresh',
+          iconSize: 18,
+          visualDensity: VisualDensity.compact,
+          icon: Icon(paused ? Icons.play_arrow : Icons.pause),
+          onPressed: onTogglePause,
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(namespace == null ? Icons.public : Icons.folder_outlined, size: 13, color: theme.colorScheme.onSecondaryContainer),
-          const SizedBox(width: 5),
-          Text(namespace ?? 'All namespaces', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSecondaryContainer)),
-        ]),
-      ),
-    ]);
-    final controls = Row(mainAxisSize: MainAxisSize.min, children: [
-      if (loading)
-        const Padding(padding: EdgeInsets.only(right: 8), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5))),
-      if (updatedAt != null) ...[
-        Text(paused ? 'Paused · updated ' : 'Updated ', style: hint),
-        AgeText(updatedAt!.toUtc().toIso8601String(), suffix: ' ago'),
+        IconButton(
+          tooltip: 'Refresh now',
+          iconSize: 18,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.refresh),
+          onPressed: onRefresh,
+        ),
       ],
-      const SizedBox(width: 4),
-      IconButton(
-        tooltip: paused ? 'Resume auto-refresh (every ${interval.inSeconds}s)' : 'Pause auto-refresh',
-        iconSize: 18,
-        visualDensity: VisualDensity.compact,
-        icon: Icon(paused ? Icons.play_arrow : Icons.pause),
-        onPressed: onTogglePause,
-      ),
-      IconButton(
-        tooltip: 'Refresh now',
-        iconSize: 18,
-        visualDensity: VisualDensity.compact,
-        icon: const Icon(Icons.refresh),
-        onPressed: onRefresh,
-      ),
-    ]);
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      runSpacing: 4,
-      spacing: 12,
-      children: [title, controls],
     );
   }
 }

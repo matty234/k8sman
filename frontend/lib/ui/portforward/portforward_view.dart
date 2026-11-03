@@ -67,19 +67,15 @@ class _PortForwardViewState extends State<PortForwardView> {
     final fs = _forwards;
     final active = fs?.where((f) => f.state == 'active').length ?? 0;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
-        child: Row(children: [
-          Text('Port Forwards', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
-          const SizedBox(width: 10),
-          if (fs != null)
-            Flexible(child: Text('$active active · ${fs.length} saved', overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text('Start one from a Pod, Service or workload\'s sidebar',
-                textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+      PageHeader(
+        title: 'Port Forwards',
+        subtitle: fs == null ? null : Text('$active active · ${fs.length} saved'),
+        actions: [
+          Tooltip(
+            message: 'Start a forward from a Pod, Service or workload in the sidebar',
+            child: Icon(Icons.help_outline, size: 16, color: theme.hintColor),
           ),
-        ]),
+        ],
       ),
       if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: InlineMessage(_error!, isError: true)),
       const Divider(),

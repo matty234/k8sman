@@ -133,3 +133,91 @@ List<RuleSummary> summarizeRules(List<Json> rules) {
   }
   return [for (final e in byVerbs.entries) RuleSummary(e.key, e.value.join(', '), wildcard: wild[e.key] ?? false)];
 }
+
+/// True for the built-in bindings every authenticated identity (or every
+/// ServiceAccount) inherits: `system:basic-user`, `system:discovery`, etc.
+/// These are noise when asking "what can this ServiceAccount do?".
+bool isDefaultBinding(BindingMatch m) =>
+    m.inherited &&
+    m.cluster &&
+    m.name.startsWith('system:') &&
+    const {'system:authenticated', 'system:serviceaccounts', 'system:unauthenticated'}.contains(m.viaGroup);
+
+/// How risky a set of verbs on a target is, for restrained colouring.
+enum PermissionRisk { read, write, high }
+
+const _readVerbs = {'get', 'list', 'watch'};
+
+PermissionRisk permissionRisk(String target, Set<String> verbs) {
+  final t = target.toLowerCase();
+  if (verbs.contains('*') || t.startsWith('*') || verbs.any(const {'escalate', 'bind', 'impersonate'}.contains)) return PermissionRisk.high;
+  if (t.startsWith('secrets') && verbs.any(const {'get', 'list', 'watch'}.contains)) return PermissionRisk.high;
+  if (t.startsWith('pods/exec') || t.startsWith('pods/attach')) return PermissionRisk.high;
+  if (verbs.any((v) => !_readVerbs.contains(v))) return PermissionRisk.write;
+  return PermissionRisk.read;
+}
+
+/// One row of the merged "what can it do" view.
+class EffectivePermission {
+  /// `resource.group[names]` or a non-resource URL.
+  final String target;
+  final Set<String> verbs;
+
+  /// Human scopes, e.g. `cluster-wide`, `namespace demo`.
+  final Set<String> scopes;
+
+  /// `Kind/name` of the roles granting it.
+  final Set<String> grantedBy;
+  EffectivePermission(this.target) : verbs = {}, scopes = {}, grantedBy = {};
+
+  bool get nonResource => target.startsWith('/');
+  PermissionRisk get risk => permissionRisk(target, verbs);
+
+  /// Verbs in a stable, conventional order.
+  List<String> get sortedVerbs {
+    const order = ['*', 'get', 'list', 'watch', 'create', 'update', 'patch', 'delete', 'deletecollection'];
+    final v = verbs.toList()
+      ..sort((a, b) {
+        final ia = order.indexOf(a), ib = order.indexOf(b);
+        if (ia != -1 || ib != -1) return (ia == -1 ? 99 : ia).compareTo(ib == -1 ? 99 : ib);
+        return a.compareTo(b);
+      });
+    return v;
+  }
+}
+
+/// Merges the rules of every (binding, role) pair into one row per target.
+/// Rows are ordered: highest risk first, then resources before URLs, then name.
+List<EffectivePermission> effectivePermissions(List<(BindingMatch, Json)> granted) {
+  final byTarget = <String, EffectivePermission>{};
+  for (final (m, role) in granted) {
+    for (final r in asMapList(role['rules'])) {
+      final verbs = _strings(r['verbs']).toSet();
+      final groups = _strings(r['apiGroups']);
+      final names = _strings(r['resourceNames']);
+      final targets = <String>[
+        for (final res in _strings(r['resources']))
+          for (final g in groups.isEmpty ? [''] : groups)
+            () {
+              final q = g.isEmpty || g == '*' && res == '*' ? res : '$res.$g';
+              return names.isEmpty ? q : '$q[${names.join(',')}]';
+            }(),
+        ..._strings(r['nonResourceURLs']),
+      ];
+      for (final t in targets) {
+        final p = byTarget.putIfAbsent(t, () => EffectivePermission(t));
+        p.verbs.addAll(verbs);
+        p.scopes.add(m.scope);
+        p.grantedBy.add('${m.roleKind}/${m.roleName}');
+      }
+    }
+  }
+  final out = byTarget.values.toList()
+    ..sort((a, b) {
+      final r = b.risk.index.compareTo(a.risk.index);
+      if (r != 0) return r;
+      if (a.nonResource != b.nonResource) return a.nonResource ? 1 : -1;
+      return a.target.compareTo(b.target);
+    });
+  return out;
+}

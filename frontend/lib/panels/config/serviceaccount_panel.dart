@@ -176,38 +176,47 @@ class _PermissionsState extends State<_Permissions> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return FutureBuilder<List<_ResolvedBinding>>(
       future: _future,
       builder: (context, snap) {
         final list = snap.data;
-        final direct = list?.where((b) => !b.match.inherited).length ?? 0;
+        final defaults = list?.where((b) => isDefaultBinding(b.match)).toList() ?? const <_ResolvedBinding>[];
+        final own = list?.where((b) => !isDefaultBinding(b.match)).toList() ?? const <_ResolvedBinding>[];
+        List<EffectivePermission> perms(List<_ResolvedBinding> bs) =>
+            effectivePermissions([for (final b in bs) if (b.role != null) (b.match, b.role!)]);
+        final ownPerms = perms(own);
         return DetailSection(
           title: 'Permissions',
           icon: Icons.admin_panel_settings_outlined,
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (list != null) CountPill('$direct direct · ${list.length - direct} inherited'),
+            if (list != null)
+              Text(
+                own.isEmpty ? 'defaults only' : '${ownPerms.length} grant${ownPerms.length == 1 ? '' : 's'} · ${own.length} binding${own.length == 1 ? '' : 's'}',
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+              ),
             RefreshButton(() => setState(() => _future = _load())),
           ]),
           child: () {
             if (snap.hasError) return InlineMessage('Could not load RBAC bindings: ${snap.error}', isError: true);
             if (list == null) return const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)));
-            if (list.isEmpty) return const InlineMessage('No RoleBindings or ClusterRoleBindings grant anything to this ServiceAccount.');
-            final children = <Widget>[];
-            if (direct == 0) {
-              children.add(const Padding(padding: EdgeInsets.only(bottom: 6), child: InlineMessage('No bindings name this ServiceAccount directly.')));
-            } else {
-              children.add(const _GroupHeader('Direct', first: true));
-            }
-            for (var i = 0; i < list.length; i++) {
-              final b = list[i];
-              if (b.match.inherited && (i == 0 || !list[i - 1].match.inherited)) {
-                children.add(_GroupHeader('Inherited via groups', first: i == 0 && direct == 0));
-              } else if (i > 0) {
-                children.add(const Divider(height: 14));
-              }
-              children.add(_BindingView(b));
-            }
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+            final errors = [for (final b in list) if (b.error != null) b];
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (own.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('Nothing beyond the cluster defaults. No RoleBinding or ClusterRoleBinding grants this ServiceAccount anything specific.',
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                )
+              else ...[
+                const _Label('Can do'),
+                _PermissionTable(ownPerms),
+                const _Label('Granted by'),
+                for (final b in own) _BindingLine(b),
+              ],
+              for (final b in errors) Padding(padding: const EdgeInsets.only(top: 4), child: InlineMessage('${b.match.roleKind}/${b.match.roleName}: ${b.error}', isError: true)),
+              if (defaults.isNotEmpty) _DefaultAccess(defaults: defaults, perms: perms(defaults)),
+            ]);
           }(),
         );
       },
@@ -215,62 +224,155 @@ class _PermissionsState extends State<_Permissions> {
   }
 }
 
-class _GroupHeader extends StatelessWidget {
+/// Small sentence-case sub-heading inside a section.
+class _Label extends StatelessWidget {
   final String text;
-  final bool first;
-  const _GroupHeader(this.text, {required this.first});
+  const _Label(this.text);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: EdgeInsets.only(top: first ? 0 : 12, bottom: 6),
-      child: Row(children: [
-        Text(text.toUpperCase(), style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, letterSpacing: 0.6, fontWeight: FontWeight.w600)),
-        const SizedBox(width: 8),
-        const Expanded(child: Divider()),
-      ]),
+      padding: const EdgeInsets.only(top: 6, bottom: 4),
+      child: Text(text, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600)),
     );
   }
 }
 
-class _BindingView extends StatelessWidget {
+/// "What can it do": one row per target. Neutral by default; a small dot
+/// marks write (amber) and high-risk (red) grants. Scope and granting roles
+/// are on hover.
+class _PermissionTable extends StatelessWidget {
+  final List<EffectivePermission> perms;
+  const _PermissionTable(this.perms);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.hintColor;
+    final colors = AppColors.of(context);
+    final resources = perms.where((p) => !p.nonResource).toList();
+    final urls = perms.where((p) => p.nonResource).toList();
+    Widget row(EffectivePermission p) {
+      final dot = switch (p.risk) {
+        PermissionRisk.high => severityColor(context, Severity.error),
+        PermissionRisk.write => severityColor(context, Severity.warn),
+        PermissionRisk.read => null,
+      };
+      final scope = p.scopes.length == 1 ? (p.scopes.first == 'cluster-wide' ? 'cluster' : p.scopes.first.replaceFirst('namespace ', '')) : '${p.scopes.length} scopes';
+      return Tooltip(
+        waitDuration: const Duration(milliseconds: 500),
+        message: [
+          'Scope: ${p.scopes.join(', ')}',
+          'Granted by: ${p.grantedBy.join(', ')}',
+          if (p.risk == PermissionRisk.high) 'High risk: wildcard, secrets, exec or escalation',
+        ].join('\n'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: colors.separator, width: 0.5))),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+              width: 14,
+              child: dot == null
+                  ? null
+                  : Padding(padding: const EdgeInsets.only(top: 5), child: Container(width: 6, height: 6, decoration: BoxDecoration(color: dot, shape: BoxShape.circle))),
+            ),
+            Expanded(flex: 5, child: Text(p.target, style: monoStyle(context, size: 11.5))),
+            const SizedBox(width: 8),
+            Expanded(flex: 4, child: Text(p.sortedVerbs.join(' · '), style: monoStyle(context, size: 11.5, color: muted))),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 90),
+              child: Text(scope, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final p in resources) row(p),
+      if (urls.isNotEmpty) ...[
+        if (resources.isNotEmpty) const SizedBox(height: 6),
+        Text('Non-resource URLs', style: theme.textTheme.labelSmall?.copyWith(color: muted)),
+        for (final p in urls) row(p),
+      ],
+    ]);
+  }
+}
+
+/// One binding as a quiet line: role (link) then muted provenance.
+class _BindingLine extends StatelessWidget {
   final _ResolvedBinding b;
-  const _BindingView(this.b);
+  const _BindingLine(this.b);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final m = b.match;
-    final rules = summarizeRules(asMapList(b.role?['rules']));
-    final aggregated = b.role?['aggregationRule'] != null;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Wrap(spacing: 6, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        ResourceLink(m.bindingRef, label: '${m.cluster ? 'ClusterRoleBinding' : 'RoleBinding'}/${m.name}'),
-        Icon(Icons.arrow_forward, size: 13, color: theme.hintColor),
-        ResourceLink(m.roleRef, label: '${m.roleKind}/${m.roleName}'),
-        StatusBadge(m.scope, dense: true, severity: m.cluster ? Severity.warn : Severity.neutral),
-        if (m.viaGroup != null) StatusBadge('via ${m.viaGroup}', dense: true, severity: Severity.info),
-        if (aggregated) const StatusBadge('aggregated', dense: true, severity: Severity.neutral),
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Wrap(spacing: 6, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        ResourceLink(m.roleRef, label: m.roleName),
+        Text(m.roleKind, style: muted),
+        Text('· bound by', style: muted),
+        ResourceLink(m.bindingRef, label: m.name),
+        Text('· ${m.scope}${m.viaGroup != null ? ' · via group ${m.viaGroup}' : ''}', style: muted),
+        if (b.role?['aggregationRule'] != null) Text('· aggregated', style: muted),
       ]),
-      const SizedBox(height: 4),
-      if (b.error != null)
-        InlineMessage(b.error!, isError: true)
-      else if (rules.isEmpty)
-        Text('no rules', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))
-      else
-        for (final r in rules)
-          Padding(
-            padding: const EdgeInsets.only(left: 4, top: 2),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(
-                width: 150,
-                child: Text(r.verbs == '*' ? '* (all verbs)' : r.verbs,
-                    style: monoStyle(context, size: 11, color: r.wildcard ? severityColor(context, Severity.warn) : theme.colorScheme.tertiary)),
+    );
+  }
+}
+
+/// The built-in bindings every identity inherits, collapsed to one line.
+class _DefaultAccess extends StatefulWidget {
+  final List<_ResolvedBinding> defaults;
+  final List<EffectivePermission> perms;
+  const _DefaultAccess({required this.defaults, required this.perms});
+
+  @override
+  State<_DefaultAccess> createState() => _DefaultAccessState();
+}
+
+class _DefaultAccessState extends State<_DefaultAccess> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    final n = widget.defaults.length;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Hoverable(
+          onTap: () => setState(() => _open = !_open),
+          builder: (h) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(children: [
+              Icon(_open ? Icons.expand_more : Icons.chevron_right, size: 15, color: h ? theme.colorScheme.onSurface : theme.hintColor),
+              const SizedBox(width: 2),
+              Text('Default access', style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                    '$n built-in binding${n == 1 ? '' : 's'} every identity gets: ${widget.defaults.map((b) => b.match.roleName.replaceFirst('system:', '')).join(', ')}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
               ),
-              Expanded(child: SelectableText(r.targets, style: monoStyle(context, size: 11))),
             ]),
           ),
-    ]);
+        ),
+        if (_open)
+          Padding(
+            padding: const EdgeInsets.only(left: 17, top: 2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _PermissionTable(widget.perms),
+              const SizedBox(height: 4),
+              for (final b in widget.defaults) _BindingLine(b),
+            ]),
+          ),
+      ]),
+    );
   }
 }

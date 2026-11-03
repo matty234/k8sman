@@ -138,20 +138,19 @@ class _SecretBodyState extends State<SecretBody> {
         border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
         borderRadius: BorderRadius.circular(6),
       ),
+      // Two lines: key + controls on top (key truncates, controls never move),
+      // value underneath at full width — long keys can't squeeze the value.
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 1, 2, 1),
+          padding: const EdgeInsets.fromLTRB(8, 1, 2, 0),
           child: Row(children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 220),
-              child: Text(key, overflow: TextOverflow.ellipsis, style: monoStyle(context).copyWith(fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 10),
             Expanded(
-              child: revealed && d != null && !d.isBinary && body != null && !d.text!.contains('\n') && d.text!.length <= 60
-                  ? SelectableText(d.text!, maxLines: 1, style: monoStyle(context, size: 11.5))
-                  : Text(revealed ? '' : _mask, style: monoStyle(context, size: 11.5, color: theme.hintColor)),
+              child: Tooltip(
+                message: key.length > 28 ? key : '',
+                child: Text(key, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context).copyWith(fontWeight: FontWeight.w600)),
+              ),
             ),
+            const SizedBox(width: 8),
             Text(meta, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontSize: 11)),
             IconButton(
               iconSize: 15,
@@ -169,9 +168,14 @@ class _SecretBodyState extends State<SecretBody> {
             ),
           ]),
         ),
-        // Single-line short text values render inline in the header.
-        if (body != null && !(d != null && !d.isBinary && !d.text!.contains('\n') && d.text!.length <= 60))
-          Padding(padding: const EdgeInsets.fromLTRB(6, 0, 6, 6), child: body),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+          child: !revealed
+              ? Text(_mask, maxLines: 1, overflow: TextOverflow.clip, style: monoStyle(context, size: 11.5, color: theme.hintColor))
+              : revealed && d != null && !d.isBinary && !d.text!.contains('\n') && d.text!.length <= 60
+                  ? SelectableText(d.text!, style: monoStyle(context, size: 11.5))
+                  : body ?? const SizedBox.shrink(),
+        ),
       ]),
     );
   }

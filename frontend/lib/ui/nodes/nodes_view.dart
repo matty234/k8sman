@@ -129,33 +129,27 @@ class _NodesViewState extends State<NodesView> {
     final visible = nodes?.where((n) => q.isEmpty || n.name.toLowerCase().contains(q) || n.roles.any((r) => r.contains(q))).toList();
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Text('Nodes', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
-            const Spacer(),
-            if (_updated != null)
-              Padding(padding: const EdgeInsets.only(right: 4), child: AgeText(_updated!.toUtc().toIso8601String(), suffix: ' ago')),
-            IconButton(tooltip: 'Refresh', iconSize: 18, icon: const Icon(Icons.refresh), onPressed: _refresh),
-            // Shrinks before anything else overflows (e.g. with the sidebar open).
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 220),
-                child: TextField(
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_list, size: 16), hintText: 'Filter nodes or roles'),
-                  style: theme.textTheme.bodySmall,
-                  onChanged: (v) => setState(() => _filter = v.trim()),
-                ),
-              ),
+      PageHeader(
+        title: 'Nodes',
+        subtitle: nodes == null ? null : Text('${nodes.length} node${nodes.length == 1 ? '' : 's'}'),
+        actions: [
+          if (_updated != null) AgeText(_updated!.toUtc().toIso8601String(), suffix: ' ago'),
+          IconButton(tooltip: 'Refresh', iconSize: 18, icon: const Icon(Icons.refresh), onPressed: _refresh),
+          SizedBox(
+            width: 180,
+            height: 26,
+            child: TextField(
+              decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Filter nodes or roles'),
+              style: theme.textTheme.bodyMedium,
+              onChanged: (v) => setState(() => _filter = v.trim()),
             ),
-          ]),
-          // Summary gets its own line so it can wrap instead of being squeezed.
-          if (nodes != null) Padding(padding: const EdgeInsets.only(top: 6), child: _Summary(nodes)),
-        ]),
+          ),
+        ],
       ),
-      if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: InlineMessage(_error!, isError: true)),
       const Divider(),
+      // Cluster-wide summary strip (wraps on narrow widths).
+      if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 12, 0), child: _Summary(nodes)),
+      if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: InlineMessage(_error!, isError: true)),
       Expanded(
         child: visible == null
             ? const Center(child: CircularProgressIndicator())

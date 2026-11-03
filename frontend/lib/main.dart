@@ -5,6 +5,7 @@ import 'api/client.dart';
 import 'app/backend.dart';
 import 'app/window_chrome.dart';
 import 'state/app_state.dart';
+import 'state/log_dock.dart';
 import 'ui/shell.dart';
 import 'ui/theme.dart';
 
@@ -22,6 +23,7 @@ void main() {
         Provider<ApiClient>.value(value: api),
         ChangeNotifierProvider<AppState>.value(value: app),
         ChangeNotifierProvider<BackendController>.value(value: backend),
+        ChangeNotifierProvider<LogDock>(create: (_) => LogDock(api)),
       ],
       child: const K8sManApp(),
     ),
@@ -37,6 +39,7 @@ class K8sManApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'k8sman',
         debugShowCheckedModeBanner: false,
+        scrollBehavior: const AppScrollBehavior(),
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
         // Follow the system appearance, like a native app (the window's

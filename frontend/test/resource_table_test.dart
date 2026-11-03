@@ -35,6 +35,9 @@ void main() {
         ));
         await tester.pump();
         expect(tester.takeException(), isNull, reason: 'overflow at width $w');
+        // Controls stay pinned to the right edge (not floating mid-toolbar).
+        final filterRight = tester.getTopRight(find.byType(TextField).first).dx;
+        expect(filterRight, greaterThan(w - 80), reason: 'filter not right-aligned at width $w');
       }
     });
   }

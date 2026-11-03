@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../actions/actions.dart';
+import '../../ui/logs/open_logs.dart';
 import '../panel.dart';
 import 'rollout.dart';
 import 'widgets/pod_template.dart';
@@ -15,6 +17,9 @@ class ReplicaSetPanel extends ResourcePanel {
 
   @override
   Set<String> get kinds => const {'apps/ReplicaSet'};
+
+  @override
+  List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx)];
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
