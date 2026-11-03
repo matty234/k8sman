@@ -1,0 +1,17 @@
+apiVersion: v2
+name: k8sman-demo
+description: Small demo web app used to exercise the k8sman Helm page.
+type: application
+version: 0.3.1
+appVersion: "1.27"
+icon: https://helm.sh/img/helm.svg
+home: https://github.com/bargrove/k8sman
+sources:
+  - https://github.com/bargrove/k8sman/tree/master/dev/charts/k8sman-demo
+keywords: [demo, nginx]
+maintainers:
+  - name: k8sman
+dependencies:
+  - name: cache
+    version: 0.1.0
+    condition: cache.enabled

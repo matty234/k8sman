@@ -1,0 +1,7 @@
+{{ .Chart.Name }} {{ .Chart.Version }} is running as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Try it:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "demo.fullname" . }} 8080:{{ .Values.service.port }}
+  curl http://localhost:8080/
+
+Replicas: {{ .Values.replicaCount }} · Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}

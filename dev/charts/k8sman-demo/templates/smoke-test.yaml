@@ -1,0 +1,22 @@
+{{- if .Values.smokeTest.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "demo.fullname" . }}-smoke
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: smoke
+          image: busybox:1.36
+          command: ["sh", "-c", "echo smoke test for {{ include "demo.fullname" . }} ok"]
+{{- end }}
