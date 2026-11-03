@@ -15,6 +15,7 @@ import '../util/k8s.dart';
 import 'column_editor.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
+import 'widgets/group_icon.dart';
 
 /// Live table for the selected resource type. Re-created (via key) whenever
 /// the type, namespace or column config changes.
@@ -240,6 +241,7 @@ class _Toolbar extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
+                        if (t.custom) ...[GroupIcon(group: t.group, size: 18), const SizedBox(width: 8)],
                         Flexible(
                           child: Text(t.kind, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.titleLarge),
                         ),

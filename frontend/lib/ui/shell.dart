@@ -171,7 +171,7 @@ class _CollapsedInspector extends StatelessWidget {
             SizedBox(height: (toolbarRowHeight(context) - 18) / 2),
             Icon(Icons.first_page_rounded, size: 17, color: h ? theme.colorScheme.onSurface : theme.hintColor),
             const SizedBox(height: 14),
-            Icon(kindIcon(target.type), size: 14, color: theme.colorScheme.primary),
+            kindIconWidget(target.type, size: 14, color: theme.colorScheme.primary),
             const SizedBox(height: 8),
             Flexible(
               child: RotatedBox(

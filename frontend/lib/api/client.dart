@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -223,6 +224,18 @@ class ApiClient {
   Future<void> startPortForward(String id) => _send('POST', 'portforwards/$id/start', const {}, null);
   Future<void> stopPortForward(String id) => _send('POST', 'portforwards/$id/stop', const {}, null);
   Future<void> deletePortForward(String id) => _send('DELETE', 'portforwards/$id', const {}, null);
+
+  // ---- icons ----
+
+  /// The icon image for a CRD API group (a Helm chart icon or the group's
+  /// website favicon), or null when the backend has no image (the group
+  /// uses a bundled icon or a monogram). See API.md.
+  Future<Uint8List?> groupIcon(String group) async {
+    final res = await _http.get(_uri('icons/${Uri.encodeComponent(group)}'));
+    if (res.statusCode == 404) return null;
+    if (res.statusCode >= 400) _decode(res);
+    return res.bodyBytes;
+  }
 
   // ---- streams ----
 

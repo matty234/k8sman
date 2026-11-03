@@ -118,3 +118,58 @@ Response:
 - Pod `reason` is the pod table's Status column (`Terminating`, `Init:<reason>`, the first container waiting/terminated reason, else the phase). `count` is the pod's restart count.
 - Categories: pods `crashLoop` (including a container that just exited non-zero and is restarting), `imagePull` (ImagePullBackOff, ErrImagePull, InvalidImageName), `createContainerConfigError` (also CreateContainerError and RunContainerError), `initBlocked` (failing init container, or still initializing after 5m), `oomKilled` (OOMKilled within the last hour), `podFailed`, `stuckPending` (Pending for more than 5m; reason from the PodScheduled condition, e.g. Unschedulable), `stuckTerminating` (deletionTimestamp more than 5m old), `notReady` (Running but not ready for more than 5m), `highRestarts` (5 or more restarts); workloads `deploymentUnavailable`, `progressDeadlineExceeded`, `rolling`, `deploymentPaused`, `statefulSetNotReady`, `daemonSetNotReady`; jobs `jobFailed`, `jobLongRunning` (active for more than 1h), `jobSuspended`, `cronJobFailing` (latest job failed), `cronJobOverdue` (next run per the schedule is more than 2m, or startingDeadlineSeconds, in the past), `cronJobSuspended`; nodes `nodeNotReady`, `nodePressure`, `nodeCordoned`; storage `pvcPending` (more than 5m), `pvcLost`.
 - `topWarnings` groups Warning events seen in the last hour by reason (top 10 by count).
+
+## CRD group icons
+
+Icons for custom resource API groups (`argoproj.io`, `cert-manager.io`, …), from
+`backend/internal/icons`. Resolution order:
+
+1. **Helm chart icon** (`source: "helm"`): the `icon` URL in the chart metadata of the
+   deployed Helm release behind the group. Releases are read straight from their
+   `helm.sh/release.v1` Secrets (base64 → gzip → JSON; no Helm SDK). A group is attributed to
+   a release by, in order: the CRD's `meta.helm.sh/release-name`/`-namespace` annotations (or
+   `app.kubernetes.io/managed-by: Helm` + `app.kubernetes.io/instance` labels); the chart
+   shipping the CRD in its `crds/` directory (Helm doesn't label those); or a Helm-managed
+   ClusterRole that grants write access to the group (the release running the group's
+   controller, e.g. kube-prometheus-stack's operator for `monitoring.coreos.com`). Kubernetes
+   project groups (`*.k8s.io`, `*.x-k8s.io`) are only attributed through the CRD's own
+   annotations, never through other charts that vendor them. Attribution is cached per
+   cluster for 10 minutes; any step lacking RBAC is skipped.
+2. **Bundled** (`source: "bundled"`, `asset`): a curated icon shipped with the app in
+   `frontend/assets/icons/<asset>.png` (see `ATTRIBUTION.md` there). The group matches a
+   curated domain or is a subdomain of it.
+3. **Favicon** (`source: "favicon"`): fetched directly from the group's own domain (never via
+   a third-party favicon service). Candidates are the group, its parent and its registrable
+   domain (`monitoring.coreos.com` → `monitoring.coreos.com`, `coreos.com`); public-suffix
+   hosts stop at the owner's site (`aquasecurity.github.io`, never `github.io`). Reserved and
+   in-cluster names (`.local`, `.svc`, `.internal`, `example.com`, …) are never fetched. The
+   home page's `<link rel="icon" | "shortcut icon" | "apple-touch-icon">` entries are tried
+   largest first (one `<meta http-equiv=refresh>` hop is followed), then `/favicon.ico`.
+   A site that lands on a shared platform (github.com, gitlab.com, …) is rejected, since that
+   icon is the platform's, not the project's.
+4. **None** (`source: "none"`): the UI draws a monogram (first letter on a colour hashed from
+   the group). No network call.
+
+Fetch rules: https only (redirects to http are refused), 6 s per request, 15 s per lookup,
+256 KB per download, image content types only, and no connections to private, loopback or
+link-local addresses. Images are normalised to PNG of at most 128 px (`.ico` files are
+decoded, PNG or BMP entries; WebP passes through). SVG icons are skipped because the UI
+can't render them. Results, including misses, are cached in `~/.cache/k8sman/icons/`
+(`--icon-cache`): icons for 7 days, misses for 12 hours.
+
+**Privacy.** Remote fetches (chart icon URLs and favicons) reveal the group's domain to that
+website and to DNS. They are:
+
+- off with `--no-remote-icons`;
+- otherwise set by `"remoteIcons": true | false` in `~/.config/k8sman/settings.json`;
+- otherwise automatic: on only when the current context looks local (kind-, k3d-,
+  minikube, docker-desktop, rancher-desktop, orbstack, colima or microk8s contexts, or a
+  loopback API server).
+
+With remote fetches off, icons already in the cache are still served; nothing new is fetched.
+Bundled icons and monograms always work.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/icons` | `{"<group>": {source, url?, asset?, release?}}` for every custom (CRD) group on the cluster. `release` is the Helm release as `namespace/name` |
+| GET | `/api/icons/{group}` | the icon image (`Content-Type: image/png` or `image/webp`, header `X-Icon-Source: helm|favicon`). For bundled and missing icons: 404 `{error, code, source, asset?}` with `X-Icon-Source: bundled|none`. 400 for an invalid group name |

@@ -7,6 +7,7 @@ import '../app/window_chrome.dart';
 import '../state/app_state.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
+import 'widgets/group_icon.dart';
 
 /// Curated groups for built-in kinds, in display order. Anything not listed
 /// lands in "Custom Resources" (CRDs, grouped by API group) or "Other".
@@ -27,6 +28,11 @@ const _curated = <String, List<String>>{
 /// Source-list glyphs for well-known kinds (others get a generic one).
 /// The nav's icon for a kind (also used by the collapsed inspector tab).
 IconData kindIcon(ResourceType type) => _kindIcons[type.gk] ?? (type.custom ? Icons.extension_outlined : Icons.article_outlined);
+
+/// [kindIcon], except custom resources without a built-in glyph get their
+/// API group's app icon.
+Widget kindIconWidget(ResourceType type, {double size = 15, Color? color}) =>
+    type.custom && !_kindIcons.containsKey(type.gk) ? GroupIcon(group: type.group, size: size) : Icon(kindIcon(type), size: size, color: color);
 
 const _kindIcons = <String, IconData>{
   '/Pod': Icons.view_in_ar_outlined,
@@ -130,6 +136,7 @@ class _ResourceNavState extends State<ResourceNav> {
                 if (g.value.any(matches)) ...[
                   _GroupHeader(
                     title: g.key,
+                    group: g.value.first.custom ? g.key : null,
                     collapsed: q.isEmpty && _collapsed.contains(g.key),
                     onTap: () => setState(() => _collapsed.contains(g.key) ? _collapsed.remove(g.key) : _collapsed.add(g.key)),
                   ),
@@ -174,9 +181,12 @@ class _ResourceNavState extends State<ResourceNav> {
 
 class _GroupHeader extends StatelessWidget {
   final String title;
+
+  /// API group of a custom-resource section (shows its icon).
+  final String? group;
   final bool collapsed;
   final VoidCallback onTap;
-  const _GroupHeader({required this.title, required this.collapsed, required this.onTap});
+  const _GroupHeader({required this.title, this.group, required this.collapsed, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -188,6 +198,7 @@ class _GroupHeader extends StatelessWidget {
       builder: (h) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 14, 14, 4),
         child: Row(children: [
+          if (group != null) ...[GroupIcon(group: group!, size: 14), const SizedBox(width: 6)],
           Expanded(
             child: Text(title,
                 overflow: TextOverflow.ellipsis,
@@ -208,7 +219,10 @@ class _SourceListItem extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final Widget? trailing;
-  const _SourceListItem({required this.icon, required this.label, required this.selected, required this.onTap, this.trailing});
+
+  /// Replaces [icon] (e.g. a custom resource's group icon).
+  final Widget? leading;
+  const _SourceListItem({required this.icon, required this.label, required this.selected, required this.onTap, this.trailing, this.leading});
 
   @override
   Widget build(BuildContext context) {
@@ -226,7 +240,7 @@ class _SourceListItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(5),
         ),
         child: Row(children: [
-          Icon(icon, size: 15, color: selected ? theme.colorScheme.primary : theme.hintColor),
+          leading ?? Icon(icon, size: 15, color: selected ? theme.colorScheme.primary : theme.hintColor),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -253,6 +267,7 @@ class _NavItem extends StatelessWidget {
     final faint = AppColors.of(context).faint;
     return _SourceListItem(
       icon: kindIcon(type),
+      leading: type.custom ? kindIconWidget(type) : null,
       label: type.kind,
       selected: selected,
       onTap: () => context.read<AppState>().selectType(type),
