@@ -2,16 +2,16 @@
 
 # k8sman
 
-**A fast, native Kubernetes IDE for your Mac.**
+**A fast, native Kubernetes IDE for macOS and Windows.**
 
 Live tables you shape with jq, an inspector that explains *why* things are broken,
 and logs, terminals, port-forwards, Argo CD, Helm and security in one window.
 
 [![Latest release](https://img.shields.io/github/v/release/matty234/k8sman?label=release)](https://github.com/matty234/k8sman/releases/latest)
-[![Platform: macOS 12+](https://img.shields.io/badge/platform-macOS%2012%2B-lightgrey?logo=apple)](#install)
+[![Platform: macOS 12+ | Windows 10+](https://img.shields.io/badge/platform-macOS%2012%2B%20%7C%20Windows%2010%2B-lightgrey)](#install)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-[**Download for macOS**](https://github.com/matty234/k8sman/releases/latest) · [Features](#feature-tour) · [All features](#all-features) · [Build from source](#build-from-source)
+[**Download for macOS or Windows**](https://github.com/matty234/k8sman/releases/latest) · [Features](#feature-tour) · [All features](#all-features) · [Build from source](#build-from-source)
 
 </div>
 
@@ -32,8 +32,9 @@ and logs, terminals, port-forwards, Argo CD, Helm and security in one window.
 - **Security insights.** See network exposure, risky RBAC, Pod Security
   failures, best practices and image CVEs ranked across the cluster.
 
-It's a real macOS app: a single universal download with the backend embedded,
-nothing to run in your cluster, and nothing that leaves your machine.
+It's a real desktop app for macOS and Windows: a single download with the
+backend embedded, nothing to run in your cluster, and nothing that leaves your
+machine.
 
 <table>
 <tr><td><b>Every kind</b><br>Built-ins and CRDs, discovered live</td><td><b>30+ kind panels</b><br>Pods to Gateways to Argo CD apps</td><td><b>8 cluster pages</b><br>Overview, Alerts, Nodes, Security, Metrics, Helm, Port Forwards, Add-ons</td></tr>
@@ -328,6 +329,8 @@ nothing to run in your cluster, and nothing that leaves your machine.
 
 ## Install
 
+### macOS
+
 1. Download `k8sman-<version>-macos.zip` from
    [**Releases**](https://github.com/matty234/k8sman/releases/latest) and unzip
    it. It's a universal app for Apple silicon and Intel and needs macOS 12 or
@@ -354,6 +357,26 @@ yet. Once it has:
 brew install --cask matty234/tap/k8sman
 ```
 
+### Windows
+
+Windows 10 or 11 (x64). From
+[**Releases**](https://github.com/matty234/k8sman/releases/latest), download
+either:
+
+- `k8sman-<version>-windows-x64-setup.exe`: installs k8sman for your user
+  (no admin rights) with a Start menu entry and an uninstaller, or
+- `k8sman-<version>-windows-x64.zip`: a portable copy. Unzip it anywhere and
+  run `k8sman.exe` (keep `k8sman-server.exe` next to it).
+
+**First launch (SmartScreen):** the Windows builds aren't code-signed, so
+Microsoft Defender SmartScreen may say "Windows protected your PC". Click
+**More info**, then **Run anyway**. To check a download first, run
+`Get-FileHash <file>` in PowerShell and compare it with `SHA256SUMS`.
+
+k8sman reads `%USERPROFILE%\.kube\config` (or `$KUBECONFIG`) and keeps its
+own settings in `%USERPROFILE%\.config\k8sman`. Exec credential plugins
+(`kubelogin`, `gke-gcloud-auth-plugin`, `aws`, …) must be on your `PATH`.
+
 ### Updates
 
 k8sman updates itself with [Sparkle](https://sparkle-project.org).
@@ -366,6 +389,10 @@ k8sman updates itself with [Sparkle](https://sparkle-project.org).
   opens without another Gatekeeper prompt.
 - Port-forwards that were running are restarted after the relaunch.
 - Development builds (`flutter run`) never update.
+
+On Windows there is no self-update yet: k8sman checks GitHub for a newer
+release once a day and shows a banner with a **Download…** button that opens
+the release page.
 
 See [docs/UPDATES.md](docs/UPDATES.md) for how updates and releases work.
 
@@ -428,6 +455,9 @@ exactly as `kubectl` does.
 | ⌘↩ | Run the dry run (Helm upgrade) or apply (add-on install) |
 | ⌘+ / ⌘− / ⌘0, ⌘K | Terminal: font size, clear |
 
+On Windows, use Ctrl in place of ⌘. In a terminal tab, Ctrl keys go to the
+shell: copy with Ctrl+Shift+C and paste with Ctrl+V.
+
 ## Build from source
 
 Requirements: macOS, Flutter (stable), Go 1.24+, and for the dev cluster
@@ -440,6 +470,13 @@ make test       # go vet + go test, flutter analyze, flutter test
 make release    # dist/k8sman-<version>-macos.zip + SHA256SUMS (universal)
 make shots      # re-render the README screenshots into docs/images (demo data)
 ```
+
+On Windows you need Visual Studio 2022 with the "Desktop development with
+C++" workload, Flutter and Go. `cd frontend && flutter run -d windows` builds
+the app; its CMake build compiles `k8sman-server.exe` next to `k8sman.exe`.
+Release builds for Windows come from
+[`.github/workflows/windows.yml`](.github/workflows/windows.yml) (installer
+script: [`packaging/windows/k8sman.iss`](packaging/windows/k8sman.iss)).
 
 More documentation:
 
@@ -454,15 +491,17 @@ More documentation:
 
 ## Architecture
 
-The app is a Flutter macOS UI with an embedded Go backend (client-go). The app
-starts the backend on `127.0.0.1`, supervises it, and talks to it over HTTP and
+The app is a Flutter desktop UI (macOS and Windows) with an embedded Go
+backend (client-go). The app starts the backend on `127.0.0.1`, supervises it
+(`BackendSupervisor.swift` on macOS, `lib/app/backend_supervisor.dart` on
+Windows), and talks to it over HTTP and
 WebSockets: watches, logs, exec and port-forwards. The backend holds the
 kubeconfig and does the cluster work. Argo CD, Prometheus and Alertmanager are
 reached in-cluster through the Kubernetes API's service proxy.
 
 ```mermaid
 flowchart LR
-  UI["Flutter UI<br/>(macOS app)"] <-- "HTTP + WebSocket<br/>127.0.0.1" --> BE["k8sman-server<br/>(Go, client-go)"]
+  UI["Flutter UI<br/>(desktop app)"] <-- "HTTP + WebSocket<br/>127.0.0.1" --> BE["k8sman-server<br/>(Go, client-go)"]
   BE <--> K8S["Kubernetes API"]
   K8S -- "service proxy" --> ARGO["argocd-server"]
   K8S -- "service proxy" --> PROM["Prometheus / Alertmanager"]

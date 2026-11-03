@@ -1,0 +1,120 @@
+# Builds the Windows x64 app: a portable zip and an Inno Setup installer.
+#
+# - Called by release.yml for v* tags; the release job attaches the
+#   `windows-release` artifact to the GitHub release.
+# - Run it by hand on any branch (Actions → windows → Run workflow, or
+#   `gh workflow run windows.yml --ref <branch>`) to test the Windows build
+#   without tagging; download the artifact from the run. It also runs on pull
+#   requests that change the Windows runner or installer.
+#
+# Assets: k8sman-<version>-windows-x64.zip (unzip anywhere, run k8sman.exe)
+# and k8sman-<version>-windows-x64-setup.exe (per-user install, no admin).
+# Neither is code-signed, so SmartScreen warns on first run.
+name: windows
+
+on:
+  workflow_dispatch:
+  # Pull requests that touch the Windows build (manual runs only show up
+  # once this file is on the default branch).
+  pull_request:
+    paths:
+      - frontend/windows/**
+      - packaging/windows/**
+      - .github/workflows/windows.yml
+  workflow_call:
+    outputs:
+      artifact:
+        description: Name of the uploaded artifact with the zip and installer
+        value: windows-release
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      GOTOOLCHAIN: local
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version
+        id: version
+        run: |
+          version="$(sed -n 's/^version: *\([^+]*\).*/\1/p' frontend/pubspec.yaml | tr -d '\r')"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pubspec.yaml version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # File versions must be numeric: 0.2.0-rc.1 -> 0.2.0.
+          echo "numeric=${version%%-*}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # The full test suite runs on macOS in release.yml (its widget
+      # screenshots are macOS-specific); this checks Windows compiles.
+      - name: Check
+        run: |
+          (cd backend && go vet ./...)
+          cd frontend && flutter pub get && flutter analyze
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          NUMERIC: ${{ steps.version.outputs.numeric }}
+        run: |
+          cd frontend
+          # The CMake build also compiles k8sman-server.exe next to k8sman.exe.
+          flutter build windows --release --build-name="$NUMERIC" --dart-define=K8SMAN_VERSION="$VERSION"
+          ls -la build/windows/x64/runner/Release
+          test -f build/windows/x64/runner/Release/k8sman.exe
+          test -f build/windows/x64/runner/Release/k8sman-server.exe
+
+      - name: Portable zip
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -Recurse frontend/build/windows/x64/runner/Release dist/k8sman
+          Compress-Archive -Path dist/k8sman -DestinationPath "dist/k8sman-$env:VERSION-windows-x64.zip"
+          Remove-Item -Recurse dist/k8sman
+
+      - name: Installer
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup --no-progress -y
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          & $iscc "/DAppVersion=$env:VERSION" "/DAppSourceDir=$PWD\frontend\build\windows\x64\runner\Release" "/DAppOutputDir=$PWD\dist" packaging\windows\k8sman.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem dist
+
+      - name: Checksums
+        run: cd dist && sha256sum k8sman-*-windows-x64.zip k8sman-*-windows-x64-setup.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            dist/k8sman-*-windows-x64.zip
+            dist/k8sman-*-windows-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 14

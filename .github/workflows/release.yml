@@ -4,9 +4,11 @@
 #   2. git tag -a v0.1.1 -m "release notes (Markdown)" && git push origin v0.1.1
 #
 # Assets: k8sman-<version>-macos.zip (universal, ad-hoc signed), appcast.xml
-# (Sparkle feed, EdDSA-signed) and SHA256SUMS. The app's feed URL is
-# releases/latest/download/appcast.xml, so publishing a (non-pre-)release is
-# what rolls an update out. Tags with a pre-release suffix (v0.2.0-rc.1)
+# (Sparkle feed, EdDSA-signed), the Windows x64 build from windows.yml
+# (k8sman-<version>-windows-x64.zip and -setup.exe, unsigned) and
+# SHA256SUMS. The app's feed URL is releases/latest/download/appcast.xml, so
+# publishing a (non-pre-)release is what rolls an update out (Windows builds
+# only check releases/latest and link to the download). Tags with a pre-release suffix (v0.2.0-rc.1)
 # become GitHub pre-releases, which "latest" skips.
 #
 # Repository settings (Settings → Secrets and variables → Actions):
@@ -27,7 +29,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  windows:
+    uses: ./.github/workflows/windows.yml
+
   release:
+    # Publishes only once the Windows build has succeeded too.
+    needs: windows
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -86,6 +93,20 @@ jobs:
           build/sparkle/bin/sign_update --verify --ed-key-file - dist/appcast.xml <<< "$SPARKLE_PRIVATE_ED_KEY"
           cat dist/appcast.xml dist/SHA256SUMS
 
+      - name: Add the Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.windows.outputs.artifact }}
+          path: dist
+
+      - name: Checksums for the Windows build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd dist
+          shasum -a 256 "k8sman-$VERSION-windows-x64.zip" "k8sman-$VERSION-windows-x64-setup.exe" >> SHA256SUMS
+          cat SHA256SUMS
+
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,7 +117,9 @@ jobs:
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)
           if [ -s dist/notes.md ]; then flags+=(--notes-file dist/notes.md); else flags+=(--generate-notes); fi
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "k8sman $VERSION" "${flags[@]}" \
-            "dist/k8sman-$VERSION-macos.zip" dist/appcast.xml dist/SHA256SUMS
+            "dist/k8sman-$VERSION-macos.zip" dist/appcast.xml \
+            "dist/k8sman-$VERSION-windows-x64.zip" "dist/k8sman-$VERSION-windows-x64-setup.exe" \
+            dist/SHA256SUMS
 
       - name: Update the Homebrew tap
         # Bumps Casks/k8sman.rb in matty234/homebrew-tap for final releases.
