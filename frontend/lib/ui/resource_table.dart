@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -59,7 +60,7 @@ class _TableBodyState extends State<_TableBody> {
   void initState() {
     super.initState();
     // Re-render ages periodically without per-cell timers.
-    _ageTicker = Timer.periodic(const Duration(seconds: 30), (_) => mounted ? setState(() {}) : null);
+    _ageTicker = Timer.periodic(const Duration(seconds: 30), (_) => mounted ? setState(_rowCache.clear) : null);
   }
 
   @override
@@ -87,7 +88,7 @@ class _TableBodyState extends State<_TableBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Toolbar(controller: tc, shown: rows.length),
+        _toolbar(tc, rows.length),
         if (tc.error != null && !failedEmpty) _StaleBanner(controller: tc),
         const Divider(),
         if (multi) ...[
@@ -114,7 +115,7 @@ class _TableBodyState extends State<_TableBody> {
                 )
               : LayoutBuilder(
                   builder: (context, box) {
-                    final widths = _columnWidths(tc.columns, box.maxWidth);
+                    final widths = _stableWidths(_columnWidths(tc.columns, box.maxWidth));
                     final total = widths.fold<double>(0, (a, b) => a + b) + 18; // + gutters
                     return Scrollbar(
                       controller: _hScroll,
@@ -126,7 +127,7 @@ class _TableBodyState extends State<_TableBody> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _Header(controller: tc, widths: widths),
+                              _header(tc, widths),
                               const Divider(),
                               Expanded(
                                 child: rows.isEmpty
@@ -140,27 +141,23 @@ class _TableBodyState extends State<_TableBody> {
                                             controller: _vScroll,
                                             padding: const EdgeInsets.only(top: 4, bottom: 8),
                                             itemExtent: _rowHeight,
+                                            // Rows hold no state worth keeping alive off screen; skipping
+                                            // the keep-alive wrappers saves 4 rebuilt widgets per row per frame.
+                                            addAutomaticKeepAlives: false,
                                             itemCount: rows.length,
-                                            itemBuilder: (context, i) {
+                                            itemBuilder: (_, i) {
                                               final row = rows[i];
                                               final sel = multi && tc.isSelected(row.uid);
-                                              return _Row(
-                                                key: ValueKey(row.uid),
-                                                row: row,
-                                                columns: tc.columns,
-                                                widths: widths,
+                                              return _rowWidget(
+                                                tc,
+                                                app,
+                                                row,
+                                                widths,
                                                 striped: i.isOdd,
                                                 inspected: _isInspected(app, tc.type, row),
                                                 selected: sel,
                                                 joinAbove: sel && i > 0 && tc.isSelected(rows[i - 1].uid),
                                                 joinBelow: sel && i + 1 < rows.length && tc.isSelected(rows[i + 1].uid),
-                                                onTap: () {
-                                                  _focus.requestFocus();
-                                                  _click(tc, app, row);
-                                                },
-                                                onContextMenu: (pos) => multi && tc.isSelected(row.uid)
-                                                    ? _showBulkMenu(context, pos, tc, app, selectedRows)
-                                                    : showRowContextMenu(context, pos, tc.type, row),
                                               );
                                             },
                                           ),
@@ -176,6 +173,88 @@ class _TableBodyState extends State<_TableBody> {
                 ),
         ),
       ],
+    );
+  }
+
+  /// The last widths, reused while equal so cached rows stay valid.
+  List<double> _widths = const [];
+  List<double> _stableWidths(List<double> w) => listEquals(w, _widths) ? _widths : _widths = w;
+
+  // Toolbar and header, reused while what they show is unchanged (a watch
+  // event usually changes neither). They still rebuild on their own
+  // inherited dependencies (theme, AppState).
+  _Toolbar? _toolbarCache;
+  _Toolbar _toolbar(TableController tc, int shown) {
+    final t = _toolbarCache;
+    if (t != null && t.shown == shown && t.total == tc.totalCount && t.isDefaultColumns == tc.isDefaultColumns) return t;
+    return _toolbarCache = _Toolbar(controller: tc, shown: shown);
+  }
+
+  _Header? _headerCache;
+  _Header _header(TableController tc, List<double> widths) {
+    final h = _headerCache;
+    if (h != null &&
+        identical(h.widths, widths) &&
+        identical(h.columns, tc.columns) &&
+        h.sortColumn == tc.sortColumn &&
+        h.sortAscending == tc.sortAscending &&
+        identical(h.columnErrors, tc.columnErrors)) {
+      return h;
+    }
+    return _headerCache = _Header(controller: tc, widths: widths);
+  }
+
+  /// Row widgets by UID. A watch event changes one row, but the list's
+  /// builder runs for every visible row: returning the identical widget for
+  /// rows whose inputs are unchanged lets Flutter skip rebuilding them.
+  /// Cleared when ages re-render; the inputs below are the rest of the key.
+  final Map<String, _Row> _rowCache = {};
+
+  Widget _rowWidget(
+    TableController tc,
+    AppState app,
+    TableRowData row,
+    List<double> widths, {
+    required bool striped,
+    required bool inspected,
+    required bool selected,
+    required bool joinAbove,
+    required bool joinBelow,
+  }) {
+    final c = _rowCache[row.uid];
+    if (c != null &&
+        identical(c.row, row) &&
+        identical(c.widths, widths) &&
+        identical(c.columns, tc.columns) &&
+        c.striped == striped &&
+        c.inspected == inspected &&
+        c.selected == selected &&
+        c.joinAbove == joinAbove &&
+        c.joinBelow == joinBelow) {
+      return c;
+    }
+    if (_rowCache.length > 600) _rowCache.clear(); // deleted / scrolled-past rows
+    return _rowCache[row.uid] = _Row(
+      key: ValueKey(row.uid),
+      row: row,
+      columns: tc.columns,
+      widths: widths,
+      striped: striped,
+      inspected: inspected,
+      selected: selected,
+      joinAbove: joinAbove,
+      joinBelow: joinBelow,
+      onTap: () {
+        _focus.requestFocus();
+        _click(tc, app, row);
+      },
+      // Decided at click time (the selection may have changed since).
+      onContextMenu: (pos) {
+        final selectedRows = tc.selectedRows;
+        selectedRows.length >= 2 && tc.isSelected(row.uid)
+            ? _showBulkMenu(context, pos, tc, app, selectedRows)
+            : showRowContextMenu(context, pos, tc.type, row);
+      },
     );
   }
 
@@ -365,7 +444,11 @@ class _TableBodyState extends State<_TableBody> {
 class _Toolbar extends StatelessWidget {
   final TableController controller;
   final int shown;
-  const _Toolbar({required this.controller, required this.shown});
+
+  // What the toolbar shows from the controller (the cache key in _toolbar).
+  final int total;
+  final bool isDefaultColumns;
+  _Toolbar({required this.controller, required this.shown}) : total = controller.totalCount, isDefaultColumns = controller.isDefaultColumns;
 
   @override
   Widget build(BuildContext context) {
@@ -447,7 +530,17 @@ class _Toolbar extends StatelessWidget {
 class _Header extends StatelessWidget {
   final TableController controller;
   final List<double> widths;
-  const _Header({required this.controller, required this.widths});
+
+  // What the header shows from the controller (the cache key in _header).
+  final List<ColumnDef> columns;
+  final int? sortColumn;
+  final bool sortAscending;
+  final Map<int, String> columnErrors;
+  _Header({required this.controller, required this.widths})
+      : columns = controller.columns,
+        sortColumn = controller.sortColumn,
+        sortAscending = controller.sortAscending,
+        columnErrors = controller.columnErrors;
 
   @override
   Widget build(BuildContext context) {
@@ -759,10 +852,10 @@ class TableCellView extends StatelessWidget {
         }
     }
     final s = _text(v);
-    return Tooltip(
-      message: s.length > 40 ? s : '',
-      child: Text(s, overflow: TextOverflow.ellipsis, maxLines: 1, style: base),
-    );
+    final text = Text(s, overflow: TextOverflow.ellipsis, maxLines: 1, style: base);
+    // Only long values get a tooltip (an empty-message Tooltip renders just
+    // its child, but still costs a stateful element per cell).
+    return s.length > 40 ? Tooltip(message: s, child: text) : text;
   }
 
   static String _text(dynamic v) {

@@ -74,11 +74,14 @@ class _PerfApi extends TableFakeApi {}
 /// Row/cell widget rebuilds, counted by widget type name.
 class _BuildCounter {
   final counts = <String, int>{};
+  int total = 0;
   void start() {
     counts.clear();
+    total = 0;
     widgets.debugOnRebuildDirtyWidget = (e, _) {
       final n = e.widget.runtimeType.toString();
-      if (n == '_Row' || n == 'TableCellView' || n == '_LogLine' || n == 'Tooltip') counts[n] = (counts[n] ?? 0) + 1;
+      counts[n] = (counts[n] ?? 0) + 1;
+      total++;
     };
   }
 
@@ -105,8 +108,9 @@ Future<TableController> _pumpBigTable(WidgetTester tester, _PerfApi api) async {
   return Provider.of<TableController>(tester.element(find.byType(ListView)), listen: false);
 }
 
-/// Indices touched by event [k]: every third one is on screen (top rows).
-int _target(int k) => k % 3 == 0 ? k % 30 : (k * 37) % _rowCount;
+/// Indices touched by event [k]: every third one is on screen (the top 30
+/// rows in display order are team-0's: indices 0, 12, 24, …).
+int _target(int k) => k % 3 == 0 ? (k % 30) * 12 : (k * 37) % _rowCount;
 
 void main() {
   group('table', skip: _skip, () {
@@ -154,6 +158,9 @@ void main() {
       results['single: _Row builds per event'] = (counter['_Row'] / _events).toStringAsFixed(1);
       results['single: TableCellView builds per event'] = (counter['TableCellView'] / _events).toStringAsFixed(1);
       results['single: Tooltip builds per event'] = (counter['Tooltip'] / _events).toStringAsFixed(1);
+      results['single: all widget rebuilds per event'] = (counter.total / _events).toStringAsFixed(1);
+      results['single: top rebuilt widgets (total over $_events events)'] =
+          (counter.counts.entries.toList()..sort((a, b) => b.value - a.value)).take(12).map((e) => '${e.key}=${e.value}').join(', ');
 
       // Bursts: $_burst events delivered before each frame.
       counter.start();

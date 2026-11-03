@@ -166,7 +166,7 @@ class TableController extends ChangeNotifier {
   String? cursor;
 
   /// Selected rows in display order (visible rows only).
-  List<TableRowData> get selectedRows => [for (final r in rows) if (selection.contains(r.uid)) r];
+  List<TableRowData> get selectedRows => selection.isEmpty ? const [] : [for (final r in rows) if (selection.contains(r.uid)) r];
 
   bool isSelected(String uid) => selection.contains(uid);
 
