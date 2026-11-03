@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
+import '../../state/startup_gate.dart';
 import '../../prometheus/prom_api.dart';
 import '../../state/app_state.dart';
 import '../../state/poller.dart';
@@ -28,7 +29,8 @@ class _AlertsNavBadgeState extends State<AlertsNavBadge> with PollingState {
   @override
   void initState() {
     super.initState();
-    scheduleMicrotask(_poll);
+    // First fetch once the first table has painted (see StartupGate).
+    StartupGate.ready.then((_) => _poll());
     poll(widget.interval, _poll);
   }
 

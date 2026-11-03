@@ -7,6 +7,7 @@ import '../metrics/metrics_page.dart';
 import '../state/app_state.dart';
 import '../state/cluster_error.dart';
 import '../state/log_dock.dart';
+import '../state/startup_gate.dart';
 import 'addons/addons_view.dart';
 import 'alerts/alerts_view.dart';
 import 'cluster_error_view.dart';
@@ -35,6 +36,12 @@ class _ShellState extends State<Shell> {
   double _sidebarWidth = 560;
 
   @override
+  void dispose() {
+    StartupGate.release();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final theme = Theme.of(context);
@@ -50,6 +57,10 @@ class _ShellState extends State<Shell> {
       );
     }
     final type = app.selectedType;
+    // Startup: icons and the alerts badge wait for the first table to paint;
+    // with no table on screen there is nothing to wait for.
+    StartupGate.hold();
+    if (app.view != MainView.resources || type == null) StartupGate.firstContentShown();
     final dock = context.watch<LogDock>();
     final detail = app.detail;
     final collapsed = app.inspectorCollapsed;

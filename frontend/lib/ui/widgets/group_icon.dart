@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
+import '../../state/startup_gate.dart';
 
 /// Well-known API group domains → icons bundled in assets/icons/ (sources
 /// and licences in assets/icons/ATTRIBUTION.md). A group matches a domain
@@ -134,7 +135,8 @@ class _GroupIconState extends State<GroupIcon> {
       _bytes = known.bytes;
       return;
     }
-    GroupIconCache.load(api, group).then((b) {
+    // At startup, wait until the first table has painted (see StartupGate).
+    StartupGate.ready.then((_) => mounted && widget.group == group ? GroupIconCache.load(api, group) : null).then((b) {
       if (mounted && widget.group == group && b != null) setState(() => _bytes = b);
     });
   }

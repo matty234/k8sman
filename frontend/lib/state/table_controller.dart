@@ -8,6 +8,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../metrics/quantity.dart';
 import 'cluster_error.dart';
+import 'startup_gate.dart';
 
 /// Keeps a live table for one resource type + namespace via /api/watch,
 /// reconnecting with backoff. Also owns client-side filter and sort state.
@@ -78,6 +79,7 @@ class TableController extends ChangeNotifier {
       _failureTimer = null;
       if (_disposed || failure == null) return;
       failureShown = true;
+      StartupGate.firstContentShown();
       notifyListeners();
     });
   }
@@ -109,6 +111,7 @@ class TableController extends ChangeNotifier {
           ..addEntries(t.rows.map((r) => MapEntry(r.uid, r)));
         _rowsChanged();
         loaded = true;
+        StartupGate.firstContentShown();
         _clearFailure();
         _attempt = 0;
         return true;
