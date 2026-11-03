@@ -511,19 +511,19 @@ func (s *stream) snapshot(f *filter) (Snapshot, error) {
 }
 
 func (s *stream) snapshotLocked(f *filter) Snapshot {
-	items := make([]*unstructured.Unstructured, 0, len(s.items))
-	for _, u := range s.items {
+	// Same order as a LIST from the API server (by "namespace/name" key),
+	// so analyses that keep list order produce identical output.
+	keys := make([]string, 0, len(s.items))
+	for k, u := range s.items {
 		if f.match(u) {
-			items = append(items, u)
+			keys = append(keys, k)
 		}
 	}
-	sort.Slice(items, func(i, j int) bool {
-		a, b := items[i], items[j]
-		if a.GetNamespace() != b.GetNamespace() {
-			return a.GetNamespace() < b.GetNamespace()
-		}
-		return a.GetName() < b.GetName()
-	})
+	sort.Strings(keys)
+	items := make([]*unstructured.Unstructured, len(keys))
+	for i, k := range keys {
+		items[i] = s.items[k]
+	}
 	return Snapshot{Items: items, ResourceVersion: s.rv, stream: s, filter: f}
 }
 
