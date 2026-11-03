@@ -20,7 +20,8 @@ void main() {
 }
 
 class K8sManApp extends StatelessWidget {
-  const K8sManApp({super.key});
+  final ThemeMode themeMode;
+  const K8sManApp({super.key, this.themeMode = ThemeMode.system});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -28,7 +29,9 @@ class K8sManApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
-        themeMode: ThemeMode.dark,
+        // Follow the system appearance, like a native app (the window's
+        // vibrancy follows it too).
+        themeMode: themeMode,
         home: const Shell(),
       );
 }

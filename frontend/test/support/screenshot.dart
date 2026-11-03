@@ -7,8 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 bool _fontsLoaded = false;
 
-/// Loads Roboto, Material Icons and Menlo so headless renders look real
-/// (flutter_test otherwise draws every glyph as a box).
+/// Loads the app's real fonts (SF Pro as `.AppleSystemUIFont`, Apple Symbols,
+/// Menlo, Material Icons, plus Roboto) so headless renders match the macOS
+/// app (flutter_test otherwise draws every glyph as a box).
 Future<void> loadRealFonts() async {
   if (_fontsLoaded) return;
   final flutterRoot = Platform.environment['FLUTTER_ROOT'] ?? File(Platform.resolvedExecutable).parent.parent.parent.parent.parent.parent.path;
@@ -25,6 +26,9 @@ Future<void> loadRealFonts() async {
   await load('Roboto', ['$fonts/Roboto-Regular.ttf', '$fonts/Roboto-Medium.ttf', '$fonts/Roboto-Bold.ttf']);
   await load('MaterialIcons', ['$fonts/MaterialIcons-Regular.otf']);
   await load('Menlo', ['/System/Library/Fonts/Menlo.ttc']);
+  // The theme's UI family + glyph fallbacks (see lib/ui/theme.dart).
+  await load('.AppleSystemUIFont', ['/System/Library/Fonts/SFNS.ttf']);
+  await load('Apple Symbols', ['/System/Library/Fonts/Apple Symbols.ttf']);
   _fontsLoaded = true;
 }
 
