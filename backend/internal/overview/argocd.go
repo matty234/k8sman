@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/matty234/k8sman/backend/internal/kube"
 )
 
 // ArgoCounts tallies Argo CD Applications (only when the CRD is served).
@@ -16,19 +18,6 @@ type ArgoCounts struct {
 	Degraded  int `json:"degraded"`
 	Missing   int `json:"missing"`
 	Failed    int `json:"failed"`
-}
-
-func str(m map[string]any, path ...string) string {
-	var cur any = m
-	for _, p := range path {
-		mm, ok := cur.(map[string]any)
-		if !ok {
-			return ""
-		}
-		cur = mm[p]
-	}
-	s, _ := cur.(string)
-	return s
 }
 
 func obj(m map[string]any, path ...string) map[string]any {
@@ -79,22 +68,22 @@ func (a *analyzer) argoApps() {
 	a.res.Counts.ArgoApps = c
 	for _, app := range a.in.ArgoApps {
 		c.Total++
-		name := str(app, "metadata", "name")
-		ns := str(app, "metadata", "namespace")
-		sync := str(app, "status", "sync", "status")
-		health := str(app, "status", "health", "status")
-		healthSince := parseTS(str(app, "status", "health", "lastTransitionTime"))
+		name := kube.Str(app, "metadata", "name")
+		ns := kube.Str(app, "metadata", "namespace")
+		sync := kube.Str(app, "status", "sync", "status")
+		health := kube.Str(app, "status", "health", "status")
+		healthSince := parseTS(kube.Str(app, "status", "health", "lastTransitionTime"))
 		op := obj(app, "status", "operationState")
-		phase := str(op, "phase")
+		phase := kube.Str(op, "phase")
 		failedOp := phase == "Failed" || phase == "Error"
 
 		var errConds []string
 		var condSince time.Time
 		for _, cond := range list(app, "status", "conditions") {
-			t := str(cond, "type")
+			t := kube.Str(cond, "type")
 			if strings.HasSuffix(t, "Error") {
-				errConds = append(errConds, t+": "+str(cond, "message"))
-				if ts := parseTS(str(cond, "lastTransitionTime")); ts.After(condSince) {
+				errConds = append(errConds, t+": "+kube.Str(cond, "message"))
+				if ts := parseTS(kube.Str(cond, "lastTransitionTime")); ts.After(condSince) {
 					condSince = ts
 				}
 			}
@@ -126,8 +115,8 @@ func (a *analyzer) argoApps() {
 			msg := ""
 			if failedOp {
 				is.Reason = "Sync" + phase
-				msg = str(op, "message")
-				is.since = parseTS(str(op, "finishedAt"))
+				msg = kube.Str(op, "message")
+				is.since = parseTS(kube.Str(op, "finishedAt"))
 			}
 			if len(errConds) > 0 {
 				if is.Reason == "" {
@@ -141,7 +130,7 @@ func (a *analyzer) argoApps() {
 			is.Message = msg + " (" + state + ")"
 		case health == "Degraded":
 			is.Severity, is.Category, is.Reason = Critical, "argoDegraded", "Degraded"
-			is.Message = cmp.Or(str(app, "status", "health", "message"), "One or more resources are degraded") + " (" + state + ")"
+			is.Message = cmp.Or(kube.Str(app, "status", "health", "message"), "One or more resources are degraded") + " (" + state + ")"
 			is.since = healthSince
 		case health == "Missing":
 			is.Severity, is.Category, is.Reason = Warning, "argoMissing", "Missing"
@@ -151,7 +140,7 @@ func (a *analyzer) argoApps() {
 			is.Severity, is.Category, is.Reason = Warning, "argoOutOfSync", "OutOfSync"
 			n := 0
 			for _, r := range list(app, "status", "resources") {
-				if str(r, "status") != "Synced" {
+				if kube.Str(r, "status") != "Synced" {
 					n++
 				}
 			}
@@ -160,7 +149,7 @@ func (a *analyzer) argoApps() {
 				auto = "auto-sync"
 			}
 			is.Message = fmt.Sprintf("%d resource(s) differ from git (%s, health %s)", n, auto, orUnknown(health))
-			is.since = parseTS(str(app, "status", "reconciledAt"))
+			is.since = parseTS(kube.Str(app, "status", "reconciledAt"))
 		default:
 			continue
 		}

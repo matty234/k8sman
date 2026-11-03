@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -305,22 +306,22 @@ func (a *analyzer) workloads() {
 		sev := worst(vs)
 		pods := ""
 		if n := u.podCount(); n > 0 && u.ref.Kind != "Pod" {
-			pods = fmt.Sprintf(" (%s)", plural(n, "pod", "pods"))
+			pods = fmt.Sprintf(" (%s)", kube.Plural(n, "pod", "pods"))
 		}
 		var title, detail, check, remediation string
 		if baseline {
 			check = "workloads.pss-baseline"
 			title = fmt.Sprintf("%s%s fails the baseline Pod Security profile", kindLabel(u.ref), pods)
-			detail = fmt.Sprintf("Fails %s of the baseline profile", plural(len(baseTexts), "check", "checks"))
+			detail = fmt.Sprintf("Fails %s of the baseline profile", kube.Plural(len(baseTexts), "check", "checks"))
 			if len(restTexts) > 0 {
-				detail += fmt.Sprintf(" and %s of the restricted profile", plural(len(restTexts), "more check", "more checks"))
+				detail += fmt.Sprintf(" and %s of the restricted profile", kube.Plural(len(restTexts), "more check", "more checks"))
 			}
 			detail += ". Baseline blocks known privilege escalations; a pod failing it can usually take over its node."
 			remediation = "Remove privileged mode, host namespaces, hostPath volumes and added capabilities unless this is a trusted node agent; then work towards the restricted profile."
 		} else {
 			check = "workloads.pss-restricted"
 			title = fmt.Sprintf("%s%s does not meet the restricted Pod Security profile", kindLabel(u.ref), pods)
-			detail = fmt.Sprintf("Meets baseline but fails %s of the restricted profile (current pod hardening best practice).", plural(len(restTexts), "check", "checks"))
+			detail = fmt.Sprintf("Meets baseline but fails %s of the restricted profile (current pod hardening best practice).", kube.Plural(len(restTexts), "check", "checks"))
 			remediation = "Set `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `seccompProfile: {type: RuntimeDefault}`, `capabilities: {drop: [ALL]}` and `readOnlyRootFilesystem: true` in the securityContext."
 		}
 		a.add(Finding{ID: check + "/" + refKey(u.ref), Check: check, Severity: sev, Category: CatWorkloads, Namespace: u.ref.Namespace,
@@ -360,14 +361,14 @@ func (a *analyzer) psa() {
 	sort.Slice(none, func(i, j int) bool { return none[i].Name < none[j].Name })
 	if len(none) > 0 {
 		a.add(Finding{ID: "workloads.psa-unlabelled", Check: "workloads.psa-unlabelled", Severity: Low, Category: CatWorkloads,
-			Title:       fmt.Sprintf("%s %s a Pod Security level", plural(len(none), "namespace", "namespaces"), verb(len(none), "doesn't enforce", "don't enforce")),
+			Title:       fmt.Sprintf("%s %s a Pod Security level", kube.Plural(len(none), "namespace", "namespaces"), verb(len(none), "doesn't enforce", "don't enforce")),
 			Detail:      fmt.Sprintf("%s have no `%s` label, so Pod Security admission lets any pod spec in (privileged included, unless another admission controller blocks it).", joinLimit(refNames(none), 6), psaEnforce),
 			Remediation: "Label namespaces with `pod-security.kubernetes.io/enforce=baseline` (or `restricted`). Try `warn`/`audit` first to see what would break.",
 			Objects:     none})
 	}
 	if len(privileged) > 0 {
 		a.add(Finding{ID: "workloads.psa-privileged", Check: "workloads.psa-privileged", Severity: Info, Category: CatWorkloads,
-			Title:       fmt.Sprintf("%s explicitly %s privileged pods", plural(len(privileged), "namespace", "namespaces"), verb(len(privileged), "allows", "allow")),
+			Title:       fmt.Sprintf("%s explicitly %s privileged pods", kube.Plural(len(privileged), "namespace", "namespaces"), verb(len(privileged), "allows", "allow")),
 			Detail:      fmt.Sprintf("%s enforce the `privileged` Pod Security level. That is expected for node agents and CNI, not for applications.", joinLimit(refNames(privileged), 6)),
 			Remediation: "Keep privileged namespaces for infrastructure only.",
 			Objects:     privileged})

@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/prom"
 )
 
@@ -316,20 +317,6 @@ func Analyze(in Input) *Result {
 
 // ---- owners -----------------------------------------------------------------
 
-func key(ns, name string) string { return ns + "/" + name }
-
-func controllerOf(refs []metav1.OwnerReference) *metav1.OwnerReference {
-	for i := range refs {
-		if refs[i].Controller != nil && *refs[i].Controller {
-			return &refs[i]
-		}
-	}
-	if len(refs) > 0 {
-		return &refs[0]
-	}
-	return nil
-}
-
 func ownerFromRef(r *metav1.OwnerReference) *Owner {
 	group := ""
 	if i := strings.IndexByte(r.APIVersion, '/'); i >= 0 {
@@ -342,33 +329,33 @@ func (a *analyzer) indexOwners() {
 	a.rsOwn = map[string]*Owner{}
 	for i := range a.in.ReplicaSets {
 		rs := &a.in.ReplicaSets[i]
-		if c := controllerOf(rs.OwnerReferences); c != nil {
-			a.rsOwn[key(rs.Namespace, rs.Name)] = ownerFromRef(c)
+		if c := kube.ControllerOf(rs.OwnerReferences); c != nil {
+			a.rsOwn[kube.Key(rs.Namespace, rs.Name)] = ownerFromRef(c)
 		}
 	}
 	a.jobOwn = map[string]*Owner{}
 	for i := range a.in.Jobs {
 		j := &a.in.Jobs[i]
-		if c := controllerOf(j.OwnerReferences); c != nil {
-			a.jobOwn[key(j.Namespace, j.Name)] = ownerFromRef(c)
+		if c := kube.ControllerOf(j.OwnerReferences); c != nil {
+			a.jobOwn[kube.Key(j.Namespace, j.Name)] = ownerFromRef(c)
 		}
 	}
 }
 
 // topOwner resolves Pod → ReplicaSet → Deployment and Pod → Job → CronJob.
 func (a *analyzer) topOwner(ns string, refs []metav1.OwnerReference) *Owner {
-	c := controllerOf(refs)
+	c := kube.ControllerOf(refs)
 	if c == nil {
 		return nil
 	}
 	o := ownerFromRef(c)
 	switch {
 	case o.Group == "apps" && o.Kind == "ReplicaSet":
-		if up := a.rsOwn[key(ns, o.Name)]; up != nil {
+		if up := a.rsOwn[kube.Key(ns, o.Name)]; up != nil {
 			return up
 		}
 	case o.Group == "batch" && o.Kind == "Job":
-		if up := a.jobOwn[key(ns, o.Name)]; up != nil {
+		if up := a.jobOwn[kube.Key(ns, o.Name)]; up != nil {
 			return up
 		}
 	}
@@ -404,13 +391,6 @@ func firstNonZero(ts ...time.Time) time.Time {
 		}
 	}
 	return time.Time{}
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, one)
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }
 
 func shortDur(d time.Duration) string {
@@ -616,7 +596,7 @@ func (a *analyzer) pods() {
 				if d := describeLastTermination(cs); d != "" {
 					msg += " " + d
 				}
-				msg += fmt.Sprintf("; %s", plural(int(cs.RestartCount), "restart", "restarts"))
+				msg += fmt.Sprintf("; %s", kube.Plural(int(cs.RestartCount), "restart", "restarts"))
 			}
 			issue(Critical, "crashLoop", msg, notReadySince(p))
 		case p.Status.Phase == corev1.PodRunning && p.Spec.RestartPolicy != corev1.RestartPolicyNever && status != "OOMKilled" && terminatedWithError(p) != nil:
@@ -629,7 +609,7 @@ func (a *analyzer) pods() {
 			if t.Message != "" {
 				msg += ": " + t.Message
 			}
-			msg += fmt.Sprintf(" and is restarting; %s", plural(int(cs.RestartCount), "restart", "restarts"))
+			msg += fmt.Sprintf(" and is restarting; %s", kube.Plural(int(cs.RestartCount), "restart", "restarts"))
 			issue(Critical, "crashLoop", msg, notReadySince(p))
 		case imagePullReasons[status]:
 			pc.ImagePull++
@@ -772,7 +752,7 @@ func (a *analyzer) pods() {
 						last = t.FinishedAt.Time
 					}
 				}
-				msg := plural(n, "restart", "restarts")
+				msg := kube.Plural(n, "restart", "restarts")
 				if !last.IsZero() {
 					msg += fmt.Sprintf(", last %s ago", shortDur(a.now.Sub(last)))
 				}
@@ -970,7 +950,7 @@ func (a *analyzer) jobs() {
 	for i := range a.in.Jobs {
 		j := &a.in.Jobs[i]
 		c.Total++
-		owner := a.jobOwn[key(j.Namespace, j.Name)]
+		owner := a.jobOwn[kube.Key(j.Namespace, j.Name)]
 		base := Issue{Kind: "Job", Group: "batch", Namespace: j.Namespace, Name: j.Name, Owner: owner}
 		switch {
 		case jobCondition(j, batchv1.JobComplete) != nil:
@@ -1023,11 +1003,11 @@ func (a *analyzer) cronJobs() {
 	latest := map[string]*batchv1.Job{}
 	for i := range a.in.Jobs {
 		j := &a.in.Jobs[i]
-		o := a.jobOwn[key(j.Namespace, j.Name)]
+		o := a.jobOwn[kube.Key(j.Namespace, j.Name)]
 		if o == nil || o.Kind != "CronJob" {
 			continue
 		}
-		k := key(j.Namespace, o.Name)
+		k := kube.Key(j.Namespace, o.Name)
 		if cur := latest[k]; cur == nil || j.CreationTimestamp.After(cur.CreationTimestamp.Time) {
 			latest[k] = j
 		}
@@ -1047,7 +1027,7 @@ func (a *analyzer) cronJobs() {
 			}
 			a.add(is)
 		}
-		if j := latest[key(cj.Namespace, cj.Name)]; j != nil {
+		if j := latest[kube.Key(cj.Namespace, cj.Name)]; j != nil {
 			if f := jobFailed(j); f != nil {
 				c.Failing++
 				is := base
@@ -1174,7 +1154,7 @@ func (a *analyzer) nodes() {
 			c.Cordoned++
 			is := base
 			is.Severity, is.Category, is.Reason, is.Message, is.since = Info, "nodeCordoned", "SchedulingDisabled",
-				fmt.Sprintf("Cordoned; %s still running", plural(podsOn[n.Name], "pod", "pods")), n.CreationTimestamp.Time
+				fmt.Sprintf("Cordoned; %s still running", kube.Plural(podsOn[n.Name], "pod", "pods")), n.CreationTimestamp.Time
 			for _, t := range n.Spec.Taints {
 				if t.Key == corev1.TaintNodeUnschedulable && t.TimeAdded != nil {
 					is.since = t.TimeAdded.Time

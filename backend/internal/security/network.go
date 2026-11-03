@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -494,7 +495,7 @@ func (a *analyzer) gateways(exposed map[string]int) {
 			if ns == "" {
 				ns = r.GetNamespace()
 			}
-			routes[key(ns, name)] = append(routes[key(ns, name)], r)
+			routes[kube.Key(ns, name)] = append(routes[kube.Key(ns, name)], r)
 		}
 	}
 	for i := range a.in.Gateways {
@@ -523,7 +524,7 @@ func (a *analyzer) gateways(exposed map[string]int) {
 		objs := []ObjectRef{ref}
 		routeNames := []string{}
 		backendsByNS := map[string][]string{}
-		for _, r := range routes[key(g.GetNamespace(), g.GetName())] {
+		for _, r := range routes[kube.Key(g.GetNamespace(), g.GetName())] {
 			routeNames = append(routeNames, r.GetName())
 			objs = append(objs, ObjectRef{Group: "gateway.networking.k8s.io", Kind: "HTTPRoute", Name: r.GetName(), Namespace: r.GetNamespace()})
 			rules, _, _ := unstructured.NestedSlice(r.Object, "spec", "rules")
@@ -565,7 +566,7 @@ func (a *analyzer) gateways(exposed map[string]int) {
 			detail += fmt.Sprintf(" HTTPRoutes %s send traffic to %s. %s", joinLimit(routeNames, 4), joinLimit(whats, 3), protectionText(allProtected))
 		}
 		a.add(Finding{ID: "network.gateway/" + refKey(ref), Check: "network.gateway", Severity: Info, Category: CatNetwork, Namespace: g.GetNamespace(),
-			Title:       fmt.Sprintf("Gateway %s accepts traffic on %s", g.GetName(), plural(len(ls), "listener", "listeners")),
+			Title:       fmt.Sprintf("Gateway %s accepts traffic on %s", g.GetName(), kube.Plural(len(ls), "listener", "listeners")),
 			Detail:      detail,
 			Remediation: "Confirm each listener and route is meant to be reachable; restrict `allowedRoutes` to the namespaces that should attach.",
 			Objects:     objs})
@@ -667,14 +668,14 @@ func (a *analyzer) namespaceMatrix(exposed map[string]int) {
 		}
 		if len(inOpen) > 0 {
 			a.add(Finding{ID: "network.ingress-unrestricted/" + ns, Check: "network.ingress-unrestricted", Severity: Low, Category: CatNetwork, Namespace: ns,
-				Title:       fmt.Sprintf("%s in %s %s ingress from anywhere", plural(len(inOpen), "workload", "workloads"), ns, verb(len(inOpen), "accepts", "accept")),
+				Title:       fmt.Sprintf("%s in %s %s ingress from anywhere", kube.Plural(len(inOpen), "workload", "workloads"), ns, verb(len(inOpen), "accepts", "accept")),
 				Detail:      fmt.Sprintf("%s has NetworkPolicies, but %s %s not selected by any policy that restricts ingress (or a policy re-opens it to 0.0.0.0/0).", ns, joinLimit(refNames(inOpen), 5), isAre(len(inOpen))),
 				Remediation: "Add a default-deny ingress policy (`podSelector: {}`, `policyTypes: [Ingress]`) and allow only the traffic each workload needs.",
 				Objects:     inOpen})
 		}
 		if len(egOpen) > 0 {
 			a.add(Finding{ID: "network.egress-unrestricted/" + ns, Check: "network.egress-unrestricted", Severity: Info, Category: CatNetwork, Namespace: ns,
-				Title:       fmt.Sprintf("%s in %s %s unrestricted egress", plural(len(egOpen), "workload", "workloads"), ns, verb(len(egOpen), "has", "have")),
+				Title:       fmt.Sprintf("%s in %s %s unrestricted egress", kube.Plural(len(egOpen), "workload", "workloads"), ns, verb(len(egOpen), "has", "have")),
 				Detail:      fmt.Sprintf("%s %s not selected by any policy that restricts egress, so they can connect anywhere, including the internet and the cloud metadata endpoint.", joinLimit(refNames(egOpen), 5), isAre(len(egOpen))),
 				Remediation: "Add a default-deny egress policy and allow DNS plus the destinations each workload needs.",
 				Objects:     egOpen})
@@ -682,14 +683,14 @@ func (a *analyzer) namespaceMatrix(exposed map[string]int) {
 	}
 	if len(noPolicy) > 0 {
 		a.add(Finding{ID: "network.no-policy", Check: "network.no-policy", Severity: Medium, Category: CatNetwork,
-			Title:       fmt.Sprintf("%s %s no NetworkPolicy", plural(len(noPolicy), "namespace", "namespaces"), verb(len(noPolicy), "has", "have")),
+			Title:       fmt.Sprintf("%s %s no NetworkPolicy", kube.Plural(len(noPolicy), "namespace", "namespaces"), verb(len(noPolicy), "has", "have")),
 			Detail:      fmt.Sprintf("All ingress and egress is open for every pod in %s: any pod in the cluster can reach them, and they can reach anything.", joinLimit(refNames(noPolicy), 6)),
 			Remediation: "Start with a default-deny policy per namespace (`podSelector: {}` with `policyTypes: [Ingress, Egress]`), then allow the flows you need.",
 			Objects:     noPolicy})
 	}
 	if len(noDefaultDeny) > 0 {
 		a.add(Finding{ID: "network.no-default-deny", Check: "network.no-default-deny", Severity: Low, Category: CatNetwork,
-			Title:       fmt.Sprintf("%s %s no default-deny policy", plural(len(noDefaultDeny), "namespace", "namespaces"), verb(len(noDefaultDeny), "has", "have")),
+			Title:       fmt.Sprintf("%s %s no default-deny policy", kube.Plural(len(noDefaultDeny), "namespace", "namespaces"), verb(len(noDefaultDeny), "has", "have")),
 			Detail:      fmt.Sprintf("%s have NetworkPolicies but no default-deny for ingress and egress, so new workloads start out unrestricted.", joinLimit(refNames(noDefaultDeny), 6)),
 			Remediation: "Add a policy with `podSelector: {}` and no rules for each direction.",
 			Objects:     noDefaultDeny})

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -224,20 +225,6 @@ func (a *analyzer) add(f Finding) {
 
 // ---- owners -----------------------------------------------------------------
 
-func key(ns, name string) string { return ns + "/" + name }
-
-func controllerOf(refs []metav1.OwnerReference) *metav1.OwnerReference {
-	for i := range refs {
-		if refs[i].Controller != nil && *refs[i].Controller {
-			return &refs[i]
-		}
-	}
-	if len(refs) > 0 {
-		return &refs[0]
-	}
-	return nil
-}
-
 func refFromOwner(ns string, r *metav1.OwnerReference) *ObjectRef {
 	group := ""
 	if i := strings.IndexByte(r.APIVersion, '/'); i >= 0 {
@@ -250,15 +237,15 @@ func (a *analyzer) indexOwners() {
 	a.rsOwn = map[string]*ObjectRef{}
 	for i := range a.in.ReplicaSets {
 		rs := &a.in.ReplicaSets[i]
-		if c := controllerOf(rs.OwnerReferences); c != nil {
-			a.rsOwn[key(rs.Namespace, rs.Name)] = refFromOwner(rs.Namespace, c)
+		if c := kube.ControllerOf(rs.OwnerReferences); c != nil {
+			a.rsOwn[kube.Key(rs.Namespace, rs.Name)] = refFromOwner(rs.Namespace, c)
 		}
 	}
 	a.jobOwn = map[string]*ObjectRef{}
 	for i := range a.in.Jobs {
 		j := &a.in.Jobs[i]
-		if c := controllerOf(j.OwnerReferences); c != nil {
-			a.jobOwn[key(j.Namespace, j.Name)] = refFromOwner(j.Namespace, c)
+		if c := kube.ControllerOf(j.OwnerReferences); c != nil {
+			a.jobOwn[kube.Key(j.Namespace, j.Name)] = refFromOwner(j.Namespace, c)
 		}
 	}
 }
@@ -266,18 +253,18 @@ func (a *analyzer) indexOwners() {
 // topOwner resolves Pod → ReplicaSet → Deployment and Pod → Job → CronJob.
 // Returns nil for a bare pod.
 func (a *analyzer) topOwner(ns string, refs []metav1.OwnerReference) *ObjectRef {
-	c := controllerOf(refs)
+	c := kube.ControllerOf(refs)
 	if c == nil {
 		return nil
 	}
 	o := refFromOwner(ns, c)
 	switch {
 	case o.Group == "apps" && o.Kind == "ReplicaSet":
-		if up := a.rsOwn[key(ns, o.Name)]; up != nil {
+		if up := a.rsOwn[kube.Key(ns, o.Name)]; up != nil {
 			return up
 		}
 	case o.Group == "batch" && o.Kind == "Job":
-		if up := a.jobOwn[key(ns, o.Name)]; up != nil {
+		if up := a.jobOwn[kube.Key(ns, o.Name)]; up != nil {
 			return up
 		}
 	}
@@ -325,13 +312,13 @@ func (a *analyzer) buildUnits() {
 	}
 	for i := range a.in.Jobs {
 		j := &a.in.Jobs[i]
-		if controllerOf(j.OwnerReferences) == nil {
+		if kube.ControllerOf(j.OwnerReferences) == nil {
 			addUnit("batch", "Job", j.ObjectMeta, &j.Spec.Template, true)
 		}
 	}
 	for i := range a.in.ReplicaSets {
 		rs := &a.in.ReplicaSets[i]
-		if controllerOf(rs.OwnerReferences) == nil {
+		if kube.ControllerOf(rs.OwnerReferences) == nil {
 			addUnit("apps", "ReplicaSet", rs.ObjectMeta, &rs.Spec.Template, false)
 		}
 	}
@@ -362,13 +349,6 @@ func (a *analyzer) buildUnits() {
 func refKey(r ObjectRef) string { return r.Namespace + "/" + r.Group + "/" + r.Kind + "/" + r.Name }
 
 // ---- helpers ----------------------------------------------------------------
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, one)
-	}
-	return fmt.Sprintf("%d %s", n, many)
-}
 
 func kindLabel(r ObjectRef) string {
 	return r.Kind + " " + r.Name

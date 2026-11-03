@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -102,11 +103,6 @@ func Tally(cs []CVE) VulnCounts {
 	return c
 }
 
-func str(m map[string]any, path ...string) string {
-	s, _, _ := unstructured.NestedString(m, path...)
-	return s
-}
-
 // reportVulns reads report.vulnerabilities from a VulnerabilityReport.
 func reportVulns(r *unstructured.Unstructured) []CVE {
 	list, _, _ := unstructured.NestedSlice(r.Object, "report", "vulnerabilities")
@@ -123,13 +119,13 @@ func reportVulns(r *unstructured.Unstructured) []CVE {
 			}
 		}
 		out = append(out, CVE{
-			ID:        str(m, "vulnerabilityID"),
-			Severity:  strings.ToLower(str(m, "severity")),
-			Package:   str(m, "resource"),
-			Installed: str(m, "installedVersion"),
-			Fixed:     str(m, "fixedVersion"),
-			Title:     str(m, "title"),
-			Link:      str(m, "primaryLink"),
+			ID:        kube.Str(m, "vulnerabilityID"),
+			Severity:  strings.ToLower(kube.Str(m, "severity")),
+			Package:   kube.Str(m, "resource"),
+			Installed: kube.Str(m, "installedVersion"),
+			Fixed:     kube.Str(m, "fixedVersion"),
+			Title:     kube.Str(m, "title"),
+			Link:      kube.Str(m, "primaryLink"),
 			Score:     score,
 		})
 	}
@@ -138,9 +134,9 @@ func reportVulns(r *unstructured.Unstructured) []CVE {
 
 // reportImage is "registry/repository:tag" from a VulnerabilityReport.
 func reportImage(r *unstructured.Unstructured) string {
-	repo := str(r.Object, "report", "artifact", "repository")
-	tag := str(r.Object, "report", "artifact", "tag")
-	server := str(r.Object, "report", "registry", "server")
+	repo := kube.Str(r.Object, "report", "artifact", "repository")
+	tag := kube.Str(r.Object, "report", "artifact", "tag")
+	server := kube.Str(r.Object, "report", "registry", "server")
 	img := repo
 	if server != "" && server != "index.docker.io" {
 		img = server + "/" + repo
@@ -158,13 +154,13 @@ func (a *analyzer) reportTarget(r *unstructured.Unstructured) *unit {
 	var ref ObjectRef
 	switch kind {
 	case "ReplicaSet":
-		if o := a.rsOwn[key(ns, name)]; o != nil {
+		if o := a.rsOwn[kube.Key(ns, name)]; o != nil {
 			ref = *o
 		} else {
 			ref = ObjectRef{Group: "apps", Kind: kind, Name: name, Namespace: ns}
 		}
 	case "Job":
-		if o := a.jobOwn[key(ns, name)]; o != nil {
+		if o := a.jobOwn[kube.Key(ns, name)]; o != nil {
 			ref = *o
 		} else {
 			ref = ObjectRef{Group: "batch", Kind: kind, Name: name, Namespace: ns}
@@ -266,7 +262,7 @@ func (a *analyzer) images() {
 		}
 		// Several reports can cover one image (one per ReplicaSet revision
 		// or pod); keep the most recently updated.
-		updated := str(r.Object, "report", "updateTimestamp")
+		updated := kube.Str(r.Object, "report", "updateTimestamp")
 		if !g.sum.Scanned || updated > g.updated {
 			g.sum.Scanned, g.sum.Source, g.sum.ScannedAt, g.updated = true, "trivy-operator", updated, updated
 			g.cves = reportVulns(r)
@@ -371,13 +367,13 @@ func (a *analyzer) imageFinding(s *ImageSummary) {
 	var title string
 	switch {
 	case c.FixableCritical > 0:
-		title = fmt.Sprintf("%s has %s with a fix available", s.Image, plural(c.FixableCritical, "critical CVE", "critical CVEs"))
+		title = fmt.Sprintf("%s has %s with a fix available", s.Image, kube.Plural(c.FixableCritical, "critical CVE", "critical CVEs"))
 	case c.Critical > 0:
-		title = fmt.Sprintf("%s has %s (no fix yet)", s.Image, plural(c.Critical, "critical CVE", "critical CVEs"))
+		title = fmt.Sprintf("%s has %s (no fix yet)", s.Image, kube.Plural(c.Critical, "critical CVE", "critical CVEs"))
 	case c.FixableHigh > 0:
-		title = fmt.Sprintf("%s has %s with a fix available", s.Image, plural(c.FixableHigh, "high CVE", "high CVEs"))
+		title = fmt.Sprintf("%s has %s with a fix available", s.Image, kube.Plural(c.FixableHigh, "high CVE", "high CVEs"))
 	default:
-		title = fmt.Sprintf("%s has %s (no fix yet)", s.Image, plural(c.High, "high CVE", "high CVEs"))
+		title = fmt.Sprintf("%s has %s (no fix yet)", s.Image, kube.Plural(c.High, "high CVE", "high CVEs"))
 	}
 	tops := []string{}
 	for _, v := range s.TopCVEs {
@@ -405,11 +401,11 @@ func failingChecks(r *unstructured.Unstructured, field string) (crit, high []str
 		if ok, found, _ := unstructured.NestedBool(m, "success"); found && ok {
 			continue
 		}
-		t := str(m, "title")
-		if id := str(m, "checkID"); id != "" {
+		t := kube.Str(m, "title")
+		if id := kube.Str(m, "checkID"); id != "" {
 			t = id + " " + t
 		}
-		switch strings.ToUpper(str(m, "severity")) {
+		switch strings.ToUpper(kube.Str(m, "severity")) {
 		case "CRITICAL":
 			crit = append(crit, t)
 		case "HIGH":
@@ -433,7 +429,7 @@ func (a *analyzer) exposedSecrets() {
 		titles := []string{}
 		for _, s := range secrets {
 			if m, ok := s.(map[string]any); ok {
-				titles = append(titles, fmt.Sprintf("%s in %s", str(m, "title"), str(m, "target")))
+				titles = append(titles, fmt.Sprintf("%s in %s", kube.Str(m, "title"), kube.Str(m, "target")))
 			}
 		}
 		img := reportImage(r)
@@ -445,7 +441,7 @@ func (a *analyzer) exposedSecrets() {
 			}
 		}
 		a.add(Finding{ID: "images.exposed-secret/" + r.GetNamespace() + "/" + r.GetName(), Check: "images.exposed-secret", Severity: High, Category: CatImages, Namespace: r.GetNamespace(),
-			Title:       fmt.Sprintf("%s contains %s", img, plural(len(secrets), "embedded secret", "embedded secrets")),
+			Title:       fmt.Sprintf("%s contains %s", img, kube.Plural(len(secrets), "embedded secret", "embedded secrets")),
 			Detail:      fmt.Sprintf("Trivy found credentials baked into the image: %s.", joinLimit(titles, 4)),
 			Remediation: "Remove the secret from the image, rotate it, and inject it at runtime from a Secret.",
 			Objects:     objs})
@@ -470,7 +466,7 @@ func (a *analyzer) configAudits() {
 			ref = u.ref
 		}
 		a.add(Finding{ID: "workloads.trivy-config-audit/" + refKey(ref), Check: "workloads.trivy-config-audit", Severity: Medium, Category: CatWorkloads, Namespace: r.GetNamespace(),
-			Title:       fmt.Sprintf("Trivy config audit: %s fails %s", kindLabel(ref), plural(len(crit), "critical check", "critical checks")),
+			Title:       fmt.Sprintf("Trivy config audit: %s fails %s", kindLabel(ref), kube.Plural(len(crit), "critical check", "critical checks")),
 			Detail:      fmt.Sprintf("Critical: %s. High: %d more.", joinLimit(crit, 4), len(high)),
 			Remediation: "See the ConfigAuditReport for each check's remediation.",
 			Objects:     []ObjectRef{ref}})
@@ -504,7 +500,7 @@ func (a *analyzer) rbacAssessments() {
 			ref.Namespace = r.GetNamespace()
 		}
 		a.add(Finding{ID: "rbac.trivy-assessment/" + refKey(ref), Check: "rbac.trivy-assessment", Severity: sev, Category: CatRBAC, Namespace: ref.Namespace,
-			Title:       fmt.Sprintf("Trivy RBAC assessment: %s %s has %s", kind, name, plural(len(crit)+len(high), "critical/high issue", "critical/high issues")),
+			Title:       fmt.Sprintf("Trivy RBAC assessment: %s %s has %s", kind, name, kube.Plural(len(crit)+len(high), "critical/high issue", "critical/high issues")),
 			Detail:      fmt.Sprintf("%s.", joinLimit(append(crit, high...), 4)),
 			Remediation: "See the RbacAssessmentReport for each check's remediation.",
 			Objects:     []ObjectRef{ref}})

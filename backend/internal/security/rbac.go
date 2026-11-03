@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -221,7 +222,7 @@ func (a *analyzer) indexServiceAccounts() {
 		if name == "" {
 			name = "default"
 		}
-		a.saUsed[key(ns, name)] = true
+		a.saUsed[kube.Key(ns, name)] = true
 	}
 	for i := range a.in.Pods {
 		p := &a.in.Pods[i]
@@ -245,7 +246,7 @@ func (a *analyzer) indexServiceAccounts() {
 	a.saListed = map[string]bool{}
 	if a.in.ServiceAccounts != nil {
 		for _, sa := range a.in.ServiceAccounts {
-			a.saExists[key(sa.Namespace, sa.Name)] = true
+			a.saExists[kube.Key(sa.Namespace, sa.Name)] = true
 		}
 	}
 }
@@ -389,7 +390,7 @@ func (a *analyzer) rbac() {
 		for _, s := range b.subjects {
 			sub := Subject{Kind: s.Kind, Name: s.Name, Namespace: subjectNS(s, b.meta.Namespace)}
 			if s.Kind == rbacv1.ServiceAccountKind {
-				k := key(sub.Namespace, s.Name)
+				k := kube.Key(sub.Namespace, s.Name)
 				if a.saKnown(sub.Namespace) {
 					sub.Exists = boolp(a.saExists[k])
 					if !a.saExists[k] {
@@ -585,7 +586,7 @@ func (a *analyzer) unboundRoles() {
 	}
 	if len(cluster) > 0 {
 		a.add(Finding{ID: "rbac.unbound-role/cluster", Check: "rbac.unbound-role", Severity: Info, Category: CatRBAC,
-			Title:       fmt.Sprintf("%s %s not bound by anything", plural(len(cluster), "ClusterRole", "ClusterRoles"), isAre(len(cluster))),
+			Title:       fmt.Sprintf("%s %s not bound by anything", kube.Plural(len(cluster), "ClusterRole", "ClusterRoles"), isAre(len(cluster))),
 			Detail:      fmt.Sprintf("%s. Unbound roles grant nothing but clutter RBAC reviews; they may be left over from uninstalled software.", joinLimit(refNames(cluster), 6)),
 			Remediation: "Delete roles that are no longer needed.",
 			Objects:     cluster})
@@ -598,7 +599,7 @@ func (a *analyzer) unboundRoles() {
 	for _, ns := range nss {
 		rs := byNS[ns]
 		a.add(Finding{ID: "rbac.unbound-role/" + ns, Check: "rbac.unbound-role", Severity: Info, Category: CatRBAC, Namespace: ns,
-			Title:       fmt.Sprintf("%s in %s %s not bound by anything", plural(len(rs), "Role", "Roles"), ns, isAre(len(rs))),
+			Title:       fmt.Sprintf("%s in %s %s not bound by anything", kube.Plural(len(rs), "Role", "Roles"), ns, isAre(len(rs))),
 			Detail:      fmt.Sprintf("%s. Unbound roles grant nothing but clutter RBAC reviews.", joinLimit(refNames(rs), 6)),
 			Remediation: "Delete roles that are no longer needed.",
 			Objects:     rs})
