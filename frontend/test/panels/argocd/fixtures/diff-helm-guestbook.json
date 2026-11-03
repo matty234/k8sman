@@ -1,0 +1,45 @@
+{
+    "resources": [
+        {
+            "group": "",
+            "kind": "ConfigMap",
+            "namespace": "helm-guestbook",
+            "name": "legacy-settings",
+            "status": "OutOfSync",
+            "hook": false,
+            "requiresPruning": true,
+            "target": null,
+            "live": "apiVersion: v1\ndata:\n  MODE: legacy\nkind: ConfigMap\nmetadata:\n  annotations:\n    argocd.argoproj.io/tracking-id: helm-guestbook:/ConfigMap:helm-guestbook/legacy-settings\n  name: legacy-settings\n  namespace: helm-guestbook\n"
+        },
+        {
+            "group": "apps",
+            "kind": "Deployment",
+            "namespace": "helm-guestbook",
+            "name": "helm-guestbook",
+            "status": "OutOfSync",
+            "hook": false,
+            "requiresPruning": false,
+            "target": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  annotations:\n    argocd.argoproj.io/tracking-id: helm-guestbook:apps/Deployment:helm-guestbook/helm-guestbook\n  labels:\n    app: helm-guestbook\n    chart: helm-guestbook-0.1.0\n    heritage: Helm\n    release: helm-guestbook\n  name: helm-guestbook\n  namespace: helm-guestbook\nspec:\n  progressDeadlineSeconds: 600\n  replicas: 2\n  revisionHistoryLimit: 3\n  selector:\n    matchLabels:\n      app: helm-guestbook\n      release: helm-guestbook\n  strategy:\n    rollingUpdate:\n      maxSurge: 25%\n      maxUnavailable: 25%\n    type: RollingUpdate\n  template:\n    metadata:\n      labels:\n        app: helm-guestbook\n        release: helm-guestbook\n    spec:\n      containers:\n      - image: gcr.io/google-samples/gb-frontend:v5\n        imagePullPolicy: IfNotPresent\n        livenessProbe:\n          failureThreshold: 3\n          httpGet:\n            path: /\n            port: http\n            scheme: HTTP\n          periodSeconds: 10\n          successThreshold: 1\n          timeoutSeconds: 1\n        name: helm-guestbook\n        ports:\n        - containerPort: 80\n          name: http\n          protocol: TCP\n        readinessProbe:\n          failureThreshold: 3\n          httpGet:\n            path: /\n            port: http\n            scheme: HTTP\n          periodSeconds: 10\n          successThreshold: 1\n          timeoutSeconds: 1\n        resources: {}\n        terminationMessagePath: /dev/termination-log\n        terminationMessagePolicy: File\n      dnsPolicy: ClusterFirst\n      restartPolicy: Always\n      schedulerName: default-scheduler\n      securityContext: {}\n      terminationGracePeriodSeconds: 30\n",
+            "live": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  annotations:\n    argocd.argoproj.io/tracking-id: helm-guestbook:apps/Deployment:helm-guestbook/helm-guestbook\n  labels:\n    app: helm-guestbook\n    chart: helm-guestbook-0.1.0\n    heritage: Helm\n    release: helm-guestbook\n  name: helm-guestbook\n  namespace: helm-guestbook\nspec:\n  progressDeadlineSeconds: 600\n  replicas: 3\n  revisionHistoryLimit: 3\n  selector:\n    matchLabels:\n      app: helm-guestbook\n      release: helm-guestbook\n  strategy:\n    rollingUpdate:\n      maxSurge: 25%\n      maxUnavailable: 25%\n    type: RollingUpdate\n  template:\n    metadata:\n      labels:\n        app: helm-guestbook\n        release: helm-guestbook\n    spec:\n      containers:\n      - image: gcr.io/google-samples/gb-frontend:v5\n        imagePullPolicy: IfNotPresent\n        livenessProbe:\n          failureThreshold: 3\n          httpGet:\n            path: /\n            port: http\n            scheme: HTTP\n          periodSeconds: 10\n          successThreshold: 1\n          timeoutSeconds: 1\n        name: helm-guestbook\n        ports:\n        - containerPort: 80\n          name: http\n          protocol: TCP\n        readinessProbe:\n          failureThreshold: 3\n          httpGet:\n            path: /\n            port: http\n            scheme: HTTP\n          periodSeconds: 10\n          successThreshold: 1\n          timeoutSeconds: 1\n        resources: {}\n        terminationMessagePath: /dev/termination-log\n        terminationMessagePolicy: File\n      dnsPolicy: ClusterFirst\n      restartPolicy: Always\n      schedulerName: default-scheduler\n      securityContext: {}\n      terminationGracePeriodSeconds: 30\n"
+        },
+        {
+            "group": "",
+            "kind": "Service",
+            "namespace": "helm-guestbook",
+            "name": "helm-guestbook",
+            "status": "Synced",
+            "hook": false,
+            "requiresPruning": false,
+            "target": "apiVersion: v1\nkind: Service\nmetadata:\n  annotations:\n    argocd.argoproj.io/tracking-id: helm-guestbook:/Service:helm-guestbook/helm-guestbook\n    k8sman.dev/drift: demo\n  labels:\n    app: helm-guestbook\n    chart: helm-guestbook-0.1.0\n    heritage: Helm\n    release: helm-guestbook\n  name: helm-guestbook\n  namespace: helm-guestbook\nspec:\n  clusterIP: 10.96.42.67\n  clusterIPs:\n  - 10.96.42.67\n  internalTrafficPolicy: Cluster\n  ipFamilies:\n  - IPv4\n  ipFamilyPolicy: SingleStack\n  ports:\n  - name: http\n    port: 80\n    protocol: TCP\n    targetPort: http\n  selector:\n    app: helm-guestbook\n    release: helm-guestbook\n  sessionAffinity: None\n  type: ClusterIP\n",
+            "live": "apiVersion: v1\nkind: Service\nmetadata:\n  annotations:\n    argocd.argoproj.io/tracking-id: helm-guestbook:/Service:helm-guestbook/helm-guestbook\n    k8sman.dev/drift: demo\n  labels:\n    app: helm-guestbook\n    chart: helm-guestbook-0.1.0\n    heritage: Helm\n    release: helm-guestbook\n  name: helm-guestbook\n  namespace: helm-guestbook\nspec:\n  clusterIP: 10.96.42.67\n  clusterIPs:\n  - 10.96.42.67\n  internalTrafficPolicy: Cluster\n  ipFamilies:\n  - IPv4\n  ipFamilyPolicy: SingleStack\n  ports:\n  - name: http\n    port: 80\n    protocol: TCP\n    targetPort: http\n  selector:\n    app: helm-guestbook\n    release: helm-guestbook\n  sessionAffinity: None\n  type: ClusterIP\n"
+        }
+    ],
+    "server": {
+        "namespace": "argocd",
+        "service": "argocd-server",
+        "port": 443,
+        "scheme": "https",
+        "version": "v3.5.7"
+    },
+    "auth": "session"
+}

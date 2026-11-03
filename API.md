@@ -278,6 +278,30 @@ identify (`kind`/`name`, e.g. the pod, with its `owner`), else `kind: "Alert"`
 with the alertname. With a namespace filter only alerts labelled with that
 namespace are included.
 
+## Argo CD API (per-resource diffs)
+
+Optional: talks to the Argo CD API server (`argocd-server`) through the API
+server's service proxy (https, or http when `argocd-cmd-params-cm` sets
+`server.insecure`; `server.rootpath` is honoured). The Service is found by the
+label `app.kubernetes.io/name=argocd-server` in the app's namespace, then
+cluster-wide, then in `argocd`. The Argo token goes as the `argocd.token`
+cookie, because the API server strips `Authorization`. Tokens are never
+returned or logged. None of these endpoints writes to the cluster, so they
+also work with `--read-only`. Details: [docs/ARGOCD.md](docs/ARGOCD.md).
+
+Errors carry a `reason`: `NotFound` (no argocd-server), `Unreachable`,
+`NoToken` (401, connect first), `Unauthorized` (401, Argo rejected the token
+or session), `Forbidden` (403, Argo RBAC), `NoInitialAdmin`, or `Kube<Reason>`
+for errors from the Kubernetes API itself (such as a forbidden `services/proxy`).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/argocd/status[?namespace=&refresh=1]` | `{context, found, reachable, server?:{namespace, service, port, scheme, rootPath?, version}, auth: none/configured/session, authValid?, username?, initialAdminAvailable, error?}`. `namespace` is the Application's. Checks the token with `/api/v1/session/userinfo`. Discovery is cached for 30s (10s on failure) |
+| POST | `/api/argocd/auth` | body `{token, context?, namespace?}` (context defaults to the current one; a pasted `Bearer ` prefix is dropped). Saves the token per kube context in `~/.config/k8sman/settings.json` (mode 0600) and drops any session. A token Argo rejects is not saved (401). Returns the status |
+| DELETE | `/api/argocd/auth[?context=&namespace=]` | forget the saved token and the session for the context. Returns the status |
+| POST | `/api/argocd/auth/initial-admin` | body `{namespace?}`. Opt-in only (the UI asks first): reads the password from `<argo ns>/argocd-initial-admin-secret` with your kube RBAC, `POST /api/v1/session` as `admin`, and keeps the session token in memory for this context. The password is never stored. 404/403 `NoInitialAdmin` when the Secret is missing or unreadable, 401 when the password was changed. A session takes precedence over a saved token until it is cleared or expires |
+| GET | `/api/argocd/diff?name=[&namespace=]` | Argo's `GET /api/v1/applications/{name}/managed-resources?appNamespace=`, converted: `{resources:[{group, kind, namespace?, name, status: Synced/OutOfSync, hook, requiresPruning, target: yaml/null, live: yaml/null}], server, auth}`. Out-of-sync resources come first. It compares `normalizedLiveState` with `predictedLiveState` when Argo predicted one (the diff the Argo UI shows), else `liveState` with `targetState`. Removed noise: `status`, `metadata.managedFields`, `resourceVersion`, `uid`, `generation`, `creationTimestamp`, `selfLink`, and the annotations `kubectl.kubernetes.io/last-applied-configuration` and `deployment.kubernetes.io/revision`. A null `target` means "to be pruned" and a null `live` means "to be created". Secret data arrives masked by Argo |
+
 ## CRD group icons
 
 Icons for custom resource API groups (`argoproj.io`, `cert-manager.io`, …), from

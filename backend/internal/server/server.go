@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/yaml"
 
+	"github.com/bargrove/k8sman/backend/internal/argoapi"
 	"github.com/bargrove/k8sman/backend/internal/cluster"
 	"github.com/bargrove/k8sman/backend/internal/columns"
 	"github.com/bargrove/k8sman/backend/internal/icons"
@@ -67,6 +68,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.helmRoutes()
 	s.securityRoutes()
 	prom.Register(s.mux, mgr, opts.ReadOnly)
+	argoapi.Register(s.mux, mgr, s.settings)
 	metrics.Register(s.mux, mgr)
 	s.iconRoutes(opts)
 	return s
