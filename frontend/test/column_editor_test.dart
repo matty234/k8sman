@@ -6,7 +6,7 @@ import 'package:k8sman/ui/column_editor.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
-import 'shell_screenshot_test.dart' show FixtureApi, fixture;
+import 'support/fixture_api.dart' show FixtureApi, fixture;
 import 'support/screenshot.dart';
 
 class _ColumnsApi extends FixtureApi {

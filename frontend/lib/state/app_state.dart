@@ -45,9 +45,30 @@ class AppState extends ChangeNotifier {
   MainView view = MainView.resources;
 
   void showView(MainView v) {
+    if (v != view && detail != null) inspectorCollapsed = true;
     view = v;
     notifyListeners();
   }
+
+  /// The inspector is open but collapsed to a slim tab on the right edge
+  /// (set when the user moves to another kind or view, so the new table
+  /// gets the width back).
+  bool inspectorCollapsed = false;
+
+  void collapseInspector() {
+    if (detail == null || inspectorCollapsed) return;
+    inspectorCollapsed = true;
+    notifyListeners();
+  }
+
+  void expandInspector() {
+    if (!inspectorCollapsed) return;
+    inspectorCollapsed = false;
+    notifyListeners();
+  }
+
+  /// ⌘I: collapse / expand the open inspector.
+  void toggleInspector() => inspectorCollapsed ? expandInspector() : collapseInspector();
 
   final List<DetailTarget> _detailStack = [];
   DetailTarget? get detail => _detailStack.isEmpty ? null : _detailStack.last;
@@ -111,6 +132,7 @@ class AppState extends ChangeNotifier {
   }
 
   void selectType(ResourceType t) {
+    if (detail != null && (t != selectedType || view != MainView.resources)) inspectorCollapsed = true;
     selectedType = t;
     view = MainView.resources;
     notifyListeners();
@@ -126,6 +148,7 @@ class AppState extends ChangeNotifier {
     _detailStack
       ..clear()
       ..add(t);
+    inspectorCollapsed = false;
     notifyListeners();
   }
 
@@ -150,6 +173,7 @@ class AppState extends ChangeNotifier {
 
   void closeDetail() {
     _detailStack.clear();
+    inspectorCollapsed = false;
     notifyListeners();
   }
 
