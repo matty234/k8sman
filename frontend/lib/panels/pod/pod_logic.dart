@@ -89,27 +89,6 @@ List<PodContainer> podContainers(Json pod) {
   ];
 }
 
-/// Same logic as the table's Status column (backend builtin jq).
-String podEffectiveStatus(Json pod) {
-  if (dig(pod, ['metadata', 'deletionTimestamp']) != null) return 'Terminating';
-  final status = asMap(pod['status']);
-  for (final s in asMapList(status['initContainerStatuses'])) {
-    final st = asMap(s['state']);
-    final waiting = st['waiting'];
-    final term = asMap(st['terminated']);
-    final code = (term['exitCode'] as num?) ?? 0;
-    if (code != 0 || waiting != null) {
-      return 'Init:${dig<String>(st, ['waiting', 'reason']) ?? term['reason'] ?? 'Error'}';
-    }
-  }
-  for (final s in asMapList(status['containerStatuses'])) {
-    final st = asMap(s['state']);
-    final r = dig<String>(st, ['waiting', 'reason']) ?? dig<String>(st, ['terminated', 'reason']);
-    if (r != null && r.isNotEmpty) return r;
-  }
-  return '${status['phase'] ?? 'Unknown'}';
-}
-
 /// A derived, human explanation line for the status summary.
 class PodInsight {
   final Severity severity;

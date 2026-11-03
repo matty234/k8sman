@@ -13,6 +13,7 @@ import '../panel.dart';
 import 'pod_containers.dart';
 import 'pod_logic.dart';
 import 'pod_widgets.dart';
+import '../../util/pod.dart';
 
 class PodPanel extends ResourcePanel {
   const PodPanel();
@@ -159,7 +160,7 @@ class _StatusSummary extends StatelessWidget {
     final pod = ctx.object;
     final spec = ctx.spec;
     final status = ctx.status;
-    final effective = podEffectiveStatus(pod);
+    final effective = podStatus(pod);
     final phase = '${status['phase'] ?? ''}';
     final containers = podContainers(pod);
     final main = containers.where((c) => c.kind == ContainerKind.regular || c.kind == ContainerKind.sidecar).toList();

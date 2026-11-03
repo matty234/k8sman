@@ -7,6 +7,7 @@ import '../../util/k8s.dart';
 import '../gateway/routed_by.dart';
 import '../panel.dart';
 import 'widgets.dart';
+import '../../util/pod.dart';
 
 /// Backends of a Service: its EndpointSlices and the pods its selector matches.
 class ServiceBackends {

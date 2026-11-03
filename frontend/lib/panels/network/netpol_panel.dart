@@ -7,6 +7,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'netpol_explain.dart';
 import 'widgets.dart';
+import '../../util/pod.dart';
 
 class NetworkPolicyPanel extends ResourcePanel {
   const NetworkPolicyPanel();

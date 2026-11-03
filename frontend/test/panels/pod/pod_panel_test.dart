@@ -13,23 +13,24 @@ import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
+import 'package:k8sman/util/pod.dart';
 
 Json fixture(String name) => jsonDecode(File('../dev/fixtures/$name.json').readAsStringSync()) as Json;
 
 void main() {
   group('logic', () {
     test('effective status matches table semantics', () {
-      expect(podEffectiveStatus(fixture('pod-web')), 'Running');
-      expect(podEffectiveStatus(fixture('pod-crashy')), 'CrashLoopBackOff');
-      expect(podEffectiveStatus(fixture('pod-bad-image')), 'ImagePullBackOff');
+      expect(podStatus(fixture('pod-web')), 'Running');
+      expect(podStatus(fixture('pod-crashy')), 'CrashLoopBackOff');
+      expect(podStatus(fixture('pod-bad-image')), 'ImagePullBackOff');
       final term = fixture('pod-web');
       (term['metadata'] as Map)['deletionTimestamp'] = '2026-11-03T12:00:00Z';
-      expect(podEffectiveStatus(term), 'Terminating');
+      expect(podStatus(term), 'Terminating');
       final init = fixture('pod-web');
       ((init['status'] as Map)['initContainerStatuses'] as List)[0]['state'] = {
         'waiting': {'reason': 'CrashLoopBackOff'}
       };
-      expect(podEffectiveStatus(init), 'Init:CrashLoopBackOff');
+      expect(podStatus(init), 'Init:CrashLoopBackOff');
     });
 
     test('containers are paired and labelled', () {

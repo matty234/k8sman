@@ -6,6 +6,7 @@ import 'package:k8sman/panels/workloads/widgets/pods_list.dart';
 import 'package:k8sman/util/k8s.dart';
 
 import 'support.dart';
+import 'package:k8sman/util/pod.dart';
 
 void main() {
   final deploy = loadFixture('deploy-web.json');

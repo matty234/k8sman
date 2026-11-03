@@ -406,7 +406,3 @@ bool labelsMatch(Json? labels, Json selector) {
   final l = labels ?? const {};
   return selector.entries.every((e) => l[e.key]?.toString() == e.value?.toString());
 }
-
-/// True when a pod's Ready condition is True.
-bool podReady(Json pod) =>
-    asMapList(dig(pod, ['status', 'conditions'])).any((c) => c['type'] == 'Ready' && c['status'] == 'True');
