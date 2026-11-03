@@ -4,7 +4,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
+import 'package:k8sman/panels/panel.dart';
 import 'package:k8sman/panels/pod/pod_logic.dart';
+import 'package:k8sman/panels/pod/pod_panel.dart';
+import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/state/log_dock.dart';
+import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
@@ -102,7 +107,7 @@ void main() {
     await tapAndExpect('ConfigMap/web-config', 'ConfigMap', 'web-config'); // volume
   });
 
-  testWidgets('logs tab streams lines, searches and filters', (tester) async {
+  testWidgets('log stream view streams lines, searches and filters', (tester) async {
     await loadRealFonts();
     final pod = fixture('pod-web');
     final lines = [
@@ -110,42 +115,84 @@ void main() {
         LogMessage(line: i % 50 == 7 ? '2026/11/03 11:23:$i [error] upstream timed out ($i)' : '10.244.0.1 - - "GET /healthz HTTP/1.1" 200 $i'),
     ];
     final api = FakeApiClient(logLines: {'demo/web-6fd47b8fcb-4v4m9/nginx': lines});
-    await pumpPanelTab(tester, pod, 'Logs', api: api);
-    tester.view.physicalSize = const Size(560, 900);
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.pump();
-    await tester.pump();
+    final dock = await pumpLogDock(tester, pod, api: api);
+    final s = dock.active!;
+    expect(s.container, 'nginx');
     expect(find.textContaining('300 lines'), findsOneWidget);
-    expect(find.text('end of stream'), findsOneWidget);
-    await saveScreenshot(tester, 'pod-logs');
+    expect(find.textContaining('ended'), findsOneWidget);
     // Pinned to the bottom: the last line is visible.
     expect(find.textContaining('200 299'), findsOneWidget);
     await saveScreenshot(tester, 'pod-logs');
 
     await tester.enterText(find.byType(TextField), 'upstream');
     await tester.pump();
-    expect(find.text('6 matches'), findsOneWidget);
-    await tester.tap(find.text('Only matching'));
+    expect(s.matching.length, 6);
+    await tester.tap(find.byTooltip('Show only matching lines (6 matches)'));
+    await tester.pump();
     await tester.pump();
     expect(find.textContaining('upstream timed out (7)'), findsOneWidget);
     expect(find.textContaining('GET /healthz'), findsNothing);
     await saveScreenshot(tester, 'pod-logs-filtered');
+
+    // Clear empties the buffer and counts the dropped lines.
+    await tester.tap(find.byTooltip('Clear'));
+    await tester.pump();
+    expect(s.lines, isEmpty);
+    expect(s.dropped, 300);
     expect(tester.takeException(), isNull);
+    dock.closeAll();
   });
 
-  testWidgets('logs tab picks the troubled container and shows not-started state', (tester) async {
+  testWidgets('log stream keeps at most 10k lines', (tester) async {
+    final lines = [for (var i = 0; i < 10050; i++) LogMessage(line: 'line $i')];
+    final dock = await pumpLogDock(tester, fixture('pod-web'), api: FakeApiClient(logLines: {'demo/web-6fd47b8fcb-4v4m9/nginx': lines}));
+    final s = dock.active!;
+    expect(s.lines.length, 10000);
+    expect(s.dropped, 50);
+    expect(s.lines.first, 'line 50');
+    dock.closeAll();
+  });
+
+  testWidgets('logs pick the troubled container and show the not-started state', (tester) async {
     await loadRealFonts();
-    await pumpPanelTab(tester, fixture('pod-bad-image'), 'Logs');
-    tester.view.physicalSize = const Size(560, 500);
-    await tester.pump();
+    var dock = await pumpLogDock(tester, fixture('pod-bad-image'), size: const Size(560, 300));
     expect(find.textContaining('has not started yet: ImagePullBackOff'), findsOneWidget);
     await saveScreenshot(tester, 'pod-logs-not-started');
+    dock.closeAll();
 
-    await pumpPanelTab(tester, fixture('pod-crashy'), 'Logs',
+    dock = await pumpLogDock(tester, fixture('pod-crashy'),
         api: FakeApiClient(logLines: {'demo/crashy/app': const [LogMessage(line: 'starting'), LogMessage(line: 'fatal: config missing')]}));
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.pump();
+    expect(dock.active!.container, 'app');
     expect(find.textContaining('fatal: config missing'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    dock.closeAll();
+  });
+
+  testWidgets('container cards open logs (and previous-instance logs after restarts)', (tester) async {
+    await pumpPanel(tester, fixture('pod-crashy'), size: const Size(560, 3000));
+    final dock = Provider.of<LogDock>(tester.element(find.byType(ListView).first), listen: false);
+    await tester.tap(find.byKey(const ValueKey('view-logs-app')));
+    await tester.pump();
+    expect(dock.tabs.map((t) => t.label), ['crashy/app']);
+    expect(dock.active!.previous, isFalse);
+
+    // Same stream again focuses the tab, switching it to the previous instance.
+    await tester.tap(find.byKey(const ValueKey('view-previous-logs-app')));
+    await tester.pump();
+    expect(dock.tabs.length, 1);
+    expect(dock.active!.previous, isTrue);
+
+    // No restarts: no previous-instance link.
+    await pumpPanel(tester, fixture('pod-web'), size: const Size(560, 3000));
+    expect(find.byKey(const ValueKey('view-logs-nginx')), findsOneWidget);
+    expect(find.byKey(const ValueKey('view-previous-logs-nginx')), findsNothing);
+    dock.closeAll();
+  });
+
+  test('pod panel offers a Logs action instead of a Logs tab', () {
+    final pod = fixture('pod-web');
+    final ctx = PanelContext(object: pod, type: testType('', 'Pod'), api: FakeApiClient(), app: AppState(FakeApiClient()));
+    expect(const PodPanel().tabs(ctx), isEmpty);
+    expect(const PodPanel().actions(ctx).map((a) => a.id), ['logs']);
   });
 }

@@ -3,7 +3,7 @@
 Clicking a table row opens the detail sidebar. It has these tabs:
 
 - **Overview**: the shared `MetadataSection`, then your panel's `buildSections()`
-- your panel's extra `tabs()`, if any (e.g. Logs)
+- your panel's extra `tabs()`, if any. Logs are not a tab: they open in the bottom log dock (`lib/ui/logs/open_logs.dart`: `podLogsAction`, `workloadLogsAction`, `openPodLogs`).
 - **YAML** and **Events**, which are shared and need no panel code
 
 ## Contract (`frontend/lib/panels/panel.dart`)
@@ -78,7 +78,7 @@ so you never touch `registry.dart`.
 - `pumpPanel(tester, object, api: FakeApiClient(...))`, which renders your
   sections exactly as the Overview tab does. It returns the `AppState`, so you
   can assert `app.detail` after tapping a `ResourceLink`.
-- `pumpPanelTab(tester, object, 'Logs', api: ...)`, which renders an extra tab.
+- `pumpPanelTab(tester, object, 'Label', api: ...)`, which renders an extra tab, and `pumpLogDock(tester, pod, api: ...)`, which renders the log dock for a pod.
 - `FakeApiClient(itemsByResource: {'pods': [...]}, eventItems: [...], logLines: {...})`.
 
 Real objects captured from the dev cluster live in `dev/fixtures/*.json`.

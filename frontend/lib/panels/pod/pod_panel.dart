@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../actions/actions.dart';
 import '../../api/models.dart';
+import '../../ui/logs/open_logs.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'pod_containers.dart';
 import 'pod_logic.dart';
-import 'pod_logs.dart';
 import 'pod_widgets.dart';
 
 class PodPanel extends ResourcePanel {
@@ -29,7 +30,8 @@ class PodPanel extends ResourcePanel {
         icon: Icons.view_in_ar_outlined,
         trailing: Hint(_containerCounts(containers)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (final c in containers) ContainerCard(c, namespace: ctx.namespace),
+          for (final c in containers)
+            ContainerCard(c, namespace: ctx.namespace, onViewLogs: (context, previous) => openPodLogs(context, ctx.object, container: c.name, previous: previous)),
           if (containers.isEmpty) const Hint('No containers'),
         ]),
       ),
@@ -46,10 +48,10 @@ class PodPanel extends ResourcePanel {
     ];
   }
 
+  /// Logs open in the bottom dock (not a sidebar tab) so they keep
+  /// streaming while the user navigates.
   @override
-  List<PanelTab> tabs(PanelContext ctx) => [
-        PanelTab(label: 'Logs', icon: Icons.notes, builder: (context, ctx) => PodLogsView(key: ValueKey('logs-${ctx.uid}'), ctx: ctx)),
-      ];
+  List<ResourceAction> actions(PanelContext ctx) => [podLogsAction(ctx)];
 
   static String _containerCounts(List<PodContainer> cs) {
     final counts = <ContainerKind, int>{};

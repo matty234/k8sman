@@ -4,6 +4,8 @@ import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/registry.dart';
 import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/state/log_dock.dart';
+import 'package:k8sman/ui/logs/log_dock_view.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
@@ -119,7 +121,11 @@ Future<AppState> pumpPanel(
   addTearDown(tester.view.reset);
 
   await tester.pumpWidget(MultiProvider(
-    providers: [Provider<ApiClient>.value(value: client), ChangeNotifierProvider<AppState>.value(value: app)],
+    providers: [
+      Provider<ApiClient>.value(value: client),
+      ChangeNotifierProvider<AppState>.value(value: app),
+      ChangeNotifierProvider<LogDock>(create: (_) => LogDock(client)),
+    ],
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: buildTheme(Brightness.dark),
@@ -167,4 +173,35 @@ Future<void> pumpPanelTab(
     ),
   ));
   await tester.pump(const Duration(milliseconds: 100));
+}
+
+/// Opens [pod]'s logs in a fresh [LogDock] and renders the dock alone
+/// (as the bottom panel, filling [size]). Returns the dock; call
+/// `dock.closeAll()` before the test ends to stop any polling timers.
+Future<LogDock> pumpLogDock(
+  WidgetTester tester,
+  Json pod, {
+  ApiClient? api,
+  String? container,
+  bool previous = false,
+  Size size = const Size(900, 500),
+}) async {
+  final client = api ?? FakeApiClient();
+  final dock = LogDock(client)..open(pod, container: container, previous: previous);
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(MultiProvider(
+    providers: [Provider<ApiClient>.value(value: client), ChangeNotifierProvider<LogDock>.value(value: dock)],
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(Brightness.dark),
+      home: Scaffold(body: Column(children: [const Spacer(), LogDockView(maxHeight: size.height)])),
+    ),
+  ));
+  dock.setHeight(size.height);
+  for (var i = 0; i < 3; i++) {
+    await tester.pump(const Duration(milliseconds: 60));
+  }
+  return dock;
 }

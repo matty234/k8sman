@@ -6,6 +6,7 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../ui/logs/open_logs.dart';
 import '../panel.dart';
 import 'batch_common.dart';
 
@@ -16,6 +17,9 @@ class JobPanel extends ResourcePanel {
 
   @override
   Set<String> get kinds => {'batch/Job'};
+
+  @override
+  List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx)];
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
