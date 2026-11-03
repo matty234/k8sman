@@ -1,0 +1,41 @@
+{
+  "apiVersion": "v1",
+  "kind": "Endpoints",
+  "metadata": {
+    "annotations": {
+      "endpoints.kubernetes.io/last-change-trigger-time": "2026-11-03T11:23:10Z"
+    },
+    "creationTimestamp": "2026-11-03T11:22:57Z",
+    "labels": {
+      "service.kubernetes.io/headless": ""
+    },
+    "name": "redis",
+    "namespace": "demo",
+    "resourceVersion": "930",
+    "uid": "96d9ea0f-f717-4cf0-8bcd-b187a8a15fe0"
+  },
+  "subsets": [
+    {
+      "addresses": [
+        {
+          "hostname": "redis-0",
+          "ip": "10.244.0.12",
+          "nodeName": "k8sman-dev-control-plane",
+          "targetRef": {
+            "kind": "Pod",
+            "name": "redis-0",
+            "namespace": "demo",
+            "uid": "ba31c76b-19fe-40da-8951-c083a0a5ab91"
+          }
+        }
+      ],
+      "ports": [
+        {
+          "name": "redis",
+          "port": 6379,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ]
+}
