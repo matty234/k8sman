@@ -34,9 +34,15 @@ func main() {
 		noRemoteIcon = flag.Bool("no-remote-icons", false, "never fetch CRD group icons (chart icons, website favicons) from the internet")
 		iconCache    = flag.String("icon-cache", icons.DefaultCacheDir(), "CRD group icon cache directory")
 		exitOnEOF    = flag.Bool("exit-on-stdin-eof", false, "shut down when stdin closes (set by the macOS app so the backend dies with it)")
+		pprofAddr    = flag.String("pprof", "", "serve net/http/pprof on this loopback address (e.g. 127.0.0.1:6060); off by default")
+		cacheDir     = flag.String("cache-dir", cluster.DefaultCacheDir(), "on-disk discovery cache for fast cold starts (\"\" = memory only)")
 	)
 	flag.Parse()
+	if *pprofAddr != "" {
+		startPprof(*pprofAddr)
+	}
 
+	cluster.CacheDir = *cacheDir
 	st, err := settings.Open(*settingsPath)
 	if err != nil {
 		log.Printf("settings: %v (using defaults)", err)
