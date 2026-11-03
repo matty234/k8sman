@@ -491,21 +491,18 @@ class _IssueRow extends StatelessWidget {
     final c = issueColor(context, issue.severity);
     final kindLabel = title.kind == 'PersistentVolumeClaim' ? 'PVC' : title.kind;
 
-    final nameLine = Row(children: [
-      if (!dense) ...[Text(kindLabel, style: hint), const SizedBox(width: 6)],
-      Flexible(child: _Link(ref: title, strong: !dense)),
-      if (countLabel != null) ...[
-        const SizedBox(width: 8),
-        Text(countLabel!, style: hint?.copyWith(fontWeight: FontWeight.w600)),
-      ],
-      const SizedBox(width: 8),
+    // Wrap (not Row) so narrow widths — e.g. with the sidebar open — flow
+    // onto a second line instead of overflowing.
+    final nameLine = Wrap(spacing: 6, runSpacing: 3, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      if (!dense) Text(kindLabel, style: hint),
+      _Link(ref: title, strong: !dense),
+      if (countLabel != null) Text(countLabel!, style: hint?.copyWith(fontWeight: FontWeight.w600)),
       StatusBadge(issue.reason, dense: true, severity: issue.severity.badge),
-      if (context2 != null) ...[
-        const SizedBox(width: 8),
-        Text('of ${context2!.kind}', style: hint),
-        const SizedBox(width: 4),
-        Flexible(child: _Link(ref: context2!)),
-      ],
+      if (context2 != null)
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('of ${context2!.kind} ', style: hint),
+          Flexible(child: _Link(ref: context2!)),
+        ]),
     ]);
 
     final meta = Row(mainAxisSize: MainAxisSize.min, children: [

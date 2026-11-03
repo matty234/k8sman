@@ -45,7 +45,9 @@ void main() {
     final app = AppState(api)
       ..types = testTypes
       ..currentContext = 'kind-k8sman-dev';
-    for (final size in const [Size(900, 700), Size(1400, 700)]) {
+    // Sweep widths, including the narrow main area you get with the sidebar open.
+    for (var w = 360.0; w <= 1600; w += 31) {
+      final size = Size(w, 700);
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -55,8 +57,8 @@ void main() {
       ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
-      expect(tester.takeException(), isNull);
-      await saveScreenshot(tester, 'nodes-${size.width.toInt()}');
+      expect(tester.takeException(), isNull, reason: 'overflow at width $w');
+      if (w == 701 || w == 1259) await saveScreenshot(tester, 'nodes-${size.width.toInt()}');
     }
     expect(find.text('worker-sick'), findsOneWidget);
     expect(find.text('Uncordon'), findsOneWidget);

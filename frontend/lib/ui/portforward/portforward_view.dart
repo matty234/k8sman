@@ -72,9 +72,13 @@ class _PortForwardViewState extends State<PortForwardView> {
         child: Row(children: [
           Text('Port Forwards', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(width: 10),
-          if (fs != null) Text('$active active · ${fs.length} saved', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-          const Spacer(),
-          Text('Start one from a Pod, Service or workload\'s sidebar', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+          if (fs != null)
+            Flexible(child: Text('$active active · ${fs.length} saved', overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text('Start one from a Pod, Service or workload\'s sidebar',
+                textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+          ),
         ]),
       ),
       if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: InlineMessage(_error!, isError: true)),
@@ -162,14 +166,15 @@ class _ForwardCard extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
+            Wrap(crossAxisAlignment: WrapCrossAlignment.center, runSpacing: 2, children: [
               InkWell(
                 onTap: running ? () => openUrl(url) : null,
                 child: Text('localhost:${pf.localPort}',
                     style: monoStyle(context, size: 13, color: running ? theme.colorScheme.primary : theme.hintColor).copyWith(fontWeight: FontWeight.w600)),
               ),
               Text('  →  ', style: TextStyle(color: theme.hintColor)),
-              Flexible(
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
                 child: InkWell(
                   onTap: onOpenTarget,
                   child: Text('${pf.namespace}/${pf.kind}/${pf.name}:${pf.port}', overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 12)),

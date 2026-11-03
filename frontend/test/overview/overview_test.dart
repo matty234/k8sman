@@ -156,7 +156,7 @@ void main() {
     await saveScreenshot(tester, 'overview-scenario-1000');
   });
 
-  for (final width in [700.0, 900.0, 1200.0, 1600.0]) {
+  for (final width in [360.0, 420.0, 500.0, 600.0, 700.0, 900.0, 1200.0, 1600.0]) {
     testWidgets('no overflow at ${width.toInt()}px', (tester) async {
       await pumpOverview(tester, scenarioFixture(), size: Size(width, 3000));
       // Expand every group too.
