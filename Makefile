@@ -6,8 +6,21 @@ export GOTOOLCHAIN := local
 
 VERSION := $(shell sed -n 's/^version: *\([^+]*\).*/\1/p' frontend/pubspec.yaml)
 RELEASE_APP := frontend/build/macos/Build/Products/Release/k8sman.app
+RELEASE_ZIP := dist/k8sman-$(VERSION)-macos.zip
 
-.PHONY: backend backend-build backend-test frontend-test analyze test app app-dev cluster samples release icon clean-dist
+# Updates (docs/UPDATES.md). SPARKLE_PUBLIC_ED_KEY overrides the key in
+# frontend/macos/Runner/Configs/AppInfo.xcconfig; REQUIRE_UPDATE_KEY=1 makes a
+# release without one an error (CI). The private key for `make appcast` comes
+# from SPARKLE_ED_KEY_FILE, $$SPARKLE_PRIVATE_ED_KEY or the login keychain.
+SPARKLE_PUBLIC_ED_KEY ?=
+REQUIRE_UPDATE_KEY ?=
+SPARKLE_ED_KEY_FILE ?=
+GITHUB_REPO ?= matty234/k8sman
+RELEASE_URL ?= https://github.com/$(GITHUB_REPO)/releases/tag/v$(VERSION)
+DOWNLOAD_URL ?= https://github.com/$(GITHUB_REPO)/releases/download/v$(VERSION)/k8sman-$(VERSION)-macos.zip
+RELEASE_NOTES ?=
+
+.PHONY: backend backend-build backend-test frontend-test analyze test app app-dev cluster samples release appcast sparkle-tools update-e2e icon clean-dist
 
 backend-build:
 	cd backend && go build -o bin/k8sman-server ./cmd/k8sman-server
@@ -35,15 +48,47 @@ app:
 app-dev:
 	cd frontend && flutter run -d macos --dart-define=K8SMAN_BACKEND=http://127.0.0.1:7443
 
-## Build a Release .app (universal, with the embedded backend) and zip it to dist/.
+## Build a Release .app (universal, with the embedded backend and Sparkle),
+## zip it to dist/ and write dist/SHA256SUMS. CFBundleVersion is set to the
+## version, which is what Sparkle compares.
 release:
-	cd frontend && flutter build macos --release
+	cd frontend && flutter build macos --release --build-name=$(VERSION) --build-number=$(VERSION)
 	test -x "$(RELEASE_APP)/Contents/MacOS/k8sman-server"
+	test -d "$(RELEASE_APP)/Contents/Frameworks/Sparkle.framework"
+	@if [ -n "$(SPARKLE_PUBLIC_ED_KEY)" ]; then \
+	  plutil -replace SUPublicEDKey -string "$(SPARKLE_PUBLIC_ED_KEY)" "$(RELEASE_APP)/Contents/Info.plist" && \
+	  codesign --force --deep --sign - "$(RELEASE_APP)"; \
+	fi
+	@key="$$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$(RELEASE_APP)/Contents/Info.plist" 2>/dev/null)"; \
+	if [ -z "$$key" ]; then \
+	  if [ -n "$(REQUIRE_UPDATE_KEY)" ]; then echo "error: no SUPublicEDKey; set SPARKLE_PUBLIC_ED_KEY (docs/UPDATES.md)" >&2; exit 1; fi; \
+	  echo "warning: no SUPublicEDKey, so in-app updates are disabled in this build (docs/UPDATES.md)" >&2; \
+	fi
 	codesign --verify --deep --strict "$(RELEASE_APP)" || codesign --force --deep --sign - "$(RELEASE_APP)"
 	mkdir -p dist
-	rm -f dist/k8sman-$(VERSION)-macos.zip
-	ditto -c -k --sequesterRsrc --keepParent "$(RELEASE_APP)" dist/k8sman-$(VERSION)-macos.zip
-	@echo "dist/k8sman-$(VERSION)-macos.zip"
+	rm -f $(RELEASE_ZIP)
+	ditto -c -k --sequesterRsrc --keepParent "$(RELEASE_APP)" $(RELEASE_ZIP)
+	cd dist && shasum -a 256 k8sman-$(VERSION)-macos.zip > SHA256SUMS
+	@echo "$(RELEASE_ZIP)"
+
+## Fetch Sparkle's signing tools (pinned by SHA-256) into build/sparkle.
+sparkle-tools:
+	tools/sparkle-tools.sh
+
+## EdDSA-sign the release zip and write the signed feed dist/appcast.xml.
+appcast: sparkle-tools
+	@test -f $(RELEASE_ZIP) || { echo "error: $(RELEASE_ZIP) missing; run make release first" >&2; exit 1; }
+	python3 tools/appcast.py --zip $(RELEASE_ZIP) --version $(VERSION) \
+	  --download-url "$(DOWNLOAD_URL)" --release-url "$(RELEASE_URL)" \
+	  $(if $(RELEASE_NOTES),--notes "$(RELEASE_NOTES)") \
+	  $(if $(SPARKLE_ED_KEY_FILE),--ed-key-file "$(SPARKLE_ED_KEY_FILE)") \
+	  --sparkle-bin build/sparkle/bin --out dist/appcast.xml
+	cd dist && shasum -a 256 k8sman-$(VERSION)-macos.zip appcast.xml > SHA256SUMS
+
+## Local end-to-end update test: two versions, a local feed, Sparkle's
+## installer, and tampered-archive checks. No GitHub. See docs/UPDATES.md.
+update-e2e:
+	tools/update-e2e.sh
 
 ## Regenerate the app icon PNGs (tools/app_icon).
 icon:

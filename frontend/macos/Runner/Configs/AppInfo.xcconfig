@@ -12,3 +12,14 @@ PRODUCT_BUNDLE_IDENTIFIER = dev.k8sman.app
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 The k8sman authors. All rights reserved.
+
+// Sparkle update feed (docs/UPDATES.md). GitHub redirects
+// releases/latest/download/<asset> to the newest release's asset.
+K8SMAN_UPDATE_FEED_URL = https:/$()/github.com/matty234/k8sman/releases/latest/download/appcast.xml
+
+// EdDSA public key for verifying updates: the output of Sparkle's
+// `generate_keys -p`. Public, so it is safe to commit. Leave it empty and the
+// app disables updates (it can't verify them); `make release` refuses to
+// build a release without one. Release builds can also override it with
+// `make release SPARKLE_PUBLIC_ED_KEY=…` (used by CI and local tests).
+SPARKLE_PUBLIC_ED_KEY =

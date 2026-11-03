@@ -122,6 +122,9 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
+    // Updates (Sparkle): scheduling, banner and About panel live in Dart.
+    UpdateController.shared.attach(messenger: messenger)
+
     let nc = NotificationCenter.default
     nc.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: self, queue: .main) { [weak self] _ in
       self?.windowChannel?.invokeMethod("fullScreenChanged", arguments: true)

@@ -91,6 +91,63 @@ final class BackendSupervisor {
     }
   }
 
+  // MARK: - port-forwards across an update relaunch
+
+  private static let resumeForwardsKey = "ResumePortForwards"
+
+  /// Before Sparkle quits the app to install an update and relaunch it:
+  /// save the ids of running forwards that wouldn't come back on their own
+  /// (AutoStart ones are restarted by the backend anyway). Blocks for at
+  /// most ~2s.
+  func rememberRunningForwards() {
+    guard let base = queue.sync(execute: { url }), let list = URL(string: "\(base)/api/portforwards") else { return }
+    var req = URLRequest(url: list)
+    req.timeoutInterval = 2
+    var ids: [String] = []
+    let done = DispatchSemaphore(value: 0)
+    URLSession.shared.dataTask(with: req) { data, _, _ in
+      defer { done.signal() }
+      ids = Self.forwardsToResume(data ?? Data())
+    }.resume()
+    _ = done.wait(timeout: .now() + 2.5)
+    if ids.isEmpty {
+      UserDefaults.standard.removeObject(forKey: Self.resumeForwardsKey)
+    } else {
+      UserDefaults.standard.set(ids, forKey: Self.resumeForwardsKey)
+    }
+  }
+
+  /// Ids from a `GET /api/portforwards` body that are running (any state
+  /// but stopped) and not AutoStart.
+  static func forwardsToResume(_ body: Data) -> [String] {
+    guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+          let forwards = json["forwards"] as? [[String: Any]] else { return [] }
+    return forwards.compactMap { f in
+      guard let id = f["id"] as? String, (f["state"] as? String ?? "stopped") != "stopped",
+            (f["autoStart"] as? Bool ?? false) == false else { return nil }
+      return id
+    }
+  }
+
+  /// Once the relaunched backend is listening, restart the remembered forwards.
+  private func resumeRememberedForwards(base: String) {
+    let defaults = UserDefaults.standard
+    guard let ids = defaults.stringArray(forKey: Self.resumeForwardsKey), !ids.isEmpty else { return }
+    defaults.removeObject(forKey: Self.resumeForwardsKey)
+    for id in ids {
+      guard let u = URL(string: "\(base)/api/portforwards/\(id)/start") else { continue }
+      var req = URLRequest(url: u)
+      req.httpMethod = "POST"
+      req.timeoutInterval = 10
+      URLSession.shared.dataTask(with: req) { [weak self] _, resp, err in
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if err != nil || status >= 300 {
+          self?.queue.async { self?.appendLog("k8sman: could not resume port-forward \(id) after update (status \(status))") }
+        }
+      }.resume()
+    }
+  }
+
   // MARK: - process management (on `queue`)
 
   private func snapshot() -> [String: Any] {
@@ -197,6 +254,7 @@ final class BackendSupervisor {
         state = .running
         lastError = nil
         publish()
+        resumeRememberedForwards(base: url!)
       } else {
         appendLog(line)
       }
