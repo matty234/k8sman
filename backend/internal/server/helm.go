@@ -23,6 +23,8 @@ func (s *Server) helmRoutes() {
 	s.mux.HandleFunc("POST /api/helm/rollback", s.handleHelmRollback)
 	s.mux.HandleFunc("POST /api/helm/uninstall", s.handleHelmUninstall)
 	s.mux.HandleFunc("POST /api/helm/upgrade", s.handleHelmUpgrade)
+	s.mux.HandleFunc("POST /api/helm/install", s.handleHelmInstall)
+	s.mux.HandleFunc("GET /api/helm/chart-versions", s.handleHelmChartVersions)
 }
 
 // helmConfig builds a Helm action configuration on the active context.
@@ -66,11 +68,49 @@ func writeHelmErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, helm.ErrInvalid):
 		msg := strings.TrimPrefix(err.Error(), helm.ErrInvalid.Error()+": ")
 		writeJSON(w, http.StatusUnprocessableEntity, apiError{Error: msg, Code: http.StatusUnprocessableEntity, Reason: "Invalid"})
+	case strings.Contains(err.Error(), "cannot re-use a name that is still in use"):
+		writeJSON(w, http.StatusConflict, apiError{Error: err.Error(), Code: http.StatusConflict, Reason: "AlreadyExists"})
 	case strings.Contains(err.Error(), "another operation (install/upgrade/rollback) is in progress"):
 		writeJSON(w, http.StatusConflict, apiError{Error: err.Error(), Code: http.StatusConflict, Reason: "ReleasePending"})
 	default:
 		writeErr(w, err)
 	}
+}
+
+func (s *Server) handleHelmInstall(w http.ResponseWriter, r *http.Request) {
+	if s.readOnlyRefused(w) {
+		return
+	}
+	var req helm.InstallRequest
+	if err := decodeHelmBody(r, &req, &req.Namespace, &req.ReleaseName); err != nil {
+		writeErr(w, err)
+		return
+	}
+	c, cfg, err := s.helmConfig(req.Namespace)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	res, err := helm.Install(context.WithoutCancel(r.Context()), cfg, req)
+	if err != nil {
+		writeHelmErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, helmResult(c, res))
+}
+
+func (s *Server) handleHelmChartVersions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if q.Get("repo") == "" || q.Get("chart") == "" {
+		writeErr(w, badRequest("repo and chart are required"))
+		return
+	}
+	v, err := helm.ChartVersions(q.Get("repo"), q.Get("chart"))
+	if err != nil {
+		writeHelmErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"versions": v})
 }
 
 func (s *Server) readOnlyRefused(w http.ResponseWriter) bool {
