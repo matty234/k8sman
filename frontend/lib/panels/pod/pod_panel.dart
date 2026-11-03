@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../actions/actions.dart';
 import '../../api/models.dart';
+import '../../metrics/pod_usage.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
@@ -31,7 +32,8 @@ class PodPanel extends ResourcePanel {
         trailing: Hint(_containerCounts(containers)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           for (final c in containers)
-            ContainerCard(c, namespace: ctx.namespace, onViewLogs: (context, previous) => openPodLogs(context, ctx.object, container: c.name, previous: previous)),
+            ContainerCard(c, namespace: ctx.namespace, onViewLogs: (context, previous) => openPodLogs(context, ctx.object, container: c.name, previous: previous),
+                usage: c.isRunning ? ContainerUsageLine(pod: ctx.object, container: c.name, spec: c.spec) : null),
           if (containers.isEmpty) const Hint('No containers'),
         ]),
       ),
@@ -203,6 +205,7 @@ class _StatusSummary extends StatelessWidget {
             'Started',
             InlineWrap([AgeText(status['startTime'], suffix: ' ago', style: small), Hint(parseTime(status['startTime'])!.toLocal().toString().split('.').first)])
           ),
+        ('Usage', PodUsageSummary(pod: pod)),
         if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), Hint(_qosHint(qos))])),
         (
           'Priority',

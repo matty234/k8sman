@@ -15,7 +15,7 @@ Future<bool?> showColumnEditor(BuildContext context, {required ResourceType type
       builder: (_) => Provider.value(value: context.read<ApiClient>(), child: ColumnEditorDialog(type: type, namespace: namespace)),
     );
 
-const _types = ['string', 'number', 'age', 'status', 'bool', 'labels'];
+const _types = ['string', 'number', 'quantity', 'age', 'status', 'bool', 'labels'];
 
 class _EditableColumn {
   final TextEditingController name;

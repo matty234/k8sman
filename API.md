@@ -30,7 +30,7 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 A column is `{name, query, type}`. `query` is a [jq](https://jqlang.org)
 expression (evaluated by [gojq](https://github.com/itchyny/gojq)) that runs
 against the full object. The first output becomes the cell. Multiple outputs
-become a list. `type` is a rendering hint: `string`, `number`, `age`, `status`,
+become a list. `type` is a rendering hint: `string`, `number`, `quantity`, `age`, `status`,
 `bool` or `labels`.
 
 Columns resolve in this order:
@@ -78,6 +78,34 @@ Forwards with `autoStart` start when the backend launches.
 | PATCH | `/api/portforwards/{id}` | `{autoStart?, label?, localPort?}` |
 | POST | `/api/portforwards/{id}/start`, `/api/portforwards/{id}/stop` | start or stop a forward |
 | DELETE | `/api/portforwards/{id}` | stop and forget a forward |
+
+## Metrics
+
+Reads `metrics.k8s.io`, `custom.metrics.k8s.io` and `external.metrics.k8s.io`
+(see [docs/METRICS.md](docs/METRICS.md)). When an API is unusable, data
+endpoints return `{error, code, state, group}`: **404** with `state:
+"notInstalled"` (no APIService), or **503** with `state: "notReady"`
+(registered but not Available, or no samples yet).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/metrics/status[?refresh=true]` | `{resource, custom, external}`, each `{group, version, versions, apiService, state, available, reason, message, service:{namespace,name}}`. `state` is `available`, `notReady`, `notInstalled` or `unknown` |
+| GET | `/api/metrics/nodes` | `{items:[{name, timestamp, window, cpu, memory, cpuMillis, memoryBytes}]}`. `cpu` is millicores (`"12m"`), `memory` bytes. Cached ~10s |
+| GET | `/api/metrics/pods?namespace=&labelSelector=` | `{items:[{name, namespace, timestamp, window, cpu, memory, cpuMillis, memoryBytes, containers:[{name, cpu, memory, cpuMillis, memoryBytes}]}]}` (pod totals are the sum of containers) |
+| GET | `/api/metrics/custom/discover` | `{version, resources:[{resource, group, namespaced, metrics:[...]}]}` |
+| GET | `/api/metrics/custom?group=&resource=&namespace=&name=\|selector=&metric=[&metricSelector=]` | `{items:[{object:{kind,namespace,name,apiVersion}, metric, labels, value, number, timestamp, windowSeconds}]}`. Omit `name` for all objects (`*`), optionally filtered by `selector` |
+| GET | `/api/metrics/external/discover[?namespace=]` | `{version, metrics:[{name, namespace?, selector?, source: "discovery"\|"hpa", hpa?}]}`. Includes External metrics referenced by HPAs, since KEDA only advertises a placeholder |
+| GET | `/api/metrics/external?namespace=&metric=[&labelSelector=]` | `{items:[{metric, labels, value, number, timestamp, windowSeconds}]}` |
+| GET | `/api/metrics/hpa?namespace=&name=` | live evaluation of an HPA's metrics: `{target, selector, currentReplicas, desiredReplicas, minReplicas, maxReplicas, proposed, limitedBy?, metrics:[{index, type, name, container?, selector?, object?, targetType, target, current, utilization?, averageValue?, pods, ratio, proposed, driving, error?}], errors?}` |
+
+**Usage in tables:** `/api/table`, `/api/watch` and `/api/columns/preview` for
+`pods` and `nodes` evaluate columns with `.k8sman.usage` merged into a copy of
+each object (`{cpu, memory, cpuMillis, memoryBytes}`; pods add `containers`,
+`window` and `timestamp`; nodes add `cpuPercent` and `memoryPercent` of
+allocatable). It's absent when there's no sample. `row.object` is never
+modified. Pod/node watches also re-send changed rows as `MODIFIED` every 15s
+as usage changes. The `quantity` column type renders values such as `250m`,
+`128Mi` and `42%` right-aligned, sorted by value, with "—" when empty.
 
 ## Health overview
 

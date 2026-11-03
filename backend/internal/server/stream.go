@@ -104,6 +104,8 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 	includeObject := r.URL.Query().Get("includeObject") == "true"
 	ri := rq.client(c)
 	backoff := time.Second
+	live := s.newLiveUsage(c, rq) // periodic usage refresh for pods/nodes
+	defer live.stop()
 
 	for ctx.Err() == nil {
 		list, err := ri.List(ctx, rq.listOptions())
@@ -120,7 +122,9 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		b := newTableBuilder(cols, includeObject)
+		b.decorate = s.usageDecorator(ctx, c, rq)
 		t := b.table(rq.Type, isDefault, list)
+		live.reset(list, t)
 		if ws.send(WatchMessage{Type: "SNAPSHOT", Table: &t}) != nil {
 			return
 		}
@@ -133,7 +137,7 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		backoff = time.Second
-		if !s.pumpWatch(ctx, ws, wi, b) {
+		if !s.pumpWatch(ctx, ws, wi, b, live) {
 			wi.Stop()
 			return
 		}
@@ -143,11 +147,17 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 
 // pumpWatch forwards events until the watch ends. Returns false if the client
 // is gone.
-func (s *Server) pumpWatch(ctx context.Context, ws *wsConn, wi watch.Interface, b *tableBuilder) bool {
+func (s *Server) pumpWatch(ctx context.Context, ws *wsConn, wi watch.Interface, b *tableBuilder, live *liveUsage) bool {
 	for {
 		select {
 		case <-ctx.Done():
 			return false
+		case <-live.tick():
+			for _, row := range live.changedRows(ctx, b) {
+				if ws.send(WatchMessage{Type: string(watch.Modified), Row: &row}) != nil {
+					return false
+				}
+			}
 		case ev, ok := <-wi.ResultChan():
 			if !ok {
 				return true // re-list
@@ -159,6 +169,7 @@ func (s *Server) pumpWatch(ctx context.Context, ws *wsConn, wi watch.Interface, 
 					continue
 				}
 				row := b.row(u)
+				live.track(ev.Type, u, row)
 				if ws.send(WatchMessage{Type: string(ev.Type), Row: &row}) != nil {
 					return false
 				}

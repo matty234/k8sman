@@ -15,7 +15,10 @@ class ContainerCard extends StatelessWidget {
   /// Opens this container's logs in the dock (`previous` = the last
   /// terminated instance). Null hides the Logs row.
   final void Function(BuildContext context, bool previous)? onViewLogs;
-  const ContainerCard(this.c, {super.key, this.namespace, this.onViewLogs});
+
+  /// Live CPU/memory usage row (lib/metrics), or null to hide it.
+  final Widget? usage;
+  const ContainerCard(this.c, {super.key, this.namespace, this.onViewLogs, this.usage});
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +82,7 @@ class ContainerCard extends StatelessWidget {
             if (spec['workingDir'] != null) ('Working dir', MonoValue('${spec['workingDir']}')),
             if (asMapList(spec['ports']).isNotEmpty) ('Ports', _portsWidget(context)),
             if (_hasResources(spec)) ('Resources', _resourcesWidget(context)),
+            if (usage != null) ('Usage', usage!),
             for (final (label, p) in probes) (label, Text(probeSentence(p), style: theme.textTheme.bodySmall)),
             if (asMap(spec['lifecycle']).isNotEmpty) ('Lifecycle', _lifecycleWidget(context)),
             if (asMapList(spec['env']).isNotEmpty) ('Env', _envWidget(context)),

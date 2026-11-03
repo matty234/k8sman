@@ -1,0 +1,28 @@
+{
+ "kind": "NodeMetricsList",
+ "apiVersion": "metrics.k8s.io/v1beta1",
+ "metadata": {},
+ "items": [
+  {
+   "metadata": {
+    "name": "k8sman-dev-control-plane",
+    "creationTimestamp": "2026-11-03T12:51:41Z",
+    "labels": {
+     "beta.kubernetes.io/arch": "arm64",
+     "beta.kubernetes.io/os": "linux",
+     "kubernetes.io/arch": "arm64",
+     "kubernetes.io/hostname": "k8sman-dev-control-plane",
+     "kubernetes.io/os": "linux",
+     "node-role.kubernetes.io/control-plane": "",
+     "node.kubernetes.io/exclude-from-external-load-balancers": ""
+    }
+   },
+   "timestamp": "2026-11-03T12:51:24Z",
+   "window": "11.653s",
+   "usage": {
+    "cpu": "3454908092n",
+    "memory": "5687780Ki"
+   }
+  }
+ ]
+}

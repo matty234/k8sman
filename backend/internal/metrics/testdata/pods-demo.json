@@ -1,0 +1,142 @@
+{
+ "kind": "PodMetricsList",
+ "apiVersion": "metrics.k8s.io/v1beta1",
+ "metadata": {},
+ "items": [
+  {
+   "metadata": {
+    "name": "no-shell",
+    "namespace": "demo",
+    "creationTimestamp": "2026-11-03T12:51:41Z",
+    "labels": {
+     "app": "no-shell",
+     "purpose": "k8sman-exec-test"
+    }
+   },
+   "timestamp": "2026-11-03T12:51:06Z",
+   "window": "11.562s",
+   "containers": [
+    {
+     "name": "pause",
+     "usage": {
+      "cpu": "0",
+      "memory": "208Ki"
+     }
+    },
+    {
+     "name": "debugger",
+     "usage": {
+      "cpu": "0",
+      "memory": "340Ki"
+     }
+    }
+   ]
+  },
+  {
+   "metadata": {
+    "name": "node-agent-22z9m",
+    "namespace": "demo",
+    "creationTimestamp": "2026-11-03T12:51:41Z",
+    "labels": {
+     "app": "node-agent",
+     "controller-revision-hash": "6c6dbbb974",
+     "pod-template-generation": "2"
+    }
+   },
+   "timestamp": "2026-11-03T12:51:20Z",
+   "window": "12.697s",
+   "containers": [
+    {
+     "name": "agent",
+     "usage": {
+      "cpu": "2516893n",
+      "memory": "580Ki"
+     }
+    }
+   ]
+  },
+  {
+   "metadata": {
+    "name": "redis-0",
+    "namespace": "demo",
+    "creationTimestamp": "2026-11-03T12:51:41Z",
+    "labels": {
+     "app": "redis",
+     "controller-revision-hash": "redis-7d788b9dd7",
+     "statefulset.kubernetes.io/pod-name": "redis-0"
+    }
+   },
+   "timestamp": "2026-11-03T12:51:29Z",
+   "window": "21.903s",
+   "containers": [
+    {
+     "name": "redis",
+     "usage": {
+      "cpu": "12131580n",
+      "memory": "9180Ki"
+     }
+    }
+   ]
+  },
+  {
+   "metadata": {
+    "name": "web-6fd47b8fcb-442dt",
+    "namespace": "demo",
+    "creationTimestamp": "2026-11-03T12:51:41Z",
+    "labels": {
+     "app": "web",
+     "pod-template-hash": "6fd47b8fcb",
+     "tier": "frontend"
+    }
+   },
+   "timestamp": "2026-11-03T12:51:26Z",
+   "window": "10.663s",
+   "containers": [
+    {
+     "name": "log-sidecar",
+     "usage": {
+      "cpu": "6489274n",
+      "memory": "580Ki"
+     }
+    },
+    {
+     "name": "nginx",
+     "usage": {
+      "cpu": "206320n",
+      "memory": "6556Ki"
+     }
+    }
+   ]
+  },
+  {
+   "metadata": {
+    "name": "web-6fd47b8fcb-4r4gm",
+    "namespace": "demo",
+    "creationTimestamp": "2026-11-03T12:51:41Z",
+    "labels": {
+     "app": "web",
+     "pod-template-hash": "6fd47b8fcb",
+     "tier": "frontend"
+    }
+   },
+   "timestamp": "2026-11-03T12:51:18Z",
+   "window": "18.535s",
+   "containers": [
+    {
+     "name": "nginx",
+     "usage": {
+      "cpu": "517268n",
+      "memory": "6424Ki"
+     }
+    },
+    {
+     "name": "log-sidecar",
+     "usage": {
+      "cpu": "3247639n",
+      "memory": "460Ki"
+     }
+    }
+   ]
+  }
+ ]
+}

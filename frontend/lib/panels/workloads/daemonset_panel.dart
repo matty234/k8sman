@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../metrics/workload_usage.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../actions/actions.dart';
@@ -90,6 +91,7 @@ class DaemonSetPanel extends ResourcePanel {
       ),
       if (asMapList(st['conditions']).isNotEmpty)
         DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(st['conditions'] as List?)),
+      workloadUsageSection(ctx),
       DetailSection(
         title: 'Pods',
         icon: Icons.view_in_ar,

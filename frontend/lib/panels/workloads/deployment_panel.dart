@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../actions/actions.dart';
 import '../../api/models.dart';
+import '../../metrics/workload_usage.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -98,6 +99,7 @@ class DeploymentPanel extends ResourcePanel {
         icon: Icons.history,
         child: RolloutHistory(key: ValueKey('hist-${ctx.uid}'), ctx: ctx, refreshKey: key),
       ),
+      workloadUsageSection(ctx),
       DetailSection(
         title: 'Pods',
         icon: Icons.view_in_ar,

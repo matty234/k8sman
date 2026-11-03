@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../metrics/node_usage.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -307,6 +308,11 @@ class _NodePodsState extends State<_NodePods> {
         final pods = snap.data ?? const <Json>[];
         final active = pods.where((p) => !isTerminalPod(p)).length;
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          DetailSection(
+            title: 'Usage',
+            icon: Icons.query_stats,
+            child: NodeLiveUsage(api: widget.api, nodeName: widget.nodeName, allocatable: widget.allocatable, requests: snap.hasData ? nodeAllocation(pods).total : null),
+          ),
           DetailSection(
             title: 'Allocated resources',
             icon: Icons.speed,

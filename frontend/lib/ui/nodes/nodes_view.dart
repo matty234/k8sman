@@ -6,6 +6,10 @@ import 'package:provider/provider.dart';
 import '../../actions/actions.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../metrics/cache.dart';
+import '../../metrics/metrics_api.dart';
+import '../../metrics/node_usage.dart';
+import '../../metrics/widgets.dart';
 import '../../panels/cluster/logic.dart';
 import '../../panels/cluster/widgets.dart' show UsageBar;
 import '../../panels/panel.dart';
@@ -88,6 +92,8 @@ class _NodesViewState extends State<NodesView> {
   String _filter = '';
   Timer? _poll;
   DateTime? _updated;
+  Map<String, NodeUsage>? _usage;
+  Object? _metricsError;
 
   ApiClient get _api => context.read<ApiClient>();
 
@@ -110,8 +116,11 @@ class _NodesViewState extends State<NodesView> {
         _api.items(const ResourceRef(resource: 'nodes')),
         _api.items(const ResourceRef(resource: 'pods'), fieldSelector: 'status.phase!=Succeeded,status.phase!=Failed'),
       ]);
+      final usage = await MetricsCache.of(_api).nodes().then<Object>((v) => v, onError: (Object e) => e);
       if (!mounted) return;
       setState(() {
+        _usage = usage is List<NodeUsage> ? {for (final u in usage) u.name: u} : null;
+        _metricsError = usage is List<NodeUsage> ? null : usage;
         _nodes = summarizeNodes(results[0], results[1]);
         _error = null;
         _updated = DateTime.now();
@@ -148,7 +157,7 @@ class _NodesViewState extends State<NodesView> {
       ),
       const Divider(),
       // Cluster-wide summary strip (wraps on narrow widths).
-      if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 12, 0), child: _Summary(nodes)),
+      if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 12, 0), child: _Summary(nodes, _usage, _metricsError)),
       if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: InlineMessage(_error!, isError: true)),
       Expanded(
         child: visible == null
@@ -162,7 +171,7 @@ class _NodesViewState extends State<NodesView> {
                     return SingleChildScrollView(
                       padding: const EdgeInsets.all(12),
                       child: Wrap(spacing: 12, runSpacing: 12, children: [
-                        for (final n in visible) SizedBox(width: w, child: _NodeCard(n, onChanged: _refresh)),
+                        for (final n in visible) SizedBox(width: w, child: _NodeCard(n, usage: _usage?[n.name]?.usage, onChanged: _refresh)),
                       ]),
                     );
                   }),
@@ -173,7 +182,9 @@ class _NodesViewState extends State<NodesView> {
 
 class _Summary extends StatelessWidget {
   final List<NodeSummary> nodes;
-  const _Summary(this.nodes);
+  final Map<String, NodeUsage>? usage;
+  final Object? metricsError;
+  const _Summary(this.nodes, this.usage, this.metricsError);
 
   @override
   Widget build(BuildContext context) {
@@ -189,15 +200,22 @@ class _Summary extends StatelessWidget {
       StatusBadge('$ready/${nodes.length} ready', severity: ready == nodes.length ? Severity.ok : Severity.error, dense: true),
       if (cordoned > 0) StatusBadge('$cordoned cordoned', severity: Severity.warn, dense: true),
       if (pressure > 0) StatusBadge('$pressure under pressure', severity: Severity.error, dense: true),
+      if (usage != null)
+        Text('CPU ${pct(usage!.values.fold(0.0, (a, u) => a + u.usage.cpuMillis), cpuAll)} · Memory ${pct(usage!.values.fold(0.0, (a, u) => a + u.usage.memoryBytes), memAll)} used',
+            style: Theme.of(context).textTheme.bodySmall),
       Text('CPU ${pct(cpuReq, cpuAll)} · Memory ${pct(memReq, memAll)} requested', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor)),
+      if (usage != null) const MeterLegend() else if (metricsError != null) MetricsUnavailableNote(metricsError),
     ]);
   }
 }
 
 class _NodeCard extends StatelessWidget {
   final NodeSummary n;
+
+  /// Live usage from metrics-server; null when unavailable.
+  final Usage? usage;
   final VoidCallback onChanged;
-  const _NodeCard(this.n, {required this.onChanged});
+  const _NodeCard(this.n, {this.usage, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -247,22 +265,8 @@ class _NodeCard extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 8),
-            UsageBar(
-              label: 'CPU requests',
-              labelWidth: 100,
-              used: n.alloc.total.cpuRequest,
-              total: n.cpuAlloc,
-              usedText: formatCpu(n.alloc.total.cpuRequest),
-              totalText: formatCpu(n.cpuAlloc),
-            ),
-            UsageBar(
-              label: 'Mem requests',
-              labelWidth: 100,
-              used: n.alloc.total.memRequest,
-              total: n.memAlloc,
-              usedText: formatBytes(n.alloc.total.memRequest),
-              totalText: formatBytes(n.memAlloc),
-            ),
+            // Usage filled, requests outlined; request-only bars without metrics.
+            NodeResourceMeters(usage: usage, requests: n.alloc.total, cpuAllocatable: n.cpuAlloc, memAllocatable: n.memAlloc),
             UsageBar(
               label: 'Pods',
               labelWidth: 100,
@@ -276,6 +280,7 @@ class _NodeCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   [
+                    if (usage != null) 'requests ${formatCpu(n.alloc.total.cpuRequest)} CPU / ${formatBytes(n.alloc.total.memRequest)}',
                     'limits ${formatCpu(n.alloc.total.cpuLimit)} CPU / ${formatBytes(n.alloc.total.memLimit)}',
                     if (n.taints.isNotEmpty) '${n.taints.length} taint${n.taints.length == 1 ? '' : 's'}',
                   ].join(' · '),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../metrics/metrics_page.dart';
 import '../state/app_state.dart';
 import '../state/log_dock.dart';
 import 'detail/detail_sidebar.dart';
@@ -86,6 +87,7 @@ class _ShellState extends State<Shell> {
                       child: switch (app.view) {
                         MainView.overview => const OverviewView(),
                         MainView.nodes => const NodesView(),
+                        MainView.metrics => const MetricsPage(),
                         MainView.portForwards => const PortForwardView(),
                         MainView.resources => type == null
                             ? WindowDragArea(child: Center(child: Text('Select a resource kind', style: TextStyle(color: theme.hintColor))))

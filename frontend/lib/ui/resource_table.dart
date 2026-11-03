@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../metrics/quantity_cell.dart';
 import '../state/app_state.dart';
 import '../state/table_controller.dart';
 import '../util/k8s.dart';
@@ -176,6 +177,7 @@ class _TableBodyState extends State<_TableBody> {
       case 'age':
         return 80;
       case 'number':
+      case 'quantity':
         return 90;
       case 'bool':
         return 80;
@@ -355,7 +357,7 @@ class _Header extends StatelessWidget {
                 builder: (h) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Row(
-                    mainAxisAlignment: controller.columns[i].type == 'number' ? MainAxisAlignment.end : MainAxisAlignment.start,
+                    mainAxisAlignment: const {'number', 'quantity'}.contains(controller.columns[i].type) ? MainAxisAlignment.end : MainAxisAlignment.start,
                     children: [
                       Flexible(
                         child: Text(
@@ -444,6 +446,7 @@ class TableCellView extends StatelessWidget {
     final theme = Theme.of(context);
     final base = theme.textTheme.bodyMedium?.copyWith(fontSize: 12.5, fontWeight: emphasise ? FontWeight.w500 : null);
     final v = value;
+    if (column.type == 'quantity') return quantityCell(context, v, base);
     if (v == null) return const SizedBox.shrink();
     switch (column.type) {
       case 'age':

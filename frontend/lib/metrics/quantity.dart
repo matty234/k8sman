@@ -1,0 +1,92 @@
+/// Quantity maths for the metrics UI: parsing Kubernetes quantities,
+/// percentages and threshold severities. Pure Dart, unit-tested.
+library;
+
+import '../util/k8s.dart';
+
+/// Severity thresholds for utilisation (fraction of a request, limit or
+/// capacity): ≥ 90% critical, ≥ 70% warning. Below that is neutral: the UI
+/// uses colour for thresholds only.
+const warnAt = 0.70;
+const critAt = 0.90;
+
+Severity thresholdSeverity(double? frac) {
+  if (frac == null) return Severity.neutral;
+  if (frac >= critAt) return Severity.error;
+  if (frac >= warnAt) return Severity.warn;
+  return Severity.neutral;
+}
+
+/// Parses any Kubernetes quantity to a plain number in base units:
+/// `250m` → 0.25, `2` → 2, `1Ki` → 1024, `1k` → 1000, `1.5e3` → 1500,
+/// `42%` → 42. Returns null for anything else.
+double? parseQuantity(dynamic q) {
+  if (q == null) return null;
+  if (q is num) return q.toDouble();
+  var s = '$q'.trim();
+  if (s.isEmpty) return null;
+  if (s.endsWith('%')) return double.tryParse(s.substring(0, s.length - 1));
+  const small = {'n': 1e-9, 'u': 1e-6, 'm': 1e-3};
+  for (final e in small.entries) {
+    if (s.endsWith(e.key)) {
+      final v = double.tryParse(s.substring(0, s.length - 1));
+      return v == null ? null : v * e.value;
+    }
+  }
+  if (!_quantity.hasMatch(s)) return null;
+  // parseBytes handles Ki/Mi/.. and k/M/G/.. and plain numbers.
+  return parseBytes(s);
+}
+
+final _quantity = RegExp(r'^[+-]?[0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?(?:[KMGTPE]i|[kMGTPE])?$');
+
+/// Orders two table cells holding quantities. Empty cells sort last.
+int compareQuantities(dynamic a, dynamic b) {
+  final x = parseQuantity(a), y = parseQuantity(b);
+  if (x == null && y == null) return '${a ?? ''}'.compareTo('${b ?? ''}');
+  if (x == null) return 1;
+  if (y == null) return -1;
+  return x.compareTo(y);
+}
+
+/// `part / whole` as a fraction, or null when whole is missing or zero.
+double? fraction(double? part, double? whole) {
+  if (part == null || whole == null || whole <= 0) return null;
+  return part / whole;
+}
+
+/// "42%" (no decimals; "<1%" for tiny non-zero values), or "—".
+String formatPercent(double? frac) {
+  if (frac == null) return '—';
+  final p = frac * 100;
+  if (p > 0 && p < 1) return '<1%';
+  return '${p.round()}%';
+}
+
+/// CPU for usage readouts: `0.4m` → "<1m", `850m` → "850m", `3455` → "3.46".
+String formatCpuUsage(double? millis) {
+  if (millis == null) return '—';
+  if (millis > 0 && millis < 1) return '<1m';
+  if (millis < 1000) return '${millis.round()}m';
+  final cores = millis / 1000;
+  return cores >= 10 ? cores.toStringAsFixed(1) : cores.toStringAsFixed(2);
+}
+
+/// Memory for usage readouts ("7.2 MiB"), or "—".
+String formatMemUsage(double? bytes) => bytes == null ? '—' : formatBytes(bytes);
+
+/// Simple spread of a sample: min, median, max.
+class Spread {
+  final double min;
+  final double median;
+  final double max;
+  const Spread(this.min, this.median, this.max);
+
+  static Spread? of(Iterable<double> values) {
+    final v = values.toList()..sort();
+    if (v.isEmpty) return null;
+    final mid = v.length ~/ 2;
+    final median = v.length.isOdd ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+    return Spread(v.first, median, v.last);
+  }
+}

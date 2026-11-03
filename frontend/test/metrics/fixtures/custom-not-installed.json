@@ -1,0 +1,1 @@
+{"error":"custom.metrics.k8s.io is not installed (no APIService registered)","code":404,"state":"notInstalled","group":"custom.metrics.k8s.io"}

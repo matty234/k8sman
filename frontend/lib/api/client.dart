@@ -155,6 +155,12 @@ class ApiClient {
       TableData.fromJson(await _send('POST', 'columns/preview', {...r.toQuery(), 'namespace': namespace, 'limit': '$limit'},
           {'columns': [for (final c in cols) c.toJson()]}));
 
+  // ---- metrics APIs ----
+
+  /// JSON from `/api/metrics/<path>` (status, nodes, pods, custom, external, hpa...).
+  /// Typed wrappers: `lib/metrics/metrics_api.dart`.
+  Future<Json> metrics(String path, [Map<String, String?> query = const {}]) async => Map<String, dynamic>.from(await _get('metrics/$path', query));
+
   // ---- mutations (disabled when the backend runs --read-only) ----
 
   /// Replace an object from edited YAML (`kubectl edit` semantics). The YAML

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../metrics/hpa_live.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -199,6 +200,7 @@ class HpaPanel extends ResourcePanel {
             ? const InlineMessage('No metrics: defaults to 80% average CPU utilization')
             : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final m in metrics) _MetricRow(m)]),
       ),
+      hpaLiveSection(ctx),
       DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(st['conditions'] as List?)),
       DetailSection(title: 'Behavior', icon: Icons.tune, child: _Behavior(asMap(spec['behavior']))),
     ];

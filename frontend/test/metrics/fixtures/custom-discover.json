@@ -1,0 +1,5 @@
+{"version":"v1beta2","resources":[
+ {"resource":"namespaces","group":"","namespaced":false,"metrics":["http_requests_per_second"]},
+ {"resource":"pods","group":"","namespaced":true,"metrics":["http_requests_per_second","nginx_connections_active"]},
+ {"resource":"deployments","group":"apps","namespaced":true,"metrics":["queue_depth"]}
+]}
