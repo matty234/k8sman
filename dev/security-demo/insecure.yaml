@@ -1,0 +1,149 @@
+# Deliberately insecure sample objects for the Security page (dev kind cluster
+# only). Apply with:
+#   kubectl --kubeconfig .kubeconfig-dev apply -f dev/security-demo/insecure.yaml
+# Remove with:
+#   kubectl --kubeconfig .kubeconfig-dev delete ns security-demo
+#   kubectl --kubeconfig .kubeconfig-dev delete clusterrolebinding security-demo-overprivileged
+#   kubectl --kubeconfig .kubeconfig-dev delete clusterrole security-demo-everything
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security-demo
+---
+# Privileged pod: hostPID, hostNetwork, hostPath, SYS_ADMIN, runs as root.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: privileged-debug
+  namespace: security-demo
+  labels: {app: privileged-debug}
+spec:
+  hostPID: true
+  hostNetwork: true
+  containers:
+    - name: shell
+      image: busybox:1.36
+      command: ["sleep", "infinity"]
+      securityContext:
+        privileged: true
+        runAsUser: 0
+        capabilities: {add: ["SYS_ADMIN", "NET_ADMIN"]}
+      volumeMounts:
+        - {name: host, mountPath: /host}
+  volumes:
+    - name: host
+      hostPath: {path: /}
+---
+# A Deployment using :latest, no resources, no probes, a secret in env.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: web-credentials
+  namespace: security-demo
+stringData:
+  password: hunter2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-latest
+  namespace: security-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: web-latest}
+  template:
+    metadata:
+      labels: {app: web-latest}
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports: [{containerPort: 80}]
+          env:
+            - name: DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: web-credentials, key: password}}
+---
+# Exposed to the outside world (stays <pending> in kind).
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-public
+  namespace: security-demo
+spec:
+  type: LoadBalancer
+  selector: {app: web-latest}
+  ports: [{port: 80, targetPort: 80}]
+---
+# Over-privileged ServiceAccount: cluster-admin-like binding, no pods use it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-deployer
+  namespace: security-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: security-demo-everything
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: security-demo-overprivileged
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: security-demo-everything}
+subjects:
+  - {kind: ServiceAccount, name: ci-deployer, namespace: security-demo}
+---
+# A binding whose ServiceAccount and Role do not exist.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ghost-reader
+  namespace: security-demo
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: secret-reader}
+subjects:
+  - {kind: ServiceAccount, name: deleted-bot, namespace: security-demo}
+---
+# A Role bound by nothing.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: orphan-exec
+  namespace: security-demo
+rules:
+  - apiGroups: [""]
+    resources: ["pods/exec", "pods"]
+    verbs: ["get", "create"]
+---
+# A permissive NetworkPolicy: allows ingress from everywhere.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-all-ingress
+  namespace: security-demo
+spec:
+  podSelector: {matchLabels: {app: web-latest}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock: {cidr: 0.0.0.0/0}
+---
+# An Ingress without TLS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-plain-http
+  namespace: security-demo
+spec:
+  rules:
+    - host: web.example.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: web-public, port: {number: 80}}}
