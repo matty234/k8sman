@@ -69,6 +69,9 @@ TableRowData _row(int i, int gen) {
   );
 }
 
+Json _rowJson(TableRowData r) =>
+    {'uid': r.uid, 'name': r.name, 'namespace': r.namespace, 'resourceVersion': r.resourceVersion, 'cells': r.cells};
+
 class _PerfApi extends TableFakeApi {}
 
 /// Row/cell widget rebuilds, counted by widget type name.
@@ -181,6 +184,34 @@ void main() {
       results['burst x$_burst: frame per burst (ms)'] = _ms(buildSw.elapsed, _events ~/ _burst);
       results['burst x$_burst: _Row builds per burst'] = (counter['_Row'] / (_events / _burst)).toStringAsFixed(1);
       results['burst x$_burst: TableCellView builds per burst'] = (counter['TableCellView'] / (_events / _burst)).toStringAsFixed(1);
+
+      // The same bursts as one BATCH frame each (built via fromJson so this
+      // file also compiles against backends/clients without BATCH support).
+      counter.start();
+      buildSw.reset();
+      handleSw.reset();
+      var notifies = 0;
+      void onNotify() => notifies++;
+      tc.addListener(onNotify);
+      for (var b = 0; b < _events ~/ _burst; b++) {
+        handleSw.start();
+        api.watchController!.add(WatchMessage.fromJson({
+          'type': 'BATCH',
+          'events': [
+            for (var j = 0; j < _burst; j++) {'type': 'MODIFIED', 'row': _rowJson(_row(_target(b * _burst + j), gen++))},
+          ],
+        }));
+        await null;
+        handleSw.stop();
+        buildSw.start();
+        await tester.pump();
+        buildSw.stop();
+      }
+      tc.removeListener(onNotify);
+      counter.stop();
+      results['batch x$_burst: frame per BATCH (ms)'] = _ms(buildSw.elapsed, _events ~/ _burst);
+      results['batch x$_burst: notifies per BATCH'] = (notifies / (_events / _burst)).toStringAsFixed(1);
+      results['batch x$_burst: _Row builds per BATCH'] = (counter['_Row'] / (_events / _burst)).toStringAsFixed(1);
 
       // Selection change: one click on a row.
       counter.start();
