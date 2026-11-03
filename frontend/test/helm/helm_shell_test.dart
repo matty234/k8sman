@@ -35,6 +35,11 @@ void main() {
       child: const K8sManApp(themeMode: ThemeMode.dark),
     ));
     await tester.pump(const Duration(milliseconds: 50));
+    // Helm is under the nav's "More" disclosure.
+    if (find.text('More').evaluate().isNotEmpty) {
+      await tester.tap(find.text('More'));
+      await tester.pump();
+    }
     await tester.tap(find.text('Helm').first); // the nav item
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 60));

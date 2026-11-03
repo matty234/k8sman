@@ -1,0 +1,44 @@
+{
+ "versions": [
+  {
+   "version": "1.11.0-rc.0",
+   "prerelease": true
+  },
+  {
+   "version": "1.10.0-rc.1",
+   "prerelease": true
+  },
+  {
+   "version": "1.9.3"
+  },
+  {
+   "version": "1.9.2"
+  },
+  {
+   "version": "1.9.1"
+  },
+  {
+   "version": "1.9.0"
+  },
+  {
+   "version": "1.9.0-rc.1",
+   "prerelease": true
+  },
+  {
+   "version": "1.9.0-rc.0",
+   "prerelease": true
+  },
+  {
+   "version": "1.8.6"
+  },
+  {
+   "version": "1.8.5"
+  },
+  {
+   "version": "1.8.4"
+  },
+  {
+   "version": "1.8.3"
+  }
+ ]
+}

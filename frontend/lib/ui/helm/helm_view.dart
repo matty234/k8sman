@@ -93,6 +93,11 @@ class _HelmViewState extends State<HelmView> {
       _loadedNs = app.namespace;
       scheduleMicrotask(_refresh);
     }
+    // A release to focus (from Add-ons → View release).
+    if (app.helmFocus != null) {
+      _selected = app.helmFocus;
+      app.helmFocus = null;
+    }
     final l = _list;
     final all = l == null ? null : sortReleases(l.releases);
     final visible = all?.where(_matches).toList();

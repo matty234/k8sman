@@ -36,8 +36,15 @@ String _kindPlural(String kind) {
 // Header
 // ---------------------------------------------------------------------------
 
+/// Sentinel for "all namespaces" in the scope picker.
+const _all = '\u0000all';
+
 class OverviewHeader extends StatelessWidget {
   final String? namespace;
+
+  /// Namespaces offered in the scope picker (null selection = all).
+  final List<String> namespaces;
+  final ValueChanged<String?>? onNamespaceChanged;
   final DateTime? updatedAt;
   final bool loading;
   final bool paused;
@@ -48,6 +55,8 @@ class OverviewHeader extends StatelessWidget {
   const OverviewHeader({
     super.key,
     required this.namespace,
+    this.namespaces = const [],
+    this.onNamespaceChanged,
     required this.updatedAt,
     required this.loading,
     required this.paused,
@@ -62,7 +71,17 @@ class OverviewHeader extends StatelessWidget {
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     return PageHeader(
       title: 'Overview',
-      subtitle: Text(namespace ?? 'All namespaces'),
+      subtitle: onNamespaceChanged == null
+          ? Text(namespace ?? 'All namespaces')
+          : MenuSelect<String>(
+              tooltip: 'Scope',
+              value: namespace ?? _all,
+              options: [
+                (_all, const Text('All namespaces')),
+                for (final ns in namespaces) (ns, Text(ns, overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (v) => onNamespaceChanged!(v == _all ? null : v),
+            ),
       actions: [
         if (loading) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
         if (updatedAt != null)
