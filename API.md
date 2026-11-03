@@ -208,6 +208,30 @@ Response:
 - Categories: pods `crashLoop` (including a container that just exited non-zero and is restarting), `imagePull` (ImagePullBackOff, ErrImagePull, InvalidImageName), `createContainerConfigError` (also CreateContainerError and RunContainerError), `initBlocked` (failing init container, or still initializing after 5m), `oomKilled` (OOMKilled within the last hour), `podFailed`, `stuckPending` (Pending for more than 5m; reason from the PodScheduled condition, e.g. Unschedulable), `stuckTerminating` (deletionTimestamp more than 5m old), `notReady` (Running but not ready for more than 5m), `highRestarts` (5 or more restarts); workloads `deploymentUnavailable`, `progressDeadlineExceeded`, `rolling`, `deploymentPaused`, `statefulSetNotReady`, `daemonSetNotReady`; jobs `jobFailed`, `jobLongRunning` (active for more than 1h), `jobSuspended`, `cronJobFailing` (latest job failed), `cronJobOverdue` (next run per the schedule is more than 2m, or startingDeadlineSeconds, in the past), `cronJobSuspended`; nodes `nodeNotReady`, `nodePressure`, `nodeCordoned`; storage `pvcPending` (more than 5m), `pvcLost`; Argo CD (section `argocd`, only when the Application CRD is served; apps in, or deploying to, the selected namespace) `argoSyncFailed` (last operation Failed/Error or an `*Error` condition, critical), `argoDegraded` (critical), `argoMissing` (warning), `argoOutOfSync` (warning). Each app is reported once, in its worst category, and `counts.argoApps` is `{total, synced, outOfSync, healthy, degraded, missing, failed}`; network (Gateway API, when served; see `docs/GATEWAY_API.md`) `gatewayNotReady` (not Accepted/Programmed), `gatewayListener` (listener Conflicted or ResolvedRefs/Accepted/Programmed False), `routeNotAccepted` (critical when no parent accepts the route, else warning), `routeUnresolvedRefs`.
 - `topWarnings` groups Warning events seen in the last hour by reason (top 10 by count).
 
+## NVIDIA GPUs
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/gpu[?live=false][&refresh=true]` | GPU inventory (`backend/internal/gpu`): nodes with `nvidia.com/gpu` (or MIG / `gpu.shared`) capacity and their GPU feature discovery labels, pods requesting GPU resources and per-node allocation. Merged with live DCGM exporter stats from the default Prometheus when present. `live=false` skips Prometheus. Cached for 10s per context |
+
+```
+{generatedAt, monitoring: "dcgm"|"noExporter"|"noPrometheus"|"error"|"skipped", prometheus?, attribution,
+ summary: {nodes, capacity, allocatable, allocated, devices, idle, unhealthy, unmonitored, pendingPods, avgUtil?},
+ nodes: [{name, ready, product?, family?, memoryMiB?, count?, driverVersion?, cudaVersion?, migStrategy?, sharingStrategy?,
+          capacity, allocatable, allocated, resources: [{name, capacity, allocatable, allocated}], monitored,
+          idleAllocated?, selector?, pods: [{namespace, name, gpus}],
+          devices: [{node, gpu, uuid?, model?, util?, avgUtil?, memUsed?, memTotal?, tempC?, powerW?, tensorActive?, ...,
+                     xid?, uncorrectableRemappedRows?, rowRemapFailure?, pods?, health?, idle?, selector}]}],
+ pods: [{namespace, name, node?, phase, gpus, resources, startedAt?, devices?, util?, avgUtil?, idle?, selector?, unschedulable?}],
+ issues: [{severity, reason, node?, namespace?, pod?, gpu?, message}], errors?}
+```
+
+- DCGM series are mapped to nodes by a `node`/`kubernetes_node`/`Hostname` label naming a node, else through the exporter pod (`namespace`/`pod`, or `Hostname` as a pod name), else the scrape `instance` IP (pod IP, or node IP for hostNetwork exporters).
+- Devices are attributed to pods only from `exported_pod`/`exported_namespace` (dcgm-exporter's pod mapping), or `pod`/`namespace` naming a pod that requests GPUs (honorLabels). Without attribution, allocation is per node only.
+- Fractions are 0..1, memory in bytes. `selector` is a PromQL label matcher for the device's / node's / pod's DCGM series (used for history charts).
+- An allocated GPU is idle when its utilisation averaged under 1% over the last hour and its pods have run that long. Without attribution, `idleAllocated` is the node's allocated GPUs minus devices that did any work.
+- Issue reasons: `IdleAllocated`, `NoExporter` (GPU node without DCGM metrics while other nodes have them), `NoDCGM`, `DevicePluginUnhealthy` (capacity > allocatable), `DevicesNotReported`, `XIDError`, `RowRemapFailure`, `UncorrectableRemappedRows`, `ECCDoubleBitErrors`, `HighTemperature` (≥ 85 °C), `PendingGPU`.
+
 ## Helm
 
 Helm v3 releases through the Helm SDK (`helm.sh/helm/v3` v3.18.6, `backend/internal/helm`), on the active kube context and with the same credentials as the rest of the API. Release state is read from and written to the Secrets storage driver (Helm's default), so everything here interoperates with the `helm` CLI. Mutations are refused (403) with `--read-only`. The Dart client is `frontend/lib/ui/helm/helm_api.dart`.

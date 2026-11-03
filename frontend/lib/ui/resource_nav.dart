@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../api/models.dart';
 import '../app/kubeconfig_picker.dart';
 import '../app/window_chrome.dart';
+import '../gpu/gpu_view.dart';
 import '../state/app_state.dart';
 import 'alerts/alerts_nav_badge.dart';
 import 'theme.dart';
@@ -157,6 +158,7 @@ class _ResourceNavState extends State<ResourceNav> {
         _ViewItem(icon: Icons.space_dashboard_outlined, label: 'Overview', view: MainView.overview, selected: app.view == MainView.overview),
         _ViewItem(icon: Icons.notifications_none, label: 'Alerts', view: MainView.alerts, selected: app.view == MainView.alerts, trailing: const AlertsNavBadge()),
         _ViewItem(icon: Icons.dns_outlined, label: 'Nodes', view: MainView.nodes, selected: app.view == MainView.nodes),
+        GpuNavGate(child: _ViewItem(icon: Icons.memory, label: 'GPUs', view: MainView.gpus, selected: app.view == MainView.gpus)),
         _ViewItem(icon: Icons.shield_outlined, label: 'Security', view: MainView.security, selected: app.view == MainView.security),
         // Less-used pages fold under "More" (auto-open when one is active).
         if (_navMoreOpen || _morePages.contains(app.view)) ...[

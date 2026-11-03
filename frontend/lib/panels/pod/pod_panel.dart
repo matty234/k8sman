@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../actions/actions.dart';
 import '../../api/models.dart';
+import '../../gpu/gpu_sections.dart';
 import '../../prometheus/metric_history_chart.dart';
 import '../../metrics/pod_usage.dart';
 import '../../ui/logs/open_logs.dart';
@@ -33,6 +34,7 @@ class PodPanel extends ResourcePanel {
       // CPU / memory history first (hidden when Prometheus isn't available).
       podHistory(ctx),
       DetailSection(title: 'Status', icon: Icons.monitor_heart_outlined, child: _StatusSummary(ctx)),
+      gpuPodSection(ctx),
       DetailSection(
         title: 'Containers',
         icon: Icons.view_in_ar_outlined,

@@ -1,0 +1,41 @@
+[
+  {
+    "metadata": {"name": "dcgm-exporter-abcde", "namespace": "monitoring"},
+    "spec": {"nodeName": "gpu-node-b", "containers": [{"name": "dcgm-exporter"}]},
+    "status": {"phase": "Running", "podIP": "10.244.2.7", "startTime": "2026-11-01T00:00:00Z"}
+  },
+  {
+    "metadata": {"name": "trainer-0", "namespace": "ml"},
+    "spec": {
+      "nodeName": "gpu-node-b",
+      "containers": [
+        {"name": "train", "resources": {"limits": {"nvidia.com/gpu": "2"}, "requests": {"nvidia.com/gpu": "2", "cpu": "4"}}},
+        {"name": "sidecar", "resources": {"requests": {"cpu": "100m"}}}
+      ]
+    },
+    "status": {"phase": "Running", "podIP": "10.244.2.20", "startTime": "2026-11-03T08:00:00Z"}
+  },
+  {
+    "metadata": {"name": "notebook", "namespace": "ml"},
+    "spec": {"nodeName": "gpu-node-a", "containers": [{"name": "jupyter", "resources": {"limits": {"nvidia.com/gpu": "1"}}}]},
+    "status": {"phase": "Running", "podIP": "10.244.1.5", "startTime": "2026-11-03T11:30:00Z"}
+  },
+  {
+    "metadata": {"name": "queued", "namespace": "ml"},
+    "spec": {"containers": [{"name": "big", "resources": {"limits": {"nvidia.com/gpu": "4"}}}]},
+    "status": {
+      "phase": "Pending",
+      "conditions": [{"type": "PodScheduled", "status": "False", "reason": "Unschedulable", "message": "0/3 nodes are available: 3 Insufficient nvidia.com/gpu."}]
+    }
+  },
+  {
+    "metadata": {"name": "done", "namespace": "ml"},
+    "spec": {"nodeName": "gpu-node-b", "containers": [{"name": "job", "resources": {"limits": {"nvidia.com/gpu": "1"}}}]},
+    "status": {"phase": "Succeeded", "startTime": "2026-11-02T00:00:00Z"}
+  },
+  {
+    "metadata": {"name": "web", "namespace": "default"},
+    "spec": {"nodeName": "cpu-node", "containers": [{"name": "web"}]},
+    "status": {"phase": "Running", "podIP": "10.244.3.4"}
+  }
+]

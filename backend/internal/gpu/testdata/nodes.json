@@ -1,0 +1,60 @@
+[
+  {
+    "metadata": {
+      "name": "gpu-node-a",
+      "labels": {
+        "kubernetes.io/hostname": "gpu-node-a",
+        "nvidia.com/cuda.driver-version.full": "570.211.01",
+        "nvidia.com/cuda.runtime-version.full": "12.8",
+        "nvidia.com/gpu.count": "4",
+        "nvidia.com/gpu.family": "volta",
+        "nvidia.com/gpu.memory": "32768",
+        "nvidia.com/gpu.present": "true",
+        "nvidia.com/gpu.product": "Tesla-V100-SXM2-32GB",
+        "nvidia.com/gpu.replicas": "1",
+        "nvidia.com/gpu.sharing-strategy": "none",
+        "nvidia.com/mig.capable": "false"
+      }
+    },
+    "status": {
+      "capacity": {"cpu": "56", "memory": "263440500Ki", "nvidia.com/gpu": "4", "pods": "110"},
+      "allocatable": {"cpu": "55300m", "memory": "257149044Ki", "nvidia.com/gpu": "4", "pods": "110"},
+      "addresses": [{"type": "InternalIP", "address": "10.0.0.11"}, {"type": "Hostname", "address": "gpu-node-a"}],
+      "conditions": [{"type": "Ready", "status": "True"}]
+    }
+  },
+  {
+    "metadata": {
+      "name": "gpu-node-b",
+      "labels": {
+        "kubernetes.io/hostname": "gpu-node-b",
+        "nvidia.com/cuda.driver.major": "595",
+        "nvidia.com/cuda.driver.minor": "91",
+        "nvidia.com/cuda.driver.rev": "07",
+        "nvidia.com/cuda.runtime.major": "13",
+        "nvidia.com/cuda.runtime.minor": "2",
+        "nvidia.com/gpu.count": "3",
+        "nvidia.com/gpu.family": "blackwell",
+        "nvidia.com/gpu.memory": "24467",
+        "nvidia.com/gpu.present": "true",
+        "nvidia.com/gpu.product": "NVIDIA-RTX-PRO-4000-Blackwell",
+        "nvidia.com/mig.capable": "false"
+      }
+    },
+    "status": {
+      "capacity": {"cpu": "94", "memory": "990485244Ki", "nvidia.com/gpu": "3", "pods": "110"},
+      "allocatable": {"cpu": "93300m", "memory": "984193788Ki", "nvidia.com/gpu": "3", "pods": "110"},
+      "addresses": [{"type": "InternalIP", "address": "10.0.0.12"}, {"type": "Hostname", "address": "gpu-node-b"}],
+      "conditions": [{"type": "Ready", "status": "True"}]
+    }
+  },
+  {
+    "metadata": {"name": "cpu-node", "labels": {"kubernetes.io/hostname": "cpu-node"}},
+    "status": {
+      "capacity": {"cpu": "8", "memory": "32Gi", "pods": "110"},
+      "allocatable": {"cpu": "8", "memory": "32Gi", "pods": "110"},
+      "addresses": [{"type": "InternalIP", "address": "10.0.0.13"}],
+      "conditions": [{"type": "Ready", "status": "True"}]
+    }
+  }
+]

@@ -1,0 +1,246 @@
+{
+ "generatedAt": "2026-11-03T12:00:00Z",
+ "monitoring": "dcgm",
+ "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+ "attribution": true,
+ "summary": {
+  "nodes": 2,
+  "capacity": 7,
+  "allocatable": 7,
+  "allocated": 3,
+  "devices": 3,
+  "idle": 1,
+  "unhealthy": 1,
+  "unmonitored": 1,
+  "pendingPods": 1,
+  "avgUtil": 0.29
+ },
+ "nodes": [
+  {
+   "name": "gpu-node-a",
+   "ready": true,
+   "product": "Tesla-V100-SXM2-32GB",
+   "family": "volta",
+   "memoryMiB": 32768,
+   "count": 4,
+   "driverVersion": "570.211.01",
+   "cudaVersion": "12.8",
+   "sharingStrategy": "none",
+   "replicas": 1,
+   "capacity": 4,
+   "allocatable": 4,
+   "allocated": 1,
+   "resources": [
+    {
+     "name": "nvidia.com/gpu",
+     "capacity": 4,
+     "allocatable": 4,
+     "allocated": 1
+    }
+   ],
+   "monitored": false,
+   "devices": [],
+   "pods": [
+    {
+     "namespace": "ml",
+     "name": "notebook",
+     "gpus": 1
+    }
+   ]
+  },
+  {
+   "name": "gpu-node-b",
+   "ready": true,
+   "product": "NVIDIA-RTX-PRO-4000-Blackwell",
+   "family": "blackwell",
+   "memoryMiB": 24467,
+   "count": 3,
+   "driverVersion": "595.91.07",
+   "cudaVersion": "13.2",
+   "capacity": 3,
+   "allocatable": 3,
+   "allocated": 2,
+   "resources": [
+    {
+     "name": "nvidia.com/gpu",
+     "capacity": 3,
+     "allocatable": 3,
+     "allocated": 2
+    }
+   ],
+   "monitored": true,
+   "devices": [
+    {
+     "node": "gpu-node-b",
+     "gpu": "0",
+     "uuid": "GPU-11111111-aaaa-bbbb-cccc-000000000000",
+     "model": "NVIDIA RTX PRO 4000 Blackwell",
+     "pciBusId": "00000000:01:00.0",
+     "device": "nvidia0",
+     "driver": "595.91.07",
+     "util": 0.87,
+     "tensorActive": 0.42,
+     "avgUtil": 0.645,
+     "memUsed": 18874368000,
+     "memTotal": 25655508992,
+     "tempC": 71,
+     "powerW": 131.2,
+     "uncorrectableRemappedRows": 0,
+     "rowRemapFailure": 0,
+     "pods": [
+      {
+       "namespace": "ml",
+       "name": "trainer-0"
+      }
+     ],
+     "selector": "UUID=\"GPU-11111111-aaaa-bbbb-cccc-000000000000\""
+    },
+    {
+     "node": "gpu-node-b",
+     "gpu": "1",
+     "uuid": "GPU-22222222-aaaa-bbbb-cccc-000000000000",
+     "model": "NVIDIA RTX PRO 4000 Blackwell",
+     "pciBusId": "00000000:41:00.0",
+     "device": "nvidia1",
+     "driver": "595.91.07",
+     "util": 0,
+     "tensorActive": 0,
+     "avgUtil": 0,
+     "memUsed": 1048576,
+     "memTotal": 25654460416,
+     "tempC": 27,
+     "powerW": 3.509,
+     "uncorrectableRemappedRows": 0,
+     "rowRemapFailure": 0,
+     "pods": [
+      {
+       "namespace": "ml",
+       "name": "trainer-0"
+      }
+     ],
+     "idle": true,
+     "selector": "UUID=\"GPU-22222222-aaaa-bbbb-cccc-000000000000\""
+    },
+    {
+     "node": "gpu-node-b",
+     "gpu": "2",
+     "uuid": "GPU-33333333-aaaa-bbbb-cccc-000000000000",
+     "model": "NVIDIA RTX PRO 4000 Blackwell",
+     "pciBusId": "00000000:81:00.0",
+     "device": "nvidia2",
+     "driver": "595.91.07",
+     "util": 0,
+     "tensorActive": 0,
+     "avgUtil": 0.002,
+     "memUsed": 1048576,
+     "memTotal": 25654460416,
+     "tempC": 88,
+     "powerW": 4.1,
+     "uncorrectableRemappedRows": 2,
+     "rowRemapFailure": 0,
+     "health": [
+      "2 rows remapped after uncorrectable errors",
+      "Running hot at 88 °C"
+     ],
+     "selector": "UUID=\"GPU-33333333-aaaa-bbbb-cccc-000000000000\""
+    }
+   ],
+   "pods": [
+    {
+     "namespace": "ml",
+     "name": "trainer-0",
+     "gpus": 2
+    }
+   ],
+   "idleAllocated": 1,
+   "selector": "UUID=~\"GPU-11111111-aaaa-bbbb-cccc-000000000000|GPU-22222222-aaaa-bbbb-cccc-000000000000|GPU-33333333-aaaa-bbbb-cccc-000000000000\""
+  }
+ ],
+ "pods": [
+  {
+   "namespace": "ml",
+   "name": "done",
+   "node": "gpu-node-b",
+   "phase": "Succeeded",
+   "gpus": 1,
+   "resources": {
+    "nvidia.com/gpu": 1
+   },
+   "startedAt": "2026-11-02T00:00:00Z"
+  },
+  {
+   "namespace": "ml",
+   "name": "notebook",
+   "node": "gpu-node-a",
+   "phase": "Running",
+   "gpus": 1,
+   "resources": {
+    "nvidia.com/gpu": 1
+   },
+   "startedAt": "2026-11-03T11:30:00Z"
+  },
+  {
+   "namespace": "ml",
+   "name": "queued",
+   "phase": "Pending",
+   "gpus": 4,
+   "resources": {
+    "nvidia.com/gpu": 4
+   },
+   "unschedulable": "0/3 nodes are available: 3 Insufficient nvidia.com/gpu."
+  },
+  {
+   "namespace": "ml",
+   "name": "trainer-0",
+   "node": "gpu-node-b",
+   "phase": "Running",
+   "gpus": 2,
+   "resources": {
+    "nvidia.com/gpu": 2
+   },
+   "startedAt": "2026-11-03T08:00:00Z",
+   "devices": [
+    "GPU-11111111-aaaa-bbbb-cccc-000000000000",
+    "GPU-22222222-aaaa-bbbb-cccc-000000000000"
+   ],
+   "util": 0.435,
+   "avgUtil": 0.3225,
+   "selector": "exported_namespace=\"ml\",exported_pod=\"trainer-0\""
+  }
+ ],
+ "issues": [
+  {
+   "severity": "warning",
+   "reason": "UncorrectableRemappedRows",
+   "node": "gpu-node-b",
+   "gpu": "2",
+   "message": "GPU 2 on gpu-node-b: 2 rows remapped after uncorrectable errors"
+  },
+  {
+   "severity": "warning",
+   "reason": "HighTemperature",
+   "node": "gpu-node-b",
+   "gpu": "2",
+   "message": "GPU 2 on gpu-node-b: Running hot at 88 °C"
+  },
+  {
+   "severity": "warning",
+   "reason": "IdleAllocated",
+   "node": "gpu-node-b",
+   "message": "gpu-node-b: 1 of 2 allocated GPUs idle for the last hour"
+  },
+  {
+   "severity": "warning",
+   "reason": "NoExporter",
+   "node": "gpu-node-a",
+   "message": "gpu-node-a has 4 GPUs but no DCGM exporter metrics"
+  },
+  {
+   "severity": "warning",
+   "reason": "PendingGPU",
+   "namespace": "ml",
+   "pod": "queued",
+   "message": "ml/queued is waiting for 4 GPUs: 0/3 nodes are available: 3 Insufficient nvidia.com/gpu."
+  }
+ ]
+}
