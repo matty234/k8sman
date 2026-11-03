@@ -50,6 +50,15 @@ void main() {
     await saveScreenshot(tester, 'pod-history-containers');
   });
 
+  testWidgets('pod panel puts the metrics charts at the top, above Status', (tester) async {
+    await pumpPanel(tester, devFixture('pod-web.json'), size: const Size(560, 2400));
+    final chartsY = tester.getTopLeft(find.text('Metrics history')).dy;
+    final statusY = tester.getTopLeft(find.text('Status').first).dy;
+    final containersY = tester.getTopLeft(find.text('Containers').first).dy;
+    expect(chartsY, lessThan(statusY));
+    expect(statusY, lessThan(containersY));
+  });
+
   testWidgets('node panel shows history', (tester) async {
     await pumpPanel(tester, devFixture('node-k8sman-dev-control-plane.json'), size: const Size(560, 2400));
     expect(find.text('Metrics history'), findsOneWidget);

@@ -30,6 +30,8 @@ class PodPanel extends ResourcePanel {
     final volumes = asMapList(ctx.spec['volumes']);
     final scheduling = _schedulingEntries(context, ctx);
     return [
+      // CPU / memory history first (hidden when Prometheus isn't available).
+      podHistory(ctx),
       DetailSection(title: 'Status', icon: Icons.monitor_heart_outlined, child: _StatusSummary(ctx)),
       DetailSection(
         title: 'Containers',
@@ -62,7 +64,6 @@ class PodPanel extends ResourcePanel {
           ],
         ),
       ),
-      podHistory(ctx),
       if (volumes.isNotEmpty)
         DetailSection(title: 'Volumes', icon: Icons.storage_outlined, trailing: Hint('${volumes.length}'), child: _Volumes(volumes, containers, ctx.namespace)),
       if (scheduling.isNotEmpty) DetailSection(title: 'Scheduling', icon: Icons.account_tree_outlined, child: KeyValueTable(scheduling, keyWidth: 110)),
