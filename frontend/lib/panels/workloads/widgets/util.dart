@@ -32,8 +32,7 @@ int? ordinalOf(String name) {
 }
 
 /// True if any of [obj]'s ownerReferences has uid in [uids].
-bool isOwnedByAny(Json obj, Set<String> uids) =>
-    asMapList(dig(obj, ['metadata', 'ownerReferences'])).any((o) => uids.contains(o['uid']));
+bool isOwnedByAny(Json obj, Set<String> uids) => asMapList(dig(obj, ['metadata', 'ownerReferences'])).any((o) => uids.contains(o['uid']));
 
 /// A ResourceLink that ellipsizes instead of wrapping.
 class OneLineLink extends StatelessWidget {
@@ -43,11 +42,14 @@ class OneLineLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DefaultTextStyle.merge(
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        softWrap: false,
-        child: Tooltip(message: '${ref.kind}/${ref.name}', child: ResourceLink(ref, label: label ?? ref.name)),
-      );
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    softWrap: false,
+    child: Tooltip(
+      message: '${ref.kind}/${ref.name}',
+      child: ResourceLink(ref, label: label ?? ref.name),
+    ),
+  );
 }
 
 /// Muted "—" / hint text.
@@ -55,8 +57,7 @@ class HintText extends StatelessWidget {
   final String text;
   const HintText(this.text, {super.key});
   @override
-  Widget build(BuildContext context) =>
-      Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor));
+  Widget build(BuildContext context) => Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor));
 }
 
 /// Image reference chip: monospace, click (or the icon) copies the full ref.
@@ -80,13 +81,21 @@ class ImageChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
           border: c == null ? null : Border.all(color: c.withValues(alpha: 0.6)),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Flexible(
-            child: Text(image, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: c)),
-          ),
-          const SizedBox(width: 4),
-          Icon(Icons.copy, size: 11, color: theme.hintColor),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                image,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: monoStyle(context, size: 11, color: c),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.copy, size: 11, color: theme.hintColor),
+          ],
+        ),
       ),
     );
     return Tooltip(message: tooltip ?? 'Copy $image', child: chip);
@@ -101,19 +110,22 @@ class LegendDot extends StatelessWidget {
   const LegendDot(this.color, this.label, {super.key, this.hollow = false});
 
   @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: hollow ? null : color,
-            borderRadius: BorderRadius.circular(2),
-            border: hollow ? Border.all(color: color) : null,
-          ),
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: hollow ? null : color,
+          borderRadius: BorderRadius.circular(2),
+          border: hollow ? Border.all(color: color) : null,
         ),
-        const SizedBox(width: 4),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
-      ]);
+      ),
+      const SizedBox(width: 4),
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
 }
 
 /// Human readable toleration: `key=value:NoSchedule`, `Exists (all taints)`.
@@ -147,21 +159,23 @@ class SelectorChips extends StatelessWidget {
     final labels = isLabelSelector ? asMap(sel['matchLabels']) : sel;
     final exprs = isLabelSelector ? asMapList(sel['matchExpressions']) : const <Json>[];
     if (labels.isEmpty && exprs.isEmpty) return const HintText('everything (empty selector)');
-    return Wrap(spacing: 4, runSpacing: 4, children: [
-      for (final e in labels.entries) Chipish(text: '${e.key}=${e.value}', copyValue: '${e.key}=${e.value}'),
-      for (final x in exprs)
-        Chipish(text: '${x['key']} ${x['operator']}${x['values'] is List ? ' (${(x['values'] as List).join(',')})' : ''}'),
-    ]);
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        for (final e in labels.entries) Chipish(text: '${e.key}=${e.value}', copyValue: '${e.key}=${e.value}'),
+        for (final x in exprs) Chipish(text: '${x['key']} ${x['operator']}${x['values'] is List ? ' (${(x['values'] as List).join(',')})' : ''}'),
+      ],
+    );
   }
 }
 
 /// Number with a severity colour (e.g. restarts > 0 in amber).
-Widget coloredCount(BuildContext context, String text, Severity s, {bool bold = true}) => Text(text,
-    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: severityColor(context, s),
-          fontWeight: bold ? FontWeight.w600 : null,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ));
+Widget coloredCount(BuildContext context, String text, Severity s, {bool bold = true}) => Text(
+  text,
+  style: Theme.of(context).textTheme.bodySmall
+      ?.copyWith(color: severityColor(context, s), fontWeight: bold ? FontWeight.w600 : null, fontFeatures: const [FontFeature.tabularFigures()]),
+);
 
 /// Key that changes when replica state or generation moves, used to refetch
 /// related objects without refetching on every watch tick.
@@ -187,3 +201,81 @@ String workloadRefreshKey(PanelContext ctx) {
   ].join('|');
 }
 
+/// Like AsyncSection, but keeps showing the previous data while a refetch is
+/// in flight (no spinner flash on live refreshes).
+class KeepingAsync<T> extends StatelessWidget {
+  final Future<T> future;
+  final Widget Function(BuildContext, T) builder;
+  const KeepingAsync({super.key, required this.future, required this.builder});
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<T>(
+    future: future,
+    builder: (context, snap) {
+      if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
+      if (!snap.hasData) {
+        return const Padding(
+          padding: EdgeInsets.all(8),
+          child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+        );
+      }
+      return builder(context, snap.data as T);
+    },
+  );
+}
+
+/// Bordered callout with an icon, text and an optional trailing action.
+class Callout extends StatelessWidget {
+  final Severity severity;
+  final IconData icon;
+  final Widget child;
+  final Widget? action;
+  const Callout({super.key, required this.severity, required this.icon, required this.child, this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = severityColor(context, severity);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: c.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: c),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DefaultTextStyle.merge(style: Theme.of(context).textTheme.bodySmall, child: child),
+          ),
+          if (action != null) ...[const SizedBox(width: 8), action!],
+        ],
+      ),
+    );
+  }
+}
+
+/// Shrinks outlined/filled buttons (e.g. ActionButton) to fit a dense row.
+class CompactButtons extends StatelessWidget {
+  final Widget child;
+  const CompactButtons({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(0, 24)),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      textStyle: WidgetStatePropertyAll(Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
+      iconSize: const WidgetStatePropertyAll(14),
+    );
+    return Theme(
+      data: Theme.of(context).copyWith(
+        outlinedButtonTheme: OutlinedButtonThemeData(style: style),
+        filledButtonTheme: FilledButtonThemeData(style: style),
+      ),
+      child: child,
+    );
+  }
+}

@@ -48,30 +48,33 @@ class DaemonSetPanel extends ResourcePanel {
         title: 'Nodes',
         icon: Icons.dns_outlined,
         trailing: StatusBadge(headline, severity: sev, dense: true),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ReplicaStatusBar(
-            desired: desired,
-            current: asInt(st['currentNumberScheduled']) ?? 0,
-            updated: asInt(st['updatedNumberScheduled']) ?? 0,
-            ready: ready,
-            available: available,
-            unavailable: asInt(st['numberUnavailable']) ?? (desired - available).clamp(0, desired),
-            extra: [('misscheduled', asInt(st['numberMisscheduled']) ?? 0, Severity.warn)],
-            unit: 'pods',
-          ),
-          const SizedBox(height: 10),
-          KeyValueTable([
-            (
-              'Update strategy',
-              strat['type'] == 'OnDelete'
-                  ? 'OnDelete (pods update only when deleted)'
-                  : 'RollingUpdate · maxUnavailable ${ru['maxUnavailable'] ?? 1} · maxSurge ${ru['maxSurge'] ?? 0}'
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ReplicaStatusBar(
+              desired: desired,
+              current: asInt(st['currentNumberScheduled']) ?? 0,
+              updated: asInt(st['updatedNumberScheduled']) ?? 0,
+              ready: ready,
+              available: available,
+              unavailable: asInt(st['numberUnavailable']) ?? (desired - available).clamp(0, desired),
+              extra: [('misscheduled', asInt(st['numberMisscheduled']) ?? 0, Severity.warn)],
+              unit: 'pods',
             ),
-            if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
-            ('History limit', '${spec['revisionHistoryLimit'] ?? 10} revisions'),
-            ('Selector', SelectorChips(spec['selector'])),
-          ], keyWidth: 120),
-        ]),
+            const SizedBox(height: 10),
+            KeyValueTable([
+              (
+                'Update strategy',
+                strat['type'] == 'OnDelete'
+                    ? 'OnDelete (pods update only when deleted)'
+                    : 'RollingUpdate · maxUnavailable ${ru['maxUnavailable'] ?? 1} · maxSurge ${ru['maxSurge'] ?? 0}',
+              ),
+              if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
+              ('History limit', '${spec['revisionHistoryLimit'] ?? 10} revisions'),
+              ('Selector', SelectorChips(spec['selector'])),
+            ], keyWidth: 120),
+          ],
+        ),
       ),
       DetailSection(
         title: 'Scheduling',
@@ -92,6 +95,7 @@ class DaemonSetPanel extends ResourcePanel {
           selector: spec['selector'],
           ownerUid: ctx.uid,
           refreshKey: workloadRefreshKey(ctx),
+          actionCtx: ctx,
         ),
       ),
       DetailSection(

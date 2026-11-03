@@ -9,6 +9,7 @@ import '../panel.dart';
 import 'widgets/pod_template.dart';
 import 'widgets/pods_list.dart';
 import 'widgets/replica_bar.dart';
+import 'widgets/scaling.dart';
 import 'widgets/util.dart';
 
 const pvcRef = ResourceRef(resource: 'persistentvolumeclaims');
@@ -66,44 +67,59 @@ class StatefulSetPanel extends ResourcePanel {
         title: 'Replicas',
         icon: Icons.storage_rounded,
         trailing: StatusBadge(headline, severity: sev, dense: true),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ReplicaStatusBar(
-            desired: desired,
-            current: asInt(st['replicas']) ?? 0,
-            updated: asInt(st['updatedReplicas']) ?? 0,
-            ready: asInt(st['readyReplicas']) ?? 0,
-            available: asInt(st['availableReplicas']) ?? asInt(st['readyReplicas']) ?? 0,
-          ),
-          const SizedBox(height: 10),
-          KeyValueTable([
-            (
-              'Update strategy',
-              strat['type'] == 'OnDelete'
-                  ? 'OnDelete (pods update only when deleted)'
-                  : 'RollingUpdate${maxUnavail != null ? ' · maxUnavailable $maxUnavail' : ''}'
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ReplicaStatusBar(
+              desired: desired,
+              current: asInt(st['replicas']) ?? 0,
+              updated: asInt(st['updatedReplicas']) ?? 0,
+              ready: asInt(st['readyReplicas']) ?? 0,
+              available: asInt(st['availableReplicas']) ?? asInt(st['readyReplicas']) ?? 0,
+              trailing: scaleControlFor(ctx),
             ),
-            (
-              'Partition',
-              partition > 0
-                  ? Row(children: [
-                      StatusBadge('$partition', severity: Severity.warn, dense: true),
-                      const SizedBox(width: 6),
-                      Flexible(child: Text('only ordinals ≥ $partition get the new revision', style: theme.textTheme.bodySmall)),
-                    ])
-                  : (strat['type'] == 'OnDelete' ? null : '0'),
-            ),
-            ('Service', svc == null || svc.isEmpty ? null : ResourceLink(ObjectRef(kind: 'Service', name: svc, namespace: ctx.namespace), label: svc)),
-            ('Pod management', spec['podManagementPolicy'] == 'Parallel' ? 'Parallel' : 'OrderedReady (one at a time, in order)'),
-            ('Revisions', _Revisions(current: cur, update: upd)),
-            if (retention.isNotEmpty)
-              ('PVC retention', 'whenDeleted: ${retention['whenDeleted'] ?? 'Retain'} · whenScaled: ${retention['whenScaled'] ?? 'Retain'}')
-            else
-              ('PVC retention', 'Retain (default)'),
-            if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
-            if (ordStart != 0) ('Ordinals start', '$ordStart'),
-            ('Selector', SelectorChips(spec['selector'])),
-          ], keyWidth: 120),
-        ]),
+            HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}')),
+            const SizedBox(height: 10),
+            KeyValueTable([
+              (
+                'Update strategy',
+                strat['type'] == 'OnDelete'
+                    ? 'OnDelete (pods update only when deleted)'
+                    : 'RollingUpdate${maxUnavail != null ? ' · maxUnavailable $maxUnavail' : ''}',
+              ),
+              (
+                'Partition',
+                partition > 0
+                    ? Row(
+                        children: [
+                          StatusBadge('$partition', severity: Severity.warn, dense: true),
+                          const SizedBox(width: 6),
+                          Flexible(child: Text('only ordinals ≥ $partition get the new revision', style: theme.textTheme.bodySmall)),
+                        ],
+                      )
+                    : (strat['type'] == 'OnDelete' ? null : '0'),
+              ),
+              (
+                'Service',
+                svc == null || svc.isEmpty
+                    ? null
+                    : ResourceLink(
+                        ObjectRef(kind: 'Service', name: svc, namespace: ctx.namespace),
+                        label: svc,
+                      ),
+              ),
+              ('Pod management', spec['podManagementPolicy'] == 'Parallel' ? 'Parallel' : 'OrderedReady (one at a time, in order)'),
+              ('Revisions', _Revisions(current: cur, update: upd)),
+              if (retention.isNotEmpty)
+                ('PVC retention', 'whenDeleted: ${retention['whenDeleted'] ?? 'Retain'} · whenScaled: ${retention['whenScaled'] ?? 'Retain'}')
+              else
+                ('PVC retention', 'Retain (default)'),
+              if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
+              if (ordStart != 0) ('Ordinals start', '$ordStart'),
+              ('Selector', SelectorChips(spec['selector'])),
+            ], keyWidth: 120),
+          ],
+        ),
       ),
       if (asMapList(st['conditions']).isNotEmpty)
         DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(st['conditions'] as List?)),
@@ -118,6 +134,7 @@ class StatefulSetPanel extends ResourcePanel {
           ownerUid: ctx.uid,
           refreshKey: key,
           sortByOrdinal: true,
+          actionCtx: ctx,
         ),
       ),
       if (templates.isNotEmpty)
@@ -154,22 +171,48 @@ class _Revisions extends StatelessWidget {
     final theme = Theme.of(context);
     if (current == null && update == null) return const HintText('—');
     if (current == update) {
-      return Row(children: [
-        Flexible(child: Text('$current', style: monoStyle(context, size: 11), overflow: TextOverflow.ellipsis)),
-        const SizedBox(width: 6),
-        const StatusBadge('current = update', severity: Severity.ok, dense: true),
-      ]);
+      return Row(
+        children: [
+          Flexible(
+            child: Text('$current', style: monoStyle(context, size: 11), overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(width: 6),
+          const StatusBadge('current = update', severity: Severity.ok, dense: true),
+        ],
+      );
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text.rich(TextSpan(children: [
-        TextSpan(text: 'current ', style: TextStyle(color: theme.hintColor)),
-        TextSpan(text: current ?? '?'),
-      ]), style: monoStyle(context, size: 11)),
-      Text.rich(TextSpan(children: [
-        TextSpan(text: 'update  ', style: TextStyle(color: theme.hintColor)),
-        TextSpan(text: update ?? '?', style: TextStyle(color: severityColor(context, Severity.warn))),
-      ]), style: monoStyle(context, size: 11)),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: 'current ',
+                style: TextStyle(color: theme.hintColor),
+              ),
+              TextSpan(text: current ?? '?'),
+            ],
+          ),
+          style: monoStyle(context, size: 11),
+        ),
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: 'update  ',
+                style: TextStyle(color: theme.hintColor),
+              ),
+              TextSpan(
+                text: update ?? '?',
+                style: TextStyle(color: severityColor(context, Severity.warn)),
+              ),
+            ],
+          ),
+          style: monoStyle(context, size: 11),
+        ),
+      ],
+    );
   }
 }
 
@@ -216,37 +259,45 @@ class _StatefulSetClaimsState extends State<StatefulSetClaims> {
 
   Future<Map<String, Json>> _load() async {
     final all = await widget.api.items(pvcRef, namespace: widget.namespace);
-    return {for (final p in all) '${dig(p, ['metadata', 'name'])}': p};
+    return {
+      for (final p in all) '${dig(p, ['metadata', 'name'])}': p,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (final t in widget.templates) ...[
-        _templateHeader(context, t),
-        FutureBuilder<Map<String, Json>>(
-          future: _future,
-          builder: (context, snap) {
-            final tname = '${dig(t, ['metadata', 'name'])}';
-            final byName = snap.data ?? const <String, Json>{};
-            final prefix = '$tname-${widget.stsName}-';
-            final expected = [for (var i = 0; i < widget.replicas; i++) '$prefix${widget.ordinalStart + i}'];
-            final extra = [
-              for (final n in byName.keys)
-                if (n.startsWith(prefix) && int.tryParse(n.substring(prefix.length)) != null && !expected.contains(n)) n
-            ]..sort(naturalCompare);
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              for (final n in expected) _claimRow(context, n, byName[n], loaded: snap.hasData),
-              for (final n in extra) _claimRow(context, n, byName[n], loaded: true, orphan: true),
-              if (snap.hasError) InlineMessage('${snap.error}', isError: true),
-            ]);
-          },
-        ),
-        const SizedBox(height: 6),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final t in widget.templates) ...[
+          _templateHeader(context, t),
+          FutureBuilder<Map<String, Json>>(
+            future: _future,
+            builder: (context, snap) {
+              final tname = '${dig(t, ['metadata', 'name'])}';
+              final byName = snap.data ?? const <String, Json>{};
+              final prefix = '$tname-${widget.stsName}-';
+              final expected = [for (var i = 0; i < widget.replicas; i++) '$prefix${widget.ordinalStart + i}'];
+              final extra = [
+                for (final n in byName.keys)
+                  if (n.startsWith(prefix) && int.tryParse(n.substring(prefix.length)) != null && !expected.contains(n)) n,
+              ]..sort(naturalCompare);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final n in expected) _claimRow(context, n, byName[n], loaded: snap.hasData),
+                  for (final n in extra) _claimRow(context, n, byName[n], loaded: true, orphan: true),
+                  if (snap.hasError) InlineMessage('${snap.error}', isError: true),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 6),
+        ],
+        if (widget.templates.isEmpty) Text('No volumeClaimTemplates', style: theme.textTheme.bodySmall),
       ],
-      if (widget.templates.isEmpty) Text('No volumeClaimTemplates', style: theme.textTheme.bodySmall),
-    ]);
+    );
   }
 
   Widget _templateHeader(BuildContext context, Json t) {
@@ -256,12 +307,17 @@ class _StatefulSetClaimsState extends State<StatefulSetClaims> {
     final modes = (spec['accessModes'] as List?)?.join(',');
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
-      child: Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Text('${dig(t, ['metadata', 'name'])}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-        if (size != null) Chipish(text: '$size'),
-        if (modes != null) Chipish(text: modes),
-        Text('class ${spec['storageClassName'] ?? '(default)'}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-      ]),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('${dig(t, ['metadata', 'name'])}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+          if (size != null) Chipish(text: '$size'),
+          if (modes != null) Chipish(text: modes),
+          Text('class ${spec['storageClassName'] ?? '(default)'}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+        ],
+      ),
     );
   }
 
@@ -272,33 +328,40 @@ class _StatefulSetClaimsState extends State<StatefulSetClaims> {
     final vol = dig<String>(pvc, ['spec', 'volumeName']);
     return Padding(
       padding: const EdgeInsets.only(left: 10, bottom: 3),
-      child: Row(children: [
-        Expanded(flex: 4, child: OneLineLink(ObjectRef(kind: 'PersistentVolumeClaim', name: name, namespace: widget.namespace))),
-        const SizedBox(width: 6),
-        SizedBox(
-          width: 130,
-          child: Row(children: [
-            if (!loaded)
-              const SizedBox.shrink()
-            else if (pvc == null)
-              const StatusBadge('missing', severity: Severity.warn, dense: true)
-            else
-              StatusBadge(phase ?? 'Unknown', dense: true),
-            if (orphan) ...[
-              const SizedBox(width: 6),
-              const Tooltip(
-                message: 'Ordinal beyond current replicas: retained after scale-down',
-                child: StatusBadge('retained', severity: Severity.neutral, dense: true),
-              ),
-            ],
-          ]),
-        ),
-        SizedBox(width: 56, child: Text(cap == null ? '' : '$cap', style: theme.textTheme.bodySmall)),
-        Expanded(
-          flex: 3,
-          child: vol == null ? const SizedBox.shrink() : OneLineLink(ObjectRef(kind: 'PersistentVolume', name: vol)),
-        ),
-      ]),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 4,
+            child: OneLineLink(ObjectRef(kind: 'PersistentVolumeClaim', name: name, namespace: widget.namespace)),
+          ),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 130,
+            child: Row(
+              children: [
+                if (!loaded)
+                  const SizedBox.shrink()
+                else if (pvc == null)
+                  const StatusBadge('missing', severity: Severity.warn, dense: true)
+                else
+                  StatusBadge(phase ?? 'Unknown', dense: true),
+                if (orphan) ...[
+                  const SizedBox(width: 6),
+                  const Tooltip(
+                    message: 'Ordinal beyond current replicas: retained after scale-down',
+                    child: StatusBadge('retained', severity: Severity.neutral, dense: true),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          SizedBox(width: 56, child: Text(cap == null ? '' : '$cap', style: theme.textTheme.bodySmall)),
+          Expanded(
+            flex: 3,
+            child: vol == null ? const SizedBox.shrink() : OneLineLink(ObjectRef(kind: 'PersistentVolume', name: vol)),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -63,7 +63,10 @@ int revisionOf(Json rs) => int.tryParse('${dig(rs, ['metadata', 'annotations', r
 
 /// ReplicaSets owned by [deploymentUid], newest revision first.
 List<Json> rolloutHistory(List<Json> replicaSets, String deploymentUid) {
-  final owned = [for (final rs in replicaSets) if (isOwnedByAny(rs, {deploymentUid})) rs];
+  final owned = [
+    for (final rs in replicaSets)
+      if (isOwnedByAny(rs, {deploymentUid})) rs,
+  ];
   owned.sort((a, b) {
     final c = revisionOf(b).compareTo(revisionOf(a));
     if (c != 0) return c;
@@ -74,12 +77,30 @@ List<Json> rolloutHistory(List<Json> replicaSets, String deploymentUid) {
 
 /// container name → image for a pod template holder (RS / Deployment).
 Map<String, String> templateImages(Json obj) => {
-      for (final c in [
-        ...asMapList(dig(obj, ['spec', 'template', 'spec', 'initContainers'])),
-        ...asMapList(dig(obj, ['spec', 'template', 'spec', 'containers'])),
-      ])
-        '${c['name']}': '${c['image']}',
-    };
+  for (final c in [
+    ...asMapList(dig(obj, ['spec', 'template', 'spec', 'initContainers'])),
+    ...asMapList(dig(obj, ['spec', 'template', 'spec', 'containers'])),
+  ])
+    '${c['name']}': '${c['image']}',
+};
 
-Set<String> initContainerNames(Json obj) =>
-    {for (final c in asMapList(dig(obj, ['spec', 'template', 'spec', 'initContainers']))) '${c['name']}'};
+/// Human summary of what rolling back from [current] to [target] changes.
+String rollbackSummary(Json? current, Json target) {
+  final from = current == null ? const <String, String>{} : templateImages(current);
+  final to = templateImages(target);
+  final lines = <String>[
+    for (final e in to.entries)
+      if (from[e.key] != e.value) '${e.key}: ${from[e.key] ?? '(absent)'} → ${e.value}',
+    for (final k in from.keys)
+      if (!to.containsKey(k)) '$k: removed (${from[k]})',
+  ];
+  final rev = revisionOf(target);
+  if (lines.isEmpty) {
+    return 'Restores the pod template of revision $rev. Images are unchanged; other template fields (env, resources, …) may differ.';
+  }
+  return 'Restores the pod template of revision $rev. Image changes:\n${lines.map((l) => '  • $l').join('\n')}';
+}
+
+Set<String> initContainerNames(Json obj) => {
+  for (final c in asMapList(dig(obj, ['spec', 'template', 'spec', 'initContainers']))) '${c['name']}',
+};

@@ -86,10 +86,10 @@ List<HpaMetric> hpaMetrics(Json hpa) {
     final cur = current.where((c) => key(c) == key(m)).firstOrNull;
     final curBody = asMap(asMap(cur?[_field(type)])['current']);
     dynamic pick(Json t) => switch (targetType) {
-          'Utilization' => t['averageUtilization'],
-          'AverageValue' => t['averageValue'],
-          _ => t['value'],
-        };
+      'Utilization' => t['averageUtilization'],
+      'AverageValue' => t['averageValue'],
+      _ => t['value'],
+    };
     final metricName = (body['name'] ?? dig(body, ['metric', 'name']) ?? '?').toString();
     final sel = selectorToString(dig(body, ['metric', 'selector']));
     final (label, subject) = switch (type) {
@@ -100,26 +100,28 @@ List<HpaMetric> hpaMetrics(Json hpa) {
       'External' => (metricName, sel.isNotEmpty ? '{$sel}' : null),
       _ => (type, null),
     };
-    out.add(HpaMetric(
-      type: type,
-      label: label,
-      subject: subject,
-      targetType: targetType,
-      target: pick(target),
-      current: cur == null ? null : pick(curBody),
-    ));
+    out.add(
+      HpaMetric(
+        type: type,
+        label: label,
+        subject: subject,
+        targetType: targetType,
+        target: pick(target),
+        current: cur == null ? null : pick(curBody),
+      ),
+    );
   }
   return out;
 }
 
 String _field(String type) => switch (type) {
-      'Resource' => 'resource',
-      'ContainerResource' => 'containerResource',
-      'Pods' => 'pods',
-      'Object' => 'object',
-      'External' => 'external',
-      _ => type.toLowerCase(),
-    };
+  'Resource' => 'resource',
+  'ContainerResource' => 'containerResource',
+  'Pods' => 'pods',
+  'Object' => 'object',
+  'External' => 'external',
+  _ => type.toLowerCase(),
+};
 
 /// Headline from the HPA's conditions and replica counts.
 (String, Severity, String?) hpaStatus(Json hpa) {
@@ -164,26 +166,31 @@ class HpaPanel extends ResourcePanel {
         title: 'Scaling',
         icon: Icons.unfold_more_double,
         trailing: StatusBadge(reason == null ? headline : '$headline: $reason', severity: sev, dense: true),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          KeyValueTable([
-            (
-              'Target',
-              Row(children: [
-                ResourceLink(targetRef, label: '${targetRef.kind}/${targetRef.name}'),
-                if (targetRef.group.isNotEmpty) ...[const SizedBox(width: 6), HintText(target['apiVersion'] as String? ?? '')],
-              ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            KeyValueTable([
+              (
+                'Target',
+                Row(
+                  children: [
+                    ResourceLink(targetRef, label: '${targetRef.kind}/${targetRef.name}'),
+                    if (targetRef.group.isNotEmpty) ...[const SizedBox(width: 6), HintText(target['apiVersion'] as String? ?? '')],
+                  ],
+                ),
+              ),
+              if (lastScale != null) ('Last scaled', AgeText(lastScale, suffix: ' ago', style: theme.textTheme.bodySmall)),
+            ], keyWidth: 90),
+            const SizedBox(height: 8),
+            ReplicaRange(
+              min: asInt(spec['minReplicas']) ?? 1,
+              max: asInt(spec['maxReplicas']) ?? 1,
+              current: asInt(st['currentReplicas']) ?? 0,
+              desired: asInt(st['desiredReplicas']),
+              desiredComputed: scalingActive?['status'] != 'False',
             ),
-            if (lastScale != null) ('Last scaled', AgeText(lastScale, suffix: ' ago', style: theme.textTheme.bodySmall)),
-          ], keyWidth: 90),
-          const SizedBox(height: 8),
-          ReplicaRange(
-            min: asInt(spec['minReplicas']) ?? 1,
-            max: asInt(spec['maxReplicas']) ?? 1,
-            current: asInt(st['currentReplicas']) ?? 0,
-            desired: asInt(st['desiredReplicas']),
-            desiredComputed: scalingActive?['status'] != 'False',
-          ),
-        ]),
+          ],
+        ),
       ),
       DetailSection(
         title: 'Metrics',
@@ -218,63 +225,92 @@ class ReplicaRange extends StatelessWidget {
     final small = theme.textTheme.bodySmall;
     final hint = small?.copyWith(color: theme.hintColor);
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-        _Stat('min', '$min', hint),
-        _Stat('current', '$current', small?.copyWith(fontWeight: FontWeight.w700, color: primary)),
-        _Stat('desired', showDesired ? '$desired' : '—', small?.copyWith(fontWeight: FontWeight.w700, color: showDesired ? warn : theme.hintColor),
-            tooltip: showDesired ? null : 'Not computed: ScalingActive is False'),
-        _Stat('max', '$max', hint),
-      ]),
-      const SizedBox(height: 6),
-      SizedBox(
-        height: 30,
-        child: LayoutBuilder(builder: (context, c) {
-          final w = c.maxWidth - 12;
-          double x(num v) => 6 + w * (v / scaleMax);
-          return Stack(clipBehavior: Clip.none, children: [
-            Positioned(
-              left: 6,
-              right: 6,
-              top: 9,
-              height: 6,
-              child: Container(decoration: BoxDecoration(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(3))),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            _Stat('min', '$min', hint),
+            _Stat('current', '$current', small?.copyWith(fontWeight: FontWeight.w700, color: primary)),
+            _Stat(
+              'desired',
+              showDesired ? '$desired' : '—',
+              small?.copyWith(fontWeight: FontWeight.w700, color: showDesired ? warn : theme.hintColor),
+              tooltip: showDesired ? null : 'Not computed: ScalingActive is False',
             ),
-            Positioned(
-              left: x(min),
-              width: math.max(2, x(max) - x(min)),
-              top: 9,
-              height: 6,
-              child: Container(decoration: BoxDecoration(color: primary.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(3))),
-            ),
-            for (final (v, l) in [(min, '$min'), (max, '$max')])
-              Positioned(left: x(v) - 10, width: 20, top: 17, child: Text(l, textAlign: TextAlign.center, style: hint?.copyWith(fontSize: 10))),
-            if (showDesired && desired != current)
-              Positioned(
-                left: x(desired!) - 6,
-                top: 6,
-                child: Tooltip(message: 'desired $desired', child: Icon(Icons.arrow_drop_down_circle_outlined, size: 12, color: warn)),
-              ),
-            Positioned(
-              left: x(current) - 6,
-              top: 6,
-              child: Tooltip(
-                message: 'current $current',
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: atLimit ? warn : primary,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: theme.colorScheme.surface, width: 2),
+            _Stat('max', '$max', hint),
+          ],
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 30,
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final w = c.maxWidth - 12;
+              double x(num v) => 6 + w * (v / scaleMax);
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: 6,
+                    right: 6,
+                    top: 9,
+                    height: 6,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ),
-          ]);
-        }),
-      ),
-    ]);
+                  Positioned(
+                    left: x(min),
+                    width: math.max(2, x(max) - x(min)),
+                    top: 9,
+                    height: 6,
+                    child: Container(
+                      decoration: BoxDecoration(color: primary.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(3)),
+                    ),
+                  ),
+                  for (final (v, l) in [(min, '$min'), (max, '$max')])
+                    Positioned(
+                      left: x(v) - 10,
+                      width: 20,
+                      top: 17,
+                      child: Text(l, textAlign: TextAlign.center, style: hint?.copyWith(fontSize: 10)),
+                    ),
+                  if (showDesired && desired != current)
+                    Positioned(
+                      left: x(desired!) - 6,
+                      top: 6,
+                      child: Tooltip(
+                        message: 'desired $desired',
+                        child: Icon(Icons.arrow_drop_down_circle_outlined, size: 12, color: warn),
+                      ),
+                    ),
+                  Positioned(
+                    left: x(current) - 6,
+                    top: 6,
+                    child: Tooltip(
+                      message: 'current $current',
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: atLimit ? warn : primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: theme.colorScheme.surface, width: 2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -288,11 +324,16 @@ class _Stat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final w = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
-      Text(value, style: style?.copyWith(fontSize: 16)),
-    ]);
-    return Expanded(child: tooltip == null ? w : Tooltip(message: tooltip!, child: w));
+    final w = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
+        Text(value, style: style?.copyWith(fontSize: 16)),
+      ],
+    );
+    return Expanded(
+      child: tooltip == null ? w : Tooltip(message: tooltip!, child: w),
+    );
   }
 }
 
@@ -309,52 +350,89 @@ class _MetricRow extends StatelessWidget {
     final barColor = ratio == null ? theme.hintColor : severityColor(context, over ? Severity.warn : Severity.ok);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          Chipish(text: m.type),
-          const SizedBox(width: 6),
-          Text(m.label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-          if (m.subject != null) ...[
-            const SizedBox(width: 6),
-            Flexible(child: Text(m.subject!, style: small?.copyWith(color: theme.hintColor), overflow: TextOverflow.ellipsis)),
-          ],
-          const Spacer(),
-          Text.rich(
-            TextSpan(children: [
-              TextSpan(
-                text: m.currentText,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: m.current == null ? severityColor(context, Severity.warn) : (over ? severityColor(context, Severity.warn) : null),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Chipish(text: m.type),
+              const SizedBox(width: 6),
+              Text(m.label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+              if (m.subject != null) ...[
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    m.subject!,
+                    style: small?.copyWith(color: theme.hintColor),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+              ],
+              const Spacer(),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: m.currentText,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: m.current == null ? severityColor(context, Severity.warn) : (over ? severityColor(context, Severity.warn) : null),
+                      ),
+                    ),
+                    TextSpan(
+                      text: '  /  target ',
+                      style: TextStyle(color: theme.hintColor),
+                    ),
+                    TextSpan(
+                      text: m.targetText,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                style: small,
               ),
-              TextSpan(text: '  /  target ', style: TextStyle(color: theme.hintColor)),
-              TextSpan(text: m.targetText, style: const TextStyle(fontWeight: FontWeight.w600)),
-            ]),
-            style: small,
+            ],
           ),
-        ]),
-        const SizedBox(height: 4),
-        // Bar: current relative to target (target mark at 2/3 width).
-        SizedBox(
-          height: 6,
-          child: LayoutBuilder(builder: (context, c) {
-            final w = c.maxWidth;
-            final targetX = w * 2 / 3;
-            final fill = ratio == null ? 0.0 : (ratio * targetX).clamp(0.0, w);
-            return Stack(children: [
-              Container(decoration: BoxDecoration(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(3))),
-              Container(width: fill, decoration: BoxDecoration(color: barColor, borderRadius: BorderRadius.circular(3))),
-              Positioned(left: targetX - 1, top: -2, bottom: -2, child: Container(width: 2, color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
-            ]);
-          }),
-        ),
-        if (m.current == null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text('no current value reported (metrics unavailable?)', style: small?.copyWith(color: theme.hintColor, fontSize: 11)),
+          const SizedBox(height: 4),
+          // Bar: current relative to target (target mark at 2/3 width).
+          SizedBox(
+            height: 6,
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final w = c.maxWidth;
+                final targetX = w * 2 / 3;
+                final fill = ratio == null ? 0.0 : (ratio * targetX).clamp(0.0, w);
+                return Stack(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    Container(
+                      width: fill,
+                      decoration: BoxDecoration(color: barColor, borderRadius: BorderRadius.circular(3)),
+                    ),
+                    Positioned(
+                      left: targetX - 1,
+                      top: -2,
+                      bottom: -2,
+                      child: Container(width: 2, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
-      ]),
+          if (m.current == null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('no current value reported (metrics unavailable?)', style: small?.copyWith(color: theme.hintColor, fontSize: 11)),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -377,7 +455,8 @@ class _Behavior extends StatelessWidget {
 /// Readable form of an HPAScalingRules; null rules = Kubernetes defaults.
 String describeScalingRules(Json? rules, {required bool up}) {
   final isDefault = rules == null;
-  final r = rules ??
+  final r =
+      rules ??
       (up
           ? {
               'stabilizationWindowSeconds': 0,
@@ -405,7 +484,7 @@ String describeScalingRules(Json? rules, {required bool up}) {
   final pol = policies.isEmpty
       ? 'no policies'
       : policies.length == 1
-          ? policies.first
-          : '${select == 'Min' ? 'least' : 'most'} of ${policies.join(', ')}';
+      ? policies.first
+      : '${select == 'Min' ? 'least' : 'most'} of ${policies.join(', ')}';
   return '$pol · stabilization ${stab}s${isDefault ? ' (default)' : ''}';
 }

@@ -25,25 +25,30 @@ class PodTemplateSummary extends StatelessWidget {
     final sa = (spec['serviceAccountName'] ?? spec['serviceAccount']) as String?;
     final volumes = asMapList(spec['volumes']);
     final configRefs = _configRefs(spec, namespace);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (final c in inits) _ContainerCard(c, init: true),
-      for (final c in containers) _ContainerCard(c),
-      const SizedBox(height: 4),
-      KeyValueTable([
-        ('Service account', sa == null ? 'default' : ResourceLink(ObjectRef(kind: 'ServiceAccount', name: sa, namespace: namespace), label: sa)),
-        if (showScheduling) ...schedulingEntries(spec),
-        if (spec['priorityClassName'] != null) ('Priority class', '${spec['priorityClassName']}'),
-        if (spec['hostNetwork'] == true) ('Host network', StatusBadge('hostNetwork', severity: Severity.warn, dense: true)),
-        if (volumes.isNotEmpty) ('Volumes', _Volumes(volumes, namespace)),
-        if (configRefs.isNotEmpty)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final c in inits) _ContainerCard(c, init: true),
+        for (final c in containers) _ContainerCard(c),
+        const SizedBox(height: 4),
+        KeyValueTable([
           (
-            'Config refs',
-            Wrap(spacing: 10, runSpacing: 2, children: [
-              for (final r in configRefs) ResourceLink(r),
-            ])
+            'Service account',
+            sa == null
+                ? 'default'
+                : ResourceLink(
+                    ObjectRef(kind: 'ServiceAccount', name: sa, namespace: namespace),
+                    label: sa,
+                  ),
           ),
-      ], keyWidth: 110),
-    ]);
+          if (showScheduling) ...schedulingEntries(spec),
+          if (spec['priorityClassName'] != null) ('Priority class', '${spec['priorityClassName']}'),
+          if (spec['hostNetwork'] == true) ('Host network', StatusBadge('hostNetwork', severity: Severity.warn, dense: true)),
+          if (volumes.isNotEmpty) ('Volumes', _Volumes(volumes, namespace)),
+          if (configRefs.isNotEmpty) ('Config refs', Wrap(spacing: 10, runSpacing: 2, children: [for (final r in configRefs) ResourceLink(r)])),
+        ], keyWidth: 110),
+      ],
+    );
   }
 
   /// nodeSelector / tolerations / affinity rows.
@@ -105,12 +110,15 @@ class _ContainerCard extends StatelessWidget {
     final restartAlways = init && c['restartPolicy'] == 'Always';
 
     Widget line(String label, Widget child) => Padding(
-          padding: const EdgeInsets.only(top: 3),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(width: 64, child: Text(label, style: hint)),
-            Expanded(child: child),
-          ]),
-        );
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 64, child: Text(label, style: hint)),
+          Expanded(child: child),
+        ],
+      ),
+    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -120,40 +128,50 @@ class _ContainerCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border(left: BorderSide(color: init ? theme.hintColor : theme.colorScheme.primary, width: 2)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Text('${c['name']}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-          if (init) ...[
-            const SizedBox(width: 6),
-            StatusBadge(restartAlways ? 'sidecar' : 'init', severity: Severity.neutral, dense: true),
-          ],
-          const SizedBox(width: 8),
-          Flexible(child: Align(alignment: Alignment.centerRight, child: ImageChip('${c['image'] ?? ''}'))),
-        ]),
-        if (ports.isNotEmpty)
-          line(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('${c['name']}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+              if (init) ...[const SizedBox(width: 6), StatusBadge(restartAlways ? 'sidecar' : 'init', severity: Severity.neutral, dense: true)],
+              const SizedBox(width: 8),
+              Flexible(
+                child: Align(alignment: Alignment.centerRight, child: ImageChip('${c['image'] ?? ''}')),
+              ),
+            ],
+          ),
+          if (ports.isNotEmpty)
+            line(
               'ports',
-              Wrap(spacing: 4, runSpacing: 2, children: [
-                for (final p in ports)
-                  Chipish(text: '${p['name'] != null ? '${p['name']} ' : ''}${p['containerPort']}/${p['protocol'] ?? 'TCP'}'),
-              ])),
-        line('resources', _resources(context, res)),
-        if (cmd.isNotEmpty)
-          line(
+              Wrap(
+                spacing: 4,
+                runSpacing: 2,
+                children: [
+                  for (final p in ports) Chipish(text: '${p['name'] != null ? '${p['name']} ' : ''}${p['containerPort']}/${p['protocol'] ?? 'TCP'}'),
+                ],
+              ),
+            ),
+          line('resources', _resources(context, res)),
+          if (cmd.isNotEmpty)
+            line(
               'command',
               Tooltip(
                 message: cmd.join(' '),
                 child: Text(cmd.map(_shellQuote).join(' '), maxLines: 2, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11)),
-              )),
-        if (probes.isNotEmpty) line('probes', Text(probes.join(' · '), style: small)),
-        if (mounts.isNotEmpty)
-          line(
+              ),
+            ),
+          if (probes.isNotEmpty) line('probes', Text(probes.join(' · '), style: small)),
+          if (mounts.isNotEmpty)
+            line(
               'mounts',
               Text(
                 mounts.map((m) => '${m['name']}→${m['mountPath']}${m['readOnly'] == true ? ' (ro)' : ''}').join('  '),
                 style: monoStyle(context, size: 11),
-              )),
-      ]),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -188,13 +206,25 @@ class _ContainerCard extends StatelessWidget {
     final spans = <InlineSpan>[];
     for (final k in keys) {
       if (spans.isNotEmpty) spans.add(const TextSpan(text: '   '));
-      spans.add(TextSpan(text: '$k ', style: TextStyle(color: theme.hintColor)));
+      spans.add(
+        TextSpan(
+          text: '$k ',
+          style: TextStyle(color: theme.hintColor),
+        ),
+      );
       spans.add(TextSpan(text: '${req[k] ?? '–'}'));
-      spans.add(TextSpan(text: ' / ', style: TextStyle(color: theme.hintColor)));
-      spans.add(TextSpan(
-        text: '${lim[k] ?? 'no limit'}',
-        style: lim[k] == null ? TextStyle(color: theme.hintColor, fontStyle: FontStyle.italic) : null,
-      ));
+      spans.add(
+        TextSpan(
+          text: ' / ',
+          style: TextStyle(color: theme.hintColor),
+        ),
+      );
+      spans.add(
+        TextSpan(
+          text: '${lim[k] ?? 'no limit'}',
+          style: lim[k] == null ? TextStyle(color: theme.hintColor, fontStyle: FontStyle.italic) : null,
+        ),
+      );
     }
     return Tooltip(
       message: 'requests / limits',
@@ -212,25 +242,38 @@ class _Volumes extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (final v in volumes)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [
-            Text('${v['name']}', style: monoStyle(context, size: 11)),
-            ..._source(v, hint),
-          ]),
-        ),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final v in volumes)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 6,
+              children: [
+                Text('${v['name']}', style: monoStyle(context, size: 11)),
+                ..._source(v, hint),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   List<Widget> _source(Json v, TextStyle? hint) {
     ObjectRef ref(String kind, dynamic name) => ObjectRef(kind: kind, name: '$name', namespace: namespace);
     if (v['configMap'] is Map) {
-      return [Text('ConfigMap', style: hint), ResourceLink(ref('ConfigMap', dig(v, ['configMap', 'name'])), label: '${dig(v, ['configMap', 'name'])}')];
+      return [
+        Text('ConfigMap', style: hint),
+        ResourceLink(ref('ConfigMap', dig(v, ['configMap', 'name'])), label: '${dig(v, ['configMap', 'name'])}'),
+      ];
     }
     if (v['secret'] is Map) {
-      return [Text('Secret', style: hint), ResourceLink(ref('Secret', dig(v, ['secret', 'secretName'])), label: '${dig(v, ['secret', 'secretName'])}')];
+      return [
+        Text('Secret', style: hint),
+        ResourceLink(ref('Secret', dig(v, ['secret', 'secretName'])), label: '${dig(v, ['secret', 'secretName'])}'),
+      ];
     }
     if (v['persistentVolumeClaim'] is Map) {
       final n = dig(v, ['persistentVolumeClaim', 'claimName']);
@@ -240,7 +283,11 @@ class _Volumes extends StatelessWidget {
       final m = asMap(v['emptyDir']);
       return [Text('emptyDir${m['medium'] != null ? ' (${m['medium']})' : ''}${m['sizeLimit'] != null ? ' ≤${m['sizeLimit']}' : ''}', style: hint)];
     }
-    if (v['hostPath'] is Map) return [Text('hostPath ${dig(v, ['hostPath', 'path'])}', style: hint)];
+    if (v['hostPath'] is Map) {
+      return [
+        Text('hostPath ${dig(v, ['hostPath', 'path'])}', style: hint),
+      ];
+    }
     if (v['projected'] is Map) {
       final srcs = asMapList(dig(v, ['projected', 'sources']));
       return [Text('projected (${srcs.map((s) => s.keys.join()).join(', ')})', style: hint)];

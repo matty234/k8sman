@@ -7,6 +7,7 @@ import 'rollout.dart';
 import 'widgets/pod_template.dart';
 import 'widgets/pods_list.dart';
 import 'widgets/replica_bar.dart';
+import 'widgets/scaling.dart';
 import 'widgets/util.dart';
 
 class ReplicaSetPanel extends ResourcePanel {
@@ -28,37 +29,42 @@ class ReplicaSetPanel extends ResourcePanel {
     final (headline, sev) = failure != null
         ? ('ReplicaFailure', Severity.error)
         : oldRevision
-            ? ('Old revision (scaled to 0)', Severity.neutral)
-            : ready >= desired
-                ? ('Ready', Severity.ok)
-                : ('$ready of $desired ready', ready == 0 ? Severity.error : Severity.warn);
+        ? ('Old revision (scaled to 0)', Severity.neutral)
+        : ready >= desired
+        ? ('Ready', Severity.ok)
+        : ('$ready of $desired ready', ready == 0 ? Severity.error : Severity.warn);
     return [
       DetailSection(
         title: 'Replicas',
         icon: Icons.layers_outlined,
         trailing: StatusBadge(headline, severity: sev, dense: true),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ReplicaStatusBar(
-            desired: desired,
-            current: asInt(st['replicas']) ?? 0,
-            ready: ready,
-            available: asInt(st['availableReplicas']) ?? 0,
-          ),
-          const SizedBox(height: 10),
-          KeyValueTable([
-            (
-              'Owner',
-              owners.isEmpty
-                  ? 'none (standalone ReplicaSet)'
-                  : Wrap(spacing: 10, children: [for (final o in owners) ResourceLink(o)]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ReplicaStatusBar(
+              desired: desired,
+              current: asInt(st['replicas']) ?? 0,
+              ready: ready,
+              available: asInt(st['availableReplicas']) ?? 0,
+              trailing: scaleControlFor(ctx),
             ),
-            ('Revision', rev),
-            ('Template hash', dig<String>(ctx.metadata, ['labels', 'pod-template-hash'])),
-            ('Fully labeled', '${st['fullyLabeledReplicas'] ?? 0}'),
-            if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
-            ('Selector', SelectorChips(spec['selector'])),
-          ], keyWidth: 120),
-        ]),
+            if (owners.any((o) => o.kind == 'Deployment') && !ctx.app.readOnly)
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: InlineMessage('Owned by a Deployment: it will reset manual scaling of this ReplicaSet.'),
+              ),
+            HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}')),
+            const SizedBox(height: 10),
+            KeyValueTable([
+              ('Owner', owners.isEmpty ? 'none (standalone ReplicaSet)' : Wrap(spacing: 10, children: [for (final o in owners) ResourceLink(o)])),
+              ('Revision', rev),
+              ('Template hash', dig<String>(ctx.metadata, ['labels', 'pod-template-hash'])),
+              ('Fully labeled', '${st['fullyLabeledReplicas'] ?? 0}'),
+              if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
+              ('Selector', SelectorChips(spec['selector'])),
+            ], keyWidth: 120),
+          ],
+        ),
       ),
       if (asMapList(st['conditions']).isNotEmpty)
         DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(st['conditions'] as List?)),
@@ -72,6 +78,7 @@ class ReplicaSetPanel extends ResourcePanel {
           selector: spec['selector'],
           ownerUid: ctx.uid,
           refreshKey: workloadRefreshKey(ctx),
+          actionCtx: ctx,
         ),
       ),
       DetailSection(
