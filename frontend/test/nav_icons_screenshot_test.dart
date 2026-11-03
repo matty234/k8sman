@@ -121,6 +121,13 @@ void main() {
       await loadRealFonts();
       final png = (await tester.runAsync(() => solidPng(const Color(0xFF24A1C1), size: 64)))!;
       final app = await pumpApp(tester, CrdFixtureApi(png), mode);
+      // CRD groups live under a collapsed "Custom Resources" header.
+      // (Expanded state is session-wide, so only tap when still collapsed.)
+      if (find.text('traefik.io').evaluate().isEmpty) {
+        await tester.ensureVisible(find.text('Custom Resources'));
+        await tester.tap(find.text('Custom Resources'));
+        await tester.pump();
+      }
       // Scroll the source list down to the custom resource groups.
       for (final s in tester.stateList<ScrollableState>(find.descendant(of: find.byType(ResourceNav), matching: find.byType(Scrollable)))) {
         if (s.position.axis == Axis.vertical) s.position.jumpTo(s.position.maxScrollExtent);
@@ -129,9 +136,11 @@ void main() {
       await settleImages(tester);
 
       // Group headers and items show their group's icon; built-ins keep glyphs.
-      expect(find.byKey(const ValueKey('group-icon-image/argoproj.io')), findsWidgets);
-      expect(find.byKey(const ValueKey('group-icon-image/traefik.io')), findsWidgets);
-      expect(find.byKey(const ValueKey('group-icon-monogram/example.k8sman.dev')), findsWidgets);
+      // Logos only on uncurated CRD group headers (one each), not on items
+      // and not on curated sections such as Argo CD.
+      expect(find.byKey(const ValueKey('group-icon-image/traefik.io')), findsOneWidget);
+      expect(find.byKey(const ValueKey('group-icon-monogram/example.k8sman.dev')), findsOneWidget);
+      expect(find.descendant(of: find.byType(ResourceNav), matching: find.byKey(const ValueKey('group-icon-image/argoproj.io'))), findsNothing);
 
       // Select a custom kind and open one: toolbar + inspector header icons.
       app.selectType(app.typeFor('argoproj.io', 'Application')!);
