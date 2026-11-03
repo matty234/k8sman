@@ -1,0 +1,281 @@
+/// Small helpers shared by the workloads panels.
+library;
+
+import 'package:flutter/material.dart';
+
+import '../../../api/models.dart';
+import '../../../ui/theme.dart';
+import '../../../ui/widgets/common.dart';
+import '../../../util/k8s.dart';
+import '../../panel.dart';
+
+/// `int` from a JSON number (or numeric string), else null.
+int? asInt(dynamic v) => v is int ? v : (v is num ? v.toInt() : (v is String ? int.tryParse(v) : null));
+
+/// Natural compare so `web-2` sorts before `web-10`.
+int naturalCompare(String a, String b) {
+  final re = RegExp(r'(\d+)|(\D+)');
+  final pa = re.allMatches(a).map((m) => m.group(0)!).toList();
+  final pb = re.allMatches(b).map((m) => m.group(0)!).toList();
+  for (var i = 0; i < pa.length && i < pb.length; i++) {
+    final na = int.tryParse(pa[i]), nb = int.tryParse(pb[i]);
+    final c = (na != null && nb != null) ? na.compareTo(nb) : pa[i].compareTo(pb[i]);
+    if (c != 0) return c;
+  }
+  return pa.length.compareTo(pb.length);
+}
+
+/// Trailing ordinal of a StatefulSet pod name (`redis-3` → 3).
+int? ordinalOf(String name) {
+  final m = RegExp(r'-(\d+)$').firstMatch(name);
+  return m == null ? null : int.parse(m.group(1)!);
+}
+
+/// True if any of [obj]'s ownerReferences has uid in [uids].
+bool isOwnedByAny(Json obj, Set<String> uids) => asMapList(dig(obj, ['metadata', 'ownerReferences'])).any((o) => uids.contains(o['uid']));
+
+/// A ResourceLink that ellipsizes instead of wrapping.
+class OneLineLink extends StatelessWidget {
+  final ObjectRef ref;
+  final String? label;
+  const OneLineLink(this.ref, {super.key, this.label});
+
+  @override
+  Widget build(BuildContext context) => DefaultTextStyle.merge(
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    softWrap: false,
+    child: Tooltip(
+      message: '${ref.kind}/${ref.name}',
+      child: ResourceLink(ref, label: label ?? ref.name),
+    ),
+  );
+}
+
+/// Muted "—" / hint text.
+class HintText extends StatelessWidget {
+  final String text;
+  const HintText(this.text, {super.key});
+  @override
+  Widget build(BuildContext context) => Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor));
+}
+
+/// Image reference chip: monospace, click (or the icon) copies the full ref.
+class ImageChip extends StatelessWidget {
+  final String image;
+  final Color? highlight;
+  final String? tooltip;
+  const ImageChip(this.image, {super.key, this.highlight, this.tooltip});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c = highlight;
+    final chip = InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: () => copyToClipboard(context, image),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(6, 1, 4, 1),
+        decoration: BoxDecoration(
+          color: (c ?? theme.colorScheme.secondaryContainer).withValues(alpha: c == null ? 0.5 : 0.18),
+          borderRadius: BorderRadius.circular(4),
+          border: c == null ? null : Border.all(color: c.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                image,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: monoStyle(context, size: 11, color: c),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.copy, size: 11, color: theme.hintColor),
+          ],
+        ),
+      ),
+    );
+    return Tooltip(message: tooltip ?? 'Copy $image', child: chip);
+  }
+}
+
+/// Legend dot + label used by bars.
+class LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+  final bool hollow;
+  const LegendDot(this.color, this.label, {super.key, this.hollow = false});
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: hollow ? null : color,
+          borderRadius: BorderRadius.circular(2),
+          border: hollow ? Border.all(color: color) : null,
+        ),
+      ),
+      const SizedBox(width: 4),
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
+}
+
+/// Human readable toleration: `key=value:NoSchedule`, `Exists (all taints)`.
+String formatToleration(Json t) {
+  final key = t['key'] as String?;
+  final op = (t['operator'] as String?) ?? 'Equal';
+  final effect = t['effect'] as String?;
+  final secs = t['tolerationSeconds'];
+  String s;
+  if (key == null || key.isEmpty) {
+    s = op == 'Exists' ? 'all taints' : '(any key)';
+  } else if (op == 'Exists') {
+    s = '$key (exists)';
+  } else {
+    s = '$key=${t['value'] ?? ''}';
+  }
+  if (effect != null && effect.isNotEmpty) s += ':$effect';
+  if (secs != null) s += ' for ${secs}s';
+  return s;
+}
+
+/// Chips for a LabelSelector including matchExpressions.
+class SelectorChips extends StatelessWidget {
+  final dynamic selector;
+  const SelectorChips(this.selector, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final sel = asMap(selector);
+    final isLabelSelector = sel.containsKey('matchLabels') || sel.containsKey('matchExpressions');
+    final labels = isLabelSelector ? asMap(sel['matchLabels']) : sel;
+    final exprs = isLabelSelector ? asMapList(sel['matchExpressions']) : const <Json>[];
+    if (labels.isEmpty && exprs.isEmpty) return const HintText('everything (empty selector)');
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        for (final e in labels.entries) Chipish(text: '${e.key}=${e.value}', copyValue: '${e.key}=${e.value}'),
+        for (final x in exprs) Chipish(text: '${x['key']} ${x['operator']}${x['values'] is List ? ' (${(x['values'] as List).join(',')})' : ''}'),
+      ],
+    );
+  }
+}
+
+/// Number with a severity colour (e.g. restarts > 0 in amber).
+Widget coloredCount(BuildContext context, String text, Severity s, {bool bold = true}) => Text(
+  text,
+  style: Theme.of(context).textTheme.bodySmall
+      ?.copyWith(color: severityColor(context, s), fontWeight: bold ? FontWeight.w600 : null, fontFeatures: const [FontFeature.tabularFigures()]),
+);
+
+/// Key that changes when replica state or generation moves, used to refetch
+/// related objects without refetching on every watch tick.
+String workloadRefreshKey(PanelContext ctx) {
+  final s = ctx.status;
+  return [
+    s['observedGeneration'],
+    s['replicas'],
+    s['updatedReplicas'],
+    s['readyReplicas'],
+    s['availableReplicas'],
+    s['currentReplicas'],
+    s['currentRevision'],
+    s['updateRevision'],
+    s['desiredNumberScheduled'],
+    s['currentNumberScheduled'],
+    s['numberReady'],
+    s['updatedNumberScheduled'],
+    s['currentHealthy'],
+    s['expectedPods'],
+    ctx.spec['replicas'],
+    dig(ctx.object, ['metadata', 'annotations', 'deployment.kubernetes.io/revision']),
+  ].join('|');
+}
+
+/// Like AsyncSection, but keeps showing the previous data while a refetch is
+/// in flight (no spinner flash on live refreshes).
+class KeepingAsync<T> extends StatelessWidget {
+  final Future<T> future;
+  final Widget Function(BuildContext, T) builder;
+  const KeepingAsync({super.key, required this.future, required this.builder});
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<T>(
+    future: future,
+    builder: (context, snap) {
+      if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
+      if (!snap.hasData) {
+        return const Padding(
+          padding: EdgeInsets.all(8),
+          child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+        );
+      }
+      return builder(context, snap.data as T);
+    },
+  );
+}
+
+/// Bordered callout with an icon, text and an optional trailing action.
+class Callout extends StatelessWidget {
+  final Severity severity;
+  final IconData icon;
+  final Widget child;
+  final Widget? action;
+  const Callout({super.key, required this.severity, required this.icon, required this.child, this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = severityColor(context, severity);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: c.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: c),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DefaultTextStyle.merge(style: Theme.of(context).textTheme.bodySmall, child: child),
+          ),
+          if (action != null) ...[const SizedBox(width: 8), action!],
+        ],
+      ),
+    );
+  }
+}
+
+/// Shrinks outlined/filled buttons (e.g. ActionButton) to fit a dense row.
+class CompactButtons extends StatelessWidget {
+  final Widget child;
+  const CompactButtons({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(0, 24)),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      textStyle: WidgetStatePropertyAll(Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
+      iconSize: const WidgetStatePropertyAll(14),
+    );
+    return Theme(
+      data: Theme.of(context).copyWith(
+        outlinedButtonTheme: OutlinedButtonThemeData(style: style),
+        filledButtonTheme: FilledButtonThemeData(style: style),
+      ),
+      child: child,
+    );
+  }
+}
