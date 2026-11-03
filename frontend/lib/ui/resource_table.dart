@@ -6,18 +6,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../actions/bulk.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../app/window_chrome.dart';
 import '../metrics/quantity_cell.dart';
 import '../state/app_state.dart';
+import '../state/cluster_error.dart';
 import '../state/table_controller.dart';
 import '../util/k8s.dart';
+import 'cluster_error_view.dart';
 import 'column_editor.dart';
 import 'row_context_menu.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/group_icon.dart';
+import 'widgets/namespace_picker.dart';
 
 /// Live table for the selected resource type. Re-created (via key) whenever
 /// the type, namespace or column config changes.
@@ -64,8 +68,11 @@ class _TableBodyState extends State<_TableBody> {
     _hScroll.dispose();
     _vScroll.dispose();
     _focus.dispose();
+    _bulkProgress.dispose();
     super.dispose();
   }
+
+  final _bulkProgress = ValueNotifier<BulkProgress?>(null);
 
   @override
   Widget build(BuildContext context) {
@@ -73,21 +80,39 @@ class _TableBodyState extends State<_TableBody> {
     final app = context.watch<AppState>();
     final theme = Theme.of(context);
     final rows = tc.rows;
+    final selectedRows = tc.selectedRows;
+    final multi = selectedRows.length >= 2;
+    // No rows because the list failed: explain why instead of "No pods".
+    final failedEmpty = tc.failure != null && tc.totalCount == 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Toolbar(controller: tc, shown: rows.length),
-        if (tc.error != null)
-          Container(
-            color: theme.colorScheme.errorContainer.withValues(alpha: 0.4),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: InlineMessage(tc.error!, isError: true),
-          ),
+        if (tc.error != null && !failedEmpty) _StaleBanner(controller: tc),
         const Divider(),
+        if (multi) ...[
+          _SelectionBar(
+            controller: tc,
+            rows: selectedRows,
+            actions: bulkActionsFor(app, tc.type, selectedRows),
+            progress: _bulkProgress,
+            onRun: (a) => _runBulk(a, selectedRows),
+          ),
+          const Divider(),
+        ],
         Expanded(
-          child: tc.loading
+          child: tc.loading || (failedEmpty && !tc.failureShown)
               ? const Center(child: CircularProgressIndicator())
+              : failedEmpty
+              ? ClusterErrorView(
+                  error: tc.failure!,
+                  resource: tc.type.resource,
+                  namespace: tc.type.namespaced ? tc.namespace : null,
+                  namespaced: tc.type.namespaced,
+                  onRetry: tc.retry,
+                  onRediscover: app.refreshTypes,
+                )
               : LayoutBuilder(
                   builder: (context, box) {
                     final widths = _columnWidths(tc.columns, box.maxWidth);
@@ -119,21 +144,28 @@ class _TableBodyState extends State<_TableBody> {
                                             padding: const EdgeInsets.only(top: 4, bottom: 8),
                                             itemExtent: _rowHeight,
                                             itemCount: rows.length,
-                                            itemBuilder: (context, i) => _Row(
-                                              row: rows[i],
-                                              columns: tc.columns,
-                                              widths: widths,
-                                              striped: i.isOdd,
-                                              selected:
-                                                  app.detail?.name == rows[i].name &&
-                                                  app.detail?.namespace == (tc.type.namespaced ? rows[i].namespace : null) &&
-                                                  app.detail?.type == tc.type,
-                                              onTap: () {
-                                                _focus.requestFocus();
-                                                _open(app, tc.type, rows[i]);
-                                              },
-                                              onContextMenu: (pos) => showRowContextMenu(context, pos, tc.type, rows[i]),
-                                            ),
+                                            itemBuilder: (context, i) {
+                                              final row = rows[i];
+                                              final sel = multi && tc.isSelected(row.uid);
+                                              return _Row(
+                                                key: ValueKey(row.uid),
+                                                row: row,
+                                                columns: tc.columns,
+                                                widths: widths,
+                                                striped: i.isOdd,
+                                                inspected: _isInspected(app, tc.type, row),
+                                                selected: sel,
+                                                joinAbove: sel && i > 0 && tc.isSelected(rows[i - 1].uid),
+                                                joinBelow: sel && i + 1 < rows.length && tc.isSelected(rows[i + 1].uid),
+                                                onTap: () {
+                                                  _focus.requestFocus();
+                                                  _click(tc, app, row);
+                                                },
+                                                onContextMenu: (pos) => multi && tc.isSelected(row.uid)
+                                                    ? _showBulkMenu(context, pos, tc, app, selectedRows)
+                                                    : showRowContextMenu(context, pos, tc.type, row),
+                                              );
+                                            },
                                           ),
                                         ),
                                       ),
@@ -150,27 +182,145 @@ class _TableBodyState extends State<_TableBody> {
     );
   }
 
+  static bool _isInspected(AppState app, ResourceType type, TableRowData row) =>
+      app.detail?.type == type && app.detail?.name == row.name && app.detail?.namespace == (type.namespaced ? row.namespace : null);
+
   void _open(AppState app, ResourceType type, TableRowData row) =>
       app.openDetail(DetailTarget(type: type, name: row.name, namespace: type.namespaced ? row.namespace : null));
 
-  /// ↑/↓ move the selection, Esc closes the sidebar.
-  KeyEventResult _onKey(KeyEvent e, List<TableRowData> rows, AppState app) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
-    final tc = context.read<TableController>();
-    if (e.logicalKey == LogicalKeyboardKey.escape) {
-      app.closeDetail();
-      return KeyEventResult.handled;
+  /// Plain click: select just this row and inspect it. ⌘-click toggles it
+  /// in the selection; ⇧-click selects the range from the anchor.
+  void _click(TableController tc, AppState app, TableRowData row) {
+    final keys = HardwareKeyboard.instance;
+    if (keys.isMetaPressed || keys.isControlPressed) {
+      // Starting a multi-selection from the inspected row keeps it in.
+      if (tc.selection.isEmpty) {
+        final inspected = tc.rows.where((r) => _isInspected(app, tc.type, r)).firstOrNull;
+        if (inspected != null && inspected.uid != row.uid) tc.selection.add(inspected.uid);
+      }
+      tc.toggleSelected(row.uid);
+      return;
     }
-    final down = e.logicalKey == LogicalKeyboardKey.arrowDown;
-    final up = e.logicalKey == LogicalKeyboardKey.arrowUp;
-    if (!down && !up) return KeyEventResult.ignored;
-    var idx = rows.indexWhere((r) => r.name == app.detail?.name && (r.namespace ?? '') == (app.detail?.namespace ?? r.namespace ?? ''));
-    idx = (idx + (down ? 1 : -1)).clamp(0, rows.length - 1);
-    _open(app, tc.type, rows[idx]);
+    if (keys.isShiftPressed) {
+      tc.anchor ??= tc.rows.where((r) => _isInspected(app, tc.type, r)).firstOrNull?.uid;
+      tc.selectRange(row.uid);
+      return;
+    }
+    tc.selectOnly(row.uid);
+    _open(app, tc.type, row);
+  }
+
+  Future<void> _runBulk(BulkAction action, List<TableRowData> rows) async {
+    final tc = context.read<TableController>();
+    await runBulkAction(
+      context,
+      api: context.read<ApiClient>(),
+      app: context.read<AppState>(),
+      targets: [for (final r in rows) BulkTarget.fromRow(tc.type, r)],
+      action: action,
+      progress: _bulkProgress,
+    );
+  }
+
+  /// Right-click on a row of a multi-selection: actions for all of them.
+  Future<void> _showBulkMenu(BuildContext context, Offset globalPosition, TableController tc, AppState app, List<TableRowData> rows) async {
+    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final local = overlay.globalToLocal(globalPosition);
+    final theme = Theme.of(context);
+    final actions = bulkActionsFor(app, tc.type, rows);
+    PopupMenuItem<VoidCallback> item(IconData icon, String label, VoidCallback run, {bool danger = false}) {
+      final color = danger ? theme.colorScheme.error : null;
+      return PopupMenuItem<VoidCallback>(
+        value: run,
+        height: 30,
+        child: Row(children: [
+          Icon(icon, size: 15, color: color ?? theme.hintColor),
+          const SizedBox(width: 10),
+          Expanded(child: Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: color))),
+        ]),
+      );
+    }
+
+    final names = rows.map((r) => tc.type.namespaced && r.namespace != null ? '${r.namespace}/${r.name}' : r.name).join('\n');
+    final safe = actions.where((a) => !a.destructive);
+    final destructive = actions.where((a) => a.destructive);
+    final chosen = await showMenu<VoidCallback>(
+      context: context,
+      popUpAnimationStyle: AnimationStyle.noAnimation,
+      position: RelativeRect.fromRect(Rect.fromPoints(local, local), Offset.zero & overlay.size),
+      constraints: const BoxConstraints(minWidth: 220, maxWidth: 320),
+      items: [
+        PopupMenuItem<VoidCallback>(
+          enabled: false,
+          height: 26,
+          child: Text('${rows.length} ${tc.type.resource} selected', style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)),
+        ),
+        for (final a in safe) item(a.icon, '${a.label} ${rows.length}', () => _runBulk(a, rows)),
+        const PopupMenuDivider(height: 9),
+        item(Icons.content_copy, 'Copy names', () => copyToClipboard(context, names, label: '${rows.length} names')),
+        item(Icons.deselect, 'Clear selection', tc.clearSelection),
+        if (destructive.isNotEmpty) const PopupMenuDivider(height: 9),
+        for (final a in destructive) item(a.icon, '${a.label} ${rows.length}…', () => _runBulk(a, rows), danger: true),
+      ],
+    );
+    if (chosen != null && context.mounted) chosen();
+  }
+
+  void _scrollTo(int idx) {
+    if (!_vScroll.hasClients) return;
     final y = idx * _rowHeight;
     if (y < _vScroll.offset || y > _vScroll.offset + _vScroll.position.viewportDimension - _rowHeight) {
       _vScroll.jumpTo((y - _vScroll.position.viewportDimension / 2).clamp(0, _vScroll.position.maxScrollExtent));
     }
+  }
+
+  /// ↑/↓ move the selection (and the inspector); ⇧↑/⇧↓ extend it; ⌘A
+  /// selects every visible row; Esc clears a multi-selection, else closes
+  /// the inspector; ⌘⌫ deletes the selection.
+  KeyEventResult _onKey(KeyEvent e, List<TableRowData> rows, AppState app) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final tc = context.read<TableController>();
+    final keys = HardwareKeyboard.instance;
+    final meta = keys.isMetaPressed || keys.isControlPressed;
+    final key = e.logicalKey;
+    if (meta && key == LogicalKeyboardKey.keyA) {
+      tc.selectAll();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.escape) {
+      if (tc.selectedRows.length >= 2) {
+        tc.clearSelection();
+      } else {
+        tc.clearSelection();
+        app.closeDetail();
+      }
+      return KeyEventResult.handled;
+    }
+    if (meta && (key == LogicalKeyboardKey.backspace || key == LogicalKeyboardKey.delete)) {
+      final sel = tc.selectedRows;
+      final del = bulkActionsFor(app, tc.type, sel).where((a) => a.action == 'delete' && a.label != 'Restart pods').firstOrNull;
+      if (sel.isNotEmpty && del != null) _runBulk(del, sel);
+      return KeyEventResult.handled;
+    }
+    final down = key == LogicalKeyboardKey.arrowDown;
+    final up = key == LogicalKeyboardKey.arrowUp;
+    if (!down && !up) return KeyEventResult.ignored;
+    if (keys.isShiftPressed) {
+      if (tc.cursor == null) {
+        final inspected = rows.where((r) => _isInspected(app, tc.type, r)).firstOrNull;
+        if (inspected != null) tc.anchor = tc.cursor = inspected.uid;
+      }
+      tc.extendSelection(down ? 1 : -1);
+      final at = rows.indexWhere((r) => r.uid == tc.cursor);
+      if (at >= 0) _scrollTo(at);
+      return KeyEventResult.handled;
+    }
+    var idx = tc.cursor == null ? -1 : rows.indexWhere((r) => r.uid == tc.cursor);
+    if (idx < 0) idx = rows.indexWhere((r) => _isInspected(app, tc.type, r));
+    idx = (idx + (down ? 1 : -1)).clamp(0, rows.length - 1);
+    tc.selectOnly(rows[idx].uid);
+    _open(app, tc.type, rows[idx]);
+    _scrollTo(idx);
     return KeyEventResult.handled;
   }
 
@@ -216,8 +366,6 @@ class _Toolbar extends StatelessWidget {
   final int shown;
   const _Toolbar({required this.controller, required this.shown});
 
-  static const _allNamespaces = '\u0000all';
-
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -225,7 +373,6 @@ class _Toolbar extends StatelessWidget {
     final colors = AppColors.of(context);
     final t = controller.type;
     final count = shown == controller.totalCount ? '$shown' : '$shown of ${controller.totalCount}';
-    final ns = app.namespaces.contains(app.namespace) ? app.namespace : null;
     return WindowDragArea(
       child: SizedBox(
         height: toolbarRowHeight(context),
@@ -268,36 +415,7 @@ class _Toolbar extends StatelessWidget {
                     ),
                   ),
                   if (t.namespaced) ...[
-                    SizedBox(
-                      width: nsWidth,
-                      child: MenuButton<String>(
-                        tooltip: 'Namespace',
-                        onSelected: (v) => app.setNamespace(v == _allNamespaces ? null : v),
-                        items: () => [
-                          _nsItem(context, _allNamespaces, 'All namespaces', ns == null),
-                          const PopupMenuDivider(height: 9),
-                          for (final n in app.namespaces) _nsItem(context, n, n, n == ns),
-                        ],
-                        builder: (h) => Container(
-                          height: 26,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: theme.inputDecorationTheme.fillColor?.withValues(alpha: h ? 0.14 : null),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.folder_outlined, size: 14, color: theme.hintColor),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(ns ?? 'All namespaces', overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodyMedium),
-                              ),
-                              Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                    SizedBox(width: nsWidth, child: const NamespacePicker()),
                     const SizedBox(width: 8),
                   ],
                   SizedBox(
@@ -326,17 +444,6 @@ class _Toolbar extends StatelessWidget {
       ),
     );
   }
-
-  static PopupMenuItem<String> _nsItem(BuildContext context, String value, String label, bool selected) => PopupMenuItem(
-    value: value,
-    height: 26,
-    child: Row(
-      children: [
-        SizedBox(width: 18, child: selected ? Icon(Icons.check, size: 14, color: Theme.of(context).colorScheme.primary) : null),
-        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-      ],
-    ),
-  );
 }
 
 class _Header extends StatelessWidget {
@@ -399,24 +506,40 @@ class _Row extends StatelessWidget {
   final List<ColumnDef> columns;
   final List<double> widths;
   final bool striped;
+
+  /// Shown in the inspector.
+  final bool inspected;
+
+  /// Part of a multi-selection (2+ rows).
   final bool selected;
+
+  /// Neighbouring rows are selected too: the highlight runs on unbroken.
+  final bool joinAbove;
+  final bool joinBelow;
   final VoidCallback onTap;
 
   /// Right-click (or two-finger click) at a global position.
   final ValueChanged<Offset>? onContextMenu;
   const _Row({
+    super.key,
     required this.row,
     required this.columns,
     required this.widths,
     required this.striped,
-    required this.selected,
+    required this.inspected,
     required this.onTap,
+    this.selected = false,
+    this.joinAbove = false,
+    this.joinBelow = false,
     this.onContextMenu,
   });
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    const r = Radius.circular(5);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onSecondaryTapDown: onContextMenu == null ? null : (d) => onContextMenu!(d.globalPosition),
@@ -427,14 +550,23 @@ class _Row extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 6),
           padding: const EdgeInsets.only(left: 6),
           decoration: BoxDecoration(
+            // macOS multi-selection: every selected row tinted with the
+            // accent, contiguous rows joined into one block. The inspected
+            // row alone keeps the lighter source-list tint.
             color: selected
+                ? theme.colorScheme.primary.withValues(alpha: dark ? 0.42 : 0.26)
+                : inspected
                 ? colors.selection
                 : hovered
                 ? colors.hover
                 : striped
                 ? colors.stripe
                 : null,
-            borderRadius: BorderRadius.circular(5),
+            borderRadius: selected
+                ? BorderRadius.vertical(top: joinAbove ? Radius.zero : r, bottom: joinBelow ? Radius.zero : r)
+                : const BorderRadius.all(r),
+            // Inside a multi-selection, the inspected row gets an inset edge.
+            border: selected && inspected ? Border(left: BorderSide(color: theme.colorScheme.primary, width: 3)) : null,
           ),
           child: Row(
             children: [
@@ -449,6 +581,108 @@ class _Row extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Over rows that are still shown after a refresh failed.
+class _StaleBanner extends StatelessWidget {
+  final TableController controller;
+  const _StaleBanner({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final f = controller.failure;
+    final what = switch (f?.kind) {
+      ClusterErrorKind.backendDown => "The k8sman backend isn't responding",
+      ClusterErrorKind.unreachable || ClusterErrorKind.timeout => "Can't reach the cluster",
+      ClusterErrorKind.unauthorized => 'Credentials rejected or expired',
+      ClusterErrorKind.forbidden => 'Permission denied',
+      _ => "Can't refresh",
+    };
+    return Container(
+      key: const ValueKey('stale-banner'),
+      color: severityColor(context, Severity.warn).withValues(alpha: 0.12),
+      padding: const EdgeInsets.fromLTRB(14, 4, 8, 4),
+      child: Row(children: [
+        Icon(Icons.warning_amber_rounded, size: 15, color: severityColor(context, Severity.warn)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Tooltip(
+            message: controller.error ?? '',
+            child: Text(
+              '$what. Showing the last loaded data. ${controller.error ?? ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ),
+        TextButton(
+          style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8)),
+          onPressed: controller.retry,
+          child: const Text('Retry'),
+        ),
+      ]),
+    );
+  }
+}
+
+/// "N selected · Clear" and the actions that apply to all selected rows.
+class _SelectionBar extends StatelessWidget {
+  final TableController controller;
+  final List<TableRowData> rows;
+  final List<BulkAction> actions;
+  final ValueNotifier<BulkProgress?> progress;
+  final void Function(BulkAction) onRun;
+  const _SelectionBar({required this.controller, required this.rows, required this.actions, required this.progress, required this.onRun});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    return Container(
+      key: const ValueKey('selection-bar'),
+      height: 32,
+      color: theme.colorScheme.primary.withValues(alpha: 0.06),
+      padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+      child: ValueListenableBuilder<BulkProgress?>(
+        valueListenable: progress,
+        builder: (context, p, _) => Row(children: [
+          Text('${rows.length} selected',
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: const [FontFeature.tabularFigures()])),
+          Text('  ·  ', style: hint),
+          Hoverable(
+            key: const ValueKey('selection-clear'),
+            onTap: controller.clearSelection,
+            builder: (h) => Text('Clear', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary, decoration: h ? TextDecoration.underline : null)),
+          ),
+          const SizedBox(width: 12),
+          if (p != null) ...[
+            const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+            const SizedBox(width: 6),
+            Flexible(child: Text('$p', maxLines: 1, overflow: TextOverflow.ellipsis, style: hint)),
+          ],
+          const Spacer(),
+          for (final a in actions)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: TextButton.icon(
+                key: ValueKey('bulk-${a.label}'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  foregroundColor: a.destructive ? theme.colorScheme.error : null,
+                  splashFactory: NoSplash.splashFactory,
+                ),
+                onPressed: p != null ? null : () => onRun(a),
+                icon: Icon(a.icon, size: 15),
+                label: Text(a.label),
+              ),
+            ),
+        ]),
       ),
     );
   }

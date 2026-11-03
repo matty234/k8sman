@@ -9,6 +9,7 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/namespace_picker.dart';
 import 'helm_api.dart';
 import 'release_detail.dart';
 
@@ -109,7 +110,7 @@ class _HelmViewState extends State<HelmView> {
           subtitle: l == null ? null : _Subtitle(l),
           actions: [
             IconButton(tooltip: 'Refresh', iconSize: 18, icon: const Icon(Icons.refresh), onPressed: _refresh),
-            if (box.maxWidth >= 520) SizedBox(width: nsWidth, child: _NamespacePicker(app: app)),
+            if (box.maxWidth >= 520) SizedBox(width: nsWidth, child: const NamespacePicker()),
             SizedBox(
               width: filterWidth,
               height: 26,
@@ -190,51 +191,6 @@ class _Empty extends StatelessWidget {
         Text(namespace == null ? 'Nothing installed with Helm in this cluster.' : 'Nothing installed with Helm in $namespace.',
             style: TextStyle(color: theme.hintColor)),
       ]),
-    );
-  }
-}
-
-/// Namespace filter matching the resource table's toolbar (drives app.namespace).
-class _NamespacePicker extends StatelessWidget {
-  final AppState app;
-  const _NamespacePicker({required this.app});
-
-  static const _all = '\u0000all';
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final ns = app.namespace;
-    PopupMenuItem<String> item(String value, String label, bool selected) => PopupMenuItem(
-          value: value,
-          height: 26,
-          child: Row(children: [
-            SizedBox(width: 18, child: selected ? Icon(Icons.check, size: 14, color: theme.colorScheme.primary) : null),
-            Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-          ]),
-        );
-    return MenuButton<String>(
-      tooltip: 'Namespace',
-      onSelected: (v) => app.setNamespace(v == _all ? null : v),
-      items: () => [
-        item(_all, 'All namespaces', ns == null),
-        const PopupMenuDivider(height: 9),
-        for (final n in app.namespaces) item(n, n, n == ns),
-      ],
-      builder: (h) => Container(
-        height: 26,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          color: theme.inputDecorationTheme.fillColor?.withValues(alpha: h ? 0.14 : null),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(children: [
-          Icon(Icons.folder_outlined, size: 14, color: theme.hintColor),
-          const SizedBox(width: 6),
-          Expanded(child: Text(ns ?? 'All namespaces', overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodyMedium)),
-          Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
-        ]),
-      ),
     );
   }
 }

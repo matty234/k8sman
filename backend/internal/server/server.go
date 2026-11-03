@@ -230,6 +230,9 @@ type Row struct {
 	ResourceVersion string         `json:"resourceVersion"`
 	Cells           []any          `json:"cells"`
 	Object          map[string]any `json:"object,omitempty"`
+	// Controlled is true when a controller owns the object (e.g. a pod of a
+	// ReplicaSet), so deleting it means the controller recreates it.
+	Controlled bool `json:"controlled,omitempty"`
 }
 
 // Table is a list rendered through the column set.
@@ -275,6 +278,7 @@ func (b *tableBuilder) row(u *unstructured.Unstructured) Row {
 		Namespace:       u.GetNamespace(),
 		ResourceVersion: u.GetResourceVersion(),
 		Cells:           cells,
+		Controlled:      metav1.GetControllerOf(u) != nil,
 	}
 	if b.includeObject {
 		r.Object = u.Object

@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../app/kubeconfig_picker.dart';
 import '../app/window_chrome.dart';
 import '../metrics/metrics_page.dart';
 import '../state/app_state.dart';
+import '../state/cluster_error.dart';
 import '../state/log_dock.dart';
 import 'alerts/alerts_view.dart';
+import 'cluster_error_view.dart';
 import 'detail/detail_sidebar.dart';
 import 'logs/log_dock_view.dart';
 import 'helm/helm_view.dart';
@@ -43,24 +44,7 @@ class _ShellState extends State<Shell> {
     if (app.error != null && app.types.isEmpty) {
       return Scaffold(
         body: WindowDragArea(
-          child: Center(
-            child: SizedBox(
-              width: 460,
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Cannot connect to the cluster', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 8),
-                InlineMessage('${app.error}', isError: true),
-                const SizedBox(height: 8),
-                Text('Check the cluster is reachable and your credentials are valid, or choose another kubeconfig.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-                const SizedBox(height: 16),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  FilledButton(onPressed: app.init, child: const Text('Retry')),
-                  const KubeconfigPicker(compact: false),
-                ]),
-              ]),
-            ),
-          ),
+          child: ClusterErrorView(error: ClusterError.fromException(app.errorCause ?? app.error!), onRetry: app.init),
         ),
       );
     }

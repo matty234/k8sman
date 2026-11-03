@@ -107,6 +107,10 @@ class TableRowData {
   final List<dynamic> cells;
   final Json? object;
 
+  /// A controller owns the object (e.g. a ReplicaSet's pod): deleting it
+  /// makes the controller recreate it.
+  final bool controlled;
+
   const TableRowData({
     required this.uid,
     required this.name,
@@ -114,6 +118,7 @@ class TableRowData {
     required this.resourceVersion,
     required this.cells,
     this.object,
+    this.controlled = false,
   });
 
   factory TableRowData.fromJson(Json j) => TableRowData(
@@ -123,6 +128,7 @@ class TableRowData {
         resourceVersion: j['resourceVersion'] ?? '',
         cells: List<dynamic>.from(j['cells'] ?? const []),
         object: j['object'],
+        controlled: j['controlled'] == true,
       );
 }
 
@@ -164,13 +170,26 @@ class WatchMessage {
   final TableData? table;
   final TableRowData? row;
   final String? error;
-  const WatchMessage({required this.type, this.table, this.row, this.error});
+
+  /// On ERROR (newer backends): Unreachable, Unauthorized, Forbidden,
+  /// NotFound, Timeout or another Kubernetes StatusReason.
+  final String? reason;
+
+  /// On ERROR: the HTTP status equivalent (401, 403, 404, 502, 504, …).
+  final int? code;
+
+  /// On ERROR: the cluster API server URL.
+  final String? host;
+  const WatchMessage({required this.type, this.table, this.row, this.error, this.reason, this.code, this.host});
 
   factory WatchMessage.fromJson(Json j) => WatchMessage(
         type: j['type'] ?? 'ERROR',
         table: j['table'] != null ? TableData.fromJson(j['table']) : null,
         row: j['row'] != null ? TableRowData.fromJson(j['row']) : null,
         error: j['error'],
+        reason: j['reason'],
+        code: j['code'],
+        host: j['host'],
       );
 }
 

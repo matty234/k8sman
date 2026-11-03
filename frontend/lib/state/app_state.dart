@@ -29,6 +29,10 @@ class AppState extends ChangeNotifier {
   bool loading = true;
   String? error;
 
+  /// What [error] came from (an [ApiException], a socket error, …), so the
+  /// UI can tell an unreachable cluster from rejected credentials.
+  Object? errorCause;
+
   /// Backend started with --read-only: hide mutating UI.
   bool readOnly = false;
 
@@ -80,6 +84,7 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     loading = true;
     error = null;
+    errorCause = null;
     notifyListeners();
     try {
       readOnly = await api.health().then((h) => h['readOnly'] == true, onError: (_) => false);
@@ -93,6 +98,7 @@ class AppState extends ChangeNotifier {
       selectedType ??= typeFor('', 'Pod');
     } catch (e) {
       error = '$e';
+      errorCause = e;
     }
     loading = false;
     notifyListeners();
@@ -104,9 +110,12 @@ class AppState extends ChangeNotifier {
       _detailStack.clear();
       namespace = null;
       selectedType = null;
+      // Drop the old cluster's kinds so a failure shows the error screen.
+      types = const [];
       await init();
     } catch (e) {
       error = '$e';
+      errorCause = e;
       notifyListeners();
     }
   }
@@ -138,8 +147,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Namespaces chosen this session, most recent first (for the picker).
+  final List<String> recentNamespaces = [];
+
   void setNamespace(String? ns) {
     namespace = ns;
+    if (ns != null) {
+      recentNamespaces
+        ..remove(ns)
+        ..insert(0, ns);
+      if (recentNamespaces.length > 5) recentNamespaces.removeLast();
+    }
     notifyListeners();
   }
 
