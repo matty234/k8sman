@@ -173,9 +173,12 @@ void main() {
       expect(app.detail?.name, 'coredns');
       expect(find.byKey(const ValueKey('inspector-collapsed-tab')), findsNothing);
 
-      // Changing top-level view collapses too (Nodes is always in the nav;
-      // Port Forwards now lives under "More").
-      await tester.tap(find.text('Nodes').first);
+      // Changing top-level view collapses too (Port Forwards is under "More").
+      if (find.text('More').evaluate().isNotEmpty) {
+        await tester.tap(find.text('More'));
+        await tester.pump();
+      }
+      await tester.tap(find.text('Port Forwards').first);
       await _settle(tester);
       expect(app.inspectorCollapsed, isTrue);
     });

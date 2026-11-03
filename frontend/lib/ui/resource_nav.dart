@@ -100,7 +100,7 @@ class ResourceNav extends StatefulWidget {
 const _expandedByDefault = {'Workloads', 'Network', 'Config'};
 
 /// Pages shown under "More" (the rest are always visible).
-const _morePages = {MainView.metrics, MainView.helm, MainView.portForwards};
+const _morePages = {MainView.metrics, MainView.helm, MainView.portForwards, MainView.addons};
 
 /// Session-wide nav UI state (survives the nav being rebuilt/remounted):
 /// sections the user explicitly opened (true) or closed (false).
@@ -163,6 +163,7 @@ class _ResourceNavState extends State<ResourceNav> {
           _ViewItem(icon: Icons.query_stats, label: 'Metrics', view: MainView.metrics, selected: app.view == MainView.metrics),
           _ViewItem(icon: Icons.sailing_outlined, label: 'Helm', view: MainView.helm, selected: app.view == MainView.helm),
           _ViewItem(icon: Icons.swap_horiz, label: 'Port Forwards', view: MainView.portForwards, selected: app.view == MainView.portForwards),
+          _ViewItem(icon: Icons.extension_outlined, label: 'Add-ons', view: MainView.addons, selected: app.view == MainView.addons),
         ],
         if (!_morePages.contains(app.view))
           _MoreToggle(open: _navMoreOpen, onTap: () => setState(() => _navMoreOpen = !_navMoreOpen)),

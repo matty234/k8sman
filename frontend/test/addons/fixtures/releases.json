@@ -1,0 +1,117 @@
+{
+ "releases": [
+  {
+   "name": "eg",
+   "namespace": "envoy-gateway-system",
+   "revision": 1,
+   "status": "deployed",
+   "chart": "gateway-helm",
+   "chartVersion": "v1.2.8",
+   "appVersion": "v1.2.8",
+   "updated": "2026-11-03T12:33:21Z",
+   "description": "Install complete"
+  },
+  {
+   "name": "api",
+   "namespace": "helm-demo",
+   "revision": 2,
+   "status": "failed",
+   "chart": "k8sman-demo",
+   "chartVersion": "0.3.1",
+   "appVersion": "1.27",
+   "updated": "2026-11-03T12:28:47Z",
+   "description": "Upgrade \"api\" failed: context deadline exceeded"
+  },
+  {
+   "name": "web",
+   "namespace": "helm-demo",
+   "revision": 5,
+   "status": "deployed",
+   "chart": "k8sman-demo",
+   "chartVersion": "0.3.1",
+   "appVersion": "1.27",
+   "updated": "2026-11-03T12:28:29Z",
+   "description": "Pin nginx 1.27.3"
+  },
+  {
+   "name": "cache-only",
+   "namespace": "helm-tools",
+   "revision": 1,
+   "status": "deployed",
+   "chart": "k8sman-demo",
+   "chartVersion": "0.3.1",
+   "appVersion": "1.27",
+   "updated": "2026-11-03T12:29:08Z",
+   "description": "Install complete"
+  },
+  {
+   "name": "worker",
+   "namespace": "helm-tools",
+   "revision": 2,
+   "status": "pending-upgrade",
+   "chart": "k8sman-demo",
+   "chartVersion": "0.3.1",
+   "appVersion": "1.27",
+   "updated": "2026-11-03T12:29:18Z",
+   "description": "Preparing upgrade"
+  },
+  {
+   "name": "keda",
+   "namespace": "keda",
+   "revision": 1,
+   "status": "deployed",
+   "chart": "keda",
+   "chartVersion": "2.11.2",
+   "appVersion": "2.11.2",
+   "updated": "2026-11-03T12:39:48Z",
+   "description": "Install complete"
+  },
+  {
+   "name": "metrics-server",
+   "namespace": "kube-system",
+   "revision": 1,
+   "status": "deployed",
+   "chart": "metrics-server",
+   "chartVersion": "3.14.0",
+   "appVersion": "0.9.0",
+   "updated": "2026-11-03T12:36:55Z",
+   "description": "Installed from k8sman"
+  },
+  {
+   "name": "kube-prometheus-stack",
+   "namespace": "monitoring",
+   "revision": 1,
+   "status": "deployed",
+   "chart": "kube-prometheus-stack",
+   "chartVersion": "92.17.1",
+   "appVersion": "v0.94.2",
+   "updated": "2026-11-03T12:41:04Z",
+   "description": "Install complete"
+  },
+  {
+   "name": "prometheus-adapter",
+   "namespace": "monitoring",
+   "revision": 1,
+   "status": "deployed",
+   "chart": "prometheus-adapter",
+   "chartVersion": "5.3.0",
+   "appVersion": "v0.12.0",
+   "updated": "2026-11-03T13:11:57Z",
+   "description": "Install complete"
+  },
+  {
+   "name": "trivy-operator",
+   "namespace": "trivy-system",
+   "revision": 1,
+   "status": "deployed",
+   "chart": "trivy-operator",
+   "chartVersion": "0.38.1",
+   "appVersion": "0.36.1",
+   "updated": "2026-11-03T12:32:35Z",
+   "description": "Install complete"
+  }
+ ],
+ "total": 10,
+ "failed": 1,
+ "pending": 1
+}

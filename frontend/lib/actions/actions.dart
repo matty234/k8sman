@@ -138,9 +138,16 @@ Future<bool?> confirmAction(
                 child: Row(children: [
                   Icon(Icons.warning_amber_rounded, size: 16, color: warn),
                   const SizedBox(width: 8),
-                  Text('You are changing ', style: theme.textTheme.bodySmall),
-                  Flexible(child: Text(kubeContext, style: monoStyle(context, size: 12, color: warn).copyWith(fontWeight: FontWeight.w600))),
-                  Text(', not a local cluster.', style: theme.textTheme.bodySmall),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(children: [
+                        const TextSpan(text: 'You are changing '),
+                        TextSpan(text: kubeContext, style: monoStyle(context, size: 12, color: warn).copyWith(fontWeight: FontWeight.w600)),
+                        const TextSpan(text: ', not a local cluster.'),
+                      ]),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
                 ]),
               ),
           ]),

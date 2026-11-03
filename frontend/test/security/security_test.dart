@@ -190,7 +190,7 @@ void main() {
     await saveScreenshot(tester, 'security-no-scanner-1000');
     await tester.tap(find.text('Install Trivy Operator'));
     await tester.pumpAndSettle();
-    expect(find.text('Install Trivy Operator?'), findsOneWidget);
+    expect(find.text('Dry run'), findsOneWidget);
   });
 
   testWidgets('operator installed but still scanning', (tester) async {

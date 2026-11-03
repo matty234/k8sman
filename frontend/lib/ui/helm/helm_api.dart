@@ -356,6 +356,31 @@ class HelmApi {
   Future<HelmResult> upgrade(String namespace, String name, String values, {bool reuseValues = false, bool dryRun = false}) async =>
       HelmResult.fromJson(await _post('upgrade', {'namespace': namespace, 'name': name, 'values': values, 'reuseValues': reuseValues, 'dryRun': dryRun}));
 
+  /// Upgrades [name] to [chart] at [version] (null = latest) fetched from
+  /// [repo], like [install] does, instead of re-rendering the stored chart.
+  Future<HelmResult> upgradeChart(
+    String namespace,
+    String name, {
+    required String repo,
+    required String chart,
+    String? version,
+    String values = '',
+    bool wait = false,
+    int? timeoutSeconds,
+    bool dryRun = false,
+  }) async =>
+      HelmResult.fromJson(await _post('upgrade', {
+        'namespace': namespace,
+        'name': name,
+        'repo': repo,
+        'chart': chart,
+        'version': ?version,
+        'values': values,
+        'wait': wait,
+        'timeoutSeconds': ?timeoutSeconds,
+        'dryRun': dryRun,
+      }));
+
   /// Installs [chart] from an https repo URL or an `oci://` reference.
   Future<HelmResult> install({
     required String namespace,

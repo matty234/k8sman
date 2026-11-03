@@ -66,7 +66,7 @@ void main() {
       expect(find.text('Metrics unavailable'), findsOneWidget);
       await tester.tap(find.text('Install metrics-server'));
       await tester.pumpAndSettle();
-      expect(find.text('Install metrics-server?'), findsOneWidget);
+      expect(find.text('Dry run'), findsOneWidget);
       for (var w = 360.0; w <= 1800; w += 120) {
         await _resize(tester, w, 700);
         expect(tester.takeException(), isNull, reason: 'overflow at $w');

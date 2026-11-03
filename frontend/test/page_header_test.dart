@@ -7,6 +7,7 @@ import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/metrics/metrics_page.dart';
 import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/ui/addons/addons_view.dart';
 import 'package:k8sman/ui/helm/helm_view.dart';
 import 'package:k8sman/ui/alerts/alerts_view.dart';
 import 'package:k8sman/ui/nodes/nodes_view.dart';
@@ -18,6 +19,7 @@ import 'package:k8sman/ui/theme.dart';
 import 'package:k8sman/ui/widgets/common.dart';
 import 'package:provider/provider.dart';
 
+import 'addons/addons_fakes.dart';
 import 'helm/fake_helm_api.dart';
 import 'prometheus/prom_fixtures.dart';
 import 'support/harness.dart';
@@ -41,6 +43,7 @@ void main() {
     'nodes': (_) => const NodesView(),
     'port forwards': (_) => const PortForwardView(),
     'helm': (_) => HelmView(api: FakeHelmApi()),
+    'add-ons': (_) => AddonsView(api: FakeAddonHelmApi()),
     'security': (_) => SecurityView(source: _SecurityApi()),
     'alerts': (_) => AlertsView(source: FixturePromApi()),
     'metrics': (_) => const MetricsPage(),
