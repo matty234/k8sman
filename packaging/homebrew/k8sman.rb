@@ -8,7 +8,7 @@ cask "k8sman" do
 
   url "https://github.com/matty234/k8sman/releases/download/v#{version}/k8sman-#{version}-macos.zip"
   name "k8sman"
-  desc "Native-feeling Kubernetes desktop app"
+  desc "Native Kubernetes IDE"
   homepage "https://github.com/matty234/k8sman"
 
   # The appcast the app itself uses; `brew livecheck` reads it.
@@ -25,6 +25,7 @@ cask "k8sman" do
   app "k8sman.app"
 
   zap trash: [
+    "~/.cache/k8sman",
     "~/.config/k8sman",
     "~/Library/Caches/dev.k8sman.app",
     "~/Library/HTTPStorages/dev.k8sman.app",
