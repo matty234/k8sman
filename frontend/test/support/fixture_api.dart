@@ -58,6 +58,15 @@ class FixtureApi extends ApiClient {
   @override
   Future<List<ResourceType>> resources({bool refresh = false}) async => types;
 
+  /// The saved sidebar layout (settings.json stand-in).
+  Json? sidebarLayout;
+
+  @override
+  Future<Json?> getSidebar() async => sidebarLayout;
+
+  @override
+  Future<void> putSidebar(Json? layout) async => sidebarLayout = layout;
+
   @override
   Future<({List<String> namespaces, String? defaultNamespace})> namespaces() async =>
       (namespaces: List<String>.from(fixture('api-namespaces.json')['namespaces']), defaultNamespace: 'demo');

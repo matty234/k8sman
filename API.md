@@ -9,7 +9,7 @@ port-forwards, exec and debug containers are refused (403) when the server runs 
 
 If no kubeconfig can be loaded at startup the server still runs, disconnected:
 cluster endpoints return 503 (`reason: "NoKubeconfig"`), while `/api/health`,
-`/api/contexts`, `/api/kubeconfigs*` and `/api/portforwards*` keep working so
+`/api/contexts`, `/api/kubeconfigs*`, `/api/settings/*` and `/api/portforwards*` keep working so
 the UI can let the user pick a file.
 
 Resource targets use query params `group` (`""` = core), `version` (optional:
@@ -30,6 +30,7 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | GET | `/api/object?name=` | one object as JSON, or YAML with `format=yaml` (managedFields stripped unless `managedFields=true`) |
 | GET | `/api/events` | core/v1 Events for an object, newest first. Filter by `uid` (preferred) or `kind`+`name`, plus `namespace` |
 | GET/PUT/DELETE | `/api/columns` | read `{columns, isDefault, defaults}`, save `{columns}`, or reset the user's column override |
+| GET/PUT/DELETE | `/api/settings/sidebar` | the sidebar's top section, persisted in settings.json: read `{sidebar: {items} \| null}` (null = app default), save `{items}`, or reset. Each item is a page `{view, hidden?}` (hidden pages fold under "More") or a pinned kind `{group, kind, namespace?}` (keyed by group/kind, applies across clusters). Works without a cluster connection |
 | POST | `/api/columns/preview[?limit=]` | body `{columns}`: evaluates unsaved columns against live objects and returns a table |
 | WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true`. With `batch=true` the server may also send `{type:"BATCH",events:[{type,row},…]}`: deltas from a ~75ms window, in order (apply all, then redraw once). See [Shared watches](#shared-watches) |
 | WS | `/api/logs` | `namespace`, `pod`, `container`, `tailLines` (default 500, `-1` = all), `previous`, `timestamps`, `sinceSeconds`, `follow` (default true). Sends frames `{line}`, ending with `{eof:true}` or `{error}` |

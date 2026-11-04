@@ -68,6 +68,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.actionRoutes()
 	s.overviewRoutes()
 	s.kubeconfigRoutes()
+	s.sidebarRoutes()
 	s.execRoutes()
 	s.helmRoutes()
 	s.securityRoutes()
@@ -85,7 +86,8 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 // the UI can still pick a kubeconfig when none could be loaded.
 func worksDisconnected(path string) bool {
 	return path == "/api/health" || path == "/api/contexts" ||
-		strings.HasPrefix(path, "/api/kubeconfigs") || strings.HasPrefix(path, "/api/portforwards")
+		strings.HasPrefix(path, "/api/kubeconfigs") || strings.HasPrefix(path, "/api/portforwards") ||
+		strings.HasPrefix(path, "/api/settings/")
 }
 
 func (s *Server) routes() {

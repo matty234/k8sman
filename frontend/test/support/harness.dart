@@ -41,6 +41,15 @@ class FakeApiClient extends ApiClient {
   @override
   Future<List<Json>> events({String? namespace, String? uid, String? kind, String? name}) async => eventItems;
 
+  /// The saved sidebar layout (settings.json stand-in).
+  Json? sidebarLayout;
+
+  @override
+  Future<Json?> getSidebar() async => sidebarLayout;
+
+  @override
+  Future<void> putSidebar(Json? layout) async => sidebarLayout = layout;
+
   @override
   Future<Json> object(ResourceRef r, {String? namespace, required String name}) async {
     final o = objects['${r.key}/${namespace ?? ''}/$name'];

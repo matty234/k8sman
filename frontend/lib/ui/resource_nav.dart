@@ -7,6 +7,7 @@ import '../app/window_chrome.dart';
 import '../gpu/gpu_view.dart';
 import '../state/app_state.dart';
 import 'alerts/alerts_nav_badge.dart';
+import 'sidebar_editor.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/group_icon.dart';
@@ -114,11 +115,59 @@ class ResourceNav extends StatefulWidget {
 /// keep the sidebar calm. User toggles are remembered for the session.
 const _expandedByDefault = {'Workloads', 'Network', 'Config'};
 
-/// Below this height the sidebar scrolls as a whole.
+/// Below this height the sidebar scrolls as a whole (plus a row's height
+/// per top-section row beyond the default seven, e.g. pins).
 const _navMinHeight = 520.0;
+const _defaultTopRows = 7;
+const _topRowHeight = 27.0;
 
-/// Pages shown under "More" (the rest are always visible).
-const _morePages = {MainView.metrics, MainView.helm, MainView.portForwards, MainView.addons};
+/// Icon and label of each sidebar page (see [SidebarConfig.pages]).
+const sidebarPages = <MainView, (IconData, String)>{
+  MainView.overview: (Icons.space_dashboard_outlined, 'Overview'),
+  MainView.alerts: (Icons.notifications_none, 'Alerts'),
+  MainView.nodes: (Icons.dns_outlined, 'Nodes'),
+  MainView.gpus: (Icons.memory, 'GPUs'),
+  MainView.security: (Icons.shield_outlined, 'Security'),
+  MainView.access: (Icons.manage_accounts_outlined, 'Access'),
+  MainView.metrics: (Icons.query_stats, 'Metrics'),
+  MainView.helm: (Icons.sailing_outlined, 'Helm'),
+  MainView.portForwards: (Icons.swap_horiz, 'Port Forwards'),
+  MainView.addons: (Icons.extension_outlined, 'Add-ons'),
+};
+
+/// A native-style context menu of (label, action) items; null = divider.
+Future<void> showSidebarMenu(BuildContext context, Offset globalPosition, List<(String, VoidCallback)?> items) async {
+  final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+  final local = overlay.globalToLocal(globalPosition);
+  final chosen = await showMenu<VoidCallback>(
+    context: context,
+    popUpAnimationStyle: AnimationStyle.noAnimation,
+    position: RelativeRect.fromRect(Rect.fromPoints(local, local), Offset.zero & overlay.size),
+    constraints: const BoxConstraints(minWidth: 200, maxWidth: 320),
+    items: [
+      for (final i in items)
+        if (i == null) const PopupMenuDivider(height: 9) else PopupMenuItem(value: i.$2, height: 28, child: Text(i.$1)),
+    ],
+  );
+  chosen?.call();
+}
+
+/// Right-click menu for a resource kind (in the kinds list or the table
+/// header): pin or unpin it, and with a namespace chosen, pin it scoped to
+/// that namespace too.
+Future<void> showKindMenu(BuildContext context, Offset globalPosition, ResourceType type) {
+  final app = context.read<AppState>();
+  final pin = SidebarPin(group: type.group, kind: type.kind);
+  final ns = type.namespaced ? app.namespace : null;
+  final nsPin = ns == null ? null : SidebarPin(group: type.group, kind: type.kind, namespace: ns);
+  void toggle(SidebarPin p) => app.setSidebar(app.sidebar.isPinned(p) ? app.sidebar.unpin(p) : app.sidebar.pin(p));
+  return showSidebarMenu(context, globalPosition, [
+    (app.sidebar.isPinned(pin) ? 'Unpin from Sidebar' : 'Pin to Sidebar', () => toggle(pin)),
+    if (nsPin != null) (app.sidebar.isPinned(nsPin) ? 'Unpin “${type.kind} in $ns”' : 'Pin to Sidebar in “$ns”', () => toggle(nsPin)),
+    null,
+    ('Customise Sidebar…', () => showSidebarEditor(context)),
+  ]);
+}
 
 /// Session-wide nav UI state (survives the nav being rebuilt/remounted):
 /// sections the user explicitly opened (true) or closed (false).
@@ -151,13 +200,24 @@ class _ResourceNavState extends State<ResourceNav> {
         t.group.contains(q) ||
         t.shortNames.any((s) => s == q);
 
+    // Top section: the user's layout (pages and pins); hidden pages fold
+    // under "More", which opens by itself while one of them is active.
+    final layout = app.sidebar;
+    final shown = [for (final e in layout.entries) if (!e.hidden && (e.pin == null || app.typeForPin(e.pin!) != null)) e];
+    final folded = [for (final e in layout.entries) if (e.hidden) e];
+    final foldedActive = folded.any((e) => e.view == app.view);
+    final moreOpen = _navMoreOpen || foldedActive;
+    final selectedPin = app.selectedPin;
+    final topRows = shown.length + (moreOpen ? folded.length : 0) + (folded.isNotEmpty && !foldedActive ? 1 : 0);
+    final minHeight = _navMinHeight + (topRows - _defaultTopRows).clamp(0, 99) * _topRowHeight;
+
     // In very short windows the page items alone would overflow: the whole
     // sidebar then scrolls (the kinds list keeps its own scroll otherwise).
     return LayoutBuilder(builder: (context, box) {
-      final tall = box.maxHeight >= _navMinHeight;
+      final tall = box.maxHeight >= minHeight;
       return SingleChildScrollView(
         physics: tall ? const NeverScrollableScrollPhysics() : null,
-        child: SizedBox(height: tall ? box.maxHeight : _navMinHeight, child: Container(
+        child: SizedBox(height: tall ? box.maxHeight : minHeight, child: Container(
       // Over the window's vibrancy on macOS; opaque elsewhere.
       color: nativeMacChrome ? Colors.transparent : AppColors.of(context).sidebar,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -167,6 +227,12 @@ class _ResourceNavState extends State<ResourceNav> {
             height: toolbarRowHeight(context),
             child: Row(children: [
               const Spacer(),
+              IconButton(
+                key: const ValueKey('customise-sidebar'),
+                tooltip: 'Customise Sidebar…',
+                icon: const Icon(Icons.tune),
+                onPressed: () => showSidebarEditor(context),
+              ),
               IconButton(
                 tooltip: 'Rediscover API resources',
                 icon: const Icon(Icons.refresh),
@@ -178,21 +244,18 @@ class _ResourceNavState extends State<ResourceNav> {
         ),
         const _ContextPicker(),
         const SizedBox(height: 6),
-        _ViewItem(icon: Icons.space_dashboard_outlined, label: 'Overview', view: MainView.overview, selected: app.view == MainView.overview),
-        _ViewItem(icon: Icons.notifications_none, label: 'Alerts', view: MainView.alerts, selected: app.view == MainView.alerts, trailing: const AlertsNavBadge()),
-        _ViewItem(icon: Icons.dns_outlined, label: 'Nodes', view: MainView.nodes, selected: app.view == MainView.nodes),
-        GpuNavGate(child: _ViewItem(icon: Icons.memory, label: 'GPUs', view: MainView.gpus, selected: app.view == MainView.gpus)),
-        _ViewItem(icon: Icons.shield_outlined, label: 'Security', view: MainView.security, selected: app.view == MainView.security),
-        _ViewItem(icon: Icons.manage_accounts_outlined, label: 'Access', view: MainView.access, selected: app.view == MainView.access),
-        // Less-used pages fold under "More" (auto-open when one is active).
-        if (_navMoreOpen || _morePages.contains(app.view)) ...[
-          _ViewItem(icon: Icons.query_stats, label: 'Metrics', view: MainView.metrics, selected: app.view == MainView.metrics),
-          _ViewItem(icon: Icons.sailing_outlined, label: 'Helm', view: MainView.helm, selected: app.view == MainView.helm),
-          _ViewItem(icon: Icons.swap_horiz, label: 'Port Forwards', view: MainView.portForwards, selected: app.view == MainView.portForwards),
-          _ViewItem(icon: Icons.extension_outlined, label: 'Add-ons', view: MainView.addons, selected: app.view == MainView.addons),
-        ],
-        if (!_morePages.contains(app.view))
-          _MoreToggle(open: _navMoreOpen, onTap: () => setState(() => _navMoreOpen = !_navMoreOpen)),
+        // Right-click on the section's empty space offers Customise too.
+        GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onSecondaryTapUp: (d) => showSidebarMenu(context, d.globalPosition, [('Customise Sidebar…', () => showSidebarEditor(context))]),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (final e in shown) _TopEntry(entry: e, selectedPin: selectedPin),
+            if (moreOpen)
+              for (final e in folded) _TopEntry(entry: e, selectedPin: selectedPin),
+            if (folded.isNotEmpty && !foldedActive)
+              _MoreToggle(open: _navMoreOpen, onTap: () => setState(() => _navMoreOpen = !_navMoreOpen)),
+          ]),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
           child: SizedBox(
@@ -214,8 +277,9 @@ class _ResourceNavState extends State<ResourceNav> {
                 bool isCustomSection(String key) => !_curated.containsKey(key) && key != 'Other';
                 final custom = isCustomSection(g.key);
                 final firstCustom = custom && (i == 0 || !isCustomSection(groups.keys.elementAt(i - 1)));
-                final selectedHere = app.view == MainView.resources && g.value.contains(app.selectedType);
-                final customSelected = app.view == MainView.resources && app.selectedType != null && isCustomSection(groups.entries.firstWhere((e) => e.value.contains(app.selectedType), orElse: () => const MapEntry('', [])).key);
+                // A pin showing the selection takes the highlight instead.
+                final selectedHere = selectedPin == null && app.view == MainView.resources && g.value.contains(app.selectedType);
+                final customSelected = selectedPin == null && app.view == MainView.resources && app.selectedType != null && isCustomSection(groups.entries.firstWhere((e) => e.value.contains(app.selectedType), orElse: () => const MapEntry('', [])).key);
                 final customCollapsed = q.isEmpty && _isCollapsed('Custom Resources', holdsSelection: customSelected);
                 final collapsed = q.isEmpty && _isCollapsed(g.key, holdsSelection: selectedHere);
                 if (!g.value.any(matches)) return const <Widget>[];
@@ -226,7 +290,8 @@ class _ResourceNavState extends State<ResourceNav> {
                   if (!custom || !customCollapsed || q.isNotEmpty) ...[
                     _GroupHeader(title: g.key, group: custom ? g.key : null, nested: custom, collapsed: collapsed, onTap: () => _toggle(g.key, currentlyCollapsed: collapsed)),
                     if (!collapsed)
-                      for (final t in g.value.where(matches)) _NavItem(type: t, nested: custom, selected: app.view == MainView.resources && app.selectedType == t),
+                      for (final t in g.value.where(matches))
+                        _NavItem(type: t, nested: custom, selected: selectedPin == null && app.view == MainView.resources && app.selectedType == t),
                   ],
                 ];
               }(),
@@ -308,6 +373,10 @@ class _SourceListItem extends StatelessWidget {
   /// Null for text-only rows (resource kinds).
   final IconData? icon;
 
+  /// A custom glyph in place of [icon] (e.g. a pinned kind's icon), given
+  /// the icon colour for the selection state.
+  final Widget Function(Color color)? leading;
+
   /// Left padding inside the row when there's no icon.
   final double indent;
   final String label;
@@ -315,13 +384,19 @@ class _SourceListItem extends StatelessWidget {
   final VoidCallback onTap;
   final Widget? trailing;
 
-  const _SourceListItem({this.icon, required this.label, required this.selected, required this.onTap, this.trailing, this.indent = 10});
+  /// Right-click (context menu) at a global position.
+  final void Function(Offset globalPosition)? onSecondaryTap;
+
+  const _SourceListItem(
+      {super.key,
+      this.icon, this.leading, required this.label, required this.selected, required this.onTap, this.trailing, this.indent = 10, this.onSecondaryTap});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
-    return Hoverable(
+    final iconColor = selected ? theme.colorScheme.primary : theme.hintColor;
+    final row = Hoverable(
       onTap: onTap,
       cursor: SystemMouseCursors.basic,
       builder: (h) => Container(
@@ -333,8 +408,11 @@ class _SourceListItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(5),
         ),
         child: Row(children: [
-          if (icon != null) ...[
-            Icon(icon, size: 15, color: selected ? theme.colorScheme.primary : theme.hintColor),
+          if (leading != null) ...[
+            SizedBox(width: 15, child: Center(child: leading!(iconColor))),
+            const SizedBox(width: 8),
+          ] else if (icon != null) ...[
+            Icon(icon, size: 15, color: iconColor),
             const SizedBox(width: 8),
           ] else
             SizedBox(width: indent),
@@ -350,6 +428,8 @@ class _SourceListItem extends StatelessWidget {
         ]),
       ),
     );
+    if (onSecondaryTap == null) return row;
+    return GestureDetector(onSecondaryTapUp: (d) => onSecondaryTap!(d.globalPosition), child: row);
   }
 }
 
@@ -369,6 +449,7 @@ class _NavItem extends StatelessWidget {
       indent: nested ? 18 : 10,
       selected: selected,
       onTap: () => context.read<AppState>().selectType(type),
+      onSecondaryTap: (pos) => showKindMenu(context, pos, type),
     );
     return Tooltip(
       waitDuration: const Duration(milliseconds: 900),
@@ -378,17 +459,71 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-class _ViewItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final MainView view;
-  final bool selected;
-  final Widget? trailing;
-  const _ViewItem({required this.icon, required this.label, required this.view, required this.selected, this.trailing});
+/// A row of the sidebar's top section: a page or a pinned kind. Pins whose
+/// kind the current cluster doesn't serve are left out by the caller.
+class _TopEntry extends StatelessWidget {
+  final SidebarEntry entry;
+
+  /// The pin that holds the current selection, if any.
+  final SidebarPin? selectedPin;
+  const _TopEntry({required this.entry, required this.selectedPin});
 
   @override
-  Widget build(BuildContext context) =>
-      _SourceListItem(icon: icon, label: label, selected: selected, trailing: trailing, onTap: () => context.read<AppState>().showView(view));
+  Widget build(BuildContext context) {
+    final app = context.read<AppState>();
+    final view = entry.view;
+    if (view != null) {
+      final (icon, label) = sidebarPages[view]!;
+      final item = _SourceListItem(
+        key: ValueKey('nav-view-${view.name}'),
+        icon: icon,
+        label: label,
+        selected: context.select<AppState, bool>((a) => a.view == view),
+        trailing: view == MainView.alerts ? const AlertsNavBadge() : null,
+        onTap: () => app.showView(view),
+        onSecondaryTap: (pos) => showSidebarMenu(context, pos, [
+          entry.hidden
+              ? ('Show $label in Sidebar', () => app.setSidebar(app.sidebar.setHidden(view, false)))
+              : ('Hide $label', () => app.setSidebar(app.sidebar.setHidden(view, true))),
+          null,
+          ('Customise Sidebar…', () => showSidebarEditor(context)),
+        ]),
+      );
+      // Per-cluster gating applies whatever the layout says.
+      return view == MainView.gpus ? GpuNavGate(child: item) : item;
+    }
+    final pin = entry.pin!;
+    final type = app.typeForPin(pin);
+    if (type == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Tooltip(
+      waitDuration: const Duration(milliseconds: 900),
+      message: '${type.kind} · ${type.apiVersion}${pin.namespace != null ? ' · in ${pin.namespace}' : ''}',
+      child: _SourceListItem(
+        key: ValueKey('nav-pin-${pin.gk}${pin.namespace != null ? '@${pin.namespace}' : ''}'),
+        leading: (color) => kindIconWidget(type, color: color),
+        label: type.kind,
+        selected: selectedPin == pin,
+        trailing: pin.namespace == null
+            ? null
+            : Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Text(pin.namespace!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).faint)),
+                ),
+              ),
+        onTap: () => app.openPin(pin),
+        onSecondaryTap: (pos) => showSidebarMenu(context, pos, [
+          ('Unpin from Sidebar', () => app.setSidebar(app.sidebar.unpin(pin))),
+          null,
+          ('Customise Sidebar…', () => showSidebarEditor(context)),
+        ]),
+      ),
+    );
+  }
 }
 
 /// Cluster context switcher, styled like a workspace switcher.
