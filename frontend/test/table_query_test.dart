@@ -130,4 +130,29 @@ void main() {
     expect(tc().sortAscending, isFalse);
     expect(tc().rows.map((r) => r.name), ['web', 'db', 'api']);
   });
+
+  testWidgets('drag a header divider to resize a column; double-click resets it', (tester) async {
+    final api = TableFakeApi()
+      ..onWatch = () => [WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [fakeRow('api'), fakeRow('web')]))];
+    final app = await pumpTable(tester, api, deployType, size: const Size(1000, 600));
+    double nameWidth() => tester.getSize(find.ancestor(of: find.text('Name').first, matching: find.byType(SizedBox)).first).width;
+    final before = nameWidth();
+
+    final handle = find.byKey(const ValueKey('resize-Name'));
+    await tester.drag(handle, const Offset(-120, 0));
+    await tester.pump();
+    expect(nameWidth(), closeTo(before - 120, 2));
+    expect(app.columnWidths[deployType.gk]?['Name'], closeTo(before - 120, 2));
+
+    await tester.drag(handle.hitTestable(), const Offset(-1000, 0));
+    await tester.pump();
+    expect(nameWidth(), 40, reason: 'has a minimum');
+
+    await tester.tap(handle.hitTestable());
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(handle.hitTestable());
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(app.columnWidths[deployType.gk], isEmpty);
+    expect(nameWidth(), before);
+  });
 }

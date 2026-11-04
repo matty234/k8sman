@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -117,7 +118,7 @@ class _TableBodyState extends State<_TableBody> {
                 )
               : LayoutBuilder(
                   builder: (context, box) {
-                    final widths = _stableWidths(_columnWidths(tc.columns, box.maxWidth));
+                    final widths = _stableWidths(_columnWidths(tc.columns, box.maxWidth, app.columnWidths[tc.type.gk] ?? const {}));
                     final total = widths.fold<double>(0, (a, b) => a + b) + 18; // + gutters
                     return Scrollbar(
                       controller: _hScroll,
@@ -203,7 +204,24 @@ class _TableBodyState extends State<_TableBody> {
         identical(h.columnErrors, tc.columnErrors)) {
       return h;
     }
-    return _headerCache = _Header(controller: tc, widths: widths);
+    return _headerCache = _Header(controller: tc, widths: widths, onResize: _resize, onResetWidth: _resetWidth);
+  }
+
+  /// Dragging a header divider: the column keeps that width (for this kind,
+  /// for the session) and no longer stretches.
+  void _resize(int col, double width) {
+    final tc = context.read<TableController>();
+    if (col >= tc.columns.length) return;
+    final app = context.read<AppState>();
+    (app.columnWidths[tc.type.gk] ??= {})[tc.columns[col].name] = width.clamp(_minColumnWidth, 2000.0).roundToDouble();
+    setState(() {});
+  }
+
+  void _resetWidth(int col) {
+    final tc = context.read<TableController>();
+    if (col >= tc.columns.length) return;
+    context.read<AppState>().columnWidths[tc.type.gk]?.remove(tc.columns[col].name);
+    setState(() {});
   }
 
   /// Row widgets by UID. A watch event changes one row, but the list's
@@ -425,13 +443,16 @@ class _TableBodyState extends State<_TableBody> {
     return 160;
   }
 
-  /// Fixed base widths; spare space goes to free-text columns.
-  static List<double> _columnWidths(List<ColumnDef> cols, double available) {
-    final w = [for (var i = 0; i < cols.length; i++) _baseWidth(cols[i], i)];
+  static const _minColumnWidth = 40.0;
+
+  /// Fixed base widths (or the user's, from dragging a divider); spare
+  /// space goes to free-text columns the user hasn't sized.
+  static List<double> _columnWidths(List<ColumnDef> cols, double available, Map<String, double> sized) {
+    final w = [for (var i = 0; i < cols.length; i++) sized[cols[i].name] ?? _baseWidth(cols[i], i)];
     final sum = w.fold<double>(0, (a, b) => a + b) + 24;
     final stretchy = [
       for (var i = 0; i < cols.length; i++)
-        if (cols[i].type == 'string' || cols[i].type == 'labels') i,
+        if ((cols[i].type == 'string' || cols[i].type == 'labels') && !sized.containsKey(cols[i].name)) i,
     ];
     if (sum < available && stretchy.isNotEmpty) {
       final extra = (available - sum) / stretchy.length;
@@ -476,34 +497,34 @@ class _Toolbar extends StatelessWidget {
                   Expanded(
                     // Right-click the title: pin this kind to the sidebar.
                     child: GestureDetector(
-                    key: const ValueKey('table-title'),
-                    behavior: HitTestBehavior.translucent,
-                    onSecondaryTapUp: (d) => showKindMenu(context, d.globalPosition, t),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        if (t.custom) ...[GroupIcon(group: t.group, size: 18), const SizedBox(width: 8)],
-                        Flexible(
-                          child: Text(t.kind, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.titleLarge),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          count,
-                          maxLines: 1,
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]),
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            t.apiVersion,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style: theme.textTheme.labelSmall?.copyWith(color: colors.faint, fontWeight: FontWeight.w400),
+                      key: const ValueKey('table-title'),
+                      behavior: HitTestBehavior.translucent,
+                      onSecondaryTapUp: (d) => showKindMenu(context, d.globalPosition, t),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          if (t.custom) ...[GroupIcon(group: t.group, size: 18), const SizedBox(width: 8)],
+                          Flexible(
+                            child: Text(t.kind, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.titleLarge),
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 8),
+                          Text(
+                            count,
+                            maxLines: 1,
+                            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              t.apiVersion,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              style: theme.textTheme.labelSmall?.copyWith(color: colors.faint, fontWeight: FontWeight.w400),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   if (t.namespaced) ...[SizedBox(width: nsWidth, child: const NamespacePicker()), const SizedBox(width: 8)],
@@ -540,57 +561,130 @@ class _Header extends StatelessWidget {
   final int? sortColumn;
   final bool sortAscending;
   final Map<int, String> columnErrors;
-  _Header({required this.controller, required this.widths})
-      : columns = controller.columns,
-        sortColumn = controller.sortColumn,
-        sortAscending = controller.sortAscending,
-        columnErrors = controller.columnErrors;
+  final void Function(int col, double width) onResize;
+  final void Function(int col) onResetWidth;
+  _Header({required this.controller, required this.widths, required this.onResize, required this.onResetWidth})
+    : columns = controller.columns,
+      sortColumn = controller.sortColumn,
+      sortAscending = controller.sortAscending,
+      columnErrors = controller.columnErrors;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final style = theme.textTheme.labelMedium?.copyWith(color: theme.hintColor);
+    // Divider handles sit over each column's right edge.
+    var edge = 12.0;
+    final edges = [for (final w in widths.take(controller.columns.length)) edge += w];
     return SizedBox(
       height: 28,
-      child: Row(
+      child: Stack(
         children: [
-          const SizedBox(width: 12),
-          for (var i = 0; i < controller.columns.length; i++)
-            SizedBox(
-              width: widths[i],
-              child: Hoverable(
-                cursor: SystemMouseCursors.basic,
-                onTap: () => controller.sortBy(i),
-                builder: (h) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Row(
-                    mainAxisAlignment: const {'number', 'quantity'}.contains(controller.columns[i].type) ? MainAxisAlignment.end : MainAxisAlignment.start,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          controller.columns[i].name,
-                          overflow: TextOverflow.ellipsis,
-                          style: style?.copyWith(
-                            color: h || controller.sortColumn == i ? theme.colorScheme.onSurface : null,
-                            fontWeight: controller.sortColumn == i ? FontWeight.w600 : null,
-                          ),
-                        ),
-                      ),
-                      if (controller.sortColumn == i) ...[
-                        const SizedBox(width: 2),
-                        Icon(controller.sortAscending ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 14, color: theme.hintColor),
-                      ],
-                      if (controller.columnErrors[i] != null)
-                        Tooltip(
-                          message: 'jq error: ${controller.columnErrors[i]}\n${controller.columns[i].query}',
-                          child: Icon(Icons.warning_amber, size: 14, color: theme.colorScheme.error),
-                        ),
-                    ],
-                  ),
-                ),
+          Positioned.fill(child: _headerRow(theme, style)),
+          for (final (i, x) in edges.indexed)
+            Positioned(
+              left: x - _ResizeHandle.width / 2,
+              top: 0,
+              bottom: 0,
+              width: _ResizeHandle.width,
+              child: _ResizeHandle(
+                key: ValueKey('resize-${controller.columns[i].name}'),
+                startWidth: () => widths[i],
+                onResize: (w) => onResize(i, w),
+                onReset: () => onResetWidth(i),
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _headerRow(ThemeData theme, TextStyle? style) {
+    return Row(
+      children: [
+        const SizedBox(width: 12),
+        for (var i = 0; i < controller.columns.length; i++)
+          SizedBox(
+            width: widths[i],
+            child: Hoverable(
+              cursor: SystemMouseCursors.basic,
+              onTap: () => controller.sortBy(i),
+              builder: (h) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Row(
+                  mainAxisAlignment: const {'number', 'quantity'}.contains(controller.columns[i].type) ? MainAxisAlignment.end : MainAxisAlignment.start,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        controller.columns[i].name,
+                        overflow: TextOverflow.ellipsis,
+                        style: style?.copyWith(
+                          color: h || controller.sortColumn == i ? theme.colorScheme.onSurface : null,
+                          fontWeight: controller.sortColumn == i ? FontWeight.w600 : null,
+                        ),
+                      ),
+                    ),
+                    if (controller.sortColumn == i) ...[
+                      const SizedBox(width: 2),
+                      Icon(controller.sortAscending ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 14, color: theme.hintColor),
+                    ],
+                    if (controller.columnErrors[i] != null)
+                      Tooltip(
+                        message: 'jq error: ${controller.columnErrors[i]}\n${controller.columns[i].query}',
+                        child: Icon(Icons.warning_amber, size: 14, color: theme.colorScheme.error),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// A column divider in the header: drag to resize, double-click to reset.
+class _ResizeHandle extends StatefulWidget {
+  static const width = 9.0;
+  final double Function() startWidth;
+  final ValueChanged<double> onResize;
+  final VoidCallback onReset;
+  const _ResizeHandle({super.key, required this.startWidth, required this.onResize, required this.onReset});
+
+  @override
+  State<_ResizeHandle> createState() => _ResizeHandleState();
+}
+
+class _ResizeHandleState extends State<_ResizeHandle> {
+  double _start = 0, _dx = 0;
+  bool _hover = false, _dragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = _hover || _dragging;
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Count from pointer-down so the divider tracks the cursor exactly.
+        dragStartBehavior: DragStartBehavior.down,
+        onHorizontalDragStart: (_) => setState(() {
+          _start = widget.startWidth();
+          _dx = 0;
+          _dragging = true;
+        }),
+        onHorizontalDragUpdate: (d) {
+          _dx += d.delta.dx;
+          widget.onResize(_start + _dx);
+        },
+        onHorizontalDragEnd: (_) => setState(() => _dragging = false),
+        onHorizontalDragCancel: () => setState(() => _dragging = false),
+        onDoubleTap: widget.onReset,
+        child: Center(
+          child: Container(width: on ? 2 : 1, height: on ? 20 : 12, color: on ? Theme.of(context).colorScheme.primary : Theme.of(context).dividerColor),
+        ),
       ),
     );
   }
@@ -870,7 +964,6 @@ class TableCellView extends StatelessWidget {
   }
 }
 
-
 /// Empty table: when the list is empty only because of the namespace scope,
 /// offer a one-click switch to all namespaces.
 class _EmptyTable extends StatelessWidget {
@@ -887,17 +980,16 @@ class _EmptyTable extends StatelessWidget {
     final ns = app.namespace;
     final scoped = tc.type.namespaced && ns != null;
     return Center(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(scoped ? 'No ${tc.type.resource} in $ns' : 'No ${tc.type.resource}', style: hint),
-        if (scoped) ...[
-          const SizedBox(height: 10),
-          FilledButton.tonalIcon(
-            icon: const Icon(Icons.public, size: 15),
-            label: const Text('Show all namespaces'),
-            onPressed: () => app.setNamespace(null),
-          ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(scoped ? 'No ${tc.type.resource} in $ns' : 'No ${tc.type.resource}', style: hint),
+          if (scoped) ...[
+            const SizedBox(height: 10),
+            FilledButton.tonalIcon(icon: const Icon(Icons.public, size: 15), label: const Text('Show all namespaces'), onPressed: () => app.setNamespace(null)),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }

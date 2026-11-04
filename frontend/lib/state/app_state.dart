@@ -164,6 +164,10 @@ class AppState extends ChangeNotifier {
   /// session, so it's kept when you navigate away and back.
   final Map<String, (String, bool)> tableSorts = {};
 
+  /// Column widths the user dragged, per resource kind then column name
+  /// (this session).
+  final Map<String, Map<String, double>> columnWidths = {};
+
   /// Set while [init] runs: the connecting screen's context, server and step.
   ConnectProgress? connecting;
 
