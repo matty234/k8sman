@@ -54,6 +54,12 @@ type ContextInfo struct {
 	Cluster   string `json:"cluster"`
 	User      string `json:"user"`
 	Namespace string `json:"namespace,omitempty"`
+	// Server is the cluster's API server URL.
+	Server string `json:"server,omitempty"`
+	// Auth names the exec credential plugin or auth provider that signs the
+	// user in (e.g. "kubelogin", "aws", "gke-gcloud-auth-plugin"); "" for
+	// static credentials. Such plugins may wait for a browser login.
+	Auth string `json:"auth,omitempty"`
 }
 
 // Clients is an immutable snapshot of the clients for the active context.

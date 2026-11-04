@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 // Manager holds the active Clients and can switch contexts and kubeconfig
@@ -103,13 +104,39 @@ func (m *Manager) Contexts() (current string, out []ContextInfo, err error) {
 	}
 	out = []ContextInfo{}
 	for name, c := range raw.Contexts {
-		out = append(out, ContextInfo{Name: name, Cluster: c.Cluster, User: c.AuthInfo, Namespace: c.Namespace})
+		info := ContextInfo{Name: name, Cluster: c.Cluster, User: c.AuthInfo, Namespace: c.Namespace}
+		if cl := raw.Clusters[c.Cluster]; cl != nil {
+			info.Server = cl.Server
+		}
+		if ai := raw.AuthInfos[c.AuthInfo]; ai != nil {
+			info.Auth = authName(ai)
+		}
+		out = append(out, info)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	if c := m.Clients(); c != nil {
 		current = c.Context
 	}
 	return current, out, nil
+}
+
+// authName names an interactive credential source: the exec plugin's command
+// ("kubectl oidc-login" is reported as kubelogin) or the auth provider.
+func authName(ai *clientcmdapi.AuthInfo) string {
+	switch {
+	case ai.Exec != nil:
+		cmd := filepath.Base(ai.Exec.Command)
+		if cmd == "kubectl" && len(ai.Exec.Args) > 0 {
+			if ai.Exec.Args[0] == "oidc-login" {
+				return "kubelogin"
+			}
+			return cmd + " " + ai.Exec.Args[0]
+		}
+		return strings.TrimSuffix(cmd, ".exe")
+	case ai.AuthProvider != nil:
+		return ai.AuthProvider.Name
+	}
+	return ""
 }
 
 // SwitchContext makes the named context ("" = kubeconfig current-context) active.

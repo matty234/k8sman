@@ -92,6 +92,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
 	s.mux.HandleFunc("GET /api/contexts", s.handleContexts)
 	s.mux.HandleFunc("POST /api/contexts/current", s.handleSwitchContext)
+	s.mux.HandleFunc("GET /api/probe", s.handleProbe)
 	s.mux.HandleFunc("GET /api/resources", s.handleResources)
 	s.mux.HandleFunc("GET /api/namespaces", s.handleNamespaces)
 	s.mux.HandleFunc("GET /api/table", s.handleTable)
@@ -427,6 +428,34 @@ func (s *Server) handleSwitchContext(w http.ResponseWriter, r *http.Request) {
 	s.handleContexts(w, r)
 }
 
+// handleProbe runs one connection step for the current context before the
+// UI starts discovery: step=reach (is anything answering at the server
+// address? short deadline, no credentials) or step=auth (do the credentials
+// work? runs the exec plugin, which may wait for a browser login).
+func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
+	c := s.mgr.Clients()
+	start := time.Now()
+	var err error
+	switch step := r.URL.Query().Get("step"); step {
+	case "reach":
+		err = c.ProbeReach(r.Context())
+	case "auth":
+		err = c.ProbeAuth(r.Context())
+	default:
+		writeErr(w, httpx.BadRequest("step must be reach or auth"))
+		return
+	}
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"ok": true, "host": c.RESTConfig.Host, "ms": time.Since(start).Milliseconds()})
+}
+
+// namespacesTimeout bounds the namespace list at startup: a server that
+// accepted the connection but never answers must not hang the UI.
+const namespacesTimeout = 30 * time.Second
+
 func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 	c := s.mgr.Clients()
 	types, err := c.Resources(r.Context(), r.URL.Query().Get("refresh") == "true")
@@ -439,7 +468,9 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 	c := s.mgr.Clients()
-	list, err := c.Typed.CoreV1().Namespaces().List(r.Context(), metav1.ListOptions{})
+	ctx, cancel := context.WithTimeout(r.Context(), namespacesTimeout)
+	defer cancel()
+	list, err := c.Typed.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		// Users without cluster-wide namespace list still get their default.
 		if apierrors.IsForbidden(err) && c.Namespace != "" {
