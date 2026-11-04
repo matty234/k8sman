@@ -129,9 +129,14 @@ type rawSummary struct {
 	} `json:"pods"`
 }
 
-// virtualIface matches loopback, per-pod veths, CNI bridges and tunnels:
-// counting them would double count traffic already seen on the physical NIC.
-var virtualIface = regexp.MustCompile(`^(lo|veth|cali|flannel|cni|docker|br-|virbr|vxlan|tunl|gre|gretap|erspan|ip_vti|ip6_vti|sit|ip6tnl|ip6gre|kube-ipvs|cilium|lxc|genev|nodelocaldns|dummy)`)
+// virtualIface matches loopback, per-pod veths, CNI bridges, tunnels and
+// VLAN sub-interfaces (eth0.10): counting them would double count traffic
+// already seen on the physical NIC. Keep in step with nodeVirtualDevices in
+// frontend/lib/prometheus/metric_history_chart.dart.
+var virtualIface = regexp.MustCompile(`^(lo|veth|cali|flannel|cni|docker|br-|virbr|vxlan|tunl|gre|gretap|erspan|ip_vti|ip6_vti|sit|ip6tnl|ip6gre|ipip|teql|ifb|nlmon|kube-ipvs|cilium|lxc|genev|nodelocaldns|dummy)|^.+\..+$`)
+
+// bondIface: when a bond carries traffic, its slaves report the same bytes.
+var bondIface = regexp.MustCompile(`^bond`)
 
 // netSample is a cumulative counter reading.
 type netSample struct {
@@ -147,9 +152,17 @@ func (n *rawNetwork) sample(uid string) (netSample, bool) {
 		return netSample{}, false
 	}
 	s := netSample{t: n.Time, uid: uid}
+	// With an active bond, count only bonds (the kubelet doesn't say which
+	// NICs are its slaves; other NICs beside a bond are rare).
+	bonded := false
+	for _, i := range n.Interfaces {
+		if bondIface.MatchString(i.Name) && i.RxBytes != nil && *i.RxBytes > 0 {
+			bonded = true
+		}
+	}
 	found := false
 	for _, i := range n.Interfaces {
-		if virtualIface.MatchString(i.Name) || i.RxBytes == nil || i.TxBytes == nil {
+		if virtualIface.MatchString(i.Name) || (bonded && !bondIface.MatchString(i.Name)) || i.RxBytes == nil || i.TxBytes == nil {
 			continue
 		}
 		s.rx += *i.RxBytes

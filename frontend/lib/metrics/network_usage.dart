@@ -7,7 +7,8 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../panels/panel.dart';
-import '../prometheus/metric_history_chart.dart' show formatMetric, MetricUnit;
+import '../api/models.dart';
+import '../prometheus/metric_history_chart.dart' show formatMetric, MetricUnit, usesHostNetwork;
 import '../prometheus/prom_api.dart';
 import '../state/poller.dart';
 import '../ui/theme.dart';
@@ -19,11 +20,14 @@ import 'kubelet_summary.dart';
 String formatRate(double? bytesPerSec) => bytesPerSec == null ? '—' : formatMetric(bytesPerSec, MetricUnit.bytesPerSec);
 
 /// Live network section for a Pod (on its node) or a Node panel; nothing for
-/// other kinds, unscheduled pods, or when Prometheus is available.
+/// other kinds, unscheduled pods, or when Prometheus is available. A
+/// hostNetwork pod gets a note pointing at its node instead: its counters
+/// are the node's traffic, not its own.
 Widget liveNetworkSection(PanelContext ctx) {
   final isNode = ctx.type.kind == 'Node';
   final node = isNode ? ctx.name : dig<String>(ctx.spec, ['nodeName']);
   if (node == null || node.isEmpty) return const SizedBox.shrink();
+  if (!isNode && usesHostNetwork(ctx.spec)) return HostNetworkNote(node: node);
   return LiveNetwork(
     key: ValueKey('live-net-${ctx.uid}/$node'),
     api: ctx.api,
@@ -108,3 +112,23 @@ class _LiveNetworkState extends State<LiveNetwork> with PollingState {
 /// Monospace rate text for tables.
 Widget rateCell(BuildContext context, double? v) =>
     Text(formatRate(v), maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11.5, color: v == null ? Theme.of(context).hintColor : null));
+
+/// "Uses the host network — see node `x`", for hostNetwork pods.
+class HostNetworkNote extends StatelessWidget {
+  final String node;
+  const HostNetworkNote({super.key, required this.node});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    return DetailSection(
+      title: 'Network',
+      icon: Icons.swap_vert,
+      child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, children: [
+        Text('Uses the host network \u2014 see node', style: hint),
+        ResourceLink(ObjectRef(kind: 'Node', name: node), label: node),
+      ]),
+    );
+  }
+}
