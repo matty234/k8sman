@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:provider/provider.dart';
 
 import '../../panels/pod/pod_logic.dart';
@@ -52,6 +53,19 @@ class _LogStreamViewState extends State<LogStreamView> {
   bool _pinned = true;
   String? _seenView;
 
+  // What the list showed at the last stream notification: the sequence
+  // number of its first line, its row count and (when filtered) its rows.
+  // Used to keep the rows on screen still when old lines are evicted.
+  int _seenFirstSeq = 0;
+  int _seenRowCount = 0;
+  List<int>? _seenRows;
+  String? _seenRowsView;
+
+  static const double _lineHeight = 17;
+
+  /// How close to the end counts as "at the end" when scrolling back down.
+  static const double _pinSlop = 4;
+
   LogStream get s => widget.stream;
 
   @override
@@ -82,6 +96,7 @@ class _LogStreamViewState extends State<LogStreamView> {
 
   void _onStream() {
     if (!mounted) return;
+    _keepRowsInPlace();
     setState(() {});
     // New lines, or a different visible set (filter / wrap): follow the tail
     // when pinned, otherwise keep the offset within the new extent.
@@ -104,8 +119,44 @@ class _LogStreamViewState extends State<LogStreamView> {
   void _onScroll() {
     if (!_scroll.hasClients) return;
     final p = _scroll.position;
-    final atBottom = p.pixels >= p.maxScrollExtent - 24;
-    if (atBottom != _pinned) setState(() => _pinned = atBottom);
+    // Any user scroll towards older lines stops following at once, however
+    // small: staying pinned would snap the view back to the end on the next
+    // flush (and cancel the gesture). Reaching the end again resumes it.
+    final pinned = p.userScrollDirection != ScrollDirection.forward && p.pixels >= p.maxScrollExtent - _pinSlop;
+    if (pinned != _pinned) setState(() => _pinned = pinned);
+  }
+
+  /// While reading further up, the ring buffer evicting the oldest lines
+  /// would slide every row up under the reader. Shift the offset by the rows
+  /// that left the top instead (fixed-height rows only). A layout correction,
+  /// not a jump, so an in-progress drag or fling carries on.
+  void _keepRowsInPlace() {
+    final view = '${s.onlyMatching}|${s.onlyMatching ? s.query : ''}|${s.wrap}';
+    final rows = s.onlyMatching && s.query.isNotEmpty ? s.matching : null;
+    final first = s.lines.firstSeq;
+    if (!_pinned && !s.wrap && view == _seenRowsView && first > _seenFirstSeq && s.lines.isNotEmpty && _scroll.hasClients) {
+      var gone = 0;
+      final old = _seenRows;
+      if (old == null) {
+        gone = math.min(first - _seenFirstSeq, _seenRowCount);
+      } else {
+        while (gone < old.length && _seenFirstSeq + old[gone] < first) {
+          gone++;
+        }
+      }
+      final p = _scroll.position;
+      if (gone > 0 && p.hasPixels) {
+        p.correctBy(-math.min(gone * _lineHeight, p.pixels));
+        // With the row count unchanged nothing else re-lays out the
+        // viewport; listeners (the viewport among them) pick up the offset.
+        // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+        p.notifyListeners();
+      }
+    }
+    _seenRowsView = view;
+    _seenFirstSeq = first;
+    _seenRows = rows;
+    _seenRowCount = rows?.length ?? s.lines.length;
   }
 
   void _jumpToEndSoon() {
@@ -186,7 +237,7 @@ class _LogStreamViewState extends State<LogStreamView> {
 
   Widget _logList(BuildContext context, List<int>? indices, int count) {
     final style = monoStyle(context, size: 12);
-    const lineHeight = 17.0;
+    const lineHeight = _lineHeight;
     final q = s.query.toLowerCase();
     final list = Scrollbar(
       controller: _scroll,

@@ -136,10 +136,11 @@ class LogStream extends DockTab {
     notifyListeners();
   }
 
-  /// Only the [LogDock] calls this (the tab's identity changes).
+  /// Only the [LogDock] calls this (the tab's identity changes). Keeps the
+  /// previous-instance mode: if the new container has no previous instance
+  /// the API says so, rather than silently showing current logs instead.
   void _setContainer(String name) {
     _container = name;
-    if (previous && !canPrevious) previous = false;
     _subscribe();
     notifyListeners();
   }
@@ -186,8 +187,9 @@ class LogStream extends DockTab {
       return;
     }
     phase = LogPhase.connecting;
+    // A terminated instance has nothing to follow.
     _sub = api
-        .logs(namespace: namespace, pod: pod, container: c.name, tailLines: tail, previous: previous, follow: follow, timestamps: timestamps)
+        .logs(namespace: namespace, pod: pod, container: c.name, tailLines: tail, previous: previous, follow: follow && !previous, timestamps: timestamps)
         .listen(_onMessage, onError: (Object e) => _finish(LogPhase.error, '$e'), onDone: () => _finish(LogPhase.eof));
   }
 
@@ -224,6 +226,21 @@ class LogStream extends DockTab {
     error = err;
     _sub = null;
     notifyListeners();
+    _refreshPod();
+  }
+
+  /// A stream usually ends because the container stopped: refresh the pod so
+  /// restart counts (and with them [canPrevious]) aren't those from when the
+  /// tab was opened.
+  Future<void> _refreshPod() async {
+    try {
+      final o = await api.object(const ResourceRef(resource: 'pods'), namespace: namespace, name: pod);
+      if (_disposed) return;
+      podObject = o;
+      notifyListeners();
+    } catch (_) {
+      // Keep the last known pod.
+    }
   }
 
   void _flush() {
@@ -315,7 +332,9 @@ class LogDock extends ChangeNotifier {
       _tabs.add(s);
     } else {
       s.podObject = podObject;
-      if (previous && !s.previous) s.setOptions(previous: true);
+      // "View logs" and "Previous instance" both reuse the tab: switch it to
+      // the instance asked for.
+      if (previous != s.previous) s.setOptions(previous: previous);
     }
     if (focus || _activeId == null) _activeId = s.id;
     shown = true;
