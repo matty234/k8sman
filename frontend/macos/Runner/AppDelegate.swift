@@ -18,6 +18,8 @@ class AppDelegate: FlutterAppDelegate {
     // swallows, silently skipping everything after it.
     // "Check for Updates…" menu item, and About → the Flutter About panel.
     UpdateController.shared.installMenuItems()
+    // View ▸ Command Palette…
+    (mainFlutterWindow as? MainFlutterWindow)?.installMenuItems()
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

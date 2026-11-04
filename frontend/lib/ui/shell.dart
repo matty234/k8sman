@@ -19,6 +19,7 @@ import 'logs/log_dock_view.dart';
 import 'helm/helm_view.dart';
 import 'nodes/nodes_view.dart';
 import 'overview/overview_view.dart';
+import 'palette/command_palette.dart';
 import 'portforward/portforward_view.dart';
 import 'resource_nav.dart';
 import 'resource_table.dart';
@@ -39,8 +40,18 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   double _sidebarWidth = 560;
 
+  void _palette() => showCommandPalette(context);
+
+  @override
+  void initState() {
+    super.initState();
+    // The macOS View menu's "Command Palette…" item.
+    WindowChrome.onCommandPalette = _palette;
+  }
+
   @override
   void dispose() {
+    if (WindowChrome.onCommandPalette == _palette) WindowChrome.onCommandPalette = null;
     StartupGate.release();
     super.dispose();
   }
@@ -72,6 +83,7 @@ class _ShellState extends State<Shell> {
       bindings: {
         primaryShortcut(LogicalKeyboardKey.keyJ): dock.toggle,
         primaryShortcut(LogicalKeyboardKey.keyI): app.toggleInspector,
+        for (final a in commandPaletteShortcuts) a: _palette,
       },
       child: Focus(
         autofocus: true,

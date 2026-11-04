@@ -468,6 +468,7 @@ exactly as `kubectl` does.
 
 | Shortcut | Action |
 |---|---|
+| ⌘K or ⌘P | Command palette: jump to a page, kind, namespace, context or object (in a focused terminal, ⌘K clears it) |
 | ⌘J | Show or hide the bottom dock (logs and terminals) |
 | ⌘I | Collapse or expand the inspector |
 | ⌘A | Select all visible rows |
