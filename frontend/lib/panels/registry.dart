@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../ui/widgets/common.dart';
 import 'argocd/index.dart';
+import 'argoworkflows/index.dart';
 import 'batch/index.dart';
 import 'cluster/index.dart';
 import 'config/index.dart';
@@ -28,6 +29,7 @@ final List<ResourcePanel> allPanels = [
   ...clusterPanels,
   ...customPanels,
   ...argocdPanels,
+  ...argoWorkflowsPanels,
   ...prometheusPanels,
 ];
 

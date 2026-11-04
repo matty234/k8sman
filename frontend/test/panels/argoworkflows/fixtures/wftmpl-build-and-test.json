@@ -1,0 +1,254 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "WorkflowTemplate",
+  "metadata": {
+    "annotations": {
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"argoproj.io/v1alpha1\",\"kind\":\"WorkflowTemplate\",\"metadata\":{\"annotations\":{},\"name\":\"build-and-test\",\"namespace\":\"argo-demo\"},\"spec\":{\"arguments\":{\"parameters\":[{\"description\":\"Where to deploy\",\"enum\":[\"staging\",\"production\"],\"name\":\"target\",\"value\":\"staging\"},{\"enum\":[\"true\",\"false\"],\"name\":\"fail-tests\",\"value\":\"false\"},{\"name\":\"message\",\"value\":\"hello\"}]},\"entrypoint\":\"pipeline\",\"templates\":[{\"dag\":{\"tasks\":[{\"arguments\":{\"parameters\":[{\"name\":\"msg\",\"value\":\"checkout\"}]},\"name\":\"checkout\",\"template\":\"echo\"},{\"arguments\":{\"parameters\":[{\"name\":\"msg\",\"value\":\"lint\"}]},\"depends\":\"checkout\",\"name\":\"lint\",\"template\":\"echo\"},{\"depends\":\"checkout\",\"name\":\"build\",\"template\":\"build\"},{\"arguments\":{\"parameters\":[{\"name\":\"fail\",\"value\":\"{{workflow.parameters.fail-tests}}\"}]},\"depends\":\"build\",\"name\":\"unit-tests\",\"template\":\"tests\"},{\"arguments\":{\"parameters\":[{\"name\":\"msg\",\"value\":\"package\"}]},\"depends\":\"build \\u0026\\u0026 lint\",\"name\":\"package\",\"template\":\"echo\"},{\"depends\":\"unit-tests \\u0026\\u0026 package\",\"name\":\"deploy\",\"template\":\"deploy\"},{\"arguments\":{\"parameters\":[{\"name\":\"msg\",\"value\":\"notify\"}]},\"depends\":\"deploy.Failed || deploy.Succeeded\",\"name\":\"notify\",\"template\":\"echo\"}]},\"name\":\"pipeline\"},{\"container\":{\"args\":[\"echo {{inputs.parameters.msg}}; sleep 2\"],\"command\":[\"sh\",\"-c\"],\"image\":\"busybox:1.36\"},\"inputs\":{\"parameters\":[{\"name\":\"msg\"}]},\"name\":\"echo\"},{\"container\":{\"args\":[\"echo building; echo registry.example/app:1.2.3 \\u003e /tmp/image; sleep 3\"],\"command\":[\"sh\",\"-c\"],\"image\":\"busybox:1.36\",\"resources\":{\"requests\":{\"cpu\":\"10m\",\"memory\":\"16Mi\"}}},\"name\":\"build\",\"outputs\":{\"parameters\":[{\"name\":\"image\",\"valueFrom\":{\"path\":\"/tmp/image\"}}]}},{\"inputs\":{\"parameters\":[{\"name\":\"fail\"}]},\"name\":\"tests\",\"retryStrategy\":{\"limit\":\"2\"},\"script\":{\"command\":[\"sh\"],\"image\":\"busybox:1.36\",\"source\":\"echo running tests\\nsleep 1\\nif [ \\\"{{inputs.parameters.fail}}\\\" = \\\"true\\\" ]; then echo \\\"3 tests failed\\\" \\u003e\\u00262; exit 3; fi\\necho all good\\n\"}},{\"name\":\"deploy\",\"steps\":[[{\"arguments\":{\"parameters\":[{\"name\":\"msg\",\"value\":\"render {{workflow.parameters.target}}\"}]},\"name\":\"render\",\"template\":\"echo\"}],[{\"arguments\":{\"parameters\":[{\"name\":\"msg\",\"value\":\"apply a\"}]},\"name\":\"apply-a\",\"template\":\"echo\"},{\"arguments\":{\"parameters\":[{\"name\":\"msg\",\"value\":\"apply b\"}]},\"name\":\"apply-b\",\"template\":\"echo\"}],[{\"arguments\":{\"parameters\":[{\"name\":\"msg\",\"value\":\"verify\"}]},\"name\":\"verify\",\"template\":\"echo\"}]]}]}}\n"
+    },
+    "creationTimestamp": "2026-11-03T23:29:13Z",
+    "generation": 2,
+    "name": "build-and-test",
+    "namespace": "argo-demo",
+    "resourceVersion": "111132",
+    "uid": "7f60fb57-d655-497f-93ab-87eb1ea75869"
+  },
+  "spec": {
+    "arguments": {
+      "parameters": [
+        {
+          "description": "Where to deploy",
+          "enum": [
+            "staging",
+            "production"
+          ],
+          "name": "target",
+          "value": "staging"
+        },
+        {
+          "enum": [
+            "true",
+            "false"
+          ],
+          "name": "fail-tests",
+          "value": "false"
+        },
+        {
+          "name": "message",
+          "value": "hello"
+        }
+      ]
+    },
+    "entrypoint": "pipeline",
+    "templates": [
+      {
+        "dag": {
+          "tasks": [
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "checkout"
+                  }
+                ]
+              },
+              "name": "checkout",
+              "template": "echo"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "lint"
+                  }
+                ]
+              },
+              "depends": "checkout",
+              "name": "lint",
+              "template": "echo"
+            },
+            {
+              "depends": "checkout",
+              "name": "build",
+              "template": "build"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "fail",
+                    "value": "{{workflow.parameters.fail-tests}}"
+                  }
+                ]
+              },
+              "depends": "build",
+              "name": "unit-tests",
+              "template": "tests"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "package"
+                  }
+                ]
+              },
+              "depends": "build && lint",
+              "name": "package",
+              "template": "echo"
+            },
+            {
+              "depends": "unit-tests && package",
+              "name": "deploy",
+              "template": "deploy"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "notify"
+                  }
+                ]
+              },
+              "depends": "deploy.Failed || deploy.Succeeded",
+              "name": "notify",
+              "template": "echo"
+            }
+          ]
+        },
+        "name": "pipeline"
+      },
+      {
+        "container": {
+          "args": [
+            "echo {{inputs.parameters.msg}}; sleep 2"
+          ],
+          "command": [
+            "sh",
+            "-c"
+          ],
+          "image": "busybox:1.36"
+        },
+        "inputs": {
+          "parameters": [
+            {
+              "name": "msg"
+            }
+          ]
+        },
+        "name": "echo"
+      },
+      {
+        "container": {
+          "args": [
+            "echo building; echo registry.example/app:1.2.3 > /tmp/image; sleep 3"
+          ],
+          "command": [
+            "sh",
+            "-c"
+          ],
+          "image": "busybox:1.36",
+          "resources": {
+            "requests": {
+              "cpu": "10m",
+              "memory": "16Mi"
+            }
+          }
+        },
+        "name": "build",
+        "outputs": {
+          "parameters": [
+            {
+              "name": "image",
+              "valueFrom": {
+                "path": "/tmp/image"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "inputs": {
+          "parameters": [
+            {
+              "name": "fail"
+            }
+          ]
+        },
+        "name": "tests",
+        "retryStrategy": {
+          "limit": "2"
+        },
+        "script": {
+          "command": [
+            "sh"
+          ],
+          "image": "busybox:1.36",
+          "source": "echo running tests\nsleep 1\nif [ \"{{inputs.parameters.fail}}\" = \"true\" ]; then echo \"3 tests failed\" >&2; exit 3; fi\necho all good\n"
+        }
+      },
+      {
+        "name": "deploy",
+        "steps": [
+          [
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "render {{workflow.parameters.target}}"
+                  }
+                ]
+              },
+              "name": "render",
+              "template": "echo"
+            }
+          ],
+          [
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "apply a"
+                  }
+                ]
+              },
+              "name": "apply-a",
+              "template": "echo"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "apply b"
+                  }
+                ]
+              },
+              "name": "apply-b",
+              "template": "echo"
+            }
+          ],
+          [
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "verify"
+                  }
+                ]
+              },
+              "name": "verify",
+              "template": "echo"
+            }
+          ]
+        ]
+      }
+    ]
+  }
+}

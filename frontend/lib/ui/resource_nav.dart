@@ -43,6 +43,16 @@ const _curated = <String, List<String>>{
     'rbac.authorization.k8s.io/ClusterRoleBinding',
   ],
   'Argo CD': ['argoproj.io/Application', 'argoproj.io/ApplicationSet', 'argoproj.io/AppProject'],
+  'Argo Workflows': [
+    'argoproj.io/Workflow',
+    'argoproj.io/CronWorkflow',
+    'argoproj.io/WorkflowTemplate',
+    'argoproj.io/ClusterWorkflowTemplate',
+    'argoproj.io/WorkflowEventBinding',
+    'argoproj.io/WorkflowTaskSet',
+    'argoproj.io/WorkflowTaskResult',
+    'argoproj.io/WorkflowArtifactGCTask',
+  ],
 };
 
 /// Source-list glyphs for well-known kinds (others get a generic one).
@@ -87,6 +97,10 @@ const _kindIcons = <String, IconData>{
   'rbac.authorization.k8s.io/ClusterRole': Icons.admin_panel_settings_outlined,
   'rbac.authorization.k8s.io/RoleBinding': Icons.link,
   'rbac.authorization.k8s.io/ClusterRoleBinding': Icons.add_link,
+  'argoproj.io/Workflow': Icons.account_tree_outlined,
+  'argoproj.io/CronWorkflow': Icons.update,
+  'argoproj.io/WorkflowTemplate': Icons.description_outlined,
+  'argoproj.io/ClusterWorkflowTemplate': Icons.library_books_outlined,
 };
 
 class ResourceNav extends StatefulWidget {

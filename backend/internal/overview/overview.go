@@ -60,6 +60,9 @@ type Input struct {
 	// ArgoApps are Argo CD Applications (unstructured); nil when the CRD
 	// isn't served, which leaves Argo out of the result entirely.
 	ArgoApps []map[string]any
+	// Workflows are Argo Workflows (unstructured); nil when the CRD isn't
+	// served.
+	Workflows []map[string]any
 	// Gateway API objects; nil when the CRDs aren't served (no analysis,
 	// no counts). Routes holds every route kind (HTTPRoute, GRPCRoute, ...).
 	Gateways []unstructured.Unstructured
@@ -254,6 +257,7 @@ var categoryDefs = []categoryDef{
 	{"daemonSetNotReady", "DaemonSets not ready", "workloads", Warning},
 	{"cronJobFailing", "CronJobs failing", "jobs", Critical},
 	{"jobFailed", "Failed jobs", "jobs", Critical},
+	{"workflowFailed", "Workflows failed (24h)", "jobs", Critical},
 	{"pvcLost", "PVCs lost", "storage", Critical},
 	{"argoSyncFailed", "Argo CD sync errors", "argocd", Critical},
 	{"argoDegraded", "Argo CD apps degraded", "argocd", Critical},
@@ -310,6 +314,7 @@ func Analyze(in Input) *Result {
 	a.routes()
 	a.events()
 	a.argoApps()
+	a.argoWorkflows()
 	a.alerts()
 	a.finish()
 	return a.res
