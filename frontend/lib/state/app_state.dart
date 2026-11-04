@@ -4,7 +4,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 
 /// What the main area shows.
-enum MainView { overview, alerts, nodes, metrics, resources, portForwards, helm, security, addons }
+enum MainView { overview, alerts, nodes, metrics, resources, portForwards, helm, security, addons, access }
 
 /// An object shown in the detail sidebar.
 class DetailTarget {

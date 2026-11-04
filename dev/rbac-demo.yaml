@@ -1,0 +1,125 @@
+# RBAC fixtures for the Access workspace (kubectl apply -f dev/rbac-demo.yaml).
+# Exercises aggregation, resourceNames, wildcards, RoleBinding→ClusterRole
+# scoping and group subjects. Nothing here is privileged except "breakglass".
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rbac-demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: app, namespace: rbac-demo}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: ci-deployer, namespace: rbac-demo}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: breakglass, namespace: rbac-demo}
+---
+# Aggregated: demo-reader picks up every ClusterRole labelled aggregate-to-demo-reader.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: demo-reader
+aggregationRule:
+  clusterRoleSelectors:
+    - matchLabels: {demo.k8sman.dev/aggregate-to-demo-reader: "true"}
+rules: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: demo-reader-core
+  labels: {demo.k8sman.dev/aggregate-to-demo-reader: "true"}
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, services, configmaps]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: demo-reader-apps
+  labels: {demo.k8sman.dev/aggregate-to-demo-reader: "true"}
+rules:
+  - apiGroups: [apps]
+    resources: ["*"]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: app-config, namespace: rbac-demo}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [app-db]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: ci-deployer, namespace: rbac-demo}
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [""]
+    resources: [services, configmaps]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: app-config, namespace: rbac-demo}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: app-config}
+subjects:
+  - {kind: ServiceAccount, name: app, namespace: rbac-demo}
+---
+# RoleBinding → ClusterRole: demo-reader only within rbac-demo (nodes never).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: demo-readers, namespace: rbac-demo}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: demo-reader}
+subjects:
+  - {kind: ServiceAccount, name: app, namespace: rbac-demo}
+  - {kind: Group, apiGroup: rbac.authorization.k8s.io, name: demo-devs}
+  - {kind: User, apiGroup: rbac.authorization.k8s.io, name: jane@example.com}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: ci-deployer, namespace: rbac-demo}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ci-deployer}
+subjects:
+  - {kind: ServiceAccount, name: ci-deployer}
+---
+# Every ServiceAccount in rbac-demo may read services cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: rbac-demo-sas-read-services}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: demo-reader-core}
+subjects:
+  - {kind: Group, apiGroup: rbac.authorization.k8s.io, name: "system:serviceaccounts:rbac-demo"}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: rbac-demo-breakglass}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+subjects:
+  - {kind: ServiceAccount, name: breakglass, namespace: rbac-demo}
+---
+# Dangling: refers to a role that doesn't exist.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: stale, namespace: rbac-demo}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: removed-role}
+subjects:
+  - {kind: User, apiGroup: rbac.authorization.k8s.io, name: jane@example.com}

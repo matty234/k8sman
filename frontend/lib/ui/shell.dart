@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../state/cluster_error.dart';
 import '../state/log_dock.dart';
 import '../state/startup_gate.dart';
+import 'access/access_view.dart';
 import 'addons/addons_view.dart';
 import 'alerts/alerts_view.dart';
 import 'cluster_error_view.dart';
@@ -94,6 +95,7 @@ class _ShellState extends State<Shell> {
                         MainView.alerts => const AlertsView(),
                         MainView.nodes => const NodesView(),
                         MainView.security => const SecurityView(),
+                        MainView.access => const AccessView(),
                         MainView.metrics => const MetricsPage(),
                         MainView.portForwards => const PortForwardView(),
                         MainView.helm => const HelmView(),

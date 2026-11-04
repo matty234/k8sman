@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../ui/access/access_api.dart';
+import '../../ui/access/access_view.dart';
+import '../../ui/access/grant_dialog.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -198,6 +201,30 @@ class _PermissionsState extends State<_Permissions> {
             RefreshButton(() => setState(() => _future = _load())),
           ]),
           child: () {
+            final sa = RbacSubject.sa(widget.ctx.namespace ?? 'default', widget.ctx.name);
+            final small = TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6));
+            final links = Wrap(spacing: 4, children: [
+              TextButton.icon(
+                style: small,
+                icon: const Icon(Icons.grid_on, size: 14),
+                label: const Text('Open in Access explorer'),
+                onPressed: () => AccessFocus.open(widget.ctx.app, subject: sa, namespace: sa.namespace),
+              ),
+              if (!widget.ctx.app.readOnly)
+                TextButton.icon(
+                  style: small,
+                  icon: const Icon(Icons.person_add_alt, size: 14),
+                  label: const Text('Grant…'),
+                  onPressed: () async {
+                    final ok = await showGrantDialog(context, api: AccessApi(widget.ctx.api), subject: sa, namespace: sa.namespace);
+                    if (ok == true && mounted) {
+                      setState(() {
+                        _future = _load();
+                      });
+                    }
+                  },
+                ),
+            ]);
             if (snap.hasError) return InlineMessage('Could not load RBAC bindings: ${snap.error}', isError: true);
             if (list == null) return const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)));
             final errors = [for (final b in list) if (b.error != null) b];
@@ -216,6 +243,8 @@ class _PermissionsState extends State<_Permissions> {
               ],
               for (final b in errors) Padding(padding: const EdgeInsets.only(top: 4), child: InlineMessage('${b.match.roleKind}/${b.match.roleName}: ${b.error}', isError: true)),
               if (defaults.isNotEmpty) _DefaultAccess(defaults: defaults, perms: perms(defaults)),
+              const SizedBox(height: 4),
+              Align(alignment: Alignment.centerLeft, child: links),
             ]);
           }(),
         );
