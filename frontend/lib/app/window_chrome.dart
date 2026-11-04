@@ -15,11 +15,19 @@ class WindowChrome {
   /// so the app drops its 52pt titlebar band.
   static final isFullScreen = ValueNotifier<bool>(false);
 
+  /// View ▸ Command Palette… in the native menu bar (set by the shell).
+  static VoidCallback? onCommandPalette;
+
   /// Listen for fullscreen changes. Call once at startup (macOS only).
   static void init() {
     if (!nativeMacChrome) return;
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'fullScreenChanged') isFullScreen.value = call.arguments == true;
+      switch (call.method) {
+        case 'fullScreenChanged':
+          isFullScreen.value = call.arguments == true;
+        case 'commandPalette':
+          onCommandPalette?.call();
+      }
       return null;
     });
     _channel.invokeMethod<bool>('isFullScreen').then((v) => isFullScreen.value = v == true, onError: (Object _) {});
