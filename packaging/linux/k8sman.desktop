@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=k8sman
+GenericName=Kubernetes IDE
+Comment=Native Kubernetes IDE
+Exec=@EXEC@
+Icon=@ICON@
+Terminal=false
+Categories=Development;System;
+Keywords=kubernetes;k8s;kubectl;cluster;
+StartupWMClass=dev.k8sman.app

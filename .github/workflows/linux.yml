@@ -1,0 +1,128 @@
+# Builds the Linux x64 app: a tarball and a .deb.
+#
+# - Called by release.yml for v* tags; the release job attaches the
+#   `linux-release` artifact to the GitHub release.
+# - Also runs on pushes (any branch) that change the Linux runner, its
+#   packaging or this file, and by hand (`gh workflow run linux.yml --ref
+#   <branch>`). The artifact includes a screenshot of the app's first window.
+#
+# Built on Ubuntu 22.04 so the binary runs on distributions with glibc 2.35
+# or newer.
+#
+# Assets: k8sman-<version>-linux-x64.tar.gz (unpack anywhere, run ./k8sman;
+# ./install.sh adds an app-menu launcher) and k8sman_<version>_amd64.deb.
+name: linux
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - frontend/linux/**
+      - packaging/linux/**
+      - .github/workflows/linux.yml
+  workflow_call:
+    outputs:
+      artifact:
+        description: Name of the uploaded artifact with the tarball and .deb
+        value: linux-release
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Version
+        id: version
+        run: |
+          version="$(sed -n 's/^version: *\([^+]*\).*/\1/p' frontend/pubspec.yaml)"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pubspec.yaml version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            xvfb x11-apps imagemagick dbus-x11 fonts-dejavu-core
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # The full test suite runs on macOS in release.yml (its widget
+      # screenshots are macOS-specific); this checks Linux compiles.
+      - name: Check
+        run: |
+          (cd backend && go vet ./...)
+          cd frontend && flutter pub get && flutter analyze
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd frontend
+          # The CMake build also compiles k8sman-server next to k8sman.
+          flutter build linux --release --build-name="${VERSION%%-*}" --dart-define=K8SMAN_VERSION="$VERSION"
+          ls -la build/linux/x64/release/bundle
+          test -x build/linux/x64/release/bundle/k8sman
+          test -x build/linux/x64/release/bundle/k8sman-server
+
+      # Launch it under a virtual display: the window must come up and the
+      # embedded backend must start and listen.
+      - name: Smoke test
+        run: |
+          mkdir -p dist
+          bundle=frontend/build/linux/x64/release/bundle
+          export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
+          xvfb-run -a -s "-screen 0 1440x900x24" bash -c "
+            dbus-launch --exit-with-session '$bundle/k8sman' > dist/app.log 2>&1 &
+            for i in \$(seq 1 30); do pgrep -f k8sman-server > /dev/null && break; sleep 1; done
+            sleep 6
+            import -window root dist/screenshot.png || true
+            pgrep -af k8sman-server
+          "
+          cat dist/app.log
+
+      - name: Package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          packaging/linux/package.sh "$VERSION" frontend/build/linux/x64/release/bundle dist
+          dpkg-deb --info dist/k8sman_*_amd64.deb
+          dpkg-deb --contents dist/k8sman_*_amd64.deb | grep -E 'k8sman-server|usr/bin/k8sman|\.desktop'
+          tar -tzf dist/k8sman-*-linux-x64.tar.gz | grep -E 'k8sman/(k8sman|k8sman-server|install.sh)$'
+          cd dist && sha256sum k8sman-*-linux-x64.tar.gz k8sman_*_amd64.deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: |
+            dist/k8sman-*-linux-x64.tar.gz
+            dist/k8sman_*_amd64.deb
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-smoke
+          path: |
+            dist/screenshot.png
+            dist/app.log
+          if-no-files-found: ignore
+          retention-days: 7

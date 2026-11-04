@@ -5,10 +5,11 @@
 #
 # Assets: k8sman-<version>-macos.zip (universal, ad-hoc signed), appcast.xml
 # (Sparkle feed, EdDSA-signed), the Windows x64 build from windows.yml
-# (k8sman-<version>-windows-x64.zip and -setup.exe, unsigned) and
-# SHA256SUMS. The app's feed URL is releases/latest/download/appcast.xml, so
+# (k8sman-<version>-windows-x64.zip and -setup.exe, unsigned), the Linux
+# x64 build from linux.yml (k8sman-<version>-linux-x64.tar.gz and
+# k8sman_<version>_amd64.deb) and SHA256SUMS. The app's feed URL is releases/latest/download/appcast.xml, so
 # publishing a (non-pre-)release is what rolls an update out (Windows builds
-# only check releases/latest and link to the download). Tags with a pre-release suffix (v0.2.0-rc.1)
+# and Linux builds only check releases/latest and link to the download). Tags with a pre-release suffix (v0.2.0-rc.1)
 # become GitHub pre-releases, which "latest" skips.
 #
 # Repository settings (Settings → Secrets and variables → Actions):
@@ -32,9 +33,12 @@ jobs:
   windows:
     uses: ./.github/workflows/windows.yml
 
+  linux:
+    uses: ./.github/workflows/linux.yml
+
   release:
-    # Publishes only once the Windows build has succeeded too.
-    needs: windows
+    # Publishes only once the Windows and Linux builds have succeeded too.
+    needs: [windows, linux]
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -99,12 +103,19 @@ jobs:
           name: ${{ needs.windows.outputs.artifact }}
           path: dist
 
-      - name: Checksums for the Windows build
+      - name: Add the Linux build
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.linux.outputs.artifact }}
+          path: dist
+
+      - name: Checksums for the Windows and Linux builds
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           cd dist
-          shasum -a 256 "k8sman-$VERSION-windows-x64.zip" "k8sman-$VERSION-windows-x64-setup.exe" >> SHA256SUMS
+          shasum -a 256 "k8sman-$VERSION-windows-x64.zip" "k8sman-$VERSION-windows-x64-setup.exe" \
+            "k8sman-$VERSION-linux-x64.tar.gz" k8sman_*_amd64.deb >> SHA256SUMS
           cat SHA256SUMS
 
       - name: Publish the GitHub release
@@ -119,6 +130,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "k8sman $VERSION" "${flags[@]}" \
             "dist/k8sman-$VERSION-macos.zip" dist/appcast.xml \
             "dist/k8sman-$VERSION-windows-x64.zip" "dist/k8sman-$VERSION-windows-x64-setup.exe" \
+            "dist/k8sman-$VERSION-linux-x64.tar.gz" dist/k8sman_*_amd64.deb \
             dist/SHA256SUMS
 
       - name: Update the Homebrew tap

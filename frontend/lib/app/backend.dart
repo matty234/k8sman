@@ -92,16 +92,17 @@ class BackendController extends ChangeNotifier {
 
   BackendController(this.api, {this.onReady, this.supervisor});
 
-  /// Whether this build spawns its own backend: the macOS and Windows apps,
-  /// unless a backend URL was given with `--dart-define=K8SMAN_BACKEND=…`.
+  /// Whether this build spawns its own backend: the desktop apps, unless a
+  /// backend URL was given with `--dart-define=K8SMAN_BACKEND=…`.
   static bool get embedded =>
       !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.windows) &&
+      const {TargetPlatform.macOS, TargetPlatform.windows, TargetPlatform.linux}.contains(defaultTargetPlatform) &&
       ApiClient.definedBackend.isEmpty;
 
   Future<void> start() async {
     if (!embedded) return _useExternal();
-    if (defaultTargetPlatform == TargetPlatform.windows) {
+    // Windows and Linux supervise it from Dart; macOS from the Swift runner.
+    if (defaultTargetPlatform != TargetPlatform.macOS) {
       final sup = supervisor ??= BackendSupervisor.bundled();
       sup.onChange = (m) => _apply(BackendStatus.fromNative(m));
       return sup.start();

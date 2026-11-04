@@ -22,10 +22,10 @@ void main() {
   // Spawns the embedded backend (macOS/Windows app) or uses K8SMAN_BACKEND, then
   // loads the app state whenever the backend (re)connects.
   final backend = BackendController(api, onReady: app.backendConnected);
-  // Updates: daily background check, banner, About panel. Sparkle on macOS;
-  // on Windows a GitHub "latest release" check linking to the download.
-  final windows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-  final updates = UpdateController(github: windows ? GitHubReleases() : null, openUrl: launchUrl);
+  // Updates: background check, banner, About panel. Sparkle on macOS; on
+  // Windows and Linux a GitHub "latest release" check linking to the download.
+  final noSparkle = !kIsWeb && defaultTargetPlatform != TargetPlatform.macOS;
+  final updates = UpdateController(github: noSparkle ? GitHubReleases() : null, openUrl: launchUrl);
   runApp(
     MultiProvider(
       providers: [

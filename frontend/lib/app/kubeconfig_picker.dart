@@ -11,18 +11,19 @@ import '../state/app_state.dart';
 import '../ui/theme.dart';
 
 /// Native file helpers: `MainFlutterWindow.swift` on macOS; the
-/// file_selector plugin and Explorer on Windows.
+/// file_selector plugin and Explorer on Windows, or the file manager on Linux.
 class NativeFiles {
   NativeFiles._();
   static const _channel = MethodChannel('k8sman/files');
 
   static bool get _windows => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+  static bool get _linux => !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
 
   /// Shows an open panel (starting in ~/.kube); returns the chosen path.
   static Future<String?> chooseKubeconfig({String? directory}) async {
-    if (_windows) {
-      final profile = Platform.environment['USERPROFILE'];
-      final kube = profile == null ? null : '$profile\\.kube';
+    if (_windows || _linux) {
+      final profile = _windows ? Platform.environment['USERPROFILE'] : Platform.environment['HOME'];
+      final kube = profile == null ? null : '$profile${Platform.pathSeparator}.kube';
       final file = await FileSelectorPlatform.instance.openFile(
         initialDirectory: directory ?? (kube != null && Directory(kube).existsSync() ? kube : profile),
         confirmButtonText: 'Use Kubeconfig',
@@ -42,6 +43,11 @@ class NativeFiles {
       await Process.run('explorer.exe', ['/select,', path]).catchError((Object _) => ProcessResult(0, 1, '', ''));
       return;
     }
+    if (_linux) {
+      // No portable "select this file": open its folder.
+      await Process.run('xdg-open', [File(path).parent.path]).catchError((Object _) => ProcessResult(0, 1, '', ''));
+      return;
+    }
     try {
       await _channel.invokeMethod<void>('reveal', path);
     } on MissingPluginException {
@@ -51,7 +57,13 @@ class NativeFiles {
 }
 
 /// "Reveal in Finder" / "Show in Explorer".
-String get revealLabel => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows ? 'Show in Explorer' : 'Reveal in Finder';
+String get revealLabel => kIsWeb
+    ? 'Reveal in Finder'
+    : switch (defaultTargetPlatform) {
+        TargetPlatform.windows => 'Show in Explorer',
+        TargetPlatform.linux => 'Show in Folder',
+        _ => 'Reveal in Finder',
+      };
 
 const _choose = '\u0000choose';
 const _reveal = '\u0000reveal';

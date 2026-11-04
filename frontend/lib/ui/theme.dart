@@ -8,15 +8,20 @@ import '../util/k8s.dart';
 const uiFamily = '.AppleSystemUIFont';
 
 /// Resolves glyphs SF lacks (arrows such as ↻ ⇄, box drawing, misc symbols).
-/// The Segoe fonts are the Windows equivalents (absent on macOS).
-const uiFallback = ['Apple Symbols', 'Menlo', 'Apple Color Emoji', 'Segoe UI', 'Segoe UI Symbol', 'Segoe UI Emoji'];
+/// The Segoe fonts are the Windows equivalents (absent on macOS), then
+/// common Linux UI fonts.
+const uiFallback = [
+  'Apple Symbols', 'Menlo', 'Apple Color Emoji', 'Segoe UI', 'Segoe UI Symbol', 'Segoe UI Emoji', //
+  'Inter', 'Cantarell', 'Ubuntu', 'Noto Sans', 'DejaVu Sans', 'Noto Color Emoji',
+];
 
 const monoFamily = 'Menlo';
 
 /// Cascadia Mono / Consolas stand in for Menlo on Windows (before Courier
-/// New, which Windows also has).
+/// New, which Windows also has), then common Linux monospace fonts.
 const monoFallback = [
-  'SF Mono', 'Monaco', 'Apple Symbols', '.AppleSystemUIFont', 'Cascadia Mono', 'Consolas', 'Courier New', 'monospace',
+  'SF Mono', 'Monaco', 'Apple Symbols', '.AppleSystemUIFont', 'Cascadia Mono', 'Consolas', //
+  'JetBrains Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Noto Sans Mono', 'Liberation Mono', 'Courier New', 'monospace',
 ];
 
 /// True when running as the real macOS app, where the window has a
