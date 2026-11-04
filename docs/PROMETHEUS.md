@@ -161,7 +161,8 @@ down) and a PodMonitor scraping Grafana (healthy).
 `frontend/test/prometheus/fixtures/*.json` are captured from a backend
 running against that setup (`/api/prom/*` responses and the CRs), e.g.
 
-    curl -sG 127.0.0.1:7443/api/prom/rules -d namespace=demo -d name=k8sman-demo | jq .
+    curl -sG -H "Authorization: Bearer $(cat ~/.config/k8sman/dev-token)" \
+      127.0.0.1:7443/api/prom/rules -d namespace=demo -d name=k8sman-demo | jq .
 
 Tests serve them through `FixturePromApi` (`test/prometheus/prom_fixtures.dart`),
 either as an `AlertsView(source:)` or via `PromApi.debugOverride` for panels.

@@ -5,8 +5,19 @@ import 'dart:math' as math;
 
 import 'backend.dart' show BackendStatus;
 
-/// Starts a process; [Process.start] in the app, a fake in tests.
-typedef ProcessStarter = Future<Process> Function(String executable, List<String> arguments);
+/// Starts a process with extra [environment] variables (added to this
+/// process's environment); [Process.start] in the app, a fake in tests.
+typedef ProcessStarter = Future<Process> Function(String executable, List<String> arguments, Map<String, String> environment);
+
+/// Environment variable carrying the backend's per-launch bearer token
+/// (`server.AuthTokenEnv` in the Go backend).
+const authTokenEnv = 'K8SMAN_AUTH_TOKEN';
+
+/// 32 random bytes from a CSPRNG, hex-encoded.
+String newAuthToken([math.Random? random]) {
+  final r = random ?? math.Random.secure();
+  return [for (var i = 0; i < 32; i++) r.nextInt(256).toRadixString(16).padLeft(2, '0')].join();
+}
 
 /// Runs the embedded Go backend (`k8sman-server.exe` next to `k8sman.exe`)
 /// and keeps it alive. The Dart port of `macos/Runner/BackendSupervisor.swift`,
@@ -19,6 +30,10 @@ typedef ProcessStarter = Future<Process> Function(String executable, List<String
 ///   process: when the app exits (or is killed) the pipe closes and the
 ///   backend shuts down cleanly. Windows has no SIGTERM, so [stop] and
 ///   [restart] close stdin too, then kill after [stopTimeout].
+/// - Every spawn gets a fresh random bearer token in `K8SMAN_AUTH_TOKEN` (an
+///   environment variable, not an argument: arguments are visible to other
+///   users). The backend refuses requests without it; the status map reports
+///   it as `token`, alongside `url`, so the app can authenticate.
 /// - If it crashes it is restarted with exponential backoff (1s, 2s, 4s, …,
 ///   at most 30s); after [maxQuickFailures] failed starts in a row it stays
 ///   down until [restart].
@@ -39,6 +54,7 @@ class BackendSupervisor {
 
   String _state = 'idle';
   String? _url;
+  String? _token;
   String? _error;
   final _log = <String>[];
   int _restarts = 0;
@@ -69,9 +85,9 @@ class BackendSupervisor {
     return BackendSupervisor(executable: '$dir${Platform.pathSeparator}$name');
   }
 
-  static Future<Process> _defaultStart(String executable, List<String> arguments) {
+  static Future<Process> _defaultStart(String executable, List<String> arguments, Map<String, String> environment) {
     final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
-    return Process.start(executable, arguments, workingDirectory: home);
+    return Process.start(executable, arguments, workingDirectory: home, environment: environment);
   }
 
   /// `http://<addr>` from a `K8SMAN_LISTENING <addr>` line, else null.
@@ -86,12 +102,14 @@ class BackendSupervisor {
   static Duration backoff(int failures) =>
       Duration(seconds: math.min(math.pow(2, math.max(0, failures - 1)).toInt(), 30));
 
-  /// Same keys as the Swift supervisor's status dictionary.
+  /// Same keys as the Swift supervisor's status dictionary. `token` is
+  /// reported together with `url`.
   Map<String, Object?> status() => {
         'state': _state,
         'restarts': _restarts,
         'log': _log.join('\n'),
         'url': ?_url,
+        if (_url != null) 'token': ?_token,
         'error': ?_error,
         'pid': ?_process?.pid,
       };
@@ -143,9 +161,11 @@ class BackendSupervisor {
     _error = null;
     _publish();
 
+    final token = newAuthToken();
+    _token = token;
     final Process p;
     try {
-      p = await _start(executable, ['--addr', '127.0.0.1:0', '--exit-on-stdin-eof', ...extraArgs]);
+      p = await _start(executable, ['--addr', '127.0.0.1:0', '--exit-on-stdin-eof', ...extraArgs], {authTokenEnv: token});
     } catch (e) {
       if (gen != _generation) return;
       _state = 'failed';

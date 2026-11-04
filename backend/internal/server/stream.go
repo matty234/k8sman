@@ -22,6 +22,7 @@ import (
 
 var upgrader = websocket.Upgrader{
 	// Desktop clients send no Origin; browsers in dev send localhost.
+	// ServeHTTP has already refused other origins; this is a second check.
 	CheckOrigin: func(r *http.Request) bool {
 		o := r.Header.Get("Origin")
 		return o == "" || isLocalOrigin(o)

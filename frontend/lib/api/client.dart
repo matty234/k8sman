@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'backend_http.dart';
@@ -42,23 +43,44 @@ class ApiClient {
   static const definedBackend = String.fromEnvironment('K8SMAN_BACKEND');
   static const defaultBackend = 'http://127.0.0.1:7443';
 
-  ApiClient({Uri? base, http.Client? httpClient})
+  /// `--dart-define=K8SMAN_TOKEN=…`: the bearer token of an external backend
+  /// (`make backend` prints it and writes it to ~/.config/k8sman/dev-token,
+  /// which the app also reads; see `BackendController`).
+  static const definedToken = String.fromEnvironment('K8SMAN_TOKEN');
+
+  /// Bearer token the backend requires on every request (HTTP and
+  /// WebSocket). Set by `BackendController` from the supervisor's status
+  /// (a fresh one per backend launch). Never log it.
+  String? token;
+
+  ApiClient({Uri? base, http.Client? httpClient, String? token})
       : base = base ?? Uri.parse(definedBackend.isNotEmpty ? definedBackend : defaultBackend),
+        token = token ?? (definedToken.isNotEmpty ? definedToken : null),
         _http = httpClient ?? http.Client();
+
+  /// `Authorization: Bearer <token>`, or nothing when no token is known.
+  Map<String, String> get authHeaders {
+    final t = token;
+    return t == null || t.isEmpty ? const {} : {'Authorization': 'Bearer $t'};
+  }
+
+  /// Opens a WebSocket to the backend with [authHeaders] (desktop only: the
+  /// handshake carries the Authorization header, not a query-string token).
+  WebSocketChannel connectWebSocket(Uri uri) => IOWebSocketChannel.connect(uri, headers: authHeaders);
 
   Uri _uri(String path, [Map<String, String?> query = const {}]) => backendUri(base, '/api/$path', query);
 
   Future<dynamic> _get(String path, [Map<String, String?> query = const {}]) async {
-    final res = await _http.get(_uri(path, query));
+    final res = await _http.get(_uri(path, query), headers: authHeaders);
     return _decode(res);
   }
 
   Future<dynamic> _send(String method, String path, Map<String, String?> query, Object? body) async {
-    final req = http.Request(method, _uri(path, query));
-    if (body != null) {
-      req.headers['Content-Type'] = 'application/json';
-      req.body = jsonEncode(body);
-    }
+    final req = http.Request(method, _uri(path, query))
+      ..headers.addAll(authHeaders)
+      // The backend requires a JSON Content-Type on every mutation (CSRF).
+      ..headers['Content-Type'] = 'application/json';
+    if (body != null) req.body = jsonEncode(body);
     final res = await http.Response.fromStream(await _http.send(req));
     return _decode(res);
   }
@@ -170,6 +192,7 @@ class ApiClient {
   /// must keep metadata.resourceVersion; a concurrent change → 409.
   Future<UpdateResult> updateObject(ResourceRef r, {String? namespace, required String name, required String yaml, bool dryRun = false}) async {
     final req = http.Request('PUT', _uri('object', {...r.toQuery(), 'namespace': namespace, 'name': name, 'dryRun': dryRun ? 'true' : null}))
+      ..headers.addAll(authHeaders)
       ..headers['Content-Type'] = 'application/yaml'
       ..body = yaml;
     return UpdateResult.fromJson(_decode(await http.Response.fromStream(await _http.send(req))));
@@ -221,7 +244,7 @@ class ApiClient {
   /// website favicon), or null when the backend has no image (the group
   /// uses a bundled icon or a monogram). See API.md.
   Future<Uint8List?> groupIcon(String group) async {
-    final res = await _http.get(_uri('icons/${Uri.encodeComponent(group)}'));
+    final res = await _http.get(_uri('icons/${Uri.encodeComponent(group)}'), headers: authHeaders);
     if (res.statusCode == 404) return null;
     if (res.statusCode >= 400) _decode(res);
     return res.bodyBytes;
@@ -242,7 +265,10 @@ class ApiClient {
     final controller = StreamController<Json>();
     controller.onListen = () {
       try {
-        ch = WebSocketChannel.connect(uri);
+        ch = connectWebSocket(uri);
+        // A failed handshake (backend down, 401/403) also arrives as an
+        // error on the stream; don't report it twice as uncaught.
+        ch!.ready.catchError((Object _) {});
       } catch (e, st) {
         controller.addError(e, st);
         controller.close();

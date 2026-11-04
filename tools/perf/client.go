@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -17,7 +18,27 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var httpc = &http.Client{Timeout: 2 * time.Minute}
+// authHeader carries $K8SMAN_AUTH_TOKEN, the bearer token the backend was
+// started with (run.sh sets it for both).
+func authHeader() http.Header {
+	h := http.Header{}
+	if t := os.Getenv("K8SMAN_AUTH_TOKEN"); t != "" {
+		h.Set("Authorization", "Bearer "+t)
+	}
+	return h
+}
+
+type authTransport struct{}
+
+func (authTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	for k, v := range authHeader() {
+		r.Header[k] = v
+	}
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+var httpc = &http.Client{Timeout: 2 * time.Minute, Transport: authTransport{}}
 
 // get fetches base+path and returns the elapsed time and body size.
 func get(base, path string) (time.Duration, int, error) {
@@ -66,7 +87,7 @@ func wsURL(base, path string) string {
 
 func openWatch(base, query string) (*watcher, error) {
 	w := &watcher{start: time.Now(), firstSnap: make(chan time.Duration, 1), done: make(chan struct{})}
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL(base, "/api/watch?"+query), nil)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL(base, "/api/watch?"+query), authHeader())
 	if err != nil {
 		return nil, err
 	}

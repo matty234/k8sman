@@ -43,6 +43,7 @@ type Server struct {
 	mux      *http.ServeMux
 	icons    *icons.Resolver
 	argowf   *argowf.Handler
+	token    string
 }
 
 // Options configures optional server behaviour.
@@ -55,11 +56,15 @@ type Options struct {
 	NoRemoteIcons bool
 	// IconCacheDir caches resolved icons ("" = memory only).
 	IconCacheDir string
+	// AuthToken is the bearer token every request must carry (see
+	// checkAccess in guard.go). Shorter than MinTokenLength (or empty) means
+	// every request is refused with 401: there is no unauthenticated mode.
+	AuthToken string
 }
 
 // New builds the server and registers routes.
 func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, opts Options) *Server {
-	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, settings: opts.Settings, mux: http.NewServeMux()}
+	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, settings: opts.Settings, mux: http.NewServeMux(), token: opts.AuthToken}
 	if s.settings == nil {
 		s.settings, _ = settings.Open("")
 	}
@@ -106,15 +111,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/logs", s.handleLogs)
 }
 
-// ServeHTTP adds permissive CORS for localhost dev (web builds) and logging.
+// ServeHTTP checks Host, Origin, the bearer token and Content-Type
+// (guard.go), then routes and logs.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if origin := r.Header.Get("Origin"); origin != "" && isLocalOrigin(origin) {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	}
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
+	if !checkAccess(w, r, s.token) {
 		return
 	}
 	start := time.Now()
@@ -130,10 +130,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/api/health" {
 		log.Printf("%s %s (%s)", r.Method, r.URL.RequestURI(), time.Since(start).Round(time.Millisecond))
 	}
-}
-
-func isLocalOrigin(o string) bool {
-	return strings.HasPrefix(o, "http://localhost") || strings.HasPrefix(o, "http://127.0.0.1")
 }
 
 // ---- helpers ---------------------------------------------------------------

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -38,8 +39,12 @@ func main() {
 		cacheDir     = flag.String("cache-dir", cluster.DefaultCacheDir(), "on-disk discovery cache for fast cold starts (\"\" = memory only)")
 	)
 	flag.Parse()
+	token, err := authToken()
+	if err != nil {
+		log.Fatalf("auth token: %v", err)
+	}
 	if *pprofAddr != "" {
-		startPprof(*pprofAddr)
+		startPprof(*pprofAddr, token)
 	}
 
 	cluster.CacheDir = *cacheDir
@@ -69,7 +74,7 @@ func main() {
 	// Machine-readable ready line so a parent process can discover the port.
 	fmt.Fprintf(os.Stdout, "K8SMAN_LISTENING %s\n", ln.Addr().String())
 
-	srv := &http.Server{Handler: server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st, NoRemoteIcons: *noRemoteIcon, IconCacheDir: *iconCache})}
+	srv := &http.Server{Handler: server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st, NoRemoteIcons: *noRemoteIcon, IconCacheDir: *iconCache, AuthToken: token})}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
@@ -91,6 +96,63 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
+}
+
+// authToken returns the bearer token clients must send. The desktop app
+// passes a fresh one per launch in $K8SMAN_AUTH_TOKEN, which is then removed
+// from the environment so child processes don't inherit it. A server started
+// by hand (make backend) generates one, writes it to devTokenPath() (mode
+// 0600) for `make app-dev`, and prints it on stderr for curl.
+func authToken() (string, error) {
+	if t, ok := os.LookupEnv(server.AuthTokenEnv); ok {
+		_ = os.Unsetenv(server.AuthTokenEnv)
+		if len(t) < server.MinTokenLength {
+			return "", fmt.Errorf("$%s must be at least %d characters", server.AuthTokenEnv, server.MinTokenLength)
+		}
+		return t, nil
+	}
+	t, err := server.NewToken()
+	if err != nil {
+		return "", err
+	}
+	path := devTokenPath()
+	if err := writeDevToken(path, t); err != nil {
+		log.Printf("could not write the dev token file %s: %v", path, err)
+	} else {
+		log.Printf("no $%s set: generated a dev token, written to %s (mode 0600)", server.AuthTokenEnv, path)
+	}
+	fmt.Fprintf(os.Stderr, "K8SMAN_DEV_TOKEN %s\n", t)
+	return t, nil
+}
+
+// devTokenPath is ~/.config/k8sman/dev-token, next to settings.json. The
+// frontend reads the same path (lib/app/backend.dart).
+func devTokenPath() string {
+	return filepath.Join(filepath.Dir(settings.DefaultPath()), "dev-token")
+}
+
+// writeDevToken atomically replaces path with token, readable only by the user.
+func writeDevToken(path, token string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".dev-token-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.WriteString(token + "\n"); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 // connect picks the kubeconfig and context to start with. Explicit flags

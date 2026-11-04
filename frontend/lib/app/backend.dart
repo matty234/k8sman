@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -32,12 +33,15 @@ enum BackendPhase {
 class BackendStatus {
   final BackendPhase phase;
   final String? url;
+
+  /// Bearer token of the backend at [url] (per launch). Never log it.
+  final String? token;
   final String? error;
 
   /// Tail of the backend's stderr/stdout.
   final String log;
   final int restarts;
-  const BackendStatus(this.phase, {this.url, this.error, this.log = '', this.restarts = 0});
+  const BackendStatus(this.phase, {this.url, this.token, this.error, this.log = '', this.restarts = 0});
 
   bool get isReady => phase == BackendPhase.running || phase == BackendPhase.external;
 
@@ -51,6 +55,7 @@ class BackendStatus {
     return BackendStatus(
       phase,
       url: m['url'] as String?,
+      token: m['token'] as String?,
       error: m['error'] as String?,
       log: (m['log'] as String?) ?? '',
       restarts: (m['restarts'] as int?) ?? 0,
@@ -72,6 +77,11 @@ class BackendController extends ChangeNotifier {
 
   BackendStatus status = const BackendStatus(BackendPhase.starting);
   String? _connectedUrl;
+  String? _connectedToken;
+
+  /// Reads the token of an external backend started by hand (`make
+  /// backend` writes it to [devTokenPath]). Replaceable in tests.
+  String? Function() readDevToken = readDevTokenFile;
 
   /// True once the backend has been reachable at least once.
   bool everReady = false;
@@ -122,21 +132,51 @@ class BackendController extends ChangeNotifier {
     await _channel.invokeMethod<void>('restart');
   }
 
+  /// An external backend's token: `--dart-define=K8SMAN_TOKEN=…`, else the
+  /// dev-token file (re-read on every retry: the server writes a new one
+  /// each time it starts), else whatever [api] already has.
   Future<void> _useExternal() async {
-    _apply(BackendStatus(BackendPhase.external, url: api.base.toString()));
+    final token = ApiClient.definedToken.isNotEmpty ? ApiClient.definedToken : (readDevToken() ?? api.token);
+    _apply(BackendStatus(BackendPhase.external, url: api.base.toString(), token: token));
   }
 
   void _apply(BackendStatus s) {
     status = s;
     final url = s.url;
-    final connect = s.isReady && url != null && url != _connectedUrl;
+    // A restart may reuse the port, but always brings a new token.
+    final connect = s.isReady && url != null && (url != _connectedUrl || s.token != _connectedToken);
     if (connect) {
       _connectedUrl = url;
+      _connectedToken = s.token;
       api.base = Uri.parse(url);
+      api.token = s.token;
       everReady = true;
     }
     notifyListeners();
     if (connect) onReady?.call();
+  }
+}
+
+/// `~/.config/k8sman/dev-token` (`%USERPROFILE%\.config\k8sman\dev-token` on
+/// Windows), where a backend started without `K8SMAN_AUTH_TOKEN` writes the
+/// token it generated (`devTokenPath` in backend/cmd/k8sman-server).
+String? devTokenPath([Map<String, String>? env]) {
+  final e = env ?? Platform.environment;
+  final home = Platform.isWindows ? (e['USERPROFILE'] ?? e['HOME']) : (e['HOME'] ?? e['USERPROFILE']);
+  if (home == null || home.isEmpty) return null;
+  final sep = Platform.pathSeparator;
+  return [home, '.config', 'k8sman', 'dev-token'].join(sep);
+}
+
+/// The token in [devTokenPath], or null when there is none.
+String? readDevTokenFile([String? path]) {
+  final p = path ?? devTokenPath();
+  if (p == null) return null;
+  try {
+    final t = File(p).readAsStringSync().trim();
+    return t.isEmpty ? null : t;
+  } on FileSystemException {
+    return null;
   }
 }
 

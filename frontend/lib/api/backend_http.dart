@@ -42,8 +42,8 @@ dynamic jsonBody(http.Response res) => res.body.isEmpty ? null : jsonDecode(res.
 Json jsonObjectBody(http.Response res) => Map<String, dynamic>.from(jsonDecode(res.body) as Map);
 
 /// JSON requests against one area of the backend, e.g. `/api/prom/`. The
-/// backend URL is read from [api] on every call: the app updates it when the
-/// embedded backend (re)starts.
+/// backend URL and bearer token are read from [api] on every call: the app
+/// updates them when the embedded backend (re)starts.
 class BackendHttp {
   final ApiClient api;
 
@@ -56,19 +56,19 @@ class BackendHttp {
 
   /// GETs [path]; throws [ApiException] on an error status.
   Future<http.Response> get(String path, [Map<String, String?> query = const {}]) async {
-    final res = await _http.get(uri(path, query));
+    final res = await _http.get(uri(path, query), headers: api.authHeaders);
     throwIfFailed(res);
     return res;
   }
 
   /// Sends [method] to [path] with an optional JSON [body]; throws
-  /// [ApiException] on an error status.
+  /// [ApiException] on an error status. Always JSON-typed: the backend
+  /// refuses mutations with any other Content-Type.
   Future<http.Response> send(String method, String path, {Map<String, String?> query = const {}, Object? body}) async {
-    final req = http.Request(method, uri(path, query));
-    if (body != null) {
-      req.headers['Content-Type'] = 'application/json';
-      req.body = jsonEncode(body);
-    }
+    final req = http.Request(method, uri(path, query))
+      ..headers.addAll(api.authHeaders)
+      ..headers['Content-Type'] = 'application/json';
+    if (body != null) req.body = jsonEncode(body);
     final res = await http.Response.fromStream(await _http.send(req));
     throwIfFailed(res);
     return res;

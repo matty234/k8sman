@@ -56,12 +56,12 @@ func newTestServer(t *testing.T, mgr *cluster.Manager) (*Server, *settings.Store
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(mgr, store, pf, Options{Settings: st}), st, home
+	return New(mgr, store, pf, Options{Settings: st, AuthToken: testToken}), st, home
 }
 
 func do(t *testing.T, s *Server, method, path, body string) (*httptest.ResponseRecorder, kcResponse) {
 	t.Helper()
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req := localRequest(method, path, strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(rec, req)
 	var out kcResponse
@@ -127,7 +127,7 @@ func TestDisconnectedServer(t *testing.T) {
 	s, _, home := newTestServer(t, mgr)
 
 	rec := httptest.NewRecorder()
-	s.ServeHTTP(rec, httptest.NewRequest("GET", "/api/health", nil))
+	s.ServeHTTP(rec, localRequest("GET", "/api/health", nil))
 	var h map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &h)
 	if rec.Code != 200 || h["connected"] != false {

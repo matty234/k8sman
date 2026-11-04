@@ -1,5 +1,6 @@
 import Cocoa
 import Darwin
+import Security
 
 /// Runs the embedded Go backend (`Contents/MacOS/k8sman-server`) and keeps it
 /// alive.
@@ -10,6 +11,10 @@ import Darwin
 ///   credential plugins (aws, gke-gcloud-auth-plugin, kubelogin, …) are on PATH.
 /// - Its stdin is a pipe held by this process and it runs with
 ///   `--exit-on-stdin-eof`, so it exits even if the app is killed.
+/// - Every spawn gets a fresh 32-byte random bearer token in the
+///   `K8SMAN_AUTH_TOKEN` environment variable (not an argument: arguments are
+///   visible to other users in `ps`). The backend refuses requests without
+///   it. The status map sent to Dart carries it as `token`, alongside `url`.
 /// - On quit it gets SIGTERM (it stops port-forwards), then SIGKILL after 3s.
 /// - If it crashes it is restarted with exponential backoff; after
 ///   `maxQuickFailures` failed starts in a row it stays down until `restart()`.
@@ -28,6 +33,7 @@ final class BackendSupervisor {
   private var stdinPipe: Pipe?
   private var state: State = .idle
   private var url: String?
+  private var token: String?
   private var lastError: String?
   private var logTail: [String] = []
   private var restarts = 0
@@ -100,8 +106,10 @@ final class BackendSupervisor {
   /// (AutoStart ones are restarted by the backend anyway). Blocks for at
   /// most ~2s.
   func rememberRunningForwards() {
-    guard let base = queue.sync(execute: { url }), let list = URL(string: "\(base)/api/portforwards") else { return }
+    let (base, token) = queue.sync { (url, token) }
+    guard let base = base, let list = URL(string: "\(base)/api/portforwards") else { return }
     var req = URLRequest(url: list)
+    Self.authorize(&req, token: token)
     req.timeoutInterval = 2
     var ids: [String] = []
     let done = DispatchSemaphore(value: 0)
@@ -130,7 +138,7 @@ final class BackendSupervisor {
   }
 
   /// Once the relaunched backend is listening, restart the remembered forwards.
-  private func resumeRememberedForwards(base: String) {
+  private func resumeRememberedForwards(base: String, token: String?) {
     let defaults = UserDefaults.standard
     guard let ids = defaults.stringArray(forKey: Self.resumeForwardsKey), !ids.isEmpty else { return }
     defaults.removeObject(forKey: Self.resumeForwardsKey)
@@ -138,6 +146,9 @@ final class BackendSupervisor {
       guard let u = URL(string: "\(base)/api/portforwards/\(id)/start") else { continue }
       var req = URLRequest(url: u)
       req.httpMethod = "POST"
+      Self.authorize(&req, token: token)
+      // The backend requires a JSON Content-Type on every mutation.
+      req.setValue("application/json", forHTTPHeaderField: "Content-Type")
       req.timeoutInterval = 10
       URLSession.shared.dataTask(with: req) { [weak self] _, resp, err in
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -148,6 +159,21 @@ final class BackendSupervisor {
     }
   }
 
+  // MARK: - auth token
+
+  /// Adds `Authorization: Bearer <token>`.
+  private static func authorize(_ req: inout URLRequest, token: String?) {
+    if let t = token { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
+  }
+
+  /// 32 bytes from the system CSPRNG, hex-encoded; nil if it fails (then
+  /// the backend isn't started: it must never run without a token).
+  static func newToken() -> String? {
+    var bytes = [UInt8](repeating: 0, count: 32)
+    guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
+    return bytes.map { String(format: "%02x", $0) }.joined()
+  }
+
   // MARK: - process management (on `queue`)
 
   private func snapshot() -> [String: Any] {
@@ -156,7 +182,10 @@ final class BackendSupervisor {
       "restarts": restarts,
       "log": logTail.joined(separator: "\n"),
     ]
-    if let url = url { s["url"] = url }
+    if let url = url {
+      s["url"] = url
+      if let t = token { s["token"] = t }
+    }
     if let e = lastError { s["error"] = e }
     if let p = process, p.isRunning { s["pid"] = Int(p.processIdentifier) }
     return s
@@ -186,6 +215,13 @@ final class BackendSupervisor {
       publish()
       return
     }
+    guard let newToken = Self.newToken() else {
+      state = .failed
+      lastError = "Could not generate the backend's access token."
+      publish()
+      return
+    }
+    token = newToken
     state = restarts > 0 || consecutiveFailures > 0 ? .restarting : .starting
     lastError = nil
     publish()
@@ -196,7 +232,9 @@ final class BackendSupervisor {
     // Power users: `defaults write dev.k8sman.app BackendArgs -array --read-only`
     args += UserDefaults.standard.stringArray(forKey: "BackendArgs") ?? []
     p.arguments = args
-    p.environment = environment()
+    var env = environment()
+    env["K8SMAN_AUTH_TOKEN"] = newToken
+    p.environment = env
     p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
 
     let inPipe = Pipe(), outPipe = Pipe(), errPipe = Pipe()
@@ -254,7 +292,7 @@ final class BackendSupervisor {
         state = .running
         lastError = nil
         publish()
-        resumeRememberedForwards(base: url!)
+        resumeRememberedForwards(base: url!, token: token)
       } else {
         appendLog(line)
       }
