@@ -1,0 +1,189 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Workflow",
+  "metadata": {
+    "annotations": {
+      "workflows.argoproj.io/last-seen-version": "111418",
+      "workflows.argoproj.io/pod-name-format": "v2"
+    },
+    "creationTimestamp": "2026-11-03T23:49:28Z",
+    "generateName": "approval-",
+    "generation": 6,
+    "labels": {
+      "workflows.argoproj.io/completed": "false",
+      "workflows.argoproj.io/phase": "Running"
+    },
+    "name": "approval-sw494",
+    "namespace": "argo-demo",
+    "resourceVersion": "113842",
+    "uid": "f392b19c-34b8-4f3c-9730-407efd578ceb"
+  },
+  "spec": {
+    "arguments": {},
+    "entrypoint": "main",
+    "suspend": true,
+    "templates": [
+      {
+        "inputs": {},
+        "metadata": {},
+        "name": "main",
+        "outputs": {},
+        "steps": [
+          [
+            {
+              "arguments": {},
+              "name": "prepare",
+              "template": "say"
+            }
+          ],
+          [
+            {
+              "arguments": {},
+              "name": "approve",
+              "template": "approve"
+            }
+          ],
+          [
+            {
+              "arguments": {},
+              "name": "release",
+              "template": "say"
+            }
+          ]
+        ]
+      },
+      {
+        "inputs": {},
+        "metadata": {},
+        "name": "approve",
+        "outputs": {},
+        "suspend": {}
+      },
+      {
+        "container": {
+          "command": [
+            "echo",
+            "ok"
+          ],
+          "image": "busybox:1.36",
+          "name": "",
+          "resources": {}
+        },
+        "inputs": {},
+        "metadata": {},
+        "name": "say",
+        "outputs": {}
+      }
+    ]
+  },
+  "status": {
+    "artifactGCStatus": {
+      "notSpecified": true
+    },
+    "artifactRepositoryRef": {
+      "artifactRepository": {},
+      "default": true
+    },
+    "conditions": [
+      {
+        "status": "False",
+        "type": "PodRunning"
+      }
+    ],
+    "nodes": {
+      "approval-sw494": {
+        "children": [
+          "approval-sw494-2233453834"
+        ],
+        "displayName": "approval-sw494",
+        "id": "approval-sw494",
+        "name": "approval-sw494",
+        "phase": "Running",
+        "progress": "1/2",
+        "startedAt": "2026-11-03T23:49:28Z",
+        "templateName": "main",
+        "templateScope": "local/approval-sw494",
+        "type": "Steps"
+      },
+      "approval-sw494-2166196263": {
+        "boundaryID": "approval-sw494",
+        "children": [
+          "approval-sw494-732707792"
+        ],
+        "displayName": "[1]",
+        "id": "approval-sw494-2166196263",
+        "name": "approval-sw494[1]",
+        "nodeFlag": {},
+        "phase": "Running",
+        "progress": "0/1",
+        "startedAt": "2026-11-03T23:50:34Z",
+        "templateScope": "local/approval-sw494",
+        "type": "StepGroup"
+      },
+      "approval-sw494-2233453834": {
+        "boundaryID": "approval-sw494",
+        "children": [
+          "approval-sw494-4216613255"
+        ],
+        "displayName": "[0]",
+        "finishedAt": "2026-11-03T23:50:34Z",
+        "id": "approval-sw494-2233453834",
+        "name": "approval-sw494[0]",
+        "nodeFlag": {},
+        "phase": "Succeeded",
+        "progress": "1/2",
+        "resourcesDuration": {
+          "cpu": 6,
+          "memory": 70
+        },
+        "startedAt": "2026-11-03T23:49:28Z",
+        "templateScope": "local/approval-sw494",
+        "type": "StepGroup"
+      },
+      "approval-sw494-4216613255": {
+        "boundaryID": "approval-sw494",
+        "children": [
+          "approval-sw494-2166196263"
+        ],
+        "displayName": "prepare",
+        "finishedAt": "2026-11-03T23:50:20Z",
+        "hostNodeName": "k8sman-dev-control-plane",
+        "id": "approval-sw494-4216613255",
+        "name": "approval-sw494[0].prepare",
+        "outputs": {
+          "exitCode": "0"
+        },
+        "phase": "Succeeded",
+        "progress": "1/1",
+        "resourcesDuration": {
+          "cpu": 6,
+          "memory": 70
+        },
+        "startedAt": "2026-11-03T23:49:28Z",
+        "taskResultSynced": true,
+        "templateName": "say",
+        "templateScope": "local/approval-sw494",
+        "type": "Pod"
+      },
+      "approval-sw494-732707792": {
+        "boundaryID": "approval-sw494",
+        "displayName": "approve",
+        "id": "approval-sw494-732707792",
+        "name": "approval-sw494[1].approve",
+        "phase": "Running",
+        "progress": "0/1",
+        "startedAt": "2026-11-03T23:50:34Z",
+        "templateName": "approve",
+        "templateScope": "local/approval-sw494",
+        "type": "Suspend"
+      }
+    },
+    "phase": "Running",
+    "progress": "1/2",
+    "resourcesDuration": {
+      "cpu": 6,
+      "memory": 70
+    },
+    "startedAt": "2026-11-03T23:49:28Z"
+  }
+}

@@ -231,6 +231,33 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Description", Query: `.spec.description // ""`},
 		ageCol,
 	},
+	// Argo Workflows
+	"workflows.argoproj.io": {
+		{Name: "Status", Type: "status", Query: argoWFPhase},
+		{Name: "Progress", Query: `.status.progress // ""`},
+		{Name: "Started", Type: "age", Query: `.status.startedAt`},
+		{Name: "Duration", Query: `if .status.startedAt then (((.status.finishedAt // (now | todate)) | fromdateiso8601) - (.status.startedAt | fromdateiso8601)) | ` + argoWFDuration + ` else "" end`},
+		{Name: "From", Query: `if .spec.workflowTemplateRef then (if .spec.workflowTemplateRef.clusterScope then "cwft/" else "wft/" end) + .spec.workflowTemplateRef.name elif .metadata.labels["workflows.argoproj.io/cron-workflow"] then "cron/" + .metadata.labels["workflows.argoproj.io/cron-workflow"] else "" end`},
+		{Name: "Message", Query: `.status.message // ""`},
+		ageCol,
+	},
+	"cronworkflows.argoproj.io": {
+		{Name: "Schedule", Query: `((.spec.schedules // []) + (if .spec.schedule then [.spec.schedule] else [] end) | join(", ")) + (if .spec.timezone then " (\(.spec.timezone))" else "" end)`},
+		{Name: "Suspended", Type: "bool", Query: `.spec.suspend // false`},
+		{Name: "Policy", Query: `.spec.concurrencyPolicy // "Allow"`},
+		{Name: "Active", Type: "number", Query: `.status.active // [] | length`},
+		{Name: "Last Run", Type: "age", Query: `.status.lastScheduledTime`},
+		{Name: "Succeeded", Type: "number", Query: `.status.succeeded // 0`},
+		{Name: "Failed", Type: "number", Query: `.status.failed // 0`},
+		ageCol,
+	},
+	"workflowtemplates.argoproj.io":        argoWFTemplateCols,
+	"clusterworkflowtemplates.argoproj.io": argoWFTemplateCols,
+	"workfloweventbindings.argoproj.io": {
+		{Name: "Selector", Query: `.spec.event.selector // ""`},
+		{Name: "Submits", Query: `.spec.submit.workflowTemplateRef.name // ""`},
+		ageCol,
+	},
 	// Gateway API. Status cells read "True", "False: <reason>",
 	// "Unknown: <reason>" or "Warning: <detail>" so they colour correctly.
 	"gatewayclasses.gateway.networking.k8s.io": {
@@ -255,6 +282,26 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 	"tlsroutes.gateway.networking.k8s.io":  {gwRouteHostnames, gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
 	"tcproutes.gateway.networking.k8s.io":  {gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
 	"udproutes.gateway.networking.k8s.io":  {gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
+}
+
+// argoWFPhase is a Workflow's phase, "Suspended" while running but
+// suspended (spec.suspend or a waiting suspend step), "Pending" before the
+// controller has seen it.
+const argoWFPhase = `(.status.phase // "") as $p
+	| if $p == "Running" and (.spec.suspend == true or any(.status.nodes[]?; .type == "Suspend" and .phase == "Running")) then "Suspended"
+	elif $p == "" then "Pending" else $p end`
+
+// argoWFDuration formats seconds as 45s / 3m20s / 2h05m / 3d4h.
+const argoWFDuration = `floor | if . < 60 then "\(.)s"
+	elif . < 3600 then "\(. / 60 | floor)m\(. % 60 | tostring | if length < 2 then "0" + . else . end)s"
+	elif . < 86400 then "\(. / 3600 | floor)h\((. % 3600) / 60 | floor | tostring | if length < 2 then "0" + . else . end)m"
+	else "\(. / 86400 | floor)d\((. % 86400) / 3600 | floor)h" end`
+
+var argoWFTemplateCols = []Column{
+	{Name: "Entrypoint", Query: `.spec.entrypoint // ""`},
+	{Name: "Templates", Type: "number", Query: `.spec.templates // [] | length`},
+	{Name: "Parameters", Query: `[.spec.arguments.parameters[]?.name] | join(", ")`},
+	ageCol,
 }
 
 // argoShortRepo shortens a repo URL to its last two path segments

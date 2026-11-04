@@ -1,0 +1,879 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Workflow",
+  "metadata": {
+    "annotations": {
+      "workflows.argoproj.io/last-seen-version": "114528",
+      "workflows.argoproj.io/pod-name-format": "v2"
+    },
+    "creationTimestamp": "2026-11-03T23:49:27Z",
+    "generateName": "build-and-test-",
+    "generation": 29,
+    "labels": {
+      "workflows.argoproj.io/action": "Retry",
+      "workflows.argoproj.io/actor": "system-serviceaccount-argo-demo-wf-tester",
+      "workflows.argoproj.io/completed": "true",
+      "workflows.argoproj.io/phase": "Failed"
+    },
+    "name": "build-and-test-v9vnz",
+    "namespace": "argo-demo",
+    "resourceVersion": "114602",
+    "uid": "a43ef964-f9a8-4231-a809-370b3982a9d2"
+  },
+  "spec": {
+    "arguments": {
+      "parameters": [
+        {
+          "name": "fail-tests",
+          "value": "true"
+        }
+      ]
+    },
+    "workflowTemplateRef": {
+      "name": "build-and-test"
+    }
+  },
+  "status": {
+    "artifactGCStatus": {
+      "notSpecified": true
+    },
+    "artifactRepositoryRef": {
+      "artifactRepository": {},
+      "default": true
+    },
+    "conditions": [
+      {
+        "status": "False",
+        "type": "PodRunning"
+      },
+      {
+        "status": "True",
+        "type": "Completed"
+      }
+    ],
+    "finishedAt": "2026-11-04T00:03:59Z",
+    "nodes": {
+      "build-and-test-v9vnz": {
+        "children": [
+          "build-and-test-v9vnz-2538991840"
+        ],
+        "displayName": "build-and-test-v9vnz",
+        "finishedAt": "2026-11-04T00:03:59Z",
+        "id": "build-and-test-v9vnz",
+        "name": "build-and-test-v9vnz",
+        "outboundNodes": [
+          "build-and-test-v9vnz-1593495021"
+        ],
+        "phase": "Failed",
+        "progress": "4/7",
+        "resourcesDuration": {
+          "cpu": 42,
+          "memory": 492
+        },
+        "startedAt": "2026-11-04T00:02:30Z",
+        "templateName": "pipeline",
+        "templateScope": "local/",
+        "type": "DAG"
+      },
+      "build-and-test-v9vnz-1351651175": {
+        "boundaryID": "build-and-test-v9vnz",
+        "children": [
+          "build-and-test-v9vnz-752012567"
+        ],
+        "displayName": "unit-tests(2)",
+        "finishedAt": "2026-11-04T00:03:54Z",
+        "hostNodeName": "k8sman-dev-control-plane",
+        "id": "build-and-test-v9vnz-1351651175",
+        "inputs": {
+          "parameters": [
+            {
+              "name": "fail",
+              "value": "true"
+            }
+          ]
+        },
+        "message": "main: Error (exit code 3)",
+        "name": "build-and-test-v9vnz.unit-tests(2)",
+        "nodeFlag": {
+          "retried": true
+        },
+        "outputs": {
+          "exitCode": "3"
+        },
+        "phase": "Failed",
+        "progress": "0/1",
+        "resourcesDuration": {
+          "cpu": 1,
+          "memory": 23
+        },
+        "startedAt": "2026-11-04T00:03:27Z",
+        "taskResultSynced": true,
+        "templateName": "tests",
+        "templateScope": "local/",
+        "type": "Pod"
+      },
+      "build-and-test-v9vnz-1485110828": {
+        "boundaryID": "build-and-test-v9vnz",
+        "children": [
+          "build-and-test-v9vnz-752012567"
+        ],
+        "displayName": "package",
+        "finishedAt": "2026-11-03T23:57:18Z",
+        "hostNodeName": "k8sman-dev-control-plane",
+        "id": "build-and-test-v9vnz-1485110828",
+        "inputs": {
+          "parameters": [
+            {
+              "name": "msg",
+              "value": "package"
+            }
+          ]
+        },
+        "name": "build-and-test-v9vnz.package",
+        "outputs": {
+          "exitCode": "0"
+        },
+        "phase": "Succeeded",
+        "progress": "1/1",
+        "resourcesDuration": {
+          "cpu": 4,
+          "memory": 52
+        },
+        "startedAt": "2026-11-03T23:56:06Z",
+        "taskResultSynced": true,
+        "templateName": "echo",
+        "templateScope": "local/",
+        "type": "Pod"
+      },
+      "build-and-test-v9vnz-1593495021": {
+        "boundaryID": "build-and-test-v9vnz",
+        "displayName": "notify",
+        "finishedAt": "2026-11-04T00:03:59Z",
+        "id": "build-and-test-v9vnz-1593495021",
+        "message": "omitted: depends condition not met",
+        "name": "build-and-test-v9vnz.notify",
+        "nodeFlag": {},
+        "phase": "Omitted",
+        "startedAt": "2026-11-04T00:03:59Z",
+        "templateName": "echo",
+        "templateScope": "local/",
+        "type": "Skipped"
+      },
+      "build-and-test-v9vnz-1664805202": {
+        "boundaryID": "build-and-test-v9vnz",
+        "children": [
+          "build-and-test-v9vnz-3432370121",
+          "build-and-test-v9vnz-2962743884",
+          "build-and-test-v9vnz-1351651175"
+        ],
+        "displayName": "unit-tests",
+        "finishedAt": "2026-11-04T00:03:59Z",
+        "id": "build-and-test-v9vnz-1664805202",
+        "inputs": {
+          "parameters": [
+            {
+              "name": "fail",
+              "value": "true"
+            }
+          ]
+        },
+        "message": "No more retries left",
+        "name": "build-and-test-v9vnz.unit-tests",
+        "outputs": {
+          "exitCode": "3"
+        },
+        "phase": "Failed",
+        "progress": "0/3",
+        "resourcesDuration": {
+          "cpu": 2,
+          "memory": 53
+        },
+        "startedAt": "2026-11-04T00:02:30Z",
+        "templateName": "tests",
+        "templateScope": "local/",
+        "type": "Retry"
+      },
+      "build-and-test-v9vnz-2538991840": {
+        "boundaryID": "build-and-test-v9vnz",
+        "children": [
+          "build-and-test-v9vnz-478247428",
+          "build-and-test-v9vnz-347412041"
+        ],
+        "displayName": "checkout",
+        "finishedAt": "2026-11-03T23:50:26Z",
+        "hostNodeName": "k8sman-dev-control-plane",
+        "id": "build-and-test-v9vnz-2538991840",
+        "inputs": {
+          "parameters": [
+            {
+              "name": "msg",
+              "value": "checkout"
+            }
+          ]
+        },
+        "name": "build-and-test-v9vnz.checkout",
+        "outputs": {
+          "exitCode": "0"
+        },
+        "phase": "Succeeded",
+        "progress": "1/1",
+        "resourcesDuration": {
+          "cpu": 7,
+          "memory": 80
+        },
+        "startedAt": "2026-11-03T23:49:28Z",
+        "taskResultSynced": true,
+        "templateName": "echo",
+        "templateScope": "local/",
+        "type": "Pod"
+      },
+      "build-and-test-v9vnz-2962743884": {
+        "boundaryID": "build-and-test-v9vnz",
+        "displayName": "unit-tests(1)",
+        "finishedAt": "2026-11-04T00:03:20Z",
+        "hostNodeName": "k8sman-dev-control-plane",
+        "id": "build-and-test-v9vnz-2962743884",
+        "inputs": {
+          "parameters": [
+            {
+              "name": "fail",
+              "value": "true"
+            }
+          ]
+        },
+        "message": "main: Error (exit code 3)",
+        "name": "build-and-test-v9vnz.unit-tests(1)",
+        "nodeFlag": {
+          "retried": true
+        },
+        "outputs": {
+          "exitCode": "3"
+        },
+        "phase": "Failed",
+        "progress": "0/1",
+        "resourcesDuration": {
+          "cpu": 1,
+          "memory": 19
+        },
+        "startedAt": "2026-11-04T00:02:53Z",
+        "taskResultSynced": true,
+        "templateName": "tests",
+        "templateScope": "local/",
+        "type": "Pod"
+      },
+      "build-and-test-v9vnz-3432370121": {
+        "boundaryID": "build-and-test-v9vnz",
+        "displayName": "unit-tests(0)",
+        "finishedAt": "2026-11-04T00:02:44Z",
+        "hostNodeName": "k8sman-dev-control-plane",
+        "id": "build-and-test-v9vnz-3432370121",
+        "inputs": {
+          "parameters": [
+            {
+              "name": "fail",
+              "value": "true"
+            }
+          ]
+        },
+        "message": "main: Error (exit code 3)",
+        "name": "build-and-test-v9vnz.unit-tests(0)",
+        "nodeFlag": {
+          "retried": true
+        },
+        "outputs": {
+          "exitCode": "3"
+        },
+        "phase": "Failed",
+        "progress": "0/1",
+        "resourcesDuration": {
+          "cpu": 0,
+          "memory": 11
+        },
+        "startedAt": "2026-11-04T00:02:32Z",
+        "taskResultSynced": true,
+        "templateName": "tests",
+        "templateScope": "local/",
+        "type": "Pod"
+      },
+      "build-and-test-v9vnz-347412041": {
+        "boundaryID": "build-and-test-v9vnz",
+        "children": [
+          "build-and-test-v9vnz-1485110828"
+        ],
+        "displayName": "lint",
+        "finishedAt": "2026-11-03T23:55:45Z",
+        "hostNodeName": "k8sman-dev-control-plane",
+        "id": "build-and-test-v9vnz-347412041",
+        "inputs": {
+          "parameters": [
+            {
+              "name": "msg",
+              "value": "lint"
+            }
+          ]
+        },
+        "name": "build-and-test-v9vnz.lint",
+        "outputs": {
+          "exitCode": "0"
+        },
+        "phase": "Succeeded",
+        "progress": "1/1",
+        "resourcesDuration": {
+          "cpu": 23,
+          "memory": 237
+        },
+        "startedAt": "2026-11-03T23:52:49Z",
+        "taskResultSynced": true,
+        "templateName": "echo",
+        "templateScope": "local/",
+        "type": "Pod"
+      },
+      "build-and-test-v9vnz-478247428": {
+        "boundaryID": "build-and-test-v9vnz",
+        "children": [
+          "build-and-test-v9vnz-1664805202",
+          "build-and-test-v9vnz-1485110828"
+        ],
+        "displayName": "build",
+        "finishedAt": "2026-11-03T23:53:20Z",
+        "hostNodeName": "k8sman-dev-control-plane",
+        "id": "build-and-test-v9vnz-478247428",
+        "name": "build-and-test-v9vnz.build",
+        "outputs": {
+          "exitCode": "0",
+          "parameters": [
+            {
+              "name": "image",
+              "value": "registry.example/app:1.2.3",
+              "valueFrom": {
+                "path": "/tmp/image"
+              }
+            }
+          ]
+        },
+        "phase": "Succeeded",
+        "progress": "1/1",
+        "resourcesDuration": {
+          "cpu": 6,
+          "memory": 70
+        },
+        "startedAt": "2026-11-03T23:52:49Z",
+        "taskResultSynced": true,
+        "templateName": "build",
+        "templateScope": "local/",
+        "type": "Pod"
+      },
+      "build-and-test-v9vnz-752012567": {
+        "boundaryID": "build-and-test-v9vnz",
+        "children": [
+          "build-and-test-v9vnz-1593495021"
+        ],
+        "displayName": "deploy",
+        "finishedAt": "2026-11-04T00:03:59Z",
+        "id": "build-and-test-v9vnz-752012567",
+        "message": "omitted: depends condition not met",
+        "name": "build-and-test-v9vnz.deploy",
+        "nodeFlag": {},
+        "phase": "Omitted",
+        "startedAt": "2026-11-04T00:03:59Z",
+        "templateName": "deploy",
+        "templateScope": "local/",
+        "type": "Skipped"
+      }
+    },
+    "phase": "Failed",
+    "progress": "4/7",
+    "resourcesDuration": {
+      "cpu": 42,
+      "memory": 492
+    },
+    "startedAt": "2026-11-04T00:02:30Z",
+    "storedTemplates": {
+      "namespaced/build-and-test/build": {
+        "container": {
+          "args": [
+            "echo building; echo registry.example/app:1.2.3 > /tmp/image; sleep 3"
+          ],
+          "command": [
+            "sh",
+            "-c"
+          ],
+          "image": "busybox:1.36",
+          "name": "",
+          "resources": {
+            "requests": {
+              "cpu": "10m",
+              "memory": "16Mi"
+            }
+          }
+        },
+        "inputs": {},
+        "metadata": {},
+        "name": "build",
+        "outputs": {
+          "parameters": [
+            {
+              "name": "image",
+              "valueFrom": {
+                "path": "/tmp/image"
+              }
+            }
+          ]
+        }
+      },
+      "namespaced/build-and-test/deploy": {
+        "inputs": {},
+        "metadata": {},
+        "name": "deploy",
+        "outputs": {},
+        "steps": [
+          [
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "render {{workflow.parameters.target}}"
+                  }
+                ]
+              },
+              "name": "render",
+              "template": "echo"
+            }
+          ],
+          [
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "apply a"
+                  }
+                ]
+              },
+              "name": "apply-a",
+              "template": "echo"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "apply b"
+                  }
+                ]
+              },
+              "name": "apply-b",
+              "template": "echo"
+            }
+          ],
+          [
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "verify"
+                  }
+                ]
+              },
+              "name": "verify",
+              "template": "echo"
+            }
+          ]
+        ]
+      },
+      "namespaced/build-and-test/echo": {
+        "container": {
+          "args": [
+            "echo {{inputs.parameters.msg}}; sleep 2"
+          ],
+          "command": [
+            "sh",
+            "-c"
+          ],
+          "image": "busybox:1.36",
+          "name": "",
+          "resources": {}
+        },
+        "inputs": {
+          "parameters": [
+            {
+              "name": "msg"
+            }
+          ]
+        },
+        "metadata": {},
+        "name": "echo",
+        "outputs": {}
+      },
+      "namespaced/build-and-test/pipeline": {
+        "dag": {
+          "tasks": [
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "checkout"
+                  }
+                ]
+              },
+              "name": "checkout",
+              "template": "echo"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "lint"
+                  }
+                ]
+              },
+              "depends": "checkout",
+              "name": "lint",
+              "template": "echo"
+            },
+            {
+              "arguments": {},
+              "depends": "checkout",
+              "name": "build",
+              "template": "build"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "fail",
+                    "value": "{{workflow.parameters.fail-tests}}"
+                  }
+                ]
+              },
+              "depends": "build",
+              "name": "unit-tests",
+              "template": "tests"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "package"
+                  }
+                ]
+              },
+              "depends": "build && lint",
+              "name": "package",
+              "template": "echo"
+            },
+            {
+              "arguments": {},
+              "depends": "unit-tests && package",
+              "name": "deploy",
+              "template": "deploy"
+            },
+            {
+              "arguments": {
+                "parameters": [
+                  {
+                    "name": "msg",
+                    "value": "notify"
+                  }
+                ]
+              },
+              "depends": "deploy.Failed || deploy.Succeeded",
+              "name": "notify",
+              "template": "echo"
+            }
+          ]
+        },
+        "inputs": {},
+        "metadata": {},
+        "name": "pipeline",
+        "outputs": {}
+      },
+      "namespaced/build-and-test/tests": {
+        "inputs": {
+          "parameters": [
+            {
+              "name": "fail"
+            }
+          ]
+        },
+        "metadata": {},
+        "name": "tests",
+        "outputs": {},
+        "retryStrategy": {
+          "limit": "2"
+        },
+        "script": {
+          "command": [
+            "sh"
+          ],
+          "image": "busybox:1.36",
+          "name": "",
+          "resources": {},
+          "source": "echo running tests\nsleep 1\nif [ \"{{inputs.parameters.fail}}\" = \"true\" ]; then echo \"3 tests failed\" >&2; exit 3; fi\necho all good\n"
+        }
+      }
+    },
+    "storedWorkflowTemplateSpec": {
+      "arguments": {
+        "parameters": [
+          {
+            "description": "Where to deploy",
+            "enum": [
+              "staging",
+              "production"
+            ],
+            "name": "target",
+            "value": "staging"
+          },
+          {
+            "name": "fail-tests",
+            "value": "true"
+          },
+          {
+            "name": "message",
+            "value": "hello"
+          }
+        ]
+      },
+      "entrypoint": "pipeline",
+      "templates": [
+        {
+          "dag": {
+            "tasks": [
+              {
+                "arguments": {
+                  "parameters": [
+                    {
+                      "name": "msg",
+                      "value": "checkout"
+                    }
+                  ]
+                },
+                "name": "checkout",
+                "template": "echo"
+              },
+              {
+                "arguments": {
+                  "parameters": [
+                    {
+                      "name": "msg",
+                      "value": "lint"
+                    }
+                  ]
+                },
+                "depends": "checkout",
+                "name": "lint",
+                "template": "echo"
+              },
+              {
+                "arguments": {},
+                "depends": "checkout",
+                "name": "build",
+                "template": "build"
+              },
+              {
+                "arguments": {
+                  "parameters": [
+                    {
+                      "name": "fail",
+                      "value": "{{workflow.parameters.fail-tests}}"
+                    }
+                  ]
+                },
+                "depends": "build",
+                "name": "unit-tests",
+                "template": "tests"
+              },
+              {
+                "arguments": {
+                  "parameters": [
+                    {
+                      "name": "msg",
+                      "value": "package"
+                    }
+                  ]
+                },
+                "depends": "build && lint",
+                "name": "package",
+                "template": "echo"
+              },
+              {
+                "arguments": {},
+                "depends": "unit-tests && package",
+                "name": "deploy",
+                "template": "deploy"
+              },
+              {
+                "arguments": {
+                  "parameters": [
+                    {
+                      "name": "msg",
+                      "value": "notify"
+                    }
+                  ]
+                },
+                "depends": "deploy.Failed || deploy.Succeeded",
+                "name": "notify",
+                "template": "echo"
+              }
+            ]
+          },
+          "inputs": {},
+          "metadata": {},
+          "name": "pipeline",
+          "outputs": {}
+        },
+        {
+          "container": {
+            "args": [
+              "echo {{inputs.parameters.msg}}; sleep 2"
+            ],
+            "command": [
+              "sh",
+              "-c"
+            ],
+            "image": "busybox:1.36",
+            "name": "",
+            "resources": {}
+          },
+          "inputs": {
+            "parameters": [
+              {
+                "name": "msg"
+              }
+            ]
+          },
+          "metadata": {},
+          "name": "echo",
+          "outputs": {}
+        },
+        {
+          "container": {
+            "args": [
+              "echo building; echo registry.example/app:1.2.3 > /tmp/image; sleep 3"
+            ],
+            "command": [
+              "sh",
+              "-c"
+            ],
+            "image": "busybox:1.36",
+            "name": "",
+            "resources": {
+              "requests": {
+                "cpu": "10m",
+                "memory": "16Mi"
+              }
+            }
+          },
+          "inputs": {},
+          "metadata": {},
+          "name": "build",
+          "outputs": {
+            "parameters": [
+              {
+                "name": "image",
+                "valueFrom": {
+                  "path": "/tmp/image"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "inputs": {
+            "parameters": [
+              {
+                "name": "fail"
+              }
+            ]
+          },
+          "metadata": {},
+          "name": "tests",
+          "outputs": {},
+          "retryStrategy": {
+            "limit": "2"
+          },
+          "script": {
+            "command": [
+              "sh"
+            ],
+            "image": "busybox:1.36",
+            "name": "",
+            "resources": {},
+            "source": "echo running tests\nsleep 1\nif [ \"{{inputs.parameters.fail}}\" = \"true\" ]; then echo \"3 tests failed\" >&2; exit 3; fi\necho all good\n"
+          }
+        },
+        {
+          "inputs": {},
+          "metadata": {},
+          "name": "deploy",
+          "outputs": {},
+          "steps": [
+            [
+              {
+                "arguments": {
+                  "parameters": [
+                    {
+                      "name": "msg",
+                      "value": "render {{workflow.parameters.target}}"
+                    }
+                  ]
+                },
+                "name": "render",
+                "template": "echo"
+              }
+            ],
+            [
+              {
+                "arguments": {
+                  "parameters": [
+                    {
+                      "name": "msg",
+                      "value": "apply a"
+                    }
+                  ]
+                },
+                "name": "apply-a",
+                "template": "echo"
+              },
+              {
+                "arguments": {
+                  "parameters": [
+                    {
+                      "name": "msg",
+                      "value": "apply b"
+                    }
+                  ]
+                },
+                "name": "apply-b",
+                "template": "echo"
+              }
+            ],
+            [
+              {
+                "arguments": {
+                  "parameters": [
+                    {
+                      "name": "msg",
+                      "value": "verify"
+                    }
+                  ]
+                },
+                "name": "verify",
+                "template": "echo"
+              }
+            ]
+          ]
+        }
+      ],
+      "workflowTemplateRef": {
+        "name": "build-and-test"
+      }
+    }
+  }
+}

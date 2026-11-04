@@ -1,0 +1,43 @@
+# Workflow runs for the samples (use `kubectl create`: they use generateName).
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: build-and-test-
+  namespace: argo-demo
+spec:
+  workflowTemplateRef: {name: build-and-test}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: build-and-test-
+  namespace: argo-demo
+spec:
+  workflowTemplateRef: {name: build-and-test}
+  arguments:
+    parameters:
+      - {name: fail-tests, value: "true"}
+---
+# Waits at an approval step until resumed.
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: approval-
+  namespace: argo-demo
+spec:
+  entrypoint: main
+  templates:
+    - name: main
+      steps:
+        - - name: prepare
+            template: say
+        - - name: approve
+            template: approve
+        - - name: release
+            template: say
+    - name: approve
+      suspend: {}
+    - name: say
+      container:
+        image: busybox:1.36
+        command: [echo, ok]

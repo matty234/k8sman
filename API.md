@@ -90,6 +90,12 @@ The actions are:
 | `argocd-refresh` | Argo CD Applications | annotates `argocd.argoproj.io/refresh: normal`, or `hard` with `{hard: true}` |
 | `argocd-sync` | Argo CD Applications | sets `.operation.sync` like the Argo CD API server. Body: `{prune?, syncDryRun?, targetRevision?, syncOptions?, force?}`. 409 when an operation is pending or running unless `force` (which replaces it). `syncDryRun` is Argo's dry run; `dryRun` stays a kube dry run of the patch |
 | `argocd-terminate` | Argo CD Applications | sets `status.operationState.phase: Terminating` on a running operation, as `argocd app terminate-op` does |
+| `suspend` / `unsuspend` | Argo CronWorkflows | sets `spec.suspend` (`argo cron suspend/resume`) |
+| `argowf-stop` / `argowf-terminate` | Argo Workflows | sets `spec.shutdown: Stop` / `Terminate` (`argo stop` / `argo terminate`); 400 for completed workflows |
+| `argowf-suspend` / `argowf-resume` | Argo Workflows | suspend sets `spec.suspend`; resume clears it and marks running suspend steps `Succeeded` (supplied outputs take their defaults), as `argo resume` does. 400 when node status is offloaded |
+| `argowf-resubmit` | Argo Workflows | creates a new Workflow from the spec (same parameters, `generateName`, the `resubmitted-from-workflow` label), as `argo resubmit` does; `created` points at it. `{memoized: true}` (Failed/Error only) goes through argo-server |
+| `argowf-retry` | Argo Workflows (Failed/Error) | `{restartSuccessful?}`. Through argo-server only (`PUT /api/v1/workflows/{ns}/{name}/retry`); 503 when it is unavailable |
+| `argowf-submit` | CronWorkflows, WorkflowTemplates, ClusterWorkflowTemplates | creates a Workflow: from a cron's `workflowSpec` (labelled and owned like a scheduled run, as `argo submit --from cronwf/x`), or referencing the template with `{parameters?:[{name,value}], entrypoint?}` (enums are checked). ClusterWorkflowTemplates need `{targetNamespace}` |
 
 See `docs/ARGOCD.md` for how these work without the Argo CD API server.
 
@@ -317,6 +323,28 @@ for errors from the Kubernetes API itself (such as a forbidden `services/proxy`)
 | DELETE | `/api/argocd/auth[?context=&namespace=]` | forget the saved token and the session for the context. Returns the status |
 | POST | `/api/argocd/auth/initial-admin` | body `{namespace?}`. Opt-in only (the UI asks first): reads the password from `<argo ns>/argocd-initial-admin-secret` with your kube RBAC, `POST /api/v1/session` as `admin`, and keeps the session token in memory for this context. The password is never stored. 404/403 `NoInitialAdmin` when the Secret is missing or unreadable, 401 when the password was changed. A session takes precedence over a saved token until it is cleared or expires |
 | GET | `/api/argocd/diff?name=[&namespace=]` | Argo's `GET /api/v1/applications/{name}/managed-resources?appNamespace=`, converted: `{resources:[{group, kind, namespace?, name, status: Synced/OutOfSync, hook, requiresPruning, target: yaml/null, live: yaml/null}], server, auth}`. Out-of-sync resources come first. It compares `normalizedLiveState` with `predictedLiveState` when Argo predicted one (the diff the Argo UI shows), else `liveState` with `targetState`. Removed noise: `status`, `metadata.managedFields`, `resourceVersion`, `uid`, `generation`, `creationTimestamp`, `selfLink`, and the annotations `kubectl.kubernetes.io/last-applied-configuration` and `deployment.kubernetes.io/revision`. A null `target` means "to be pruned" and a null `live` means "to be created". Secret data arrives masked by Argo |
+
+## Argo Workflows (argo-server)
+
+Most Argo Workflows actions work on the CRs directly (see Mutations). Retry
+and memoized resubmit need argo-server, reached through the API server's
+service proxy (`https:argo-server:2746`, else http). The Service is
+`argo-server` in any namespace, else the Helm chart's
+`app.kubernetes.io/part-of=argo-workflows,app.kubernetes.io/component=server`.
+Auth modes: `server` (no token; argo-server acts as its service account, so
+anyone allowed to proxy to it gets its rights) and `client` (your kube bearer
+token, also from exec plugins or auth providers, sent as argo-server's
+`authorization` cookie because the API server strips `Authorization`). Client
+certificates carry no token, and SSO-only servers are not supported; then
+those two actions are unavailable. Tokens are never returned or logged.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/argowf/status[?refresh=1]` | `{context, found, reachable, server?:{namespace, service, port, scheme, version?}, auth: server/client/"", subject?, available, error?}`. Cached per context for 30s (10s when unavailable). Read-only |
+
+The Health overview reports `workflowFailed` issues: Workflows that failed in
+the last 24h, one per CronWorkflow / WorkflowTemplate (the latest failure,
+with a count); critical unless a later run of the same origin succeeded.
 
 ## CRD group icons
 

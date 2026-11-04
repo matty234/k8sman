@@ -1,0 +1,329 @@
+{
+  "items": [
+    {
+      "apiVersion": "argoproj.io/v1alpha1",
+      "kind": "Workflow",
+      "metadata": {
+        "annotations": {
+          "workflows.argoproj.io/last-seen-version": "110353",
+          "workflows.argoproj.io/pod-name-format": "v2",
+          "workflows.argoproj.io/scheduled-time": "2026-11-03T23:45:00Z"
+        },
+        "creationTimestamp": "2026-11-03T23:45:00Z",
+        "generation": 4,
+        "labels": {
+          "workflows.argoproj.io/completed": "true",
+          "workflows.argoproj.io/cron-workflow": "nightly-report",
+          "workflows.argoproj.io/phase": "Succeeded"
+        },
+        "name": "nightly-report-1793749500",
+        "namespace": "argo-demo",
+        "ownerReferences": [
+          {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "blockOwnerDeletion": true,
+            "controller": true,
+            "kind": "CronWorkflow",
+            "name": "nightly-report",
+            "uid": "7b45d313-984d-4e13-8e85-5687bdfe3766"
+          }
+        ],
+        "resourceVersion": "110536",
+        "uid": "bad65da3-8099-4f3a-9347-38b4c59e9441"
+      },
+      "spec": {
+        "arguments": {},
+        "entrypoint": "report",
+        "templates": [
+          {
+            "container": {
+              "args": [
+                "echo generating report; sleep 3"
+              ],
+              "command": [
+                "sh",
+                "-c"
+              ],
+              "image": "busybox:1.36",
+              "name": "",
+              "resources": {}
+            },
+            "inputs": {},
+            "metadata": {},
+            "name": "report",
+            "outputs": {}
+          }
+        ]
+      },
+      "status": {
+        "artifactGCStatus": {
+          "notSpecified": true
+        },
+        "artifactRepositoryRef": {
+          "artifactRepository": {},
+          "default": true
+        },
+        "conditions": [
+          {
+            "status": "False",
+            "type": "PodRunning"
+          },
+          {
+            "status": "True",
+            "type": "Completed"
+          }
+        ],
+        "estimatedDuration": 89,
+        "finishedAt": "2026-11-03T23:46:27Z",
+        "nodes": {
+          "nightly-report-1793749500": {
+            "displayName": "nightly-report-1793749500",
+            "estimatedDuration": 84,
+            "finishedAt": "2026-11-03T23:46:16Z",
+            "hostNodeName": "k8sman-dev-control-plane",
+            "id": "nightly-report-1793749500",
+            "name": "nightly-report-1793749500",
+            "outputs": {
+              "exitCode": "0"
+            },
+            "phase": "Succeeded",
+            "progress": "1/1",
+            "resourcesDuration": {
+              "cpu": 7,
+              "memory": 91
+            },
+            "startedAt": "2026-11-03T23:45:08Z",
+            "taskResultSynced": true,
+            "templateName": "report",
+            "templateScope": "local/nightly-report-1793749500",
+            "type": "Pod"
+          }
+        },
+        "phase": "Succeeded",
+        "progress": "1/1",
+        "resourcesDuration": {
+          "cpu": 7,
+          "memory": 91
+        },
+        "startedAt": "2026-11-03T23:45:07Z"
+      }
+    },
+    {
+      "apiVersion": "argoproj.io/v1alpha1",
+      "kind": "Workflow",
+      "metadata": {
+        "annotations": {
+          "workflows.argoproj.io/last-seen-version": "113054",
+          "workflows.argoproj.io/pod-name-format": "v2",
+          "workflows.argoproj.io/scheduled-time": "2026-11-04T00:00:00Z"
+        },
+        "creationTimestamp": "2026-11-04T00:00:00Z",
+        "generation": 3,
+        "labels": {
+          "workflows.argoproj.io/completed": "true",
+          "workflows.argoproj.io/cron-workflow": "nightly-report",
+          "workflows.argoproj.io/phase": "Succeeded"
+        },
+        "name": "nightly-report-1793750400",
+        "namespace": "argo-demo",
+        "ownerReferences": [
+          {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "blockOwnerDeletion": true,
+            "controller": true,
+            "kind": "CronWorkflow",
+            "name": "nightly-report",
+            "uid": "7b45d313-984d-4e13-8e85-5687bdfe3766"
+          }
+        ],
+        "resourceVersion": "113105",
+        "uid": "decb3412-f19f-4782-90ad-04302165d33c"
+      },
+      "spec": {
+        "arguments": {},
+        "entrypoint": "report",
+        "templates": [
+          {
+            "container": {
+              "args": [
+                "echo generating report; sleep 3"
+              ],
+              "command": [
+                "sh",
+                "-c"
+              ],
+              "image": "busybox:1.36",
+              "name": "",
+              "resources": {}
+            },
+            "inputs": {},
+            "metadata": {},
+            "name": "report",
+            "outputs": {}
+          }
+        ]
+      },
+      "status": {
+        "artifactGCStatus": {
+          "notSpecified": true
+        },
+        "artifactRepositoryRef": {
+          "artifactRepository": {},
+          "default": true
+        },
+        "conditions": [
+          {
+            "status": "False",
+            "type": "PodRunning"
+          },
+          {
+            "status": "True",
+            "type": "Completed"
+          }
+        ],
+        "estimatedDuration": 80,
+        "finishedAt": "2026-11-04T00:00:10Z",
+        "nodes": {
+          "nightly-report-1793750400": {
+            "displayName": "nightly-report-1793750400",
+            "estimatedDuration": 68,
+            "finishedAt": "2026-11-04T00:00:07Z",
+            "hostNodeName": "k8sman-dev-control-plane",
+            "id": "nightly-report-1793750400",
+            "name": "nightly-report-1793750400",
+            "outputs": {
+              "exitCode": "0"
+            },
+            "phase": "Succeeded",
+            "progress": "1/1",
+            "resourcesDuration": {
+              "cpu": 0,
+              "memory": 8
+            },
+            "startedAt": "2026-11-04T00:00:00Z",
+            "taskResultSynced": true,
+            "templateName": "report",
+            "templateScope": "local/nightly-report-1793750400",
+            "type": "Pod"
+          }
+        },
+        "phase": "Succeeded",
+        "progress": "1/1",
+        "resourcesDuration": {
+          "cpu": 0,
+          "memory": 8
+        },
+        "startedAt": "2026-11-04T00:00:00Z"
+      }
+    },
+    {
+      "apiVersion": "argoproj.io/v1alpha1",
+      "kind": "Workflow",
+      "metadata": {
+        "annotations": {
+          "workflows.argoproj.io/last-seen-version": "114353",
+          "workflows.argoproj.io/pod-name-format": "v2",
+          "workflows.argoproj.io/scheduled-time": "2026-11-04T00:02:56Z"
+        },
+        "creationTimestamp": "2026-11-04T00:02:56Z",
+        "generateName": "nightly-report-",
+        "generation": 6,
+        "labels": {
+          "workflows.argoproj.io/completed": "true",
+          "workflows.argoproj.io/cron-workflow": "nightly-report",
+          "workflows.argoproj.io/phase": "Succeeded"
+        },
+        "name": "nightly-report-nrkp9",
+        "namespace": "argo-demo",
+        "ownerReferences": [
+          {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "blockOwnerDeletion": true,
+            "controller": true,
+            "kind": "CronWorkflow",
+            "name": "nightly-report",
+            "uid": "7b45d313-984d-4e13-8e85-5687bdfe3766"
+          }
+        ],
+        "resourceVersion": "114456",
+        "uid": "d32fd0ca-1be7-4c9a-a4f9-42cda1458354"
+      },
+      "spec": {
+        "arguments": {},
+        "entrypoint": "report",
+        "templates": [
+          {
+            "container": {
+              "args": [
+                "echo generating report; sleep 3"
+              ],
+              "command": [
+                "sh",
+                "-c"
+              ],
+              "image": "busybox:1.36",
+              "name": "",
+              "resources": {}
+            },
+            "inputs": {},
+            "metadata": {},
+            "name": "report",
+            "outputs": {}
+          }
+        ]
+      },
+      "status": {
+        "artifactGCStatus": {
+          "notSpecified": true
+        },
+        "artifactRepositoryRef": {
+          "artifactRepository": {},
+          "default": true
+        },
+        "conditions": [
+          {
+            "status": "False",
+            "type": "PodRunning"
+          },
+          {
+            "status": "True",
+            "type": "Completed"
+          }
+        ],
+        "estimatedDuration": 10,
+        "finishedAt": "2026-11-04T00:03:38Z",
+        "nodes": {
+          "nightly-report-nrkp9": {
+            "displayName": "nightly-report-nrkp9",
+            "estimatedDuration": 7,
+            "finishedAt": "2026-11-04T00:03:22Z",
+            "hostNodeName": "k8sman-dev-control-plane",
+            "id": "nightly-report-nrkp9",
+            "name": "nightly-report-nrkp9",
+            "outputs": {
+              "exitCode": "0"
+            },
+            "phase": "Succeeded",
+            "progress": "1/1",
+            "resourcesDuration": {
+              "cpu": 1,
+              "memory": 24
+            },
+            "startedAt": "2026-11-04T00:02:56Z",
+            "taskResultSynced": true,
+            "templateName": "report",
+            "templateScope": "local/nightly-report-nrkp9",
+            "type": "Pod"
+          }
+        },
+        "phase": "Succeeded",
+        "progress": "1/1",
+        "resourcesDuration": {
+          "cpu": 1,
+          "memory": 24
+        },
+        "startedAt": "2026-11-04T00:02:56Z"
+      }
+    }
+  ]
+}

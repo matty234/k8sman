@@ -142,6 +142,23 @@ func listForOverview(ctx context.Context, c *cluster.Clients, ns string) (overvi
 			return nil
 		})
 	}
+	// Argo Workflows, only when the CRD is served.
+	if rt, err := c.Find(ctx, "argoproj.io", "", "workflows"); err == nil {
+		run("workflows.argoproj.io", func() error {
+			items, err := listCached(ctx, kc, rt.GVR(), ns)
+			if err != nil {
+				return err
+			}
+			wfs := make([]map[string]any, len(items))
+			for i, it := range items {
+				wfs[i] = it.Object
+			}
+			mu.Lock()
+			in.Workflows = wfs
+			mu.Unlock()
+			return nil
+		})
+	}
 	listGatewayAPI(ctx, c, ns, &in, run, &mu)
 	run("alerts", func() error {
 		a, err := prom.ActiveAlerts(ctx, c)

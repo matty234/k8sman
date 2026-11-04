@@ -35,6 +35,8 @@ type ActionRequest struct {
 	DryRun bool `json:"dryRun,omitempty"`
 	// argocd-refresh / argocd-sync options (see argocd.go).
 	argoActionRequest
+	// argowf-* options (see argowf.go).
+	argoWFActionRequest
 }
 
 // ActionResult is returned by every action.
@@ -208,6 +210,10 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		res.Message = "Deleted " + name
 	case "argocd-refresh", "argocd-sync", "argocd-terminate":
 		res.Message, err = runArgoAction(ctx, ri, action, name, req.argoActionRequest, patchOpts)
+	default:
+		if _, ok := argoWFActionTargets[action]; ok {
+			res, err = s.runArgoWFAction(ctx, c, rq, ri, action, name, req, dry)
+		}
 	}
 	if err != nil {
 		writeErr(w, err)
