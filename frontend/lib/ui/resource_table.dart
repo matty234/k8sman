@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../actions/actions.dart' show showActionError;
 import '../actions/bulk.dart';
 import '../api/client.dart';
 import '../api/models.dart';
@@ -204,7 +205,7 @@ class _TableBodyState extends State<_TableBody> {
         identical(h.columnErrors, tc.columnErrors)) {
       return h;
     }
-    return _headerCache = _Header(controller: tc, widths: widths, onResize: _resize, onResizeDone: _resizeDone, onResetWidth: _resetWidth);
+    return _headerCache = _Header(controller: tc, widths: widths, onResize: _resize, onResizeDone: _resizeDone, onResetWidth: _resetWidth, onReorder: _reorder);
   }
 
   /// Dragging a header divider: the column keeps that width (for this kind,
@@ -215,6 +216,30 @@ class _TableBodyState extends State<_TableBody> {
     final prefs = context.read<AppState>().tablePrefs;
     prefs.of(tc.type.gk).widths[tc.columns[col].name] = width.clamp(_minColumnWidth, 2000.0).roundToDouble();
     setState(() {});
+  }
+
+  /// A header was dragged to a new position: save the column order (as the
+  /// kind's column configuration, like the column editor) and reload. If
+  /// the order is back to the defaults, drop the override instead, so the
+  /// kind keeps getting new default columns.
+  Future<void> _reorder(int from, int to) async {
+    final tc = context.read<TableController>();
+    final app = context.read<AppState>();
+    final api = context.read<ApiClient>();
+    final cols = List.of(tc.columns);
+    cols.insert(to, cols.removeAt(from));
+    try {
+      final cfg = await api.getColumns(tc.type.ref);
+      String sig(List<ColumnDef> l) => [for (final c in l) '${c.name}\u0000${c.query}\u0000${c.type}'].join('\u0001');
+      if (sig(cols) == sig(cfg.defaults)) {
+        await api.resetColumns(tc.type.ref);
+      } else {
+        await api.putColumns(tc.type.ref, cols);
+      }
+      app.columnsChanged();
+    } catch (e) {
+      if (mounted) showActionError(context, 'Could not move the column: $e');
+    }
   }
 
   /// A drag ended: save the widths once.
@@ -561,7 +586,7 @@ class _Toolbar extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
+class _Header extends StatefulWidget {
   final TableController controller;
   final List<double> widths;
 
@@ -573,36 +598,121 @@ class _Header extends StatelessWidget {
   final void Function(int col, double width) onResize;
   final void Function(int col) onResetWidth;
   final VoidCallback onResizeDone;
-  _Header({required this.controller, required this.widths, required this.onResize, required this.onResizeDone, required this.onResetWidth})
-    : columns = controller.columns,
-      sortColumn = controller.sortColumn,
-      sortAscending = controller.sortAscending,
-      columnErrors = controller.columnErrors;
+
+  /// A header was dragged from column [from] to position [to].
+  final void Function(int from, int to) onReorder;
+  _Header({
+    required this.controller,
+    required this.widths,
+    required this.onResize,
+    required this.onResizeDone,
+    required this.onResetWidth,
+    required this.onReorder,
+  }) : columns = controller.columns,
+       sortColumn = controller.sortColumn,
+       sortAscending = controller.sortAscending,
+       columnErrors = controller.columnErrors;
+
+  @override
+  State<_Header> createState() => _HeaderState();
+}
+
+class _HeaderState extends State<_Header> {
+  static const _lead = 12.0;
+
+  /// The column being dragged, and how far.
+  int? _from;
+  double _dx = 0;
+
+  TableController get controller => widget.controller;
+  List<double> get widths => widget.widths;
+  int get _n => math.min(controller.columns.length, widths.length);
+
+  double _start(int i) => _lead + widths.take(i).fold<double>(0, (a, b) => a + b);
+
+  /// Where the dragged column would land (index in the reordered list): it
+  /// passes a neighbour once its leading edge (in the direction of travel)
+  /// crosses that neighbour's middle, so wide columns move as easily as
+  /// narrow ones.
+  int _target() {
+    final from = _from!;
+    final probe = _dx >= 0 ? _start(from) + widths[from] + _dx : _start(from) + _dx;
+    var to = 0;
+    for (var j = 0; j < _n; j++) {
+      if (j != from && _start(j) + widths[j] / 2 < probe) to++;
+    }
+    return to;
+  }
+
+  /// The x of the drop marker for [to] (between the remaining columns).
+  double _markerX(int to) {
+    final others = [for (var j = 0; j < _n; j++) if (j != _from) j];
+    return to < others.length ? _start(others[to]) : _start(others.last) + widths[others.last];
+  }
+
+  void _end() {
+    final from = _from;
+    if (from == null) return;
+    final to = _target();
+    setState(() {
+      _from = null;
+      _dx = 0;
+    });
+    if (to != from) widget.onReorder(from, to);
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final style = theme.textTheme.labelMedium?.copyWith(color: theme.hintColor);
+    final from = _from;
     // Divider handles sit over each column's right edge.
-    var edge = 12.0;
-    final edges = [for (final w in widths.take(controller.columns.length)) edge += w];
+    final edges = [for (var i = 0; i < _n; i++) _start(i) + widths[i]];
+    final to = from == null ? null : _target();
     return SizedBox(
       height: 28,
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           Positioned.fill(child: _headerRow(theme, style)),
-          for (final (i, x) in edges.indexed)
+          if (from == null)
+            for (final (i, x) in edges.indexed)
+              Positioned(
+                left: x - _ResizeHandle.width / 2,
+                top: 0,
+                bottom: 0,
+                width: _ResizeHandle.width,
+                child: _ResizeHandle(
+                  key: ValueKey('resize-${controller.columns[i].name}'),
+                  startWidth: () => widths[i],
+                  onResize: (w) => widget.onResize(i, w),
+                  onResizeDone: widget.onResizeDone,
+                  onReset: () => widget.onResetWidth(i),
+                ),
+              ),
+          if (from != null && to != null && to != from)
             Positioned(
-              left: x - _ResizeHandle.width / 2,
+              left: _markerX(to) - 1,
+              top: 3,
+              bottom: 3,
+              width: 2,
+              child: ColoredBox(color: theme.colorScheme.primary),
+            ),
+          if (from != null)
+            Positioned(
+              left: _start(from) + _dx,
               top: 0,
               bottom: 0,
-              width: _ResizeHandle.width,
-              child: _ResizeHandle(
-                key: ValueKey('resize-${controller.columns[i].name}'),
-                startWidth: () => widths[i],
-                onResize: (w) => onResize(i, w),
-                onResizeDone: onResizeDone,
-                onReset: () => onResetWidth(i),
+              width: widths[from],
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(5),
+                    boxShadow: const [BoxShadow(blurRadius: 6, color: Color(0x33000000), offset: Offset(0, 1))],
+                  ),
+                  child: _cell(theme, style, from, hovered: true),
+                ),
               ),
             ),
         ],
@@ -613,43 +723,69 @@ class _Header extends StatelessWidget {
   Widget _headerRow(ThemeData theme, TextStyle? style) {
     return Row(
       children: [
-        const SizedBox(width: 12),
-        for (var i = 0; i < controller.columns.length; i++)
+        const SizedBox(width: _lead),
+        for (var i = 0; i < _n; i++)
           SizedBox(
             width: widths[i],
-            child: Hoverable(
-              cursor: SystemMouseCursors.basic,
-              onTap: () => controller.sortBy(i),
-              builder: (h) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Row(
-                  mainAxisAlignment: const {'number', 'quantity'}.contains(controller.columns[i].type) ? MainAxisAlignment.end : MainAxisAlignment.start,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        controller.columns[i].name,
-                        overflow: TextOverflow.ellipsis,
-                        style: style?.copyWith(
-                          color: h || controller.sortColumn == i ? theme.colorScheme.onSurface : null,
-                          fontWeight: controller.sortColumn == i ? FontWeight.w600 : null,
-                        ),
-                      ),
-                    ),
-                    if (controller.sortColumn == i) ...[
-                      const SizedBox(width: 2),
-                      Icon(controller.sortAscending ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 14, color: theme.hintColor),
-                    ],
-                    if (controller.columnErrors[i] != null)
-                      Tooltip(
-                        message: 'jq error: ${controller.columnErrors[i]}\n${controller.columns[i].query}',
-                        child: Icon(Icons.warning_amber, size: 14, color: theme.colorScheme.error),
-                      ),
-                  ],
+            // Drag a header sideways to move the column; click to sort.
+            child: GestureDetector(
+              key: ValueKey('header-${controller.columns[i].name}'),
+              dragStartBehavior: DragStartBehavior.down,
+              onHorizontalDragStart: (_) => setState(() {
+                _from = i;
+                _dx = 0;
+              }),
+              onHorizontalDragUpdate: (d) => setState(() {
+                final total = _start(_n) - _lead;
+                _dx = (_dx + d.delta.dx).clamp(_lead - _start(i), total - (_start(i) - _lead) - widths[i]);
+              }),
+              onHorizontalDragEnd: (_) => _end(),
+              onHorizontalDragCancel: () => setState(() {
+                _from = null;
+                _dx = 0;
+              }),
+              child: Opacity(
+                opacity: _from == i ? 0.25 : 1,
+                child: Hoverable(
+                  cursor: SystemMouseCursors.basic,
+                  onTap: () => controller.sortBy(i),
+                  builder: (h) => _cell(theme, style, i, hovered: h),
                 ),
               ),
             ),
           ),
       ],
+    );
+  }
+
+  Widget _cell(ThemeData theme, TextStyle? style, int i, {required bool hovered}) {
+    final c = controller.columns[i];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Row(
+        mainAxisAlignment: const {'number', 'quantity'}.contains(c.type) ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          Flexible(
+            child: Text(
+              c.name,
+              overflow: TextOverflow.ellipsis,
+              style: style?.copyWith(
+                color: hovered || controller.sortColumn == i ? theme.colorScheme.onSurface : null,
+                fontWeight: controller.sortColumn == i ? FontWeight.w600 : null,
+              ),
+            ),
+          ),
+          if (controller.sortColumn == i) ...[
+            const SizedBox(width: 2),
+            Icon(controller.sortAscending ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 14, color: theme.hintColor),
+          ],
+          if (controller.columnErrors[i] != null)
+            Tooltip(
+              message: 'jq error: ${controller.columnErrors[i]}\n${c.query}',
+              child: Icon(Icons.warning_amber, size: 14, color: theme.colorScheme.error),
+            ),
+        ],
+      ),
     );
   }
 }

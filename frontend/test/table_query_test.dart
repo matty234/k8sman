@@ -189,4 +189,27 @@ void main() {
     expect(api.tablePrefsPuts.last.$1, deployType.gk);
     expect(api.tablePrefsPuts.last.$2, {'sortColumn': 'Name', 'widths': {'Name': 200.0}, 'filter': 'namespace=demo'});
   });
+
+  testWidgets('drag a header sideways to move the column; back to the default order resets', (tester) async {
+    final api = TableFakeApi()
+      ..onWatch = (() => [WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [fakeRow('api'), fakeRow('web')]))]);
+    final app = await pumpTable(tester, api, deployType, size: const Size(1000, 600));
+    final version = app.columnsVersion;
+
+    await tester.drag(find.byKey(const ValueKey('header-Name')), const Offset(600, 0));
+    await tester.pumpAndSettle();
+    expect(api.columnPuts, [['Namespace', 'Name']]);
+    expect(app.columnsVersion, version + 1, reason: 'the table reloads with the new order');
+
+    await tester.drag(find.byKey(const ValueKey('header-Name')), const Offset(20, 0));
+    await tester.pumpAndSettle();
+    expect(api.columnPuts, hasLength(1), reason: 'a nudge that lands in place saves nothing');
+
+    // A move that restores the kind's defaults drops the saved order instead.
+    api.columnDefaults = [testColumns[1], testColumns[0]];
+    await tester.drag(find.byKey(const ValueKey('header-Name')), const Offset(600, 0));
+    await tester.pumpAndSettle();
+    expect(api.columnResets, 1);
+    expect(api.columnPuts, hasLength(1));
+  });
 }

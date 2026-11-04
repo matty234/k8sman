@@ -43,6 +43,22 @@ class TableFakeApi extends ApiClient {
 
   final List<String> actions = [];
 
+  /// Column orders saved (PUT /api/columns) and resets (DELETE).
+  final List<List<String>> columnPuts = [];
+  int columnResets = 0;
+
+  /// The kind's default columns as getColumns reports them.
+  List<ColumnDef> columnDefaults = testColumns;
+
+  @override
+  Future<ColumnsConfig> getColumns(ResourceRef r) async => ColumnsConfig(columns: testColumns, defaults: columnDefaults, isDefault: false);
+
+  @override
+  Future<void> putColumns(ResourceRef r, List<ColumnDef> cols) async => columnPuts.add([for (final c in cols) c.name]);
+
+  @override
+  Future<void> resetColumns(ResourceRef r) async => columnResets++;
+
   /// Saved table preferences (GET/PUT /api/settings/tables).
   Map<String, Json> tablePrefs = {};
   final List<(String, Json?)> tablePrefsPuts = [];

@@ -8,6 +8,8 @@ import '../gpu/gpu_view.dart';
 import '../state/app_state.dart';
 import '../util/k8s.dart' show Severity;
 import 'alerts/alerts_nav_badge.dart';
+import 'keys.dart' show shortcutLabel;
+import 'palette/command_palette.dart';
 import 'sidebar_editor.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
@@ -176,8 +178,6 @@ final Map<String, bool> _navExplicit = {};
 bool _navMoreOpen = false;
 
 class _ResourceNavState extends State<ResourceNav> {
-  String _query = '';
-
   /// An explicit open/close always wins. Otherwise the default applies,
   /// except that a section holding the current selection auto-opens.
   bool _isCollapsed(String group, {bool holdsSelection = false}) {
@@ -191,15 +191,7 @@ class _ResourceNavState extends State<ResourceNav> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final theme = Theme.of(context);
     final groups = _group(app.types);
-    final q = _query.toLowerCase();
-    bool matches(ResourceType t) =>
-        q.isEmpty ||
-        t.kind.toLowerCase().contains(q) ||
-        t.resource.contains(q) ||
-        t.group.contains(q) ||
-        t.shortNames.any((s) => s == q);
 
     // Top section: the user's layout (pages and pins); hidden pages fold
     // under "More", which opens by itself while one of them is active.
@@ -257,17 +249,8 @@ class _ResourceNavState extends State<ResourceNav> {
               _MoreToggle(open: _navMoreOpen, onTap: () => setState(() => _navMoreOpen = !_navMoreOpen)),
           ]),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
-          child: SizedBox(
-            height: 26,
-            child: TextField(
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Find kind'),
-              style: theme.textTheme.bodyMedium,
-              onChanged: (v) => setState(() => _query = v.trim()),
-            ),
-          ),
-        ),
+        // Finding a kind (or anything else) is the command palette's job.
+        const Padding(padding: EdgeInsets.fromLTRB(10, 10, 10, 2), child: PaletteLauncher()),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.only(bottom: 12),
@@ -281,17 +264,16 @@ class _ResourceNavState extends State<ResourceNav> {
                 // A pin showing the selection takes the highlight instead.
                 final selectedHere = selectedPin == null && app.view == MainView.resources && g.value.contains(app.selectedType);
                 final customSelected = selectedPin == null && app.view == MainView.resources && app.selectedType != null && isCustomSection(groups.entries.firstWhere((e) => e.value.contains(app.selectedType), orElse: () => const MapEntry('', [])).key);
-                final customCollapsed = q.isEmpty && _isCollapsed('Custom Resources', holdsSelection: customSelected);
-                final collapsed = q.isEmpty && _isCollapsed(g.key, holdsSelection: selectedHere);
-                if (!g.value.any(matches)) return const <Widget>[];
+                final customCollapsed = _isCollapsed('Custom Resources', holdsSelection: customSelected);
+                final collapsed = _isCollapsed(g.key, holdsSelection: selectedHere);
                 return [
                   // One umbrella header for all CRD groups, collapsed by default.
-                  if (firstCustom && q.isEmpty)
+                  if (firstCustom)
                     _GroupHeader(title: 'Custom Resources', collapsed: customCollapsed, onTap: () => _toggle('Custom Resources', currentlyCollapsed: customCollapsed)),
-                  if (!custom || !customCollapsed || q.isNotEmpty) ...[
+                  if (!custom || !customCollapsed) ...[
                     _GroupHeader(title: g.key, group: custom ? g.key : null, nested: custom, collapsed: collapsed, onTap: () => _toggle(g.key, currentlyCollapsed: collapsed)),
                     if (!collapsed)
-                      for (final t in g.value.where(matches))
+                      for (final t in g.value)
                         _NavItem(type: t, nested: custom, selected: selectedPin == null && app.view == MainView.resources && app.selectedType == t),
                   ],
                 ];
@@ -663,6 +645,46 @@ class _ContextPicker extends StatelessWidget {
         // Which kubeconfig file the contexts above come from.
         const KubeconfigPicker(),
       ]),
+    );
+  }
+}
+
+/// Looks like a search field; opens the command palette and shows its
+/// shortcut, so the palette is discoverable from every page.
+class PaletteLauncher extends StatelessWidget {
+  const PaletteLauncher({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    final hint = theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor);
+    return Tooltip(
+      message: 'Search pages, kinds, objects, namespaces and contexts',
+      waitDuration: const Duration(milliseconds: 600),
+      child: Hoverable(
+        key: const ValueKey('palette-launcher'),
+        cursor: SystemMouseCursors.text,
+        onTap: () => showCommandPalette(context),
+        builder: (h) => Container(
+          height: 26,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: h ? colors.hover : theme.inputDecorationTheme.fillColor ?? colors.hover,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(children: [
+            Icon(Icons.search, size: 15, color: theme.hintColor),
+            const SizedBox(width: 6),
+            Expanded(child: Text('Search or jump to…', style: hint, overflow: TextOverflow.ellipsis, maxLines: 1)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(border: Border.all(color: colors.separator), borderRadius: BorderRadius.circular(4)),
+              child: Text(shortcutLabel('K'), style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }

@@ -58,6 +58,14 @@ void main() {
     await _pump(tester);
     expect(app.selectedType?.kind, 'Pod');
 
+    // The sidebar's search button opens it too (and shows the shortcut).
+    expect(find.text('⌘K'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('palette-launcher')));
+    await _pump(tester);
+    expect(_search, findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await _pump(tester);
+
     // Esc and a second ⌘K both close it; ⌘P is an alias.
     await _cmd(tester, LogicalKeyboardKey.keyK);
     expect(_search, findsOneWidget);
