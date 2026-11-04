@@ -83,6 +83,21 @@ jobs:
           test -f build/windows/x64/runner/Release/k8sman.exe
           test -f build/windows/x64/runner/Release/k8sman-server.exe
 
+      # Flutter apps link the Visual C++ runtime (MSVCP140.dll etc.), which a
+      # clean Windows doesn't have. Ship it app-local, next to k8sman.exe
+      # (Microsoft permits redistributing these files this way), so neither
+      # the zip nor the per-user installer needs vc_redist or admin rights.
+      - name: Bundle the Visual C++ runtime
+        shell: pwsh
+        run: |
+          $dest = "frontend/build/windows/x64/runner/Release"
+          foreach ($dll in @("msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
+            $src = Join-Path $env:WINDIR "System32\$dll"
+            if (-not (Test-Path $src)) { Write-Error "missing $src"; exit 1 }
+            Copy-Item $src $dest
+          }
+          Get-ChildItem $dest -Filter *.dll | Select-Object Name, Length
+
       - name: Portable zip
         shell: pwsh
         env:
