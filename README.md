@@ -2,16 +2,16 @@
 
 # k8sman
 
-**A fast, native Kubernetes IDE for macOS and Windows.**
+**A fast, native Kubernetes IDE for macOS, Windows and Linux.**
 
 Live tables you shape with jq, an inspector that explains *why* things are broken,
 and logs, terminals, port-forwards, Argo CD, Helm and security in one window.
 
 [![Latest release](https://img.shields.io/github/v/release/matty234/k8sman?label=release)](https://github.com/matty234/k8sman/releases/latest)
-[![Platform: macOS 12+ | Windows 10+](https://img.shields.io/badge/platform-macOS%2012%2B%20%7C%20Windows%2010%2B-lightgrey)](#install)
+[![Platform: macOS 12+ | Windows 10+ | Linux x64](https://img.shields.io/badge/platform-macOS%2012%2B%20%7C%20Windows%2010%2B%20%7C%20Linux%20x64-lightgrey)](#install)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-[**Download for macOS or Windows**](https://github.com/matty234/k8sman/releases/latest) · [Features](#feature-tour) · [All features](#all-features) · [Build from source](#build-from-source)
+[**Download for macOS, Windows or Linux**](https://github.com/matty234/k8sman/releases/latest) · [Features](#feature-tour) · [All features](#all-features) · [Build from source](#build-from-source)
 
 </div>
 
@@ -32,7 +32,7 @@ and logs, terminals, port-forwards, Argo CD, Helm and security in one window.
 - **Security insights.** See network exposure, risky RBAC, Pod Security
   failures, best practices and image CVEs ranked across the cluster.
 
-It's a real desktop app for macOS and Windows: a single download with the
+It's a real desktop app for macOS, Windows and Linux: a single download with the
 backend embedded, nothing to run in your cluster, and nothing that leaves your
 machine.
 
@@ -382,6 +382,24 @@ k8sman reads `%USERPROFILE%\.kube\config` (or `$KUBECONFIG`) and keeps its
 own settings in `%USERPROFILE%\.config\k8sman`. Exec credential plugins
 (`kubelogin`, `gke-gcloud-auth-plugin`, `aws`, …) must be on your `PATH`.
 
+### Linux
+
+x64, glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later),
+with GTK 3. From
+[**Releases**](https://github.com/matty234/k8sman/releases/latest), download
+either:
+
+- `k8sman_<version>_amd64.deb` for Debian and Ubuntu:
+  `sudo apt install ./k8sman_<version>_amd64.deb`. It installs to
+  `/opt/k8sman` with a `k8sman` command and an app-menu entry, or
+- `k8sman-<version>-linux-x64.tar.gz` for anything else: unpack it anywhere
+  and run `./k8sman` (keep `k8sman-server` next to it). `./install.sh` adds
+  an app-menu launcher and `~/.local/bin/k8sman` for your user;
+  `./install.sh --uninstall` removes them.
+
+k8sman reads `~/.kube/config` (or `$KUBECONFIG`) and keeps its settings in
+`~/.config/k8sman`. Exec credential plugins must be on your `PATH`.
+
 ### Updates
 
 k8sman updates itself with [Sparkle](https://sparkle-project.org).
@@ -395,7 +413,7 @@ k8sman updates itself with [Sparkle](https://sparkle-project.org).
 - Port-forwards that were running are restarted after the relaunch.
 - Development builds (`flutter run`) never update.
 
-On Windows there is no self-update yet: k8sman checks GitHub for a newer
+On Windows and Linux there is no self-update yet: k8sman checks GitHub for a newer
 release at launch and every 6 hours and shows a banner with a **Download…** button that opens
 the release page.
 
@@ -462,7 +480,7 @@ exactly as `kubectl` does.
 | ⌘↩ | Run the dry run (Helm upgrade) or apply (add-on install) |
 | ⌘+ / ⌘− / ⌘0, ⌘K | Terminal: font size, clear |
 
-On Windows, use Ctrl in place of ⌘. In a terminal tab, Ctrl keys go to the
+On Windows and Linux, use Ctrl in place of ⌘. In a terminal tab, Ctrl keys go to the
 shell: copy with Ctrl+Shift+C and paste with Ctrl+V.
 
 ## Build from source
@@ -485,6 +503,12 @@ Release builds for Windows come from
 [`.github/workflows/windows.yml`](.github/workflows/windows.yml) (installer
 script: [`packaging/windows/k8sman.iss`](packaging/windows/k8sman.iss)).
 
+On Linux you need Flutter's Linux toolchain (`clang cmake ninja-build
+pkg-config libgtk-3-dev`) and Go. `cd frontend && flutter run -d linux` builds
+the app; its CMake build compiles `k8sman-server` next to `k8sman`. Release
+builds come from [`.github/workflows/linux.yml`](.github/workflows/linux.yml)
+(packaging: [`packaging/linux/package.sh`](packaging/linux/package.sh)).
+
 More documentation:
 
 - [API.md](API.md): every backend endpoint.
@@ -498,10 +522,10 @@ More documentation:
 
 ## Architecture
 
-The app is a Flutter desktop UI (macOS and Windows) with an embedded Go
+The app is a Flutter desktop UI (macOS, Windows and Linux) with an embedded Go
 backend (client-go). The app starts the backend on `127.0.0.1`, supervises it
 (`BackendSupervisor.swift` on macOS, `lib/app/backend_supervisor.dart` on
-Windows), and talks to it over HTTP and
+Windows and Linux), and talks to it over HTTP and
 WebSockets: watches, logs, exec and port-forwards. The backend holds the
 kubeconfig and does the cluster work. Argo CD, Prometheus and Alertmanager are
 reached in-cluster through the Kubernetes API's service proxy.
