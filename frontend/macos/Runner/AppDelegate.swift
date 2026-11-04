@@ -13,7 +13,9 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    super.applicationDidFinishLaunching(notification)
+    // No super call: FlutterAppDelegate doesn't implement this optional
+    // method, so `super` raises "unrecognized selector", which AppKit
+    // swallows, silently skipping everything after it.
     // "Check for Updates…" menu item, and About → the Flutter About panel.
     UpdateController.shared.installMenuItems()
   }
@@ -26,7 +28,7 @@ class AppDelegate: FlutterAppDelegate {
     // SIGTERM lets the backend stop its port-forwards cleanly. This also runs
     // before a Sparkle update replaces the bundle (it quits the app first).
     BackendSupervisor.shared.stop()
-    super.applicationWillTerminate(notification)
+    // No super call (see applicationDidFinishLaunching).
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
