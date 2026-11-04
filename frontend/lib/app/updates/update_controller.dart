@@ -85,19 +85,25 @@ class UpdaterInfo {
   String get displayVersion => build.isEmpty || build == version ? version : '$version ($build)';
 }
 
-/// When background checks run: at most once per [interval] (wall clock, so
-/// time asleep counts), first [startupDelay] after launch.
+/// When background checks run (wall clock, so time asleep counts): every
+/// [interval], plus [startupDelay] after launch when the last check is older
+/// than [launchInterval], so a fresh release reaches users within hours.
 class UpdateSchedule {
   final Duration interval;
+  final Duration launchInterval;
   final Duration startupDelay;
-  const UpdateSchedule({this.interval = const Duration(days: 1), this.startupDelay = const Duration(seconds: 20)});
+  const UpdateSchedule({
+    this.interval = const Duration(hours: 6),
+    this.launchInterval = const Duration(hours: 3),
+    this.startupDelay = const Duration(seconds: 20),
+  });
 
-  bool isDue({required DateTime now, DateTime? lastCheck}) =>
-      lastCheck == null || lastCheck.isAfter(now) || now.difference(lastCheck) >= interval;
+  bool isDue({required DateTime now, DateTime? lastCheck, bool atLaunch = false}) =>
+      lastCheck == null || lastCheck.isAfter(now) || now.difference(lastCheck) >= (atLaunch ? launchInterval : interval);
 
-  /// Delay until the next check from [now].
+  /// Delay from launch until the first check.
   Duration nextDelay({required DateTime now, DateTime? lastCheck}) {
-    if (isDue(now: now, lastCheck: lastCheck)) return startupDelay;
+    if (isDue(now: now, lastCheck: lastCheck, atLaunch: true)) return startupDelay;
     final left = interval - now.difference(lastCheck!);
     return left < startupDelay ? startupDelay : left;
   }
@@ -112,11 +118,11 @@ String? updatesDisabledReason({required bool releaseMode, required UpdaterInfo i
 }
 
 /// Dart side of in-app updates. Sparkle (macos/Runner/UpdateController.swift)
-/// checks, verifies, installs and relaunches; this schedules the daily
+/// checks, verifies, installs and relaunches; this schedules the periodic
 /// background check, keeps the user's setting, and drives the banner and
 /// About panel.
 ///
-/// With [github] (Windows) there is no Sparkle: the daily check asks GitHub
+/// With [github] (Windows) there is no Sparkle: the periodic check asks GitHub
 /// for the latest release and "install" opens its download page.
 class UpdateController extends ChangeNotifier {
   static const channel = MethodChannel('k8sman/updates');
@@ -197,7 +203,7 @@ class UpdateController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Turn the daily background check on or off (persisted natively in the
+  /// Turn the background checks on or off (persisted natively in the
   /// app's user defaults).
   Future<void> setAutomaticChecks(bool on) async {
     try {
@@ -262,9 +268,9 @@ class UpdateController extends ChangeNotifier {
   }
 
   /// Runs a background check if one is due. Returns whether it asked.
-  Future<bool> checkIfDue() async {
+  Future<bool> checkIfDue({bool atLaunch = false}) async {
     if (!enabled || !automaticChecks || checking) return false;
-    if (!schedule.isDue(now: _now(), lastCheck: info.lastCheck)) return false;
+    if (!schedule.isDue(now: _now(), lastCheck: info.lastCheck, atLaunch: atLaunch)) return false;
     if (github != null) return _checkGitHub();
     checking = true;
     try {
@@ -295,7 +301,7 @@ class UpdateController extends ChangeNotifier {
     _tick?.cancel();
     _startup = _tick = null;
     if (!enabled || !automaticChecks) return;
-    _startup = Timer(schedule.nextDelay(now: _now(), lastCheck: info.lastCheck), checkIfDue);
+    _startup = Timer(schedule.nextDelay(now: _now(), lastCheck: info.lastCheck), () => checkIfDue(atLaunch: true));
     // Re-evaluated hourly against the wall clock, so a Mac that slept
     // through the due time checks soon after waking.
     _tick = Timer.periodic(const Duration(hours: 1), (_) => checkIfDue());

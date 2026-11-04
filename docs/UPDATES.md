@@ -75,9 +75,9 @@ Why not the alternatives:
   - Sparkle's own scheduler is off (`SUEnableAutomaticChecks` = NO), so it
     never shows its "check automatically?" prompt.
 - **Dart side** (`frontend/lib/app/updates/`):
-  - `UpdateController` runs the background check: about 20 s after launch
-    when one is due, then re-evaluated hourly against the wall clock, at most
-    once a day.
+  - `UpdateController` runs the background check about 20 s after launch
+    when the last check is over 3 hours old, then every 6 hours (re-evaluated
+    hourly against the wall clock, so a Mac that slept checks soon after waking).
   - **About k8sman** shows the version, the *Check for updates automatically*
     switch (stored in the app's user defaults, `UpdatesAutomaticChecks`), the
     last check time, and **Check Now**.
@@ -157,7 +157,7 @@ user. **Never commit it.** Nothing in this repo contains a real key.
    - prints the Homebrew cask values
 
    Windows builds don't use Sparkle: they check `releases/latest` on the
-   GitHub API once a day and link to the release page. Their version comes
+   GitHub API on the same schedule and link to the release page. Their version comes
    from `--dart-define=K8SMAN_VERSION`, so local Windows builds never check.
    To try the Windows build without tagging, run the `windows` workflow by
    hand (`gh workflow run windows.yml --ref <branch>`).

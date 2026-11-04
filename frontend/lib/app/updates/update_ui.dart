@@ -155,7 +155,7 @@ class AboutPanel extends StatelessWidget {
           if (reason != null)
             Text('Updates are off: $reason.', style: faint, textAlign: TextAlign.center)
           else ...[
-            // Without Sparkle (Windows) the daily check is always on.
+            // Without Sparkle (Windows) the periodic check is always on.
             if (!u.manualInstall)
               Row(children: [
                 Expanded(child: Text('Check for updates automatically', style: theme.textTheme.bodyMedium)),

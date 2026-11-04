@@ -130,20 +130,26 @@ void main() {
   });
 
   group('schedule', () {
-    const s = UpdateSchedule(interval: Duration(days: 1), startupDelay: Duration(seconds: 20));
+    const s = UpdateSchedule(); // every 6 h; at launch if older than 3 h
     final now = DateTime(2026, 11, 3, 12);
+    DateTime ago(int h, [int m = 0]) => now.subtract(Duration(hours: h, minutes: m));
 
-    test('due when never checked, after a day, or when the clock went backwards', () {
+    test('due when never checked, after the interval, or when the clock went backwards', () {
       expect(s.isDue(now: now), isTrue);
-      expect(s.isDue(now: now, lastCheck: now.subtract(const Duration(hours: 23))), isFalse);
-      expect(s.isDue(now: now, lastCheck: now.subtract(const Duration(hours: 24))), isTrue);
+      expect(s.isDue(now: now, lastCheck: ago(5)), isFalse);
+      expect(s.isDue(now: now, lastCheck: ago(6)), isTrue);
       expect(s.isDue(now: now, lastCheck: now.add(const Duration(days: 3))), isTrue);
     });
 
-    test('next delay', () {
+    test('a launch checks sooner', () {
+      expect(s.isDue(now: now, lastCheck: ago(2), atLaunch: true), isFalse);
+      expect(s.isDue(now: now, lastCheck: ago(3), atLaunch: true), isTrue);
+    });
+
+    test('next delay from launch', () {
       expect(s.nextDelay(now: now), const Duration(seconds: 20));
-      expect(s.nextDelay(now: now, lastCheck: now.subtract(const Duration(hours: 20))), const Duration(hours: 4));
-      expect(s.nextDelay(now: now, lastCheck: now.subtract(const Duration(hours: 23, minutes: 59, seconds: 50))), const Duration(seconds: 20));
+      expect(s.nextDelay(now: now, lastCheck: ago(4)), const Duration(seconds: 20));
+      expect(s.nextDelay(now: now, lastCheck: ago(2)), const Duration(hours: 4));
     });
   });
 

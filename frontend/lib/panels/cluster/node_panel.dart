@@ -27,11 +27,13 @@ class NodePanel extends ResourcePanel {
     final status = ctx.status;
     final labels = asMap(ctx.metadata['labels']);
     return [
+      // Metrics history first, as on pods (hidden without Prometheus).
+      nodeHistory(ctx),
+      // Live network from the kubelet when there is no Prometheus.
+      liveNetworkSection(ctx),
       DetailSection(title: 'Node status', icon: Icons.dns_outlined, child: _StatusBlock(ctx)),
       _NodePods(key: ValueKey(ctx.uid), api: ctx.api, nodeName: ctx.name, allocatable: asMap(status['allocatable'])),
-      nodeHistory(ctx),
       gpuNodeSection(ctx),
-      liveNetworkSection(ctx),
       DetailSection(
         title: 'Conditions',
         icon: Icons.fact_check_outlined,

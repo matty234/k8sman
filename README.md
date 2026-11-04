@@ -386,7 +386,7 @@ own settings in `%USERPROFILE%\.config\k8sman`. Exec credential plugins
 
 k8sman updates itself with [Sparkle](https://sparkle-project.org).
 
-- It checks for a new release once a day. You can turn this off in
+- It checks for a new release at launch and every 6 hours. You can turn this off in
   **k8sman → About k8sman**.
 - When there's an update, a small banner offers **Install & Relaunch…**. You
   can also choose **k8sman → Check for Updates…** at any time.
@@ -396,7 +396,7 @@ k8sman updates itself with [Sparkle](https://sparkle-project.org).
 - Development builds (`flutter run`) never update.
 
 On Windows there is no self-update yet: k8sman checks GitHub for a newer
-release once a day and shows a banner with a **Download…** button that opens
+release at launch and every 6 hours and shows a banner with a **Download…** button that opens
 the release page.
 
 See [docs/UPDATES.md](docs/UPDATES.md) for how updates and releases work.
@@ -422,7 +422,7 @@ exactly as `kubectl` does.
   origins.
 - **No telemetry.** k8sman has no analytics, crash reporting or usage
   tracking. The only outbound requests besides your clusters are:
-  - the daily update check (which you can turn off);
+  - the periodic update check (which you can turn off);
   - CRD icon favicons, only for local clusters by default;
   - chart repositories when you install an add-on;
   - the Argo CD API when you connect it;
