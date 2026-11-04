@@ -109,6 +109,12 @@ class ClusterErrorView extends StatelessWidget {
               const _Tip('If you started it yourself (make backend), check it is still running.'),
           ],
         ),
+      ClusterErrorKind.cancelled => (
+          Icons.cancel_outlined,
+          ctx != null ? 'Stopped connecting to $ctx' : 'Stopped connecting',
+          'Choose another context or kubeconfig, or try this one again.',
+          const <Widget>[],
+        ),
       ClusterErrorKind.other => (
           Icons.error_outline,
           resource == null ? 'Cannot connect to the cluster' : "Couldn't load $res",
@@ -126,6 +132,13 @@ class ClusterErrorView extends StatelessWidget {
         FilledButton(onPressed: () => backend.retry(), child: const Text('Restart backend'))
       else
         FilledButton(key: const ValueKey('cluster-error-retry'), autofocus: true, onPressed: onRetry, child: const Text('Retry')),
+      if (resource == null && app.previousContext != null)
+        OutlinedButton.icon(
+          key: const ValueKey('cluster-error-back'),
+          onPressed: app.backToPrevious,
+          icon: const Icon(Icons.undo, size: 15),
+          label: Text('Back to ${app.previousContext}'),
+        ),
       if (e.kind == ClusterErrorKind.notFound && onRediscover != null)
         OutlinedButton(
           onPressed: () async {

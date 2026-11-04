@@ -82,6 +82,16 @@ class ApiClient {
     );
   }
 
+  /// One connection step for the current context: `reach` (does anything
+  /// answer at the server address? fails in ~10 s) or `auth` (do the
+  /// credentials work? runs the exec plugin, which may wait for a browser
+  /// login). Completing [abortTrigger] abandons the request, which also
+  /// cancels the probe in the backend.
+  Future<void> probe(String step, {Future<void>? abortTrigger}) async {
+    final req = http.AbortableRequest('GET', _uri('probe', {'step': step}), abortTrigger: abortTrigger);
+    _decode(await http.Response.fromStream(await _http.send(req)));
+  }
+
   Future<void> switchContext(String name) => _send('POST', 'contexts/current', const {}, {'name': name});
 
   /// The active kubeconfig file and candidates to switch to.

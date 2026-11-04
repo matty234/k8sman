@@ -212,9 +212,21 @@ class ContextInfo {
   final String cluster;
   final String user;
   final String? namespace;
-  const ContextInfo({required this.name, required this.cluster, required this.user, this.namespace});
-  factory ContextInfo.fromJson(Json j) =>
-      ContextInfo(name: j['name'] ?? '', cluster: j['cluster'] ?? '', user: j['user'] ?? '', namespace: j['namespace']);
+
+  /// API server URL (newer backends).
+  final String? server;
+
+  /// Exec credential plugin or auth provider, e.g. "kubelogin", "aws"; null
+  /// for static credentials. Such plugins may wait for a browser login.
+  final String? auth;
+  const ContextInfo({required this.name, required this.cluster, required this.user, this.namespace, this.server, this.auth});
+  factory ContextInfo.fromJson(Json j) => ContextInfo(
+      name: j['name'] ?? '',
+      cluster: j['cluster'] ?? '',
+      user: j['user'] ?? '',
+      namespace: j['namespace'],
+      server: j['server'],
+      auth: j['auth']);
 }
 
 class ColumnsConfig {

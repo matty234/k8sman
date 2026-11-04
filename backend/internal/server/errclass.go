@@ -11,6 +11,8 @@ import (
 	"syscall"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 // Error classes reported to the UI in the `reason` of error responses and
@@ -51,6 +53,8 @@ func classifyError(err error) (reason string, code int) {
 	switch {
 	case errors.Is(err, errAnonymous):
 		return ReasonUnauthorized, http.StatusUnauthorized
+	case errors.Is(err, cluster.ErrUnreachable):
+		return ReasonUnreachable, http.StatusBadGateway
 	case errors.Is(err, errNotServed):
 		return ReasonNotFound, http.StatusNotFound
 	case apierrors.IsUnauthorized(err):

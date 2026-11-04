@@ -24,6 +24,9 @@ enum ClusterErrorKind {
   /// The local k8sman backend itself isn't reachable.
   backendDown,
 
+  /// The user cancelled connecting (no previous context to go back to).
+  cancelled,
+
   /// Anything else.
   other,
 }
@@ -118,7 +121,8 @@ class ClusterError {
   /// `https://host:port` from messages like `Get "https://10.0.0.1:6443/api…"`.
   static String? _hostIn(String message) {
     final m = RegExp(r'https?://[^/\s"]+').firstMatch(message);
-    return m?.group(0);
+    // "… at https://10.0.0.1:6443: dial tcp …": drop trailing punctuation.
+    return m?.group(0)?.replaceFirst(RegExp(r'[:.,;)]+$'), '');
   }
 
   /// The plugin's own output from exec credential failures, if any.
