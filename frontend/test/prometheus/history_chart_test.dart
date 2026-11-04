@@ -82,6 +82,16 @@ void main() {
     expect(cpu, contains(' or sum (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace="demo",pod=~"web-[a-z0-9]+-[a-z0-9]+"'));
   });
 
+  testWidgets('hostNetwork pod: no network chart, a note pointing at its node', (tester) async {
+    final pod = devFixture('pod-web.json');
+    (pod['spec'] as Map)['hostNetwork'] = true;
+    await pumpPanel(tester, pod, size: const Size(560, 2400));
+    expect(find.byType(AreaChart), findsNWidgets(2));
+    expect(prom.queries.where((q) => q.contains('container_network')), isEmpty);
+    expect(find.textContaining('Uses the host network'), findsOneWidget);
+    expect(find.text((pod['spec'] as Map)['nodeName'] as String), findsWidgets);
+  });
+
   testWidgets('hidden when no Prometheus is reachable', (tester) async {
     prom = FixturePromApi(missing: true);
     await pumpPanel(tester, devFixture('pod-web.json'));

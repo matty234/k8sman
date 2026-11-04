@@ -14,7 +14,9 @@
         {"name": "lo", "rxBytes": 999999, "rxErrors": 0, "txBytes": 999999, "txErrors": 0},
         {"name": "veth04c41ea3", "rxBytes": 5000, "rxErrors": 0, "txBytes": 7000, "txErrors": 0},
         {"name": "eth0", "rxBytes": 34725685779, "rxErrors": 0, "txBytes": 917021855, "txErrors": 0},
-        {"name": "eth1", "rxBytes": 1000, "rxErrors": 0, "txBytes": 2000, "txErrors": 0}
+        {"name": "eth1", "rxBytes": 1000, "rxErrors": 0, "txBytes": 2000, "txErrors": 0},
+        {"name": "eth0.20", "rxBytes": 300000, "rxErrors": 0, "txBytes": 300000, "txErrors": 0},
+        {"name": "bond0", "rxBytes": 0, "rxErrors": 0, "txBytes": 0, "txErrors": 0}
       ]
     }
   },

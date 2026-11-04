@@ -56,7 +56,8 @@ func TestParseSummary(t *testing.T) {
 	if v.Namespace != "demo" || v.Claim != "data-redis-0" || v.Pod != "redis-0" || v.Node != "node1" || *v.UsedBytes != 966367642 || *v.CapacityBytes != 1073741824 || *v.InodesUsed != 536 {
 		t.Fatalf("volume: %+v", v)
 	}
-	// Node: eth0 + eth1; lo, veth and tunnels excluded.
+	// Node: eth0 + eth1; lo, veth, tunnels and the VLAN eth0.20 excluded
+	// (bond0 is idle, so the NICs count).
 	if n := p.nodeNet; n == nil || n.rx != 34725685779+1000 || n.tx != 917021855+2000 {
 		t.Fatalf("node net: %+v", n)
 	}

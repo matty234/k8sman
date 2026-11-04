@@ -13,6 +13,7 @@ import '../api/client.dart';
 import '../panels/panel.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
+import '../util/k8s.dart';
 import 'prom_api.dart';
 
 // ---------------------------------------------------------------------------
@@ -38,13 +39,32 @@ String _rxTx(String Function(String metric) rate, String prefix) =>
 String _podNet(String sel, String w, String metric, {String by = ''}) =>
     'max by (${by}interface) (rate($metric{$sel,interface!="lo"}[$w]))';
 
-/// Virtual devices excluded from node throughput: loopback, pod veths, CNI
-/// bridges and tunnels (their traffic is already counted on the NIC).
-const nodeVirtualDevices = 'lo|veth.*|cali.*|flannel.*|cni.*|docker.*|br-.*|virbr.*|vxlan.*|tunl.*|kube-ipvs.*|cilium.*|lxc.*|genev.*|nodelocaldns.*';
+/// Devices excluded from node throughput: loopback, pod veths, CNI bridges,
+/// tunnels and VLAN sub-interfaces (`eth0.10`); their traffic is already
+/// counted on the NIC. Keep in step with `virtualIface` in
+/// backend/internal/metrics/summary.go.
+const nodeVirtualDevices =
+    'lo|veth.*|cali.*|flannel.*|cni.*|docker.*|br-.*|virbr.*|vxlan.*|tunl.*|kube-ipvs.*|cilium.*|lxc.*|genev.*|nodelocaldns.*|'
+    'dummy.*|sit.*|teql.*|ip6tnl.*|ipip.*|gre.*|erspan.*|ifb.*|nlmon.*|ip_vti.*|ip6_vti.*|ip6gre.*|.+[.].+';
+
+/// Per-device rate of a node_network_* counter, by instance. On a node with
+/// an up bond only bond* devices count: its slaves carry the same bytes, and
+/// node-exporter doesn't say which NICs are slaves.
+String nodeNetRate(String metric, String w) {
+  const upBond = '(node_network_up{device=~"bond.*"} == 1)';
+  return '((rate($metric{device!~"$nodeVirtualDevices"}[$w]) unless on(instance) $upBond) or '
+      '(rate($metric{device=~"bond.*"}[$w]) and on(instance) $upBond))';
+}
+
+/// True for pods (or pod templates) on the host network: their counters are
+/// the node's, so k8sman never shows them as the pod's own traffic.
+bool usesHostNetwork(Map<String, dynamic> podSpec) => podSpec['hostNetwork'] == true;
 
 /// CPU, memory and network history for a pod, with an optional per-container
-/// breakdown (CPU and memory only: network is per pod).
+/// breakdown (CPU and memory only: network is per pod). A hostNetwork pod
+/// gets no network chart (see `liveNetworkSection`).
 Widget podHistory(PanelContext ctx) {
+  final hostNet = usesHostNetwork(ctx.spec);
   final pod = 'namespace="${_q(ctx.namespace ?? '')}",pod="${_q(ctx.name)}"';
   final sel = '$pod,container!="",container!="POD"';
   return MetricHistorySection(
@@ -62,12 +82,13 @@ Widget podHistory(PanelContext ctx) {
         unit: MetricUnit.bytes,
         query: (w, by) => 'sum${by == null ? '' : ' by ($by)'} (container_memory_working_set_bytes{$sel})',
       ),
-      MetricChartSpec(
-        title: 'Network',
-        unit: MetricUnit.bytesPerSec,
-        seriesLabel: 'direction',
-        query: (w, _) => _rxTx((m) => 'sum(${_podNet(pod, w, m)})', 'container_network'),
-      ),
+      if (!hostNet)
+        MetricChartSpec(
+          title: 'Network',
+          unit: MetricUnit.bytesPerSec,
+          seriesLabel: 'direction',
+          query: (w, _) => _rxTx((m) => 'sum(${_podNet(pod, w, m)})', 'container_network'),
+        ),
     ],
   );
 }
@@ -95,7 +116,7 @@ Widget nodeHistory(PanelContext ctx) {
         unit: MetricUnit.bytesPerSec,
         seriesLabel: 'direction',
         query: (w, _) => _rxTx(
-          (m) => 'sum(rate($m{device!~"$nodeVirtualDevices"}[$w]) * on(instance) group_left(nodename) $node)',
+          (m) => 'sum(${nodeNetRate(m, w)} * on(instance) group_left(nodename) $node)',
           'node_network',
         ),
       ),
@@ -134,10 +155,12 @@ Widget workloadHistory(PanelContext ctx) {
     return '$agg (${perPod(nsSel)} * on (namespace, pod) group_left() max by (namespace, pod) (${m.owner})) or $agg (${perPod(byNameSel)})';
   }
 
+  final hostNet = usesHostNetwork(asMap(dig(ctx.spec, ['template', 'spec'])));
   return MetricHistorySection(
     key: ValueKey('workload-history-${ctx.uid}'),
     api: ctx.api,
     breakdownLabel: 'pod',
+    note: hostNet ? 'Pods use the host network, so their traffic is their nodes\' (see the Node panels).' : null,
     charts: [
       MetricChartSpec(
         title: 'CPU',
@@ -150,12 +173,13 @@ Widget workloadHistory(PanelContext ctx) {
         unit: MetricUnit.bytes,
         query: (w, by) => overPods((s) => 'sum by (namespace, pod) (container_memory_working_set_bytes{$s,container!="",container!="POD"})', by),
       ),
-      MetricChartSpec(
-        title: 'Network',
-        unit: MetricUnit.bytesPerSec,
-        seriesLabel: 'direction',
-        query: (w, _) => _rxTx((metric) => '(${overPods((s) => 'sum by (namespace, pod) (${_podNet(s, w, metric, by: 'namespace, pod, ')})', null)})', 'container_network'),
-      ),
+      if (!hostNet)
+        MetricChartSpec(
+          title: 'Network',
+          unit: MetricUnit.bytesPerSec,
+          seriesLabel: 'direction',
+          query: (w, _) => _rxTx((metric) => '(${overPods((s) => 'sum by (namespace, pod) (${_podNet(s, w, metric, by: 'namespace, pod, ')})', null)})', 'container_network'),
+        ),
     ],
   );
 }
@@ -269,6 +293,9 @@ class MetricHistorySection extends StatefulWidget {
   /// (e.g. Prometheus exists but doesn't have this object's metrics).
   final String? probe;
 
+  /// A hint line under the charts.
+  final String? note;
+
   const MetricHistorySection({
     super.key,
     required this.api,
@@ -277,6 +304,7 @@ class MetricHistorySection extends StatefulWidget {
     this.title = 'Metrics history',
     this.initialRange = const Duration(hours: 1),
     this.probe,
+    this.note,
   });
 
   @override
@@ -322,6 +350,11 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
                   range: _range,
                   breakdown: _breakdown ? widget.breakdownLabel : null,
                 ),
+              ),
+            if (widget.note != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(widget.note!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
               ),
             if (widget.breakdownLabel != null)
               Align(

@@ -110,8 +110,19 @@ History queries (rate window = max(2m, 4 × step), ~240 points):
   `container=""`/`"POD"`, some runtimes repeat them per container), so the
   max per interface counts each NIC once. The two directions come back as one
   query (`label_replace(...) or label_replace(...)`, label `direction`)
-- node network: `node_network_{receive,transmit}_bytes_total{device!~"lo|veth.*|cali.*|flannel.*|cni.*|docker.*|br-.*|virbr.*|vxlan.*|tunl.*|kube-ipvs.*|cilium.*|lxc.*|genev.*|nodelocaldns.*"}`,
-  joined on nodename like CPU (virtual devices would double count traffic)
+- node network: `node_network_{receive,transmit}_bytes_total` without
+  virtual devices (`nodeVirtualDevices`: loopback, veth/lxc, CNI bridges,
+  tunnels such as vxlan/tunl/sit/ip6tnl/gre, dummy/teql/ifb/nlmon, and VLAN
+  sub-interfaces `.+[.].+`), joined on nodename like CPU. They would double
+  count traffic already on the NIC. On a node with an up bond
+  (`node_network_up{device=~"bond.*"} == 1`) only `bond*` devices count,
+  since node-exporter doesn't say which NICs are its slaves (other
+  non-bonded NICs on such a node are then left out)
+- hostNetwork pods report their node's counters, so the Pod panel and
+  workloads with `hostNetwork: true` show no network chart (the pod panel
+  links to the node instead), and the Metrics → Network top pods drop them
+  (`unless on (namespace, pod) kube_pod_info{host_network="true"}`, plus a
+  pod-spec filter when kube-state-metrics is absent)
 - workloads: the per-pod series above, summed over the workload's pods,
   matched by owner via kube-state-metrics (`* on (namespace, pod)
   group_left() max by (namespace, pod) (kube_pod_owner{owner_kind=...})`;

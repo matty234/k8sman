@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/client.dart';
-import '../prometheus/metric_history_chart.dart' show promQuote, nodeVirtualDevices;
+import '../api/models.dart';
+import '../prometheus/metric_history_chart.dart' show promQuote, nodeNetRate;
 import '../prometheus/prom_api.dart';
 import '../state/app_state.dart';
 import '../state/poller.dart';
 import '../ui/widgets/common.dart';
+import '../util/k8s.dart';
 import 'cache.dart';
 import 'kubelet_summary.dart';
 import 'network_usage.dart';
@@ -28,10 +30,13 @@ Future<(List<NetThroughput>, List<NetThroughput>)?> promNetwork(ApiClient api, S
   final prom = PromApi.of(api);
   if (!await prom.hasPrometheus()) return null;
   final ns = namespace == null ? '' : 'namespace="${promQuote(namespace)}",';
+  // hostNetwork pods see the node's traffic: drop them (needs kube-state-metrics;
+  // without it `unless` matches nothing and the caller's spec filter applies).
   String pods(String dir) =>
-      'topk(150, sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_${dir}_bytes_total{${ns}interface!="lo"}[2m]))))';
+      'topk(150, sum by (namespace, pod) (max by (namespace, pod, interface) (rate(container_network_${dir}_bytes_total{${ns}interface!="lo"}[2m])))'
+      ' unless on (namespace, pod) kube_pod_info{${ns}host_network="true"})';
   String nodes(String dir) =>
-      'sum by (nodename) (rate(node_network_${dir}_bytes_total{device!~"$nodeVirtualDevices"}[2m]) * on(instance) group_left(nodename) node_uname_info)';
+      'sum by (nodename) (${nodeNetRate('node_network_${dir}_bytes_total', '2m')} * on(instance) group_left(nodename) node_uname_info)';
   try {
     final r = await Future.wait([
       prom.query(pods('receive')),
@@ -78,13 +83,28 @@ class _NetworkViewState extends State<NetworkView> with AutomaticKeepAliveClient
     });
   }
 
+  /// `namespace/name` of hostNetwork pods: their counters are the node's.
+  Future<Set<String>> _hostNetworkPods() async {
+    try {
+      return {
+        for (final p in await _api.items(const ResourceRef(resource: 'pods'), namespace: widget.namespace))
+          if (dig(p, ['spec', 'hostNetwork']) == true) '${dig(p, ['metadata', 'namespace'])}/${dig(p, ['metadata', 'name'])}',
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
   Future<void> _load() async {
+    final hostF = _hostNetworkPods();
     final p = await promNetwork(_api, widget.namespace);
+    final host = await hostF;
+    List<NetThroughput> own(List<NetThroughput> pods) => [for (final x in pods) if (!host.contains(x.key)) x];
     if (p != null) {
       if (mounted) {
         setState(() {
           _nodes = p.$1;
-          _pods = p.$2;
+          _pods = own(p.$2);
           _prom = true;
           _unavailable = null;
         });
@@ -96,7 +116,7 @@ class _NetworkViewState extends State<NetworkView> with AutomaticKeepAliveClient
     setState(() {
       _prom = false;
       _nodes = s.nodeNetwork;
-      _pods = s.pods;
+      _pods = own(s.pods);
       _unavailable = s.available ? null : (s.message ?? 'kubelet stats unavailable');
     });
   }
@@ -168,7 +188,7 @@ class _NetworkViewState extends State<NetworkView> with AutomaticKeepAliveClient
           ],
         ),
         const SizedBox(height: 18),
-        title('Top pods', '${pods.length}'),
+        title('Top pods', '${pods.length} · host-network pods excluded'),
         if (pods.isEmpty)
           Padding(padding: const EdgeInsets.only(top: 8), child: Text('No pod samples', style: hint))
         else

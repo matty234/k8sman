@@ -129,7 +129,9 @@ panels and the Metrics tabs share one fetch per node.
   usage unknown". Some volume types (e.g. hostPath-backed local-path
   volumes) report no stats at all.
 - **Network:** cumulative `rxBytes`/`txBytes` per pod and node, summed over
-  non-virtual interfaces. Rates come from the difference between the last two
+  non-virtual interfaces (same exclusions as the
+  Prometheus node query, including VLANs; with an active bond only bonds
+  count). Rates come from the difference between the last two
   distinct samples (by the kubelet's own timestamp) held in the cache; they
   are absent until a second sample arrives (~15s), after a counter reset or
   pod recreation, or when the previous sample is older than 3 minutes.
