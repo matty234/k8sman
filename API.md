@@ -19,10 +19,11 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | `{ok, connected, context, host, kubeconfig, readOnly, error?}` |
-| GET | `/api/contexts` | `{current, contexts:[{name,cluster,user,namespace}]}` |
+| GET | `/api/contexts` | `{current, contexts:[{name,cluster,user,namespace,server,auth?}]}`; `auth` names an exec plugin / auth provider (e.g. `kubelogin`) |
 | POST | `/api/contexts/current` | body `{name}`: switch the kube context (remembered per kubeconfig) |
 | GET | `/api/kubeconfigs` | `{current, context, home, merged?, candidates:[{path, contexts:[names], currentContext, source, error?}]}`. `current` is the active file (`""` = default rules merging the `merged` $KUBECONFIG files). Candidates: each `$KUBECONFIG` entry, `~/.kube/config`, other files under `~/.kube` that parse as kubeconfig (cache dirs skipped), and recently used files. `source` is `KUBECONFIG`, `default`, `kube-dir` or `recent`. Only paths and context names are returned |
 | POST | `/api/kubeconfigs/current` | body `{path}` (absolute or `~/…`): validate the file, make it active and connect to its last used context (else its current-context). Returns the same shape as GET |
+| GET | `/api/probe?step=reach\|auth` | connection check for the current context, run before discovery: `reach` = unauthenticated `GET /version`, fails in 10 s with `reason: "Unreachable"`; `auth` = the same with credentials (runs exec plugins; 30 s, 5 min for exec) |
 | GET | `/api/resources[?refresh=true]` | discovered listable types `[{group,version,resource,kind,namespaced,verbs,shortNames,categories,custom}]` |
 | GET | `/api/namespaces` | `{namespaces:[...], default}` |
 | GET | `/api/table` | list rendered through the jq columns: `{resource, columns, isDefaultColumns, resourceVersion, rows:[{uid,name,namespace,resourceVersion,cells,object?}], columnErrors:{idx:msg}}`. Accepts `labelSelector`, `fieldSelector`, `includeObject=true` |

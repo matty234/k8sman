@@ -13,6 +13,7 @@ import 'access/access_view.dart';
 import 'addons/addons_view.dart';
 import 'alerts/alerts_view.dart';
 import 'cluster_error_view.dart';
+import 'connecting_view.dart';
 import 'detail/detail_sidebar.dart';
 import 'logs/log_dock_view.dart';
 import 'helm/helm_view.dart';
@@ -50,7 +51,7 @@ class _ShellState extends State<Shell> {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     if (app.loading && app.types.isEmpty) {
-      return const Scaffold(body: WindowDragArea(child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator()))));
+      return const Scaffold(body: WindowDragArea(child: ConnectingView()));
     }
     if (app.error != null && app.types.isEmpty) {
       return Scaffold(
