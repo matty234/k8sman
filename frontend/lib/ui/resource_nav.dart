@@ -6,6 +6,7 @@ import '../app/kubeconfig_picker.dart';
 import '../app/window_chrome.dart';
 import '../gpu/gpu_view.dart';
 import '../state/app_state.dart';
+import '../util/k8s.dart' show Severity;
 import 'alerts/alerts_nav_badge.dart';
 import 'sidebar_editor.dart';
 import 'theme.dart';
@@ -542,6 +543,68 @@ class _MoreToggle extends StatelessWidget {
       );
 }
 
+/// "Read-only" / "Changes allowed" for the current context: a lock that
+/// blocks edits, deletes, scaling, Helm changes and exec (enforced by the
+/// backend). Production-looking contexts start locked.
+class ReadOnlyToggle extends StatelessWidget {
+  const ReadOnlyToggle({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final colors = AppColors.of(context);
+    final locked = app.readOnly;
+    final fixed = app.readOnlyReason == 'flag';
+    final label = locked ? 'Read-only' : 'Changes allowed';
+    final tip = switch (app.readOnlyReason) {
+      'flag' => 'The backend was started with --read-only',
+      'auto' => 'Read-only: the name looks like production. Click to allow changes.',
+      'context' => 'Read-only (you locked this context). Click to allow changes.',
+      _ => 'Click to make this context read-only (blocks edits, deletes, scaling, Helm changes and exec)',
+    };
+    final color = locked ? severityColor(context, Severity.warn) : colors.faint;
+    return Tooltip(
+      message: tip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: Hoverable(
+        key: const ValueKey('read-only-toggle'),
+        cursor: fixed ? SystemMouseCursors.basic : SystemMouseCursors.click,
+        onTap: fixed ? null : () => _toggle(context, app),
+        builder: (h) => Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(color: h && !fixed ? colors.hover : null, borderRadius: BorderRadius.circular(5)),
+          child: Semantics(label: label, child: Icon(locked ? Icons.lock : Icons.lock_open, size: 13, color: color)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggle(BuildContext context, AppState app) async {
+    final ctx = app.currentContext;
+    if (!app.readOnly) return app.setContextReadOnly(ctx, true);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Allow changes to $ctx?'),
+        content: SizedBox(
+          width: 420,
+          child: Text(
+            app.readOnlyReason == 'auto'
+                ? 'This context looks like production, so k8sman made it read-only. Allowing changes enables edits, deletes, scaling, Helm changes and exec here. You can lock it again at any time.'
+                : 'This enables edits, deletes, scaling, Helm changes and exec on this context. You can lock it again at any time.',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Allow Changes')),
+        ],
+      ),
+    );
+    if (ok == true) await app.setContextReadOnly(ctx, false);
+  }
+}
+
 class _ContextPicker extends StatelessWidget {
   const _ContextPicker();
 
@@ -565,6 +628,10 @@ class _ContextPicker extends StatelessWidget {
               child: Row(children: [
                 SizedBox(width: 18, child: c.name == app.currentContext ? Icon(Icons.check, size: 14, color: theme.colorScheme.primary) : null),
                 Flexible(child: Text(c.name, overflow: TextOverflow.ellipsis)),
+                if (app.readOnlyContexts.containsKey(c.name)) ...[
+                  const SizedBox(width: 6),
+                  Tooltip(message: 'Read-only', child: Icon(Icons.lock, size: 12, color: colors.faint)),
+                ],
               ]),
             ),
         ],
@@ -588,6 +655,7 @@ class _ContextPicker extends StatelessWidget {
                   style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
+              if (current != null) ...[const ReadOnlyToggle(), const SizedBox(width: 2)],
               Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
             ]),
           ),

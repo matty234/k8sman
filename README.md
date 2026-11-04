@@ -309,8 +309,10 @@ machine.
 - Every mutating action asks for confirmation and names the target context.
   Contexts that aren't local (kind, k3d, minikube, Docker Desktop, …) get an
   extra warning.
-- `--read-only` turns off edits, actions and new port-forwards. The UI hides
-  those controls.
+- Read-only contexts: click the lock next to the context name to block edits,
+  deletes, scaling, Helm changes and exec on that context. Contexts whose
+  names look like production (`prod`, `production`, `prd`) start locked.
+  `--read-only` locks every context. The UI hides those controls.
 
 </details>
 
@@ -449,9 +451,12 @@ exactly as `kubectl` does.
   - `trivy`'s own vulnerability database download when you scan.
 - **Confirmations name the context.** Every mutating action says which context
   it will change, and warns when that isn't a local cluster.
-- **Read-only mode.** Start the backend with `--read-only` to refuse edits,
-  actions and new port-forwards (HTTP 403). In the app, run
-  `defaults write dev.k8sman.app BackendArgs -array --read-only`.
+- **Production starts read-only.** A context whose name contains `prod`,
+  `production` or `prd` as a word (`prod-eu`, `gke_acme_prod`, not
+  `product-api`) is read-only until you click its lock and confirm. Lock any
+  other context the same way. The backend enforces it (HTTP 403), not just
+  the UI. Start the backend with `--read-only` to lock every context; in the
+  app, run `defaults write dev.k8sman.app BackendArgs -array --read-only`.
 - **Credentials stay put.**
   - The kubeconfig listing returns only file paths and context names, never
     their contents.

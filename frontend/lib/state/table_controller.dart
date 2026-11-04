@@ -9,6 +9,7 @@ import '../api/models.dart';
 import '../metrics/quantity.dart';
 import 'cluster_error.dart';
 import 'startup_gate.dart';
+import 'table_prefs.dart';
 import 'table_query.dart';
 
 /// Keeps a live table for one resource type + namespace via /api/watch,
@@ -18,16 +19,17 @@ class TableController extends ChangeNotifier {
   final ResourceType type;
   final String? namespace;
 
-  /// Sort per resource kind (column name, ascending), shared across this
-  /// kind's tables so the sort survives navigating away and back, or
-  /// switching namespace. Usually AppState.tableSorts.
-  final Map<String, (String, bool)>? sortMemory;
+  /// Where this kind's sort and filter are remembered (usually
+  /// AppState.tablePrefs), so they survive navigating away and back,
+  /// switching namespace and relaunching.
+  final TablePrefsStore? prefs;
 
-  TableController({required this.api, required this.type, this.namespace, this.sortMemory}) {
-    final remembered = sortMemory?[type.gk];
-    if (remembered != null) {
-      _pendingSort = remembered.$1;
-      sortAscending = remembered.$2;
+  TableController({required this.api, required this.type, this.namespace, this.prefs}) {
+    final p = prefs?.of(type.gk);
+    if (p != null) {
+      _pendingSort = p.sortColumn;
+      sortAscending = !p.sortDescending;
+      filter = p.filter;
     }
     _connect();
   }
@@ -264,6 +266,11 @@ class TableController extends ChangeNotifier {
 
   void setFilter(String f) {
     filter = f;
+    final p = prefs;
+    if (p != null && p.of(type.gk).filter != f.trim()) {
+      p.of(type.gk).filter = f.trim();
+      p.changed(type.gk);
+    }
     _pruneSelection();
     notifyListeners();
   }
@@ -276,7 +283,13 @@ class TableController extends ChangeNotifier {
       sortAscending = true;
     }
     _pendingSort = null;
-    if (col < columns.length) sortMemory?[type.gk] = (columns[col].name, sortAscending);
+    final p = prefs;
+    if (p != null && col < columns.length) {
+      p.of(type.gk)
+        ..sortColumn = columns[col].name
+        ..sortDescending = !sortAscending;
+      p.changed(type.gk);
+    }
     notifyListeners();
   }
 

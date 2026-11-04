@@ -93,3 +93,14 @@ func TestSidebarRoundTrip(t *testing.T) {
 		t.Fatalf("reset: %v %+v", err, st.Get().Sidebar)
 	}
 }
+
+func TestAutoReadOnly(t *testing.T) {
+	for name, want := range map[string]bool{
+		"prod": true, "prod-eu": true, "gke_acme_europe-west1_prod": true, "Production": true, "eks-prd-1": true,
+		"dev": false, "kind-k8sman-dev": false, "product-api": false, "staging": false, "reproducible": false,
+	} {
+		if got := AutoReadOnly(name); got != want {
+			t.Errorf("AutoReadOnly(%q) = %v, want %v", name, got, want)
+		}
+	}
+}

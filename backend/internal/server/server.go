@@ -74,6 +74,8 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.overviewRoutes()
 	s.kubeconfigRoutes()
 	s.sidebarRoutes()
+	s.readOnlyRoutes()
+	s.tablePrefsRoutes()
 	s.execRoutes()
 	s.helmRoutes()
 	s.securityRoutes()
@@ -390,7 +392,8 @@ func (b *tableBuilder) tableOf(rt cluster.ResourceType, isDefault bool, items []
 // ---- handlers --------------------------------------------------------------
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"ok": true, "readOnly": s.readOnly, "kubeconfig": s.mgr.Kubeconfig(), "connected": false}
+	reason := s.readOnlyReason()
+	out := map[string]any{"ok": true, "readOnly": reason != "", "readOnlyReason": reason, "kubeconfig": s.mgr.Kubeconfig(), "connected": false}
 	if c := s.mgr.Clients(); c != nil {
 		out["context"], out["host"], out["connected"] = c.Context, c.RESTConfig.Host, true
 	} else {
@@ -405,7 +408,18 @@ func (s *Server) handleContexts(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]any{"current": current, "contexts": ctxs})
+	// Contexts that are read-only, and why ("flag", "context" or "auto").
+	readOnly := map[string]string{}
+	for _, c := range ctxs {
+		reason := contextReadOnlyReason(s.settings, c.Name)
+		if s.readOnly {
+			reason = readOnlyFlag
+		}
+		if reason != "" {
+			readOnly[c.Name] = reason
+		}
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"current": current, "contexts": ctxs, "readOnly": readOnly})
 }
 
 func (s *Server) handleSwitchContext(w http.ResponseWriter, r *http.Request) {

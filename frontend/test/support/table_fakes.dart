@@ -43,6 +43,23 @@ class TableFakeApi extends ApiClient {
 
   final List<String> actions = [];
 
+  /// Saved table preferences (GET/PUT /api/settings/tables).
+  Map<String, Json> tablePrefs = {};
+  final List<(String, Json?)> tablePrefsPuts = [];
+
+  @override
+  Future<Map<String, Json>> getTablePrefs() async => tablePrefs;
+
+  @override
+  Future<void> putTablePrefs(String kind, Json? prefs) async {
+    tablePrefsPuts.add((kind, prefs));
+    if (prefs == null) {
+      tablePrefs.remove(kind);
+    } else {
+      tablePrefs[kind] = prefs;
+    }
+  }
+
   /// Names whose action fails with this message.
   Map<String, String> failures = {};
 

@@ -7,6 +7,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import 'cluster_error.dart';
 import 'sidebar_config.dart';
+import 'table_prefs.dart';
 
 export 'sidebar_config.dart';
 
@@ -102,8 +103,17 @@ class AppState extends ChangeNotifier {
   /// UI can tell an unreachable cluster from rejected credentials.
   Object? errorCause;
 
-  /// Backend started with --read-only: hide mutating UI.
+  /// The current context is read-only: hide mutating UI. See
+  /// [readOnlyReason].
   bool readOnly = false;
+
+  /// Why [readOnly]: `flag` (backend started with --read-only), `context`
+  /// (the user locked this context) or `auto` (its name looks like
+  /// production); '' when writable.
+  String readOnlyReason = '';
+
+  /// Read-only contexts → reason (as [readOnlyReason]).
+  Map<String, String> readOnlyContexts = const {};
 
   String currentContext = '';
   List<ContextInfo> contexts = const [];
@@ -160,13 +170,9 @@ class AppState extends ChangeNotifier {
   /// Bumped when column config changes so tables re-subscribe.
   int columnsVersion = 0;
 
-  /// Each resource kind's table sort (column name, ascending) for this
-  /// session, so it's kept when you navigate away and back.
-  final Map<String, (String, bool)> tableSorts = {};
-
-  /// Column widths the user dragged, per resource kind then column name
-  /// (this session).
-  final Map<String, Map<String, double>> columnWidths = {};
+  /// Each resource kind's table sort, column widths and filter, saved in
+  /// the backend's settings so tables come back as they were left.
+  late final TablePrefsStore tablePrefs = TablePrefsStore(api);
 
   /// Set while [init] runs: the connecting screen's context, server and step.
   ConnectProgress? connecting;
@@ -218,13 +224,17 @@ class AppState extends ChangeNotifier {
     }
 
     try {
-      final ro = await api.health().then((h) => h['readOnly'] == true, onError: (_) => false);
+      final h = await api.health().then((h) => h, onError: (_) => const <String, dynamic>{});
       if (stale()) return;
-      readOnly = ro;
+      readOnly = h['readOnly'] == true;
+      readOnlyReason = readOnly ? (h['readOnlyReason'] as String? ?? 'flag') : '';
       final ctx = await api.contexts();
       if (stale()) return;
       currentContext = ctx.current;
       contexts = ctx.contexts;
+      readOnlyContexts = ctx.readOnly;
+      await tablePrefs.load();
+      if (stale()) return;
       final info = _info(currentContext);
       connecting = ConnectProgress(context: currentContext, server: info?.server, auth: info?.auth, started: started);
       notifyListeners();
@@ -287,6 +297,19 @@ class AppState extends ChangeNotifier {
       detail: List.of(_detailStack),
       inspectorCollapsed: inspectorCollapsed,
     );
+  }
+
+  /// Locks (true) or unlocks (false) [context], or with null returns it to
+  /// automatic (read-only when its name looks like production).
+  Future<void> setContextReadOnly(String context, bool? locked) async {
+    final r = await api.setContextReadOnly(context, locked);
+    readOnlyContexts = {...readOnlyContexts}..remove(context);
+    if (r.readOnly) readOnlyContexts[context] = r.reason;
+    if (context == currentContext) {
+      readOnly = r.readOnly;
+      readOnlyReason = r.reason;
+    }
+    notifyListeners();
   }
 
   Future<void> switchContext(String name) async {
@@ -360,6 +383,7 @@ class AppState extends ChangeNotifier {
     _previous = null;
     currentContext = p.context;
     readOnly = p.readOnly;
+    readOnlyReason = p.readOnly ? (readOnlyContexts[p.context] ?? 'context') : '';
     contexts = p.contexts;
     types = p.types;
     namespaces = p.namespaces;

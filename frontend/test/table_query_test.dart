@@ -142,7 +142,7 @@ void main() {
     await tester.drag(handle, const Offset(-120, 0));
     await tester.pump();
     expect(nameWidth(), closeTo(before - 120, 2));
-    expect(app.columnWidths[deployType.gk]?['Name'], closeTo(before - 120, 2));
+    expect(app.tablePrefs.of(deployType.gk).widths['Name'], closeTo(before - 120, 2));
 
     await tester.drag(handle.hitTestable(), const Offset(-1000, 0));
     await tester.pump();
@@ -152,7 +152,35 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(handle.hitTestable());
     await tester.pump(const Duration(milliseconds: 400));
-    expect(app.columnWidths[deployType.gk], isEmpty);
+    expect(app.tablePrefs.of(deployType.gk).widths, isEmpty);
+    await tester.pump(const Duration(seconds: 1));
+    expect(api.tablePrefsPuts.last, (deployType.gk, null), reason: 'nothing left to save');
     expect(nameWidth(), before);
+  });
+
+  testWidgets('sort, filter and widths are saved, and restored on the next launch', (tester) async {
+    final api = TableFakeApi()
+      ..onWatch = (() => [WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [fakeRow('api'), fakeRow('web'), fakeRow('db', ns: 'data')]))])
+      ..tablePrefs = {
+        deployType.gk: {'sortColumn': 'Name', 'sortDescending': true, 'filter': 'namespace=demo', 'widths': {'Name': 200}},
+      };
+    final app = await pumpTable(tester, api, deployType);
+    await app.tablePrefs.load(); // AppState.init does this on connect
+    // A fresh table (as after a relaunch) picks them up.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(MultiProvider(
+      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+      child: MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: ResourceTableView(type: deployType))),
+    ));
+    await tester.pump();
+    await tester.pump();
+    final tc = Provider.of<TableController>(tester.element(find.byType(ListView).first), listen: false);
+    expect(tc.rows.map((r) => r.name), ['web', 'api']);
+    expect(find.text('namespace=demo'), findsOneWidget, reason: 'filter box shows it');
+
+    await tester.tap(find.text('Name').first);
+    await tester.pump(const Duration(seconds: 1));
+    expect(api.tablePrefsPuts.last.$1, deployType.gk);
+    expect(api.tablePrefsPuts.last.$2, {'sortColumn': 'Name', 'widths': {'Name': 200.0}, 'filter': 'namespace=demo'});
   });
 }

@@ -295,7 +295,7 @@ func newExecutor(c *cluster.Clients, ns, pod string, opts *corev1.PodExecOptions
 // Query: namespace, pod, container, command (repeatable or JSON array),
 // shell (auto | zsh | bash | ...), cols, rows (initial size).
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
-	if s.readOnly {
+	if s.isReadOnly() {
 		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: "exec is disabled in read-only mode", Code: http.StatusForbidden, Reason: "Forbidden"})
 		return
 	}
@@ -449,7 +449,7 @@ var debugMu sync.Mutex // serialises ephemeral container updates per server
 // `kubectl debug -it pod --image=... --target=...`) and waits until it runs.
 // The UI then execs into it. Ephemeral containers can't be removed.
 func (s *Server) handleDebugContainer(w http.ResponseWriter, r *http.Request) {
-	if s.readOnly {
+	if s.isReadOnly() {
 		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: "debug containers are disabled in read-only mode", Code: http.StatusForbidden, Reason: "Forbidden"})
 		return
 	}

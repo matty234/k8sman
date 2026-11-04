@@ -96,12 +96,36 @@ class ApiClient {
 
   Future<Json> health() async => await _get('health');
 
-  Future<({String current, List<ContextInfo> contexts})> contexts() async {
+  /// The kubeconfig's contexts. [readOnly] maps each read-only context to
+  /// why: `flag` (--read-only), `context` (the user locked it) or `auto`
+  /// (its name looks like production).
+  Future<({String current, List<ContextInfo> contexts, Map<String, String> readOnly})> contexts() async {
     final j = await _get('contexts') as Json;
+    final ro = j['readOnly'];
     return (
       current: (j['current'] ?? '') as String,
       contexts: [for (final c in (j['contexts'] as List? ?? const [])) ContextInfo.fromJson(c)],
+      readOnly: {if (ro is Map) for (final e in ro.entries) '${e.key}': '${e.value}'},
     );
+  }
+
+  /// Lock (true) or unlock (false) a context, or null for automatic.
+  /// Returns its effective state.
+  Future<({bool readOnly, String reason})> setContextReadOnly(String context, bool? readOnly) async {
+    final j = await _send('PUT', 'settings/readonly', const {}, {'context': context, 'readOnly': readOnly}) as Json;
+    return (readOnly: j['readOnly'] == true, reason: (j['readOnlyReason'] ?? '') as String);
+  }
+
+  /// Saved table preferences per kind (`group/Kind`).
+  Future<Map<String, Json>> getTablePrefs() async {
+    final j = await _get('settings/tables') as Json;
+    final t = j['tables'];
+    return {if (t is Map) for (final e in t.entries) if (e.value is Map) '${e.key}': (e.value as Map).cast<String, dynamic>()};
+  }
+
+  /// Saves (or with null forgets) one kind's table preferences.
+  Future<void> putTablePrefs(String kind, Json? prefs) async {
+    await _send('PUT', 'settings/tables', const {}, {'kind': kind, 'prefs': prefs});
   }
 
   /// One connection step for the current context: `reach` (does anything

@@ -1,6 +1,7 @@
 // Package settings persists small app preferences (the chosen kubeconfig,
-// recently used kubeconfigs, the last context per kubeconfig and the
-// sidebar layout) in ~/.config/k8sman/settings.json.
+// recently used kubeconfigs, the last context per kubeconfig, the sidebar
+// layout, read-only contexts and table preferences) in
+// ~/.config/k8sman/settings.json.
 package settings
 
 import (
@@ -9,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sync"
 )
@@ -39,6 +41,44 @@ type Settings struct {
 	// Sidebar is the user's layout of the sidebar's top section (pages and
 	// pinned kinds). nil = the app's default layout.
 	Sidebar *Sidebar `json:"sidebar,omitempty"`
+	// ReadOnlyContexts maps kube context → the user's choice: true =
+	// read-only, false = writable. Absent = automatic (see AutoReadOnly).
+	ReadOnlyContexts map[string]bool `json:"readOnlyContexts,omitempty"`
+	// Tables maps a resource kind ("group/Kind", "" group for core) to its
+	// table preferences.
+	Tables map[string]TablePrefs `json:"tables,omitempty"`
+}
+
+// TablePrefs is how a resource kind's table was last left.
+type TablePrefs struct {
+	// SortColumn is a column name ("" = default order).
+	SortColumn     string `json:"sortColumn,omitempty"`
+	SortDescending bool   `json:"sortDescending,omitempty"`
+	// Widths maps column name → width the user dragged it to.
+	Widths map[string]float64 `json:"widths,omitempty"`
+	Filter string             `json:"filter,omitempty"`
+}
+
+// MaxTables caps how many kinds' table preferences are kept.
+const MaxTables = 500
+
+var productionName = regexp.MustCompile(`(?i)(^|[^a-z])(prod|production|prd)([^a-z]|$)`)
+
+// AutoReadOnly reports whether a context with no explicit choice is
+// read-only: its name looks like production ("prod", "production" or "prd"
+// as a word, e.g. "prod-eu", "gke_acme_prod", but not "product-api").
+func AutoReadOnly(context string) bool { return productionName.MatchString(context) }
+
+func cloneTables(t map[string]TablePrefs) map[string]TablePrefs {
+	if t == nil {
+		return nil
+	}
+	out := make(map[string]TablePrefs, len(t))
+	for k, v := range t {
+		v.Widths = maps.Clone(v.Widths)
+		out[k] = v
+	}
+	return out
 }
 
 // Sidebar lists the top-of-sidebar entries in display order. Each entry is
@@ -128,6 +168,8 @@ func (st *Store) Get() Settings {
 	out.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
 	out.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
 	out.Sidebar = cloneSidebar(st.s.Sidebar)
+	out.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
+	out.Tables = cloneTables(st.s.Tables)
 	return out
 }
 
@@ -144,6 +186,8 @@ func (st *Store) Update(fn func(*Settings)) error {
 	next.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
 	next.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
 	next.Sidebar = cloneSidebar(st.s.Sidebar)
+	next.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
+	next.Tables = cloneTables(st.s.Tables)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -165,6 +209,49 @@ func (st *Store) UseKubeconfig(path string) error {
 		if len(s.RecentKubeconfigs) > MaxRecent {
 			s.RecentKubeconfigs = s.RecentKubeconfigs[:MaxRecent]
 		}
+	})
+}
+
+// ContextReadOnly is the user's choice for a context, if they made one.
+func (st *Store) ContextReadOnly(context string) (readOnly, chosen bool) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	readOnly, chosen = st.s.ReadOnlyContexts[context]
+	return readOnly, chosen
+}
+
+// SetContextReadOnly records the choice for a context; nil forgets it (back
+// to automatic).
+func (st *Store) SetContextReadOnly(context string, readOnly *bool) error {
+	return st.Update(func(s *Settings) {
+		if readOnly == nil {
+			delete(s.ReadOnlyContexts, context)
+			if len(s.ReadOnlyContexts) == 0 {
+				s.ReadOnlyContexts = nil
+			}
+			return
+		}
+		if s.ReadOnlyContexts == nil {
+			s.ReadOnlyContexts = map[string]bool{}
+		}
+		s.ReadOnlyContexts[context] = *readOnly
+	})
+}
+
+// SetTablePrefs saves (or, with nil, forgets) a kind's table preferences.
+func (st *Store) SetTablePrefs(kind string, p *TablePrefs) error {
+	return st.Update(func(s *Settings) {
+		if p == nil {
+			delete(s.Tables, kind)
+			return
+		}
+		if s.Tables == nil {
+			s.Tables = map[string]TablePrefs{}
+		}
+		if _, ok := s.Tables[kind]; !ok && len(s.Tables) >= MaxTables {
+			return
+		}
+		s.Tables[kind] = TablePrefs{SortColumn: p.SortColumn, SortDescending: p.SortDescending, Widths: maps.Clone(p.Widths), Filter: p.Filter}
 	})
 }
 

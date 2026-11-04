@@ -128,8 +128,9 @@ class MarketingApi extends ApiClient {
   Future<Map<String, dynamic>> health() async => {'readOnly': false};
 
   @override
-  Future<({String current, List<ContextInfo> contexts})> contexts() async => (
+  Future<({String current, List<ContextInfo> contexts, Map<String, String> readOnly})> contexts() async => (
         current: ctxName,
+        readOnly: const <String, String>{},
         contexts: const [
           ContextInfo(name: ctxName, cluster: ctxName, user: 'sre'),
           ContextInfo(name: 'staging-eu-west', cluster: 'staging-eu-west', user: 'sre'),

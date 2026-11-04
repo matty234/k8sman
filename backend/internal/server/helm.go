@@ -115,8 +115,8 @@ func (s *Server) handleHelmChartVersions(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) readOnlyRefused(w http.ResponseWriter) bool {
-	if s.readOnly {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+	if s.isReadOnly() {
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return true
 	}
 	return false

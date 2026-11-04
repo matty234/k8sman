@@ -368,7 +368,7 @@ func (s *Server) handleRBACSelf(w http.ResponseWriter, r *http.Request) {
 	if evalNS == "" {
 		evalNS = "default"
 	}
-	out := map[string]any{"context": c.Context, "namespace": ns, "evaluatedIn": evalNS, "readOnly": s.readOnly}
+	out := map[string]any{"context": c.Context, "namespace": ns, "evaluatedIn": evalNS, "readOnly": s.isReadOnly()}
 	if id, source, err := selfIdentity(ctx, c); err == nil {
 		out["identity"], out["identitySource"] = id, source
 	} else {
@@ -500,8 +500,8 @@ var rbacKinds = map[string]string{"Role": "roles", "ClusterRole": "clusterroles"
 // nothing. Escalation checks happen in the API server: a user can't grant
 // what they don't hold, and gets a 403 that says so.
 func (s *Server) handleRBACApply(w http.ResponseWriter, r *http.Request) {
-	if s.readOnly {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+	if s.isReadOnly() {
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))

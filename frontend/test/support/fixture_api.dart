@@ -50,9 +50,9 @@ class FixtureApi extends ApiClient {
   Future<Map<String, dynamic>> health() async => {'readOnly': false};
 
   @override
-  Future<({String current, List<ContextInfo> contexts})> contexts() async {
+  Future<({String current, List<ContextInfo> contexts, Map<String, String> readOnly})> contexts() async {
     final j = fixture('api-contexts.json');
-    return (current: j['current'] as String, contexts: [for (final c in j['contexts']) ContextInfo.fromJson(c)]);
+    return (current: j['current'] as String, contexts: [for (final c in j['contexts']) ContextInfo.fromJson(c)], readOnly: const <String, String>{});
   }
 
   @override

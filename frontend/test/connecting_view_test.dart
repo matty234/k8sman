@@ -23,7 +23,8 @@ class _ConnectApi extends FixtureApi {
   _ConnectApi(this.current);
 
   @override
-  Future<({String current, List<ContextInfo> contexts})> contexts() async => (
+  Future<({String current, List<ContextInfo> contexts, Map<String, String> readOnly})> contexts() async => (
+        readOnly: const <String, String>{},
         current: current,
         contexts: const [
           ContextInfo(name: 'dead', cluster: 'dead', user: 'u', server: 'https://10.255.255.1:6443'),

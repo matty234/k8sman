@@ -88,7 +88,7 @@ func (s *Server) handleListActions(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"actions": availableActions(c, rq.Type), "readOnly": s.readOnly})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"actions": availableActions(c, rq.Type), "readOnly": s.isReadOnly()})
 }
 
 func availableActions(c *cluster.Clients, rt cluster.ResourceType) []string {
@@ -123,8 +123,8 @@ func hasScaleSubresource(c *cluster.Clients, rt cluster.ResourceType) bool {
 }
 
 func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
-	if s.readOnly {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+	if s.isReadOnly() {
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
 	action := r.PathValue("action")

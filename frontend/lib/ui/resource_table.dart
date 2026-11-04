@@ -38,7 +38,7 @@ class ResourceTableView extends StatelessWidget {
     final app = context.watch<AppState>();
     return ChangeNotifierProvider<TableController>(
       key: ValueKey('${type.gk}|${app.namespace}|${app.columnsVersion}|${app.currentContext}'),
-      create: (_) => TableController(api: context.read<ApiClient>(), type: type, namespace: app.namespace, sortMemory: app.tableSorts),
+      create: (_) => TableController(api: context.read<ApiClient>(), type: type, namespace: app.namespace, prefs: app.tablePrefs),
       child: const _TableBody(),
     );
   }
@@ -118,7 +118,7 @@ class _TableBodyState extends State<_TableBody> {
                 )
               : LayoutBuilder(
                   builder: (context, box) {
-                    final widths = _stableWidths(_columnWidths(tc.columns, box.maxWidth, app.columnWidths[tc.type.gk] ?? const {}));
+                    final widths = _stableWidths(_columnWidths(tc.columns, box.maxWidth, app.tablePrefs.of(tc.type.gk).widths));
                     final total = widths.fold<double>(0, (a, b) => a + b) + 18; // + gutters
                     return Scrollbar(
                       controller: _hScroll,
@@ -204,7 +204,7 @@ class _TableBodyState extends State<_TableBody> {
         identical(h.columnErrors, tc.columnErrors)) {
       return h;
     }
-    return _headerCache = _Header(controller: tc, widths: widths, onResize: _resize, onResetWidth: _resetWidth);
+    return _headerCache = _Header(controller: tc, widths: widths, onResize: _resize, onResizeDone: _resizeDone, onResetWidth: _resetWidth);
   }
 
   /// Dragging a header divider: the column keeps that width (for this kind,
@@ -212,15 +212,22 @@ class _TableBodyState extends State<_TableBody> {
   void _resize(int col, double width) {
     final tc = context.read<TableController>();
     if (col >= tc.columns.length) return;
-    final app = context.read<AppState>();
-    (app.columnWidths[tc.type.gk] ??= {})[tc.columns[col].name] = width.clamp(_minColumnWidth, 2000.0).roundToDouble();
+    final prefs = context.read<AppState>().tablePrefs;
+    prefs.of(tc.type.gk).widths[tc.columns[col].name] = width.clamp(_minColumnWidth, 2000.0).roundToDouble();
     setState(() {});
+  }
+
+  /// A drag ended: save the widths once.
+  void _resizeDone() {
+    final tc = context.read<TableController>();
+    context.read<AppState>().tablePrefs.changed(tc.type.gk);
   }
 
   void _resetWidth(int col) {
     final tc = context.read<TableController>();
     if (col >= tc.columns.length) return;
-    context.read<AppState>().columnWidths[tc.type.gk]?.remove(tc.columns[col].name);
+    final prefs = context.read<AppState>().tablePrefs;
+    if (prefs.of(tc.type.gk).widths.remove(tc.columns[col].name) != null) prefs.changed(tc.type.gk);
     setState(() {});
   }
 
@@ -563,7 +570,8 @@ class _Header extends StatelessWidget {
   final Map<int, String> columnErrors;
   final void Function(int col, double width) onResize;
   final void Function(int col) onResetWidth;
-  _Header({required this.controller, required this.widths, required this.onResize, required this.onResetWidth})
+  final VoidCallback onResizeDone;
+  _Header({required this.controller, required this.widths, required this.onResize, required this.onResizeDone, required this.onResetWidth})
     : columns = controller.columns,
       sortColumn = controller.sortColumn,
       sortAscending = controller.sortAscending,
@@ -591,6 +599,7 @@ class _Header extends StatelessWidget {
                 key: ValueKey('resize-${controller.columns[i].name}'),
                 startWidth: () => widths[i],
                 onResize: (w) => onResize(i, w),
+                onResizeDone: onResizeDone,
                 onReset: () => onResetWidth(i),
               ),
             ),
@@ -648,8 +657,9 @@ class _ResizeHandle extends StatefulWidget {
   static const width = 9.0;
   final double Function() startWidth;
   final ValueChanged<double> onResize;
+  final VoidCallback onResizeDone;
   final VoidCallback onReset;
-  const _ResizeHandle({super.key, required this.startWidth, required this.onResize, required this.onReset});
+  const _ResizeHandle({super.key, required this.startWidth, required this.onResize, required this.onResizeDone, required this.onReset});
 
   @override
   State<_ResizeHandle> createState() => _ResizeHandleState();
@@ -679,8 +689,14 @@ class _ResizeHandleState extends State<_ResizeHandle> {
           _dx += d.delta.dx;
           widget.onResize(_start + _dx);
         },
-        onHorizontalDragEnd: (_) => setState(() => _dragging = false),
-        onHorizontalDragCancel: () => setState(() => _dragging = false),
+        onHorizontalDragEnd: (_) {
+          setState(() => _dragging = false);
+          widget.onResizeDone();
+        },
+        onHorizontalDragCancel: () {
+          setState(() => _dragging = false);
+          widget.onResizeDone();
+        },
         onDoubleTap: widget.onReset,
         child: Center(
           child: Container(width: on ? 2 : 1, height: on ? 20 : 12, color: on ? Theme.of(context).colorScheme.primary : Theme.of(context).dividerColor),

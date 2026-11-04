@@ -206,7 +206,8 @@ class _FailingApi extends FixtureApi {
   Future<List<ResourceType>> resources({bool refresh = false}) async => throw error;
 
   @override
-  Future<({String current, List<ContextInfo> contexts})> contexts() async => (
+  Future<({String current, List<ContextInfo> contexts, Map<String, String> readOnly})> contexts() async => (
+        readOnly: const <String, String>{},
         current: 'kind-k8sman-dev',
         contexts: const [
           ContextInfo(name: 'kind-k8sman-dev', cluster: 'kind', user: 'kind'),

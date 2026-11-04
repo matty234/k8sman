@@ -17,8 +17,6 @@ import (
 
 const fieldManager = "k8sman"
 
-var errReadOnly = errors.New("backend is running with --read-only")
-
 func (s *Server) mutationRoutes() {
 	s.mux.HandleFunc("PUT /api/object", s.handleUpdateObject)
 
@@ -35,8 +33,8 @@ func (s *Server) mutationRoutes() {
 // concurrent change yields 409 Conflict instead of being overwritten.
 // ?dryRun=true runs server-side validation/admission without persisting.
 func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
-	if s.readOnly {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+	if s.isReadOnly() {
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
 	c, rq, err := s.parseResource(r.Context(), r)
@@ -101,8 +99,8 @@ func (s *Server) handleListForwards(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateForward(w http.ResponseWriter, r *http.Request) {
-	if s.readOnly {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+	if s.isReadOnly() {
+		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
 	var spec portforward.Spec
@@ -140,8 +138,8 @@ func (s *Server) handleForwardAction(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var err error
 	if r.URL.Path[len(r.URL.Path)-5:] == "start" {
-		if s.readOnly {
-			httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: errReadOnly.Error(), Code: http.StatusForbidden})
+		if s.isReadOnly() {
+			httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 			return
 		}
 		err = s.pf.Start(id)
