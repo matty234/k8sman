@@ -44,6 +44,10 @@ class WorkflowNodesView extends StatefulWidget {
 class _WorkflowNodesViewState extends State<WorkflowNodesView> {
   late ValueNotifier<String?> _sel;
   bool? _listMode;
+
+  /// Leave Skipped/Omitted steps out of the graph. Defaults on when they
+  /// are over 30% of the steps, so the path that ran dominates.
+  bool? _hideSkipped;
   String _sig = '';
   WfGraph _graph = WfGraph.empty;
   Map<String, WfNode> _nodes = const {};
@@ -76,10 +80,12 @@ class _WorkflowNodesViewState extends State<WorkflowNodesView> {
   /// Re-layouts only when the graph's shape changes (phases don't move nodes).
   void _relayout() {
     _nodes = parseNodes(widget.workflow);
-    final sig = '${_nodes.length}/${_nodes.values.fold<int>(0, (s, n) => s + n.children.length + n.outbound.length)}';
+    _hideSkipped ??= skippedShare(_nodes) > 0.3;
+    final sig = '${_nodes.length}/${_nodes.values.fold<int>(0, (s, n) => s + n.children.length + n.outbound.length)}/'
+        '${_nodes.values.where((n) => n.skipped).length}/$_hideSkipped';
     if (sig != _sig) {
       _sig = sig;
-      _graph = layoutWorkflow(_nodes, workflowName: _name);
+      _graph = layoutWorkflow(_nodes, workflowName: _name, hideSkipped: _hideSkipped!);
     } else {
       // Same shape: refresh the node data (phases, times) in place.
       _graph = WfGraph(
@@ -97,6 +103,7 @@ class _WorkflowNodesViewState extends State<WorkflowNodesView> {
         _graph.width,
         _graph.height,
         _graph.repOf,
+        hidden: _graph.hidden,
       );
     }
   }
@@ -105,7 +112,8 @@ class _WorkflowNodesViewState extends State<WorkflowNodesView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (_nodes.isEmpty) return const InlineMessage('No steps yet: the controller has not started this workflow.');
-    final visibleCount = _graph.visible.where((n) => n.kind != GKind.junction).length;
+    final visibleCount = _nodes.values.where((n) => !n.isJunction && _graph.repOf[n.id] == n.id).length;
+    final skipped = _nodes.values.where((n) => n.skipped).length;
     final list = _listMode ?? visibleCount > widget.listThreshold;
     final selId = _sel.value == null ? null : (_graph.repOf[_sel.value] ?? _sel.value);
     final selected = selId == null ? null : _nodes[selId];
@@ -122,6 +130,20 @@ class _WorkflowNodesViewState extends State<WorkflowNodesView> {
           onSelectionChanged: (s) => setState(() => _listMode = s.first),
         ),
         const Spacer(),
+        if (!list && skipped > 0) ...[
+          FilterChip(
+            visualDensity: VisualDensity.compact,
+            showCheckmark: true,
+            label: Text('Hide $skipped skipped', style: theme.textTheme.bodySmall),
+            tooltip: 'Leave Skipped and Omitted steps out of the graph',
+            selected: _hideSkipped ?? false,
+            onSelected: (v) => setState(() {
+              _hideSkipped = v;
+              _relayout();
+            }),
+          ),
+          const SizedBox(width: 6),
+        ],
         Text('$visibleCount steps', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
         if (!list)
           IconButton(
@@ -136,14 +158,14 @@ class _WorkflowNodesViewState extends State<WorkflowNodesView> {
       if (list)
         _NodeList(nodes: _nodes, workflowName: _name, selected: selId, onSelect: _select)
       else
-        _GraphViewport(graph: _graph, selected: selId, onSelect: _select),
+        _GraphViewport(key: ValueKey('viewport-$_hideSkipped'), graph: _graph, selected: selId, onSelect: _select),
       if (selected != null) ...[
         const SizedBox(height: 12),
         NodeDetails(key: ValueKey(selected.id), workflow: widget.workflow, node: selected, nodes: _nodes, api: widget.api, onSelect: _select, onClose: () => _select(null)),
       ] else
         Padding(
           padding: const EdgeInsets.only(top: 6),
-          child: Hint(list ? 'Select a step for its details and logs.' : 'Click a step for its details and logs. Scroll sideways for wide graphs.'),
+          child: Hint(list ? 'Select a step for its details and logs.' : 'Click a step for its details and logs.'),
         ),
     ]);
   }
@@ -212,8 +234,10 @@ class _GraphViewport extends StatefulWidget {
   final WfGraph graph;
   final String? selected;
   final ValueChanged<String?> onSelect;
-  static const minScale = 0.72;
-  const _GraphViewport({required this.graph, required this.selected, required this.onSelect});
+
+  /// Below this the labels get hard to read, so the graph scrolls instead.
+  static const minScale = 0.7;
+  const _GraphViewport({super.key, required this.graph, required this.selected, required this.onSelect});
 
   @override
   State<_GraphViewport> createState() => _GraphViewportState();
@@ -224,17 +248,15 @@ class _GraphViewportState extends State<_GraphViewport> {
   bool _positioned = false;
 
   @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _scroll.dispose();
     super.dispose();
-  }
-
-  GNode? _focus() {
-    final g = widget.graph;
-    if (widget.selected != null) return g.byId(widget.selected!);
-    final failed = g.visible.where((n) => n.kind == GKind.node && (n.node?.failed ?? false)).toList()..sort((a, b) => a.y.compareTo(b.y));
-    if (failed.isNotEmpty) return failed.first;
-    return g.nodes.where((n) => n.layer == 0 && n.kind != GKind.dummy).firstOrNull;
   }
 
   @override
@@ -250,25 +272,98 @@ class _GraphViewportState extends State<_GraphViewport> {
       }
       if (!_positioned) {
         _positioned = true;
-        final f = _focus();
-        if (f != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!_scroll.hasClients) return;
-            final target = (f.cx - avail / 2).clamp(0.0, _scroll.position.maxScrollExtent);
-            _scroll.jumpTo(target);
-          });
-        }
+        final target = initialScrollOffset(g, avail, selected: widget.selected);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scroll.hasClients) _scroll.jumpTo(target.clamp(0.0, _scroll.position.maxScrollExtent));
+        });
       }
-      return Scrollbar(
-        controller: _scroll,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
+      final canLeft = _scroll.hasClients && _scroll.offset > 1;
+      final canRight = !_scroll.hasClients || _scroll.offset < _scroll.position.maxScrollExtent - 1;
+      void by(double d) => _scroll.animateTo((_scroll.offset + d).clamp(0.0, _scroll.position.maxScrollExtent),
+          duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+      return Stack(children: [
+        Scrollbar(
           controller: _scroll,
-          scrollDirection: Axis.horizontal,
-          child: Padding(padding: const EdgeInsets.only(bottom: 12), child: canvas),
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            child: Padding(padding: const EdgeInsets.only(bottom: 14), child: canvas),
+          ),
         ),
-      );
+        if (canLeft) _EdgeFade(left: true, onTap: () => by(-avail * 0.6)),
+        if (canRight) _EdgeFade(left: false, onTap: () => by(avail * 0.6)),
+      ]);
     });
+  }
+}
+
+/// Where a scrolling graph starts: centred on the selected node, else the
+/// first failed step, else the deepest running step, else the root; then
+/// moved to the nearby offset that cuts the fewest nodes at either edge.
+double initialScrollOffset(WfGraph g, double viewport, {String? selected}) {
+  GNode? focus = selected == null ? null : g.byId(selected);
+  final steps = g.nodes.where((n) => n.kind == GKind.node).toList()..sort((a, b) => a.y.compareTo(b.y));
+  focus ??= steps.where((n) => n.node!.failed).firstOrNull;
+  focus ??= steps.where((n) => n.node!.phase == 'Running').lastOrNull;
+  focus ??= g.nodes.where((n) => n.layer == 0 && n.kind != GKind.dummy).firstOrNull;
+  if (focus == null) return 0;
+  final maxOff = (g.width - viewport).clamp(0.0, double.infinity);
+  final centred = (focus.cx - viewport / 2).clamp(0.0, maxOff);
+  final boxes = g.nodes.where((n) => n.kind != GKind.dummy).toList();
+  bool shows(double o) => focus!.x >= o - 0.5 && focus.x + focus.w <= o + viewport + 0.5;
+  int cuts(double o) => boxes.where((n) => (n.x < o && n.x + n.w > o) || (n.x < o + viewport && n.x + n.w > o + viewport)).length;
+  // Candidates: centred, and every offset that puts an edge in a gap
+  // beside some node.
+  final candidates = <double>{
+    centred,
+    0,
+    maxOff,
+    for (final n in boxes) ...[(n.x - 6).clamp(0.0, maxOff), (n.x + n.w + 6 - viewport).clamp(0.0, maxOff)],
+  }.where(shows).toList();
+  if (candidates.isEmpty) return centred;
+  candidates.sort((a, b) {
+    final c = cuts(a).compareTo(cuts(b));
+    return c != 0 ? c : (a - centred).abs().compareTo((b - centred).abs());
+  });
+  return candidates.first;
+}
+
+/// A fade at a scrollable edge with an arrow, so it's clear there's more.
+class _EdgeFade extends StatelessWidget {
+  final bool left;
+  final VoidCallback onTap;
+  const _EdgeFade({required this.left, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = AppColors.of(context).inspector;
+    return Positioned(
+      top: 0,
+      bottom: 14,
+      left: left ? 0 : null,
+      right: left ? null : 0,
+      width: 36,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: left ? Alignment.centerLeft : Alignment.centerRight,
+            end: left ? Alignment.centerRight : Alignment.centerLeft,
+            colors: [bg, bg.withValues(alpha: 0)],
+          ),
+        ),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: IconButton(
+            tooltip: left ? 'Scroll left' : 'Scroll right',
+            visualDensity: VisualDensity.compact,
+            iconSize: 18,
+            icon: Icon(left ? Icons.chevron_left : Icons.chevron_right),
+            onPressed: onTap,
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -328,8 +423,12 @@ class _EdgePainter extends CustomPainter {
       for (var i = 1; i < e.points.length; i++) {
         final (x0, y0) = e.points[i - 1];
         final (x1, y1) = e.points[i];
-        final my = (y0 + y1) / 2;
-        path.cubicTo(x0, my, x1, my, x1, y1);
+        if ((x1 - x0).abs() < 0.5) {
+          path.lineTo(x1, y1);
+        } else {
+          final my = (y0 + y1) / 2;
+          path.cubicTo(x0, my, x1, my, x1, y1);
+        }
       }
       if (e.dashed) {
         for (final m in path.computeMetrics()) {
@@ -386,6 +485,35 @@ class _GraphNode extends StatelessWidget {
               shape: BoxShape.circle,
               color: s.color.withValues(alpha: n.skipped ? 0.3 : 0.8),
               border: selected ? Border.all(color: sel, width: 2) : null,
+            ),
+          ),
+        ),
+      );
+    }
+    if (g.kind == GKind.compact) {
+      return Tooltip(
+        message: tooltip,
+        waitDuration: const Duration(milliseconds: 300),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: selected ? sel : theme.hintColor.withValues(alpha: 0.35), width: selected ? 2 : 1),
+              ),
+              child: Row(children: [
+                Icon(Icons.remove, size: 11, color: theme.hintColor),
+                const SizedBox(width: 3),
+                Expanded(
+                  child: Text(n.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontSize: 10.5, height: 1.1)),
+                ),
+              ]),
             ),
           ),
         ),
