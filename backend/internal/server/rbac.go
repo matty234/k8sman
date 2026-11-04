@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 	"crypto/x509"
-	"encoding/pem"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -75,7 +75,10 @@ func loadPolicy(ctx context.Context, c *cluster.Clients) (*rbac.Policy, error) {
 		}()
 	}
 	run(func() (err error) { roles, err = listTyped[rbacv1.Role](ctx, kc, gvrRoles, "", ""); return })
-	run(func() (err error) { croles, err = listTyped[rbacv1.ClusterRole](ctx, kc, gvrClusterRoles, "", ""); return })
+	run(func() (err error) {
+		croles, err = listTyped[rbacv1.ClusterRole](ctx, kc, gvrClusterRoles, "", "")
+		return
+	})
 	run(func() (err error) { rbs, err = listTyped[rbacv1.RoleBinding](ctx, kc, gvrRoleBindings, "", ""); return })
 	run(func() (err error) {
 		crbs, err = listTyped[rbacv1.ClusterRoleBinding](ctx, kc, gvrClusterRoleBindings, "", "")
