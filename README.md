@@ -241,7 +241,9 @@ machine.
   - **ServiceAccount**: effective permissions. **Role, ClusterRole and
     bindings**: dangerous grants are flagged.
   - **PersistentVolumeClaim, PersistentVolume, StorageClass**: diagnoses for
-    pending and resizing volumes.
+    pending and resizing volumes. The PVC table's **Used** column shows how
+    full each volume is (from Prometheus, or the kubelets when Prometheus
+    doesn't have it), amber from 80% and red from 90%; filter with `used>80`.
   - **Node, Namespace, ResourceQuota, LimitRange, Event, APIService.**
   - **CustomResourceDefinition**: a schema browser. **Any custom resource**: a
     generic panel that summarises status and conditions.
