@@ -64,6 +64,9 @@ type Service struct {
 
 	// kubelet holds per-node Summary API samples (see summary.go).
 	kubelet *kubeletCache
+
+	// claims holds per-namespace PVC usage snapshots (see claim_usage.go).
+	claims map[string]*cachedClaims
 }
 
 type cachedNodes struct {

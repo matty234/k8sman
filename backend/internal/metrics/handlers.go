@@ -15,20 +15,23 @@ import (
 // context's Service.
 func Register(mux *http.ServeMux, mgr *cluster.Manager) {
 	h := &handlers{
-		svc: func() *Service { return For(mgr.Clients()) },
-		prom: func() PromQuery {
-			c := mgr.Clients()
-			return func(ctx context.Context, q string) ([]PromSample, error) {
-				res, _, err := prom.QueryVector(ctx, c, q)
-				out := make([]PromSample, len(res))
-				for i, r := range res {
-					out[i] = PromSample{Metric: r.Metric, Value: r.Value}
-				}
-				return out, err
-			}
-		},
+		svc:  func() *Service { return For(mgr.Clients()) },
+		prom: func() PromQuery { return PromQueryFor(mgr.Clients()) },
 	}
 	h.register(mux)
+}
+
+// PromQueryFor runs instant queries against the cluster's Prometheus (found
+// and cached by package prom); queries error when there is none.
+func PromQueryFor(c *cluster.Clients) PromQuery {
+	return func(ctx context.Context, q string) ([]PromSample, error) {
+		res, _, err := prom.QueryVector(ctx, c, q)
+		out := make([]PromSample, len(res))
+		for i, r := range res {
+			out[i] = PromSample{Metric: r.Metric, Value: r.Value}
+		}
+		return out, err
+	}
 }
 
 type handlers struct {

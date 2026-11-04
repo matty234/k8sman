@@ -58,6 +58,12 @@ void main() {
     expect(matching('restarts>lots'), isEmpty);
     expect(matching('"0.0.3"'), ['bad']);
     expect(matching('app=web'), isEmpty, reason: 'unknown key: plain text "app=web"');
+ 
+    // PVC "Used" (percent): compares by value; claims without stats never match.
+    const used = [ColumnDef(name: 'Used', query: '.k8sman.usage.percent', type: 'percent')];
+    TableRowData pvc(String n, double? p) => TableRowData(uid: n, name: n, namespace: 'demo', resourceVersion: '1', cells: [p]);
+    final q = TableQuery.parse('used>80', used);
+    expect([for (final r in [pvc('a', 12), pvc('b', 85), pvc('c', null)]) if (q.matches(r, now: now)) r.name], ['b']);
   });
 
   test('suggestions: fields first, then values seen in the column', () {

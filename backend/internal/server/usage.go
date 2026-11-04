@@ -17,18 +17,22 @@ import (
 // fresh metrics (metrics-server scrapes every ~15s by default).
 var usageRefreshEvery = 15 * time.Second
 
-// usageDecorator merges `.k8sman.usage` into pods and nodes before column
-// evaluation (see metrics.UsageDecorator). nil for other types or when
-// resource metrics are unavailable.
+// usageDecorator merges `.k8sman.usage` into pods and nodes (CPU and
+// memory, see metrics.UsageDecorator) and PVCs (disk usage, see
+// metrics.ClaimUsageDecorator) before column evaluation. nil for other types
+// or when nothing is available.
 func (s *Server) usageDecorator(ctx context.Context, c *cluster.Clients, rq resourceQuery) metrics.Decorator {
 	if !usageResource(rq.Type) {
 		return nil
+	}
+	if rq.Type.Resource == "persistentvolumeclaims" {
+		return metrics.For(c).ClaimUsageDecorator(ctx, namespaceFor(rq), metrics.PromQueryFor(c))
 	}
 	return metrics.For(c).UsageDecorator(ctx, rq.Type.Group, rq.Type.Resource, namespaceFor(rq))
 }
 
 func usageResource(rt cluster.ResourceType) bool {
-	return rt.Group == "" && (rt.Resource == "pods" || rt.Resource == "nodes")
+	return rt.Group == "" && (rt.Resource == "pods" || rt.Resource == "nodes" || rt.Resource == "persistentvolumeclaims")
 }
 
 func namespaceFor(rq resourceQuery) string {

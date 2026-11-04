@@ -440,6 +440,8 @@ class _TableBodyState extends State<_TableBody> {
       case 'number':
       case 'quantity':
         return 90;
+      case 'percent':
+        return 120;
       case 'bool':
         return 80;
       case 'status':
@@ -933,6 +935,7 @@ class TableCellView extends StatelessWidget {
     final base = theme.textTheme.bodyMedium?.copyWith(fontSize: 12.5, fontWeight: emphasise ? FontWeight.w500 : null);
     final v = value;
     if (column.type == 'quantity') return quantityCell(context, v, base);
+    if (column.type == 'percent') return percentCell(context, v, base);
     if (v == null) return const SizedBox.shrink();
     switch (column.type) {
       case 'age':
@@ -1008,4 +1011,41 @@ class _EmptyTable extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A 0–100 value as a small bar plus the number (PVC "Used"): amber from 80,
+/// red from 90. Empty (no stats) shows a faint "—".
+Widget percentCell(BuildContext context, dynamic v, TextStyle? base) {
+  final theme = Theme.of(context);
+  final p = v is num ? v.toDouble() : double.tryParse('$v'.replaceAll('%', ''));
+  if (p == null) {
+    return Align(alignment: Alignment.centerRight, child: Text('—', style: base?.copyWith(color: AppColors.of(context).faint)));
+  }
+  final sev = p >= 90 ? Severity.error : (p >= 80 ? Severity.warn : Severity.ok);
+  final color = sev == Severity.ok ? theme.colorScheme.primary : severityColor(context, sev);
+  final label = p >= 10 || p == 0 ? '${p.round()}%' : '${p.toStringAsFixed(1)}%';
+  return Row(children: [
+    Expanded(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(2),
+        child: LinearProgressIndicator(
+          value: (p / 100).clamp(0.0, 1.0),
+          minHeight: 4,
+          color: color,
+          backgroundColor: AppColors.of(context).separator,
+        ),
+      ),
+    ),
+    SizedBox(
+      width: 40,
+      child: Text(
+        label,
+        textAlign: TextAlign.right,
+        style: base?.copyWith(
+          color: sev == Severity.ok ? null : color,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    ),
+  ]);
 }

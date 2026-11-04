@@ -28,7 +28,7 @@ class FilterField {
   final String type;
   const FilterField({required this.key, required this.label, required this.column, required this.type});
 
-  bool get comparable => type == 'number' || type == 'quantity' || type == 'age';
+  bool get comparable => type == 'number' || type == 'quantity' || type == 'percent' || type == 'age';
 }
 
 String fieldKey(String name) => name.toLowerCase().trim().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-|-$'), '');

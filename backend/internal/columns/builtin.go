@@ -102,6 +102,8 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Status", Type: "status", Query: `.status.phase`},
 		{Name: "Volume", Query: `.spec.volumeName`},
 		{Name: "Capacity", Query: `.status.capacity.storage`},
+		// Disk usage from Prometheus or the kubelets (see metrics.ClaimUsageDecorator).
+		{Name: "Used", Type: "percent", Query: `.k8sman.usage.percent`},
 		{Name: "Access Modes", Query: `.spec.accessModes // [] | join(",")`},
 		{Name: "StorageClass", Query: `.spec.storageClassName`},
 		ageCol,

@@ -26,7 +26,9 @@ type Column struct {
 	//   "string" (default), "number", "age" (RFC3339 timestamp → relative age),
 	//   "status" (coloured badge), "bool", "labels" (map → chips),
 	//   "quantity" (a Kubernetes quantity or percentage such as "250m",
-	//   "128Mi", "42%": right-aligned, sorted by value, "—" when empty).
+	//   "128Mi", "42%": right-aligned, sorted by value, "—" when empty),
+	//   "percent" (a number 0–100 drawn as a small bar, amber from 80 and
+	//   red from 90).
 	Type string `json:"type,omitempty"`
 }
 
