@@ -8,8 +8,6 @@ import '../state/poller.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
-import 'kubelet_summary.dart' show KubeletSummary;
-import 'cache.dart';
 import 'quantity.dart';
 import 'sortable_table.dart';
 import 'volume_usage.dart';
@@ -56,8 +54,7 @@ class StorageView extends StatefulWidget {
 
 class _StorageViewState extends State<StorageView> with AutomaticKeepAliveClientMixin, PollingState {
   List<StorageRow>? _rows;
-  UsageSource? _source;
-  String? _unavailable;
+  VolumesUsage? _usage;
   Object? _error;
 
   ApiClient get _api => context.read<ApiClient>();
@@ -78,32 +75,18 @@ class _StorageViewState extends State<StorageView> with AutomaticKeepAliveClient
   Future<void> _load() async {
     try {
       final pvcsF = _api.items(const ResourceRef(resource: 'persistentvolumeclaims'), namespace: widget.namespace);
-      var usage = await promPvcUsage(_api, namespace: widget.namespace);
-      UsageSource? source = usage == null ? null : UsageSource.prometheus;
-      String? unavailable;
-      if (usage == null) {
-        final s = await MetricsCache.of(_api).summary(widget.namespace);
-        if (s.available) {
-          usage = (await kubeletPvcUsage(_api, namespace: widget.namespace)) ?? const {};
-          source = UsageSource.kubelet;
-        } else {
-          unavailable = _why(s);
-        }
-      }
+      final usage = await VolumesUsage.load(_api, namespace: widget.namespace);
       final pvcs = await pvcsF;
       if (!mounted) return;
       setState(() {
-        _rows = joinStorage(pvcs, usage ?? const {});
-        _source = source;
-        _unavailable = unavailable;
+        _rows = joinStorage(pvcs, usage.byClaim);
+        _usage = usage;
         _error = null;
       });
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }
   }
-
-  static String _why(KubeletSummary s) => s.message ?? 'kubelet stats unavailable';
 
   void _open(StorageRow r) {
     final app = context.read<AppState>();
@@ -125,11 +108,18 @@ class _StorageViewState extends State<StorageView> with AutomaticKeepAliveClient
     final mono = monoStyle(context, size: 11.5);
     Widget dim(String s) => Text(s, maxLines: 1, overflow: TextOverflow.ellipsis, style: hint);
     final measured = rows.where((r) => r.usage != null).length;
-    final sourceText = switch (_source) {
-      UsageSource.prometheus => 'usage via Prometheus',
-      UsageSource.kubelet => 'usage via kubelet stats',
-      null => 'usage unavailable: ${_unavailable ?? 'no source'}',
-    };
+    final fromProm = rows.where((r) => r.usage?.source == UsageSource.prometheus).length;
+    final fromKubelet = rows.where((r) => r.usage?.source == UsageSource.kubelet).length;
+    final u = _usage;
+    final sourceText = fromProm > 0 && fromKubelet > 0
+        ? 'usage via Prometheus ($fromProm) and kubelet stats ($fromKubelet)'
+        : fromProm > 0
+        ? 'usage via Prometheus'
+        : fromKubelet > 0
+        ? 'usage via kubelet stats'
+        : u != null && !u.prometheus && !u.kubelet
+        ? 'usage unavailable: ${u.kubeletMessage ?? 'no source'}'
+        : 'no claim is mounted';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
@@ -176,7 +166,11 @@ class _StorageViewState extends State<StorageView> with AutomaticKeepAliveClient
                 numeric: true,
                 sortKey: (r) => r.usage?.used,
                 cell: (c, r) => r.usage?.used != null
-                    ? Text(formatBytes(r.usage!.used!), style: mono)
+                    ? Tooltip(
+                        message: r.usage!.source == UsageSource.prometheus ? 'via Prometheus' : 'via kubelet stats',
+                        waitDuration: const Duration(milliseconds: 500),
+                        child: Text(formatBytes(r.usage!.used!), style: mono),
+                      )
                     : dim(r.phase == 'Bound' ? 'not mounted' : r.phase.toLowerCase()),
               ),
               MetricColumn(

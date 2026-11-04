@@ -93,22 +93,37 @@ Future<Map<String, PvcUsage>?> promPvcUsage(ApiClient api, {String? namespace, S
   }
 }
 
-/// Claim usage from the kubelets, keyed `namespace/claim`; null when the
-/// Summary API is unusable (no nodes/proxy permission, kubelets unreachable).
-Future<Map<String, PvcUsage>?> kubeletPvcUsage(ApiClient api, {String? namespace, Iterable<String> nodes = const []}) async {
-  final s = await MetricsCache.of(api).summary(namespace, nodes: nodes);
-  if (!s.available) return null;
-  return {
-    for (final MapEntry(:key, value: v) in s.volumesByClaim.entries)
-      key: PvcUsage(
-        used: v.used,
-        capacity: v.capacity,
-        available: v.available,
-        inodes: v.inodes,
-        inodesUsed: v.inodesUsed,
-        source: UsageSource.kubelet,
-      ),
-  };
+/// Every claim's usage in [namespace] (null = all), merged per claim by the
+/// backend: Prometheus where it has the claim, kubelet stats for the rest.
+class VolumesUsage {
+  final Map<String, PvcUsage> byClaim;
+
+  /// Prometheus had any kubelet volume stats.
+  final bool prometheus;
+  final bool kubelet;
+  final String? kubeletMessage;
+  const VolumesUsage({this.byClaim = const {}, this.prometheus = false, this.kubelet = false, this.kubeletMessage});
+
+  static Future<VolumesUsage> load(ApiClient api, {String? namespace}) async {
+    final j = await api.metrics('volumes', {'namespace': namespace});
+    double? n(dynamic v) => (v as num?)?.toDouble();
+    return VolumesUsage(
+      byClaim: {
+        for (final i in asMapList(j['items']))
+          '${i['namespace']}/${i['claim']}': PvcUsage(
+            used: n(i['usedBytes']),
+            capacity: n(i['capacityBytes']),
+            available: n(i['availableBytes']),
+            inodes: n(i['inodes']),
+            inodesUsed: n(i['inodesUsed']),
+            source: i['source'] == 'prometheus' ? UsageSource.prometheus : UsageSource.kubelet,
+          ),
+      },
+      prometheus: j['prometheus'] == true,
+      kubelet: j['kubelet'] == 'available',
+      kubeletMessage: j['kubeletMessage'] as String?,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

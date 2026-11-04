@@ -26,6 +26,17 @@ class _SummaryApi extends FakeApiClient {
 
   @override
   Future<Json> metrics(String path, [Map<String, String?> query = const {}]) async {
+    if (path == 'volumes') {
+      // Merged per claim: Prometheus has scratch, the kubelet has data-redis-0.
+      return {
+        'prometheus': true,
+        'kubelet': 'available',
+        'items': [
+          {'namespace': 'demo', 'claim': 'data-redis-0', 'source': 'kubelet', 'usedBytes': 966367642, 'capacityBytes': 1073741824},
+          {'namespace': 'demo', 'claim': 'scratch', 'source': 'prometheus', 'usedBytes': 107374182, 'capacityBytes': 1073741824},
+        ],
+      };
+    }
     if (path != 'summary') throw UnimplementedError(path);
     summaryQueries.add(query);
     return {
@@ -89,17 +100,19 @@ void main() {
     await saveScreenshot(tester, 'pvc-usage-kubelet');
   });
 
-  testWidgets('Storage tab lists claims fullest first; idle claims say not mounted', (tester) async {
+  testWidgets('Storage tab merges sources per claim, fullest first; idle claims say not mounted', (tester) async {
     PromApi.debugOverride = (_) => FixturePromApi(missing: true);
     addTearDown(() => PromApi.debugOverride = null);
     await loadRealFonts();
     final pvc = _json('../dev/fixtures/pvc-data-redis-0.json');
     final idle = jsonDecode(jsonEncode(pvc)) as Json;
     idle['metadata']['name'] = 'scratch';
+    final unused = jsonDecode(jsonEncode(pvc)) as Json;
+    unused['metadata']['name'] = 'unused';
     final pending = jsonDecode(jsonEncode(pvc)) as Json;
     pending['metadata']['name'] = 'waiting';
     pending['status'] = {'phase': 'Pending'};
-    final api = _SummaryApi(itemsByResource: {'persistentvolumeclaims': [idle, pending, pvc]});
+    final api = _SummaryApi(itemsByResource: {'persistentvolumeclaims': [idle, unused, pending, pvc]});
     final app = AppState(api)..types = testTypes;
     tester.view.physicalSize = const Size(900, 400);
     tester.view.devicePixelRatio = 1;
@@ -112,10 +125,12 @@ void main() {
 
     double y(String text) => tester.getTopLeft(find.textContaining(text).first).dy;
     expect(find.text('90%'), findsOneWidget);
+    expect(find.text('10%'), findsOneWidget);
     expect(find.text('not mounted'), findsOneWidget);
     expect(find.text('pending'), findsOneWidget);
     expect(y('data-redis-0'), lessThan(y('scratch')));
-    expect(find.textContaining('usage via kubelet stats'), findsOneWidget);
+    expect(y('scratch'), lessThan(y('unused')));
+    expect(find.text('usage via Prometheus (1) and kubelet stats (1)'), findsOneWidget);
     await saveScreenshot(tester, 'metrics-storage');
 
     await tester.tap(find.textContaining('data-redis-0'));

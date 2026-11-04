@@ -1,23 +1,39 @@
 package metrics
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/prom"
 )
 
 // Register adds the /api/metrics/* routes. Each request uses the active kube
 // context's Service.
 func Register(mux *http.ServeMux, mgr *cluster.Manager) {
-	h := &handlers{svc: func() *Service { return For(mgr.Clients()) }}
+	h := &handlers{
+		svc: func() *Service { return For(mgr.Clients()) },
+		prom: func() PromQuery {
+			c := mgr.Clients()
+			return func(ctx context.Context, q string) ([]PromSample, error) {
+				res, _, err := prom.QueryVector(ctx, c, q)
+				out := make([]PromSample, len(res))
+				for i, r := range res {
+					out[i] = PromSample{Metric: r.Metric, Value: r.Value}
+				}
+				return out, err
+			}
+		},
+	}
 	h.register(mux)
 }
 
 type handlers struct {
-	svc func() *Service
+	svc  func() *Service
+	prom func() PromQuery
 }
 
 func (h *handlers) register(mux *http.ServeMux) {
@@ -30,6 +46,7 @@ func (h *handlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/metrics/external", h.external)
 	mux.HandleFunc("GET /api/metrics/hpa", h.hpa)
 	mux.HandleFunc("GET /api/metrics/summary", h.summary)
+	mux.HandleFunc("GET /api/metrics/volumes", h.volumes)
 }
 
 type apiError struct {
@@ -170,4 +187,13 @@ func (h *handlers) summary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.WriteJSON(w, 200, h.svc().Summary(r.Context(), q.Get("namespace"), nodes))
+}
+
+// volumes serves per-claim usage merged from Prometheus and the kubelets.
+func (h *handlers) volumes(w http.ResponseWriter, r *http.Request) {
+	var q PromQuery
+	if h.prom != nil {
+		q = h.prom()
+	}
+	httpx.WriteJSON(w, 200, h.svc().Volumes(r.Context(), r.URL.Query().Get("namespace"), q))
 }
