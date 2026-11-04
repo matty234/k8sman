@@ -467,7 +467,7 @@ shell: copy with Ctrl+Shift+C and paste with Ctrl+V.
 
 ## Build from source
 
-Requirements: macOS, Flutter (stable), Go 1.24+, and for the dev cluster
+Requirements: macOS, Flutter (stable), Go 1.27+, and for the dev cluster
 [kind](https://kind.sigs.k8s.io) and kubectl.
 
 ```sh
