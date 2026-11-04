@@ -126,3 +126,43 @@ func TestSummaryFailsSoft(t *testing.T) {
 		t.Fatal("NotReady nodes are skipped")
 	}
 }
+
+func TestVolumesMergesPrometheusAndKubelet(t *testing.T) {
+	g := &mapGetter{body: map[string]string{
+		"/api/v1/nodes": `{"items":[{"metadata":{"name":"node1"},"status":{"conditions":[{"type":"Ready","status":"True"}]}}]}`,
+		node1Path:       summaryFixture(t),
+	}, hits: map[string]int{}}
+	var mu sync.Mutex
+	var queries []string
+	// Prometheus has only demo/logs: no stats for data-redis-0, as on clusters
+	// that scrape the kubelet but drop its volume stats.
+	q := func(_ context.Context, query string) ([]PromSample, error) {
+		mu.Lock()
+		queries = append(queries, query)
+		mu.Unlock()
+		return []PromSample{{Metric: map[string]string{"namespace": "demo", "persistentvolumeclaim": "logs"}, Value: 42}}, nil
+	}
+	res := New(g).Volumes(context.Background(), "demo", q)
+	if !res.Prometheus || res.Kubelet != SummaryAvailable || len(res.Items) != 2 {
+		t.Fatalf("result: %+v", res)
+	}
+	if a, b := res.Items[0], res.Items[1]; a.Claim != "data-redis-0" || a.Source != SourceKubelet || *a.Used != 966367642 || b.Claim != "logs" || b.Source != SourcePrometheus {
+		t.Fatalf("items: %+v %+v", a, b)
+	}
+	if len(queries) != 5 || !strings.Contains(queries[0], `{namespace="demo"}`) {
+		t.Fatalf("queries: %v", queries)
+	}
+
+	// Prometheus has the claim: it wins.
+	res = New(g).Volumes(context.Background(), "demo", func(context.Context, string) ([]PromSample, error) {
+		return []PromSample{{Metric: map[string]string{"namespace": "demo", "persistentvolumeclaim": "data-redis-0"}, Value: 1}}, nil
+	})
+	if len(res.Items) != 1 || res.Items[0].Source != SourcePrometheus {
+		t.Fatalf("prometheus should win: %+v", res.Items)
+	}
+	// No Prometheus at all: kubelet only.
+	res = New(g).Volumes(context.Background(), "demo", nil)
+	if res.Prometheus || len(res.Items) != 1 || res.Items[0].Source != SourceKubelet {
+		t.Fatalf("kubelet only: %+v", res)
+	}
+}

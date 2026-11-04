@@ -168,6 +168,8 @@ Widget pvcHistory(PanelContext ctx) {
     api: ctx.api,
     title: 'Usage history',
     initialRange: const Duration(days: 1),
+    // Some Prometheus setups scrape the kubelet but drop volume stats.
+    probe: 'max(last_over_time(kubelet_volume_stats_used_bytes{$sel}[7d]))',
     charts: [
       MetricChartSpec(
         title: 'Used',
@@ -263,6 +265,10 @@ class MetricHistorySection extends StatefulWidget {
   final String title;
   final Duration initialRange;
 
+  /// An instant query that must return a series, else the section hides
+  /// (e.g. Prometheus exists but doesn't have this object's metrics).
+  final String? probe;
+
   const MetricHistorySection({
     super.key,
     required this.api,
@@ -270,6 +276,7 @@ class MetricHistorySection extends StatefulWidget {
     this.breakdownLabel,
     this.title = 'Metrics history',
     this.initialRange = const Duration(hours: 1),
+    this.probe,
   });
 
   @override
@@ -278,7 +285,18 @@ class MetricHistorySection extends StatefulWidget {
 
 class _MetricHistorySectionState extends State<MetricHistorySection> {
   late final PromApi _prom = PromApi.of(widget.api);
-  late final Future<bool> _available = _prom.hasPrometheus();
+  late final Future<bool> _available = _check();
+
+  Future<bool> _check() async {
+    if (!await _prom.hasPrometheus()) return false;
+    final probe = widget.probe;
+    if (probe == null) return true;
+    try {
+      return (await _prom.query(probe)).series.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
   late Duration _range = widget.initialRange;
   bool _breakdown = false;
 

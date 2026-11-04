@@ -136,6 +136,12 @@ panels and the Metrics tabs share one fetch per node.
   The Pod and Node panels show this live rate only when there is no
   Prometheus.
 
+Prometheus and the kubelets are combined **per claim**: some Prometheus
+setups scrape the kubelet but drop `kubelet_volume_stats_*`, so the PVC panel
+falls back to the kubelet whenever Prometheus has no series for the claim
+(and hides the history chart), and `GET /api/metrics/volumes` (the Storage
+tab) merges both sources, Prometheus first.
+
 It fails soft: no permission or unreachable kubelets give `state:
 "unavailable"` (with per-node `errors` when only some fail), never an HTTP
 error, and the UI shows a quiet note or nothing.
