@@ -1,6 +1,6 @@
 // Package settings persists small app preferences (the chosen kubeconfig,
-// recently used kubeconfigs and the last context per kubeconfig) in
-// ~/.config/k8sman/settings.json.
+// recently used kubeconfigs, the last context per kubeconfig and the
+// sidebar layout) in ~/.config/k8sman/settings.json.
 package settings
 
 import (
@@ -36,6 +36,49 @@ type Settings struct {
 	// argocd CLI's own login (~/.config/argocd/config). Only the choice is
 	// stored here; the token is read from the CLI config on use.
 	ArgoCDUseCLI map[string]bool `json:"argocdUseCli,omitempty"`
+	// Sidebar is the user's layout of the sidebar's top section (pages and
+	// pinned kinds). nil = the app's default layout.
+	Sidebar *Sidebar `json:"sidebar,omitempty"`
+}
+
+// Sidebar lists the top-of-sidebar entries in display order. Each entry is
+// either a page (View set) or a pinned resource kind (Kind set). Pins apply
+// across clusters and are keyed by API group and kind, not version.
+type Sidebar struct {
+	Items []SidebarItem `json:"items"`
+}
+
+// SidebarItem is one entry of [Sidebar].
+type SidebarItem struct {
+	// View is a page id (e.g. "overview", "helm").
+	View string `json:"view,omitempty"`
+	// Hidden pages are folded under the sidebar's "More" item.
+	Hidden bool `json:"hidden,omitempty"`
+	// Group ("" = core) and Kind of a pinned resource kind.
+	Group string `json:"group,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+	// Namespace optionally scopes a pin ("" = whichever namespace is chosen).
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// Valid reports whether every item is either a page or a pin.
+func (sb Sidebar) Valid() error {
+	for i, it := range sb.Items {
+		if (it.View == "") == (it.Kind == "") {
+			return fmt.Errorf("item %d: set exactly one of view or kind", i)
+		}
+		if it.View != "" && (it.Group != "" || it.Namespace != "") {
+			return fmt.Errorf("item %d: a view takes no group or namespace", i)
+		}
+	}
+	return nil
+}
+
+func cloneSidebar(sb *Sidebar) *Sidebar {
+	if sb == nil {
+		return nil
+	}
+	return &Sidebar{Items: slices.Clone(sb.Items)}
 }
 
 // Store reads and writes the settings file. Methods are safe for concurrent use.
@@ -84,6 +127,7 @@ func (st *Store) Get() Settings {
 	}
 	out.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
 	out.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
+	out.Sidebar = cloneSidebar(st.s.Sidebar)
 	return out
 }
 
@@ -99,6 +143,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	}
 	next.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
 	next.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
+	next.Sidebar = cloneSidebar(st.s.Sidebar)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -175,6 +220,16 @@ func (st *Store) SetArgoCDUseCLI(context string, on bool) error {
 		}
 		s.ArgoCDUseCLI[context] = true
 	})
+}
+
+// SetSidebar saves the sidebar layout; nil restores the default.
+func (st *Store) SetSidebar(sb *Sidebar) error {
+	if sb != nil {
+		if err := sb.Valid(); err != nil {
+			return err
+		}
+	}
+	return st.Update(func(s *Settings) { s.Sidebar = cloneSidebar(sb) })
 }
 
 func (st *Store) write(s Settings) error {

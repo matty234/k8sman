@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import 'sidebar_config.dart';
+
+export 'sidebar_config.dart';
 
 /// What the main area shows.
 enum MainView { overview, alerts, nodes, gpus, metrics, resources, portForwards, helm, security, addons, access }
@@ -157,6 +160,61 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- sidebar layout ----
+
+  /// Which pages the sidebar shows, in what order, and pinned kinds.
+  SidebarConfig sidebar = SidebarConfig.defaults;
+  Future<void> _sidebarSaves = Future.value();
+
+  /// Loads the saved layout (once per backend connection: it is an app
+  /// setting, not per cluster). Keeps the current one if that fails.
+  Future<void> loadSidebar() async {
+    try {
+      sidebar = SidebarConfig.fromJson(await api.getSidebar());
+      notifyListeners();
+    } catch (e) {
+      debugPrint('sidebar layout: $e');
+    }
+  }
+
+  /// Applies [c] now and saves it (in order, in the background). The
+  /// default layout is saved as "no customisation".
+  void setSidebar(SidebarConfig c) {
+    sidebar = c;
+    notifyListeners();
+    final json = c.isDefault ? null : c.toJson();
+    _sidebarSaves = _sidebarSaves.then((_) => api.putSidebar(json)).catchError((Object e) => debugPrint('save sidebar layout: $e'));
+  }
+
+  /// The discovered type a pin points at (null: not on this cluster).
+  ResourceType? typeForPin(SidebarPin p) => typeFor(p.group, p.kind);
+
+  /// Selects a pinned kind exactly as the kinds list does, switching to
+  /// the pin's namespace if it has one.
+  void openPin(SidebarPin p) {
+    final t = typeForPin(p);
+    if (t == null) return;
+    if (p.namespace != null && t.namespaced && namespace != p.namespace) setNamespace(p.namespace);
+    selectType(t);
+  }
+
+  /// The pin showing the current selection: one scoped to the current
+  /// namespace wins over an unscoped pin of the same kind.
+  SidebarPin? get selectedPin {
+    final t = selectedType;
+    if (view != MainView.resources || t == null) return null;
+    SidebarPin? any;
+    for (final p in sidebar.pins) {
+      if (p.gk != t.gk) continue;
+      if (p.namespace == null) {
+        any ??= p;
+      } else if (p.namespace == namespace) {
+        return p;
+      }
+    }
+    return any;
+  }
+
   /// Namespaces chosen this session, most recent first (for the picker).
   final List<String> recentNamespaces = [];
 
@@ -228,6 +286,7 @@ class AppState extends ChangeNotifier {
     _connectedOnce = true;
     await init();
     if (again) columnsChanged();
+    await loadSidebar();
     await loadKubeconfigs();
   }
 

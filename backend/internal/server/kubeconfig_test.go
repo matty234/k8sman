@@ -142,6 +142,22 @@ func TestDisconnectedServer(t *testing.T) {
 	if rec, _ := do(t, s, "POST", "/api/portforwards", `{"namespace":"a","kind":"pod","name":"b","port":"80"}`); rec.Code != 400 {
 		t.Fatalf("create forward while disconnected: %d %s", rec.Code, rec.Body)
 	}
+	// The sidebar layout is editable without a cluster.
+	if rec, _ := do(t, s, "PUT", "/api/settings/sidebar", `{"items":[{"view":"overview"},{"group":"apps","kind":"Deployment"}]}`); rec.Code != 200 {
+		t.Fatalf("put sidebar: %d %s", rec.Code, rec.Body)
+	}
+	if rec, _ := do(t, s, "GET", "/api/settings/sidebar", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"kind":"Deployment"`) {
+		t.Fatalf("get sidebar: %d %s", rec.Code, rec.Body)
+	}
+	if rec, _ := do(t, s, "PUT", "/api/settings/sidebar", `{"items":[{"view":"overview","kind":"Pod"}]}`); rec.Code != 400 {
+		t.Fatalf("invalid sidebar: want 400, got %d", rec.Code)
+	}
+	if rec, _ := do(t, s, "DELETE", "/api/settings/sidebar", ""); rec.Code != 204 {
+		t.Fatalf("reset sidebar: %d", rec.Code)
+	}
+	if rec, _ := do(t, s, "GET", "/api/settings/sidebar", ""); !strings.Contains(rec.Body.String(), `"sidebar":null`) {
+		t.Fatalf("after reset: %s", rec.Body)
+	}
 	kc := writeKubeconfig(t, filepath.Join(home, "kc"), "x")
 	if rec, got := do(t, s, "POST", "/api/kubeconfigs/current", `{"path":"`+kc+`"}`); rec.Code != 200 || got.Context != "x" {
 		t.Fatalf("connect: %d %s", rec.Code, rec.Body)

@@ -18,6 +18,7 @@ import '../state/table_controller.dart';
 import '../util/k8s.dart';
 import 'cluster_error_view.dart';
 import 'column_editor.dart';
+import 'resource_nav.dart' show showKindMenu;
 import 'row_context_menu.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
@@ -472,6 +473,11 @@ class _Toolbar extends StatelessWidget {
               return Row(
                 children: [
                   Expanded(
+                    // Right-click the title: pin this kind to the sidebar.
+                    child: GestureDetector(
+                    key: const ValueKey('table-title'),
+                    behavior: HitTestBehavior.translucent,
+                    onSecondaryTapUp: (d) => showKindMenu(context, d.globalPosition, t),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
@@ -496,6 +502,7 @@ class _Toolbar extends StatelessWidget {
                           ),
                         ),
                       ],
+                    ),
                     ),
                   ),
                   if (t.namespaced) ...[SizedBox(width: nsWidth, child: const NamespacePicker()), const SizedBox(width: 8)],

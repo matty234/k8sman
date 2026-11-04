@@ -145,6 +145,19 @@ class ApiClient {
     return [for (final i in (j['items'] as List? ?? const [])) Map<String, dynamic>.from(i)];
   }
 
+  // ---- sidebar layout (settings.json) ----
+
+  /// The saved sidebar layout (`{items:[…]}`), or null for the default.
+  Future<Json?> getSidebar() async {
+    final j = await _get('settings/sidebar') as Json;
+    final s = j['sidebar'];
+    return s == null ? null : Map<String, dynamic>.from(s as Map);
+  }
+
+  /// Saves the layout, or with null restores the default.
+  Future<void> putSidebar(Json? layout) =>
+      layout == null ? _send('DELETE', 'settings/sidebar', const {}, null) : _send('PUT', 'settings/sidebar', const {}, layout);
+
   // ---- columns ----
 
   Future<ColumnsConfig> getColumns(ResourceRef r) async => ColumnsConfig.fromJson(await _get('columns', r.toQuery()));
