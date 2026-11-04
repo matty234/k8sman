@@ -43,9 +43,23 @@ machine.
 
 ## Feature tour
 
+### Jump anywhere, filter anything
+
+<picture><source srcset="docs/images/demo-palette.avif" type="image/avif"><img src="docs/images/demo-palette.gif" alt="⌘K: type a kind to show its table, or an object name to open it" width="100%"></picture>
+
+- **⌘K** (Ctrl+K on Windows and Linux) opens the command palette from any
+  page: pages, resource kinds (short names like `svc` work), namespaces,
+  contexts, actions, and objects by name.
+
+<picture><source srcset="docs/images/demo-filter.avif" type="image/avif"><img src="docs/images/demo-filter.gif" alt="The filter box suggests columns, then the values in that column, and combines terms" width="100%"></picture>
+
+- The **filter box** helps you write queries: it suggests columns, then the
+  values seen in that column (Tab or Return to pick). Terms combine:
+  `status=Running restarts>3`, `status!=Running`, `memory>256Mi`, `age<1h`.
+
 ### Cluster health at a glance
 
-![Overview: issue tiles, issues grouped by owning workload, nodes and top warnings](docs/images/overview.png)
+<picture><source srcset="docs/images/demo-overview.avif" type="image/avif"><img src="docs/images/overview.png" alt="Overview: issue tiles, then the issues grouped by owning workload" width="100%"></picture>
 
 - The **Overview** page ranks what's wrong: crash loops, image pull errors,
   OOM kills, stalled rollouts, failing CronJobs, node pressure, lost PVCs and more.
@@ -69,7 +83,7 @@ machine.
 
 ### Logs, terminals and port-forwards
 
-![A shell in an nginx container in the bottom dock](docs/images/terminal.png)
+<picture><source srcset="docs/images/demo-logs.avif" type="image/avif"><img src="docs/images/terminal.png" alt="Logs streaming into the bottom dock, then a shell in the same pod" width="100%"></picture>
 
 - **Logs**: follow, previous instance, timestamps, wrap, and search with
   highlighting or "only matching". You can open the logs of up to N pods of a
@@ -153,14 +167,20 @@ machine.
 
 ### Columns you define
 
+<picture><source srcset="docs/images/demo-columns.avif" type="image/avif"><img src="docs/images/demo-columns.gif" alt="Dragging the Status header next to Name, then resizing the Name column" width="100%"></picture>
+
+- **Drag a header** to move a column and **drag a divider** to resize it
+  (double-click to reset). Tables remember their sort, widths and filter
+  across launches.
+
 ![The column editor: jq expressions, a field picker and a live preview](docs/images/columns.png)
 
 - Each column is a **jq expression** with a type: string, number, quantity,
-  age, status, bool or labels.
+  percent, age, status, bool or labels.
 - A field picker lists paths from a sample object, and a live preview runs
   your columns against the cluster.
 - Columns are saved per resource type. Sorting understands quantities
-  (`500m` < `2`), and the filter accepts `column=value`.
+  (`500m` < `2`), and the filter compares them by value (`memory>256Mi`).
 
 ### Native macOS feel
 
