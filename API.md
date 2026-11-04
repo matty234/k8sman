@@ -7,6 +7,43 @@ once it listens. Reads are always available. Edits, actions, starting
 port-forwards, exec and debug containers are refused (403) when the server runs with `--read-only`. The Dart client in
 `frontend/lib/api/client.dart` wraps all of these endpoints.
 
+## Access control
+
+The server holds the user's cluster credentials, so every request (HTTP and
+WebSocket upgrades, including `/api/health`) must pass these checks
+(`backend/internal/server/guard.go`), in this order:
+
+1. **Host**: `127.0.0.1:<port>`, `localhost:<port>` or `[::1]:<port>`, where
+   `<port>` is the port the request arrived on. Anything else → 403
+   (`reason: "ForbiddenHost"`; stops DNS rebinding).
+2. **Origin**: absent (the desktop app sends none) or exactly
+   `http(s)://localhost|127.0.0.1|[::1][:port]`. Anything else → 403
+   (`ForbiddenOrigin`). Local origins get CORS headers; their `OPTIONS`
+   preflights are answered without a token.
+3. **Bearer token**: `Authorization: Bearer <token>`, compared in constant
+   time. Missing or wrong → 401 (`Unauthorized`). WebSockets send it as a
+   handshake header too; a token in the query string is ignored.
+4. **Content-Type** on POST/PUT/PATCH/DELETE: `application/json` (also
+   `application/yaml` for `PUT /api/object` and `POST /api/rbac/apply`),
+   even with an empty body. Anything else → 415 (`UnsupportedMediaType`),
+   so a cross-site "simple" request (`text/plain`, forms) never reaches a
+   handler.
+
+The token comes from the `K8SMAN_AUTH_TOKEN` environment variable (at least
+32 characters), which the server removes from its environment after reading.
+The macOS and Windows apps generate 32 random bytes per backend launch and
+pass them this way (an environment variable rather than a flag, since
+command lines are visible to other users). A server started without it (e.g.
+`make backend`) generates a token, prints `K8SMAN_DEV_TOKEN <token>` on
+stderr and writes it to `~/.config/k8sman/dev-token` (mode 0600), where the
+app (`make app-dev`) and scripts can read it:
+
+```sh
+curl -H "Authorization: Bearer $(cat ~/.config/k8sman/dev-token)" http://127.0.0.1:7443/api/health
+```
+
+The `--pprof` listener applies the same checks.
+
 If no kubeconfig can be loaded at startup the server still runs, disconnected:
 cluster endpoints return 503 (`reason: "NoKubeconfig"`), while `/api/health`,
 `/api/contexts`, `/api/kubeconfigs*`, `/api/settings/*` and `/api/portforwards*` keep working so

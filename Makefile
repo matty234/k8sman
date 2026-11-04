@@ -26,6 +26,8 @@ backend-build:
 	cd backend && go build -o bin/k8sman-server ./cmd/k8sman-server
 
 ## Run a standalone backend on 127.0.0.1:7443 (default: the dev kind cluster).
+## Unless K8SMAN_AUTH_TOKEN is set it generates a bearer token, prints it on
+## stderr and writes it to ~/.config/k8sman/dev-token (0600) for app-dev/curl.
 backend: backend-build
 	./backend/bin/k8sman-server --kubeconfig $(KCFG)
 
@@ -45,8 +47,11 @@ app:
 	cd frontend && flutter run -d macos
 
 ## Run the macOS app against a separately started backend (`make backend`).
+## The app reads the backend's token from ~/.config/k8sman/dev-token, or
+## K8SMAN_TOKEN=… (passed as --dart-define) overrides it.
+K8SMAN_TOKEN ?=
 app-dev:
-	cd frontend && flutter run -d macos --dart-define=K8SMAN_BACKEND=http://127.0.0.1:7443
+	cd frontend && flutter run -d macos --dart-define=K8SMAN_BACKEND=http://127.0.0.1:7443 $(if $(K8SMAN_TOKEN),--dart-define=K8SMAN_TOKEN=$(K8SMAN_TOKEN))
 
 ## Build a Release .app (universal, with the embedded backend and Sparkle),
 ## zip it to dist/ and write dist/SHA256SUMS. CFBundleVersion is set to the

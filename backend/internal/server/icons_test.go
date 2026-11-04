@@ -29,6 +29,7 @@ func iconServer(t *testing.T, contextName, host string, opts Options) *Server {
 	if opts.Settings == nil {
 		opts.Settings, _ = settings.Open(filepath.Join(dir, "settings.json"))
 	}
+	opts.AuthToken = testToken
 	return New(mgr, store, nil, opts)
 }
 
@@ -65,7 +66,7 @@ func TestIconEndpointRejectsBadGroups(t *testing.T) {
 	s := iconServer(t, "prod", "https://203.0.113.10:6443", Options{IconCacheDir: t.TempDir()})
 	for _, g := range []string{"Bad_Group", "-x.io", "a..b"} {
 		rec := httptest.NewRecorder()
-		s.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/icons/"+g, nil))
+		s.ServeHTTP(rec, localRequest(http.MethodGet, "/api/icons/"+g, nil))
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("%s: status %d", g, rec.Code)
 		}

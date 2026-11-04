@@ -306,7 +306,7 @@ func leakCmd(fs *flag.FlagSet) func() error {
 		}
 		var logs []*websocket.Conn
 		for range *n {
-			c, _, err := websocket.DefaultDialer.Dial(wsURL(*base, "/api/logs?"+q("namespace", *ns, "pod", pod, "tailLines", "10")), nil)
+			c, _, err := websocket.DefaultDialer.Dial(wsURL(*base, "/api/logs?"+q("namespace", *ns, "pod", pod, "tailLines", "10")), authHeader())
 			if err != nil {
 				return err
 			}

@@ -529,7 +529,17 @@ make backend    # standalone server on 127.0.0.1:7443 against the dev cluster
 make app-dev    # app using that server (--dart-define=K8SMAN_BACKEND=http://127.0.0.1:7443)
 ```
 
-The embedded backend is started with `--addr 127.0.0.1:0` and the app learns
+The backend requires a bearer token on every request (see "Access control"
+in API.md). `make backend` generates one per start and writes it to
+`~/.config/k8sman/dev-token` (mode 0600); the app run by `make app-dev` reads
+that file at launch, so after restarting the backend, hot-restart the app
+(`R` in `flutter run`). To use another token, pass
+`--dart-define=K8SMAN_TOKEN=…` to `flutter run` and set `K8SMAN_AUTH_TOKEN`
+for the server. For curl:
+`curl -H "Authorization: Bearer $(cat ~/.config/k8sman/dev-token)" http://127.0.0.1:7443/api/health`.
+
+The embedded backend is started with `--addr 127.0.0.1:0` and a fresh random
+token in `K8SMAN_AUTH_TOKEN`, and the app learns
 the port from its `K8SMAN_LISTENING <addr>` stdout line. To pass extra flags
 to it, run for example
 `defaults write dev.k8sman.app BackendArgs -array --read-only`.

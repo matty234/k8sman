@@ -2,7 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/api/client.dart';
+import 'package:k8sman/app/backend.dart';
 import 'package:k8sman/app/backend_supervisor.dart';
 
 /// A backend process driven by the test. Closing its stdin makes it exit 0,
@@ -43,20 +46,23 @@ class FakeProcess implements Process {
 void main() {
   late List<FakeProcess> spawned;
   late List<List<String>> args;
+  late List<Map<String, String>> envs;
   late List<Duration> delays;
   late List<Map<String, Object?>> updates;
 
   BackendSupervisor make() {
     spawned = [];
     args = [];
+    envs = [];
     delays = [];
     updates = [];
     const timeout = Duration(seconds: 30);
     return BackendSupervisor(
       executable: 'k8sman-server.exe',
       startupTimeout: timeout,
-      start: (exe, a) async {
+      start: (exe, a, env) async {
         args.add(a);
+        envs.add(env);
         return (spawned..add(FakeProcess())).last;
       },
       // Backoff delays return at once; the startup timeout never fires.
@@ -109,6 +115,49 @@ void main() {
     spawned.last.say('K8SMAN_LISTENING 127.0.0.1:50001');
     await settle();
     expect(sup.status()['url'], 'http://127.0.0.1:50001');
+  });
+
+  test('passes a fresh random token per spawn in the environment, never as an argument, and reports it', () async {
+    final sup = make();
+    await sup.start();
+    final t1 = envs.single[authTokenEnv];
+    expect(t1, matches(RegExp(r'^[0-9a-f]{64}$')));
+    expect(args.single.join(' '), isNot(contains(t1)));
+    expect(sup.status().containsKey('token'), isFalse, reason: 'no token before the backend listens');
+
+    spawned.last.say('K8SMAN_LISTENING 127.0.0.1:50000');
+    await settle();
+    expect(sup.status(), containsPair('token', t1));
+    expect(updates.last, containsPair('token', t1));
+
+    await sup.restart();
+    spawned.last.say('K8SMAN_LISTENING 127.0.0.1:50000');
+    await settle();
+    final t2 = envs.last[authTokenEnv];
+    expect(t2, matches(RegExp(r'^[0-9a-f]{64}$')));
+    expect(t2, isNot(t1));
+    expect(sup.status(), containsPair('token', t2));
+  });
+
+  test('on Windows the controller points ApiClient at the reported url and token', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final sup = make();
+    final api = ApiClient(base: Uri.parse('http://127.0.0.1:1'));
+    final c = BackendController(api, supervisor: sup);
+    await c.start();
+    spawned.last.say('K8SMAN_LISTENING 127.0.0.1:50000');
+    await settle();
+    expect(api.base.toString(), 'http://127.0.0.1:50000');
+    expect(api.token, envs.last[authTokenEnv]);
+    expect(api.authHeaders, {'Authorization': 'Bearer ${envs.last[authTokenEnv]}'});
+
+    // A restart on the same port still switches to the new token.
+    await c.retry();
+    spawned.last.say('K8SMAN_LISTENING 127.0.0.1:50000');
+    await settle();
+    expect(envs, hasLength(2));
+    expect(api.token, envs.last[authTokenEnv]);
   });
 
   test('stop closes stdin and does not restart', () async {

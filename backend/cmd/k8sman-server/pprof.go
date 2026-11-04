@@ -5,11 +5,16 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+
+	"github.com/matty234/k8sman/backend/internal/server"
 )
 
 // startPprof serves the runtime profiler on its own loopback-only listener,
-// so it is never reachable through the API port.
-func startPprof(addr string) {
+// so it is never reachable through the API port. It is guarded like the API
+// (loopback Host, local Origin, bearer token), e.g.
+// `curl -H "Authorization: Bearer $TOKEN" -o heap.pb.gz http://127.0.0.1:6060/debug/pprof/heap`
+// then `go tool pprof heap.pb.gz`.
+func startPprof(addr, token string) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		log.Fatalf("pprof: %v", err)
@@ -28,5 +33,5 @@ func startPprof(addr string) {
 		log.Fatalf("pprof: %v", err)
 	}
 	log.Printf("pprof on http://%s/debug/pprof/", ln.Addr())
-	go func() { _ = http.Serve(ln, mux) }()
+	go func() { _ = http.Serve(ln, server.Protect(token, mux)) }()
 }

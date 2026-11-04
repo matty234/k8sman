@@ -23,6 +23,9 @@ CTX=kind-k8sman-dev
 mkdir -p "$OUT"
 PERF="$OUT/perf"
 (cd "$HERE" && go build -o "$PERF" .)
+# Bearer token for the backend (it requires one) and the harness.
+K8SMAN_AUTH_TOKEN=$(openssl rand -hex 32)
+export K8SMAN_AUTH_TOKEN
 
 # Scratch kubeconfig: the dev cluster under two context names (for the
 # context-switch test), optionally pointed at the latency proxy.

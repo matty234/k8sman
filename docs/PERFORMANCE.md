@@ -287,6 +287,11 @@ the window collapse to its latest row. A lone event is still a plain
 
 `k8sman-server --pprof 127.0.0.1:6060` serves `net/http/pprof` on a separate
 loopback-only listener (refused for non-loopback addresses). Off by default.
+It is guarded like the API (loopback `Host`, bearer token; see API.md), so
+fetch profiles with the token, e.g.
+`curl -H "Authorization: Bearer $K8SMAN_AUTH_TOKEN" -o heap.pb.gz http://127.0.0.1:6060/debug/pprof/heap`
+and then `go tool pprof heap.pb.gz`. `tools/perf/run.sh` sets the token for
+the server and the harness.
 
 ## Re-running the benchmarks
 

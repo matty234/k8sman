@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../api/client.dart';
@@ -152,22 +153,27 @@ abstract class ExecTransport {
 }
 
 /// Builds the transport for an [ApiClient]. Tests may replace this.
-ExecTransport Function(ApiClient api) execTransportFor = (api) => WsExecTransport(() => api.base);
+ExecTransport Function(ApiClient api) execTransportFor = (api) => WsExecTransport(() => api.base, headers: () => api.authHeaders);
 
 class WsExecTransport implements ExecTransport {
   /// Read on every call: the app sets the embedded backend's address at launch.
   final Uri Function() base;
+
+  /// Auth headers (the backend's bearer token), read on every call like [base].
+  final Map<String, String> Function() headers;
   final http.Client _http;
-  WsExecTransport(this.base, {http.Client? httpClient}) : _http = httpClient ?? http.Client();
+  WsExecTransport(this.base, {Map<String, String> Function()? headers, http.Client? httpClient})
+      : headers = headers ?? (() => const {}),
+        _http = httpClient ?? http.Client();
 
   @override
-  ExecConnection connect(ExecRequest request) => _WsExecConnection(request.uri(base()));
+  ExecConnection connect(ExecRequest request) => _WsExecConnection(IOWebSocketChannel.connect(request.uri(base()), headers: headers()));
 
   @override
   Future<String> createDebugContainer({required String namespace, required String pod, String? targetContainer, required String image}) async {
     final res = await _http.post(
       base().replace(path: '/api/debug-container'),
-      headers: {'Content-Type': 'application/json'},
+      headers: {...headers(), 'Content-Type': 'application/json'},
       body: jsonEncode({'namespace': namespace, 'pod': pod, 'targetContainer': ?targetContainer, 'image': image}),
     );
     final Object? j;
@@ -188,7 +194,7 @@ class _WsExecConnection implements ExecConnection {
   final _events = StreamController<ExecEvent>();
   bool _closed = false;
 
-  _WsExecConnection(Uri uri) : _ch = WebSocketChannel.connect(uri) {
+  _WsExecConnection(this._ch) {
     _ch.ready.then((_) {}, onError: (Object e) {
       if (!_closed) _add(ExecError(ExecReason.connection, 'Could not connect to the backend: $e'));
     });
