@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
 import '../../state/app_state.dart';
+import '../access/access_view.dart';
 import '../widgets/common.dart';
 import 'ai_summary.dart';
 import 'security_api.dart';
@@ -268,7 +269,15 @@ class _SecurityViewState extends State<SecurityView> {
       if (show('rbac'))
         DetailSection(
           title: 'Most permissive grants',
-          trailing: Text(data.includeSystem ? 'including system' : 'excluding system defaults', style: hint),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(data.includeSystem ? 'including system' : 'excluding system defaults', style: hint),
+            const SizedBox(width: 8),
+            TextButton(
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: () => AccessFocus.open(context.read<AppState>()),
+              child: const Text('Explore in Access'),
+            ),
+          ]),
           child: PermissiveTable(grants: data.permissive),
         ),
       if (show('images')) ...[

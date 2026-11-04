@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../ui/access/access_api.dart';
+import '../../ui/access/access_apply.dart';
+import '../../ui/access/access_view.dart';
+import '../../ui/access/grant_dialog.dart';
+import '../../ui/access/permission_matrix.dart';
+import '../../ui/access/role_editor.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
@@ -25,7 +31,18 @@ class RolePanel extends ResourcePanel {
     final agg = asMap(ctx.object['aggregationRule']);
     final selectors = asMapList(agg['clusterRoleSelectors']);
     final into = aggregatesInto(asMap(ctx.metadata['labels']));
+    final role = RbacRef(isCluster ? 'ClusterRole' : 'Role', ctx.name, isCluster ? null : ctx.namespace);
+    // Big (typically aggregated) roles start with the matrix folded.
+    final matrixRows = matrixFromRules(rules, role: role).rows.length;
     return [
+      if (rules.isNotEmpty)
+        DetailSection(
+          title: 'Permission matrix',
+          icon: Icons.grid_on,
+          initiallyExpanded: matrixRows <= 24,
+          trailing: _RoleActions(ctx: ctx, role: role),
+          child: RoleRulesMatrix(rules: rules, role: role),
+        ),
       DetailSection(
         title: 'Rules',
         icon: Icons.rule,
@@ -193,11 +210,24 @@ class BindingPanel extends ResourcePanel {
         title: 'Subjects',
         icon: Icons.people_outline,
         trailing: Text('${subjects.length}', style: theme.textTheme.labelSmall),
-        child: subjects.isEmpty
-            ? const InlineMessage('No subjects: this binding grants nothing')
-            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                for (final s in subjects) SubjectRow(s, bindingNamespace: ns),
-              ]),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (subjects.isEmpty) const InlineMessage('No subjects: this binding grants nothing'),
+          for (final s in subjects)
+            Row(children: [
+              Expanded(child: SubjectRow(s, bindingNamespace: ns)),
+              _SubjectActions(ctx: ctx, subject: _subjectOf(s, ns)),
+            ]),
+          if (!ctx.app.readOnly)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                icon: const Icon(Icons.person_add_alt, size: 15),
+                label: const Text('Grant this role to someone else…'),
+                onPressed: () => showGrantDialog(context, api: AccessApi(ctx.api), role: RbacRef(refKind, refName, refKind == 'Role' ? ns : null), namespace: ns),
+              ),
+            ),
+        ]),
       ),
       DetailSection(
         title: 'Granted rules',
@@ -255,4 +285,67 @@ class _GrantedRulesState extends State<_GrantedRules> {
           ]);
         },
       );
+}
+
+RbacSubject _subjectOf(Json s, String? bindingNs) {
+  final kind = '${s['kind'] ?? 'User'}';
+  final name = '${s['name'] ?? ''}';
+  if (kind == 'ServiceAccount') return RbacSubject.sa((s['namespace'] as String?) ?? bindingNs ?? 'default', name);
+  return RbacSubject(kind: kind, name: name);
+}
+
+/// "Edit rules" (structured editor) and "Grant…" for a Role/ClusterRole.
+class _RoleActions extends StatelessWidget {
+  final PanelContext ctx;
+  final RbacRef role;
+  const _RoleActions({required this.ctx, required this.role});
+
+  @override
+  Widget build(BuildContext context) {
+    if (ctx.app.readOnly) return const SizedBox.shrink();
+    final style = TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6));
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      TextButton.icon(
+        style: style,
+        icon: const Icon(Icons.edit_outlined, size: 14),
+        label: const Text('Edit rules'),
+        onPressed: () => showRoleEditor(context, api: AccessApi(ctx.api), existing: ctx.object),
+      ),
+      TextButton.icon(
+        style: style,
+        icon: const Icon(Icons.person_add_alt, size: 14),
+        label: const Text('Grant…'),
+        onPressed: () => showGrantDialog(context, api: AccessApi(ctx.api), role: role, namespace: role.namespace ?? ctx.app.namespace),
+      ),
+    ]);
+  }
+}
+
+/// Per subject: open it in the Access explorer, or remove it from this binding.
+class _SubjectActions extends StatelessWidget {
+  final PanelContext ctx;
+  final RbacSubject subject;
+  const _SubjectActions({required this.ctx, required this.subject});
+
+  @override
+  Widget build(BuildContext context) {
+    final binding = RbacRef(ctx.namespace == null ? 'ClusterRoleBinding' : 'RoleBinding', ctx.name, ctx.namespace);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      IconButton(
+        tooltip: 'Open ${subject.label} in the Access explorer',
+        iconSize: 14,
+        visualDensity: VisualDensity.compact,
+        icon: const Icon(Icons.manage_accounts_outlined),
+        onPressed: () => AccessFocus.open(ctx.app, subject: subject, namespace: ctx.namespace),
+      ),
+      if (!ctx.app.readOnly)
+        IconButton(
+          tooltip: 'Remove ${subject.label} from this binding…',
+          iconSize: 14,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.person_remove_outlined),
+          onPressed: () => removeSubjectFromBinding(context, api: AccessApi(ctx.api), binding: binding, subject: subject),
+        ),
+    ]);
+  }
 }

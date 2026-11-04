@@ -295,6 +295,32 @@ Response of `GET /api/security`:
 - Findings are sorted by severity, then category. Workload findings are per top-level owner (Pod → ReplicaSet → Deployment, Pod → Job → CronJob), and best-practice findings are grouped per namespace, so 40 identical pods are one row. `check` is the stable check id; see `docs/SECURITY.md` for the full list and severities.
 - Images scanned on demand (still in the 1h cache) are merged into `images` with `source: "trivy-cli"`.
 
+## Access (RBAC workspace)
+
+Effective permissions are computed from the cluster's Roles, ClusterRoles and
+bindings by `backend/internal/rbac`, the way the RBAC authorizer evaluates them:
+aggregated ClusterRoles are expanded (each rule attributed to the role that
+declares it, with the aggregation chain), a RoleBinding to a ClusterRole only
+grants namespaced resources in its namespace, `*/subresource` matches but
+`pods/*` doesn't, resourceNames never match unnamed requests (list, create),
+nonResourceURLs support a trailing `*`, and ServiceAccounts belong to
+`system:serviceaccounts`, `system:serviceaccounts:<ns>` and
+`system:authenticated`. RBAC is listed cluster-wide through the watch cache;
+a list that is forbidden is an error (a partial answer would under-report).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/rbac/subjects` | `{serviceAccounts, users, groups: [{kind, name, namespace?, bindings, exists}], serviceAccountsError?}`: every subject named by a binding, plus every ServiceAccount |
+| GET | `/api/rbac/matrix?kind=&name=&subjectNamespace=&namespace=&groups=` | a subject's permissions. `namespace` empty = cluster-wide (ClusterRoleBindings only); a namespace adds its RoleBindings. `groups` (comma-separated) adds groups to a User. Returns `{subject, identity: {user, groups}, namespace, verbs, rows: [{group, resource, kind, namespaced, virtual?, verbs, cells: {<verb>: {paths: [i], names?, danger?}}}], paths: [Path], nonResource: [{urls, verbs, paths}], fullWildcard, bindings: [{binding, role, roleMissing?, subject, scope, inherited?}], roleBindingNamespaces, missingRoles?}`. A `*` cell means the rule has the wildcard verb; `names` means only those objects |
+| GET | `/api/rbac/role-matrix?kind=Role\|ClusterRole&name=&namespace=` | the same matrix for one role's (aggregated) rules |
+| GET | `/api/rbac/who-can?verb=&group=&resource=&subresource=&resourceName=&namespace=&path=` | `{request, danger?, entries: [{subject, paths, partial?, names?, fullWildcard?, scopes}]}`. `namespace` empty = cluster-wide, `*` = any namespace. Without `resourceName`, grants limited to resourceNames are returned as `partial` |
+| GET | `/api/rbac/self?namespace=` | the app's own credentials: SelfSubjectRulesReview laid out as a matrix, plus `identity` from SelfSubjectReview (or, on servers before 1.26, the impersonated user or the client certificate's CN/O; `identitySource` says which), `incomplete`, `evaluationError?`, `readOnly` |
+| POST | `/api/rbac/check` | body `{subject?, groups?, request: {verb, group, resource, subresource?, name?, namespace?, path?}}`: a SubjectAccessReview (SelfSubjectAccessReview without `subject`), compared with the resolver: `{allowed, denied, reason, evaluationError?, identity, resolver: {allowed, paths}, agree}`. Reviews persist nothing, so this works with `--read-only` |
+| GET | `/api/rbac/resources` | every served resource and subresource (preferred versions; the per-metric `custom.metrics`/`external.metrics` pseudo-resources are skipped) plus `virtual` ones RBAC knows (users, groups, signers, …) |
+| POST | `/api/rbac/apply[?dryRun=true]` | create or replace one Role, ClusterRole, RoleBinding or ClusterRoleBinding (YAML or JSON body). Replacing needs `metadata.resourceVersion` (409 `AlreadyExists` without, 409 `Conflict` when stale). Returns `{dryRun, created, before, after, resourceVersion, context}` with volatile metadata stripped, for a diff. The API server's escalation check applies (also to dry runs): granting what you don't hold is 403 `attempting to grant RBAC permissions not currently held`. 403 with `--read-only` |
+
+`Path` is `{binding: {kind, name, namespace?}, role, roleMissing?, subject, scope: "cluster"|<namespace>, rule: {rule: PolicyRule, source: <role declaring it>, index, via?: [aggregated ClusterRoles in between]}}`.
+
 ## Prometheus stack
 
 Prometheus and Alertmanager are discovered through the Prometheus Operator

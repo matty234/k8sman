@@ -1,0 +1,3395 @@
+{
+ "subject": {
+  "kind": "ServiceAccount",
+  "name": "app",
+  "namespace": "rbac-demo"
+ },
+ "identity": {
+  "user": "system:serviceaccount:rbac-demo:app",
+  "groups": [
+   "system:serviceaccounts",
+   "system:serviceaccounts:rbac-demo",
+   "system:authenticated"
+  ]
+ },
+ "namespace": "rbac-demo",
+ "verbs": [
+  "get",
+  "list",
+  "watch",
+  "create",
+  "update",
+  "patch",
+  "delete",
+  "deletecollection",
+  "escalate",
+  "bind",
+  "impersonate",
+  "*"
+ ],
+ "rows": [
+  {
+   "group": "",
+   "resource": "bindings",
+   "kind": "Binding",
+   "namespaced": true,
+   "verbs": [
+    "create"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "componentstatuses",
+   "kind": "ComponentStatus",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "list"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "configmaps",
+   "kind": "ConfigMap",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      0,
+      6,
+      9
+     ]
+    },
+    "list": {
+     "paths": [
+      0,
+      6,
+      9
+     ]
+    },
+    "patch": {
+     "paths": [
+      6
+     ]
+    },
+    "update": {
+     "paths": [
+      6
+     ]
+    },
+    "watch": {
+     "paths": [
+      0,
+      6,
+      9
+     ]
+    }
+   }
+  },
+  {
+   "group": "",
+   "resource": "endpoints",
+   "kind": "Endpoints",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "events",
+   "kind": "Event",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "limitranges",
+   "kind": "LimitRange",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "namespaces",
+   "kind": "Namespace",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "namespaces/finalize",
+   "kind": "Namespace",
+   "namespaced": false,
+   "verbs": [
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "namespaces/status",
+   "kind": "Namespace",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "nodes",
+   "kind": "Node",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "nodes/proxy",
+   "kind": "NodeProxyOptions",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "nodes/status",
+   "kind": "Node",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "persistentvolumeclaims",
+   "kind": "PersistentVolumeClaim",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "persistentvolumeclaims/status",
+   "kind": "PersistentVolumeClaim",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "persistentvolumes",
+   "kind": "PersistentVolume",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "persistentvolumes/status",
+   "kind": "PersistentVolume",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "pods",
+   "kind": "Pod",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      0,
+      9
+     ]
+    },
+    "list": {
+     "paths": [
+      0,
+      9
+     ]
+    },
+    "watch": {
+     "paths": [
+      0,
+      9
+     ]
+    }
+   }
+  },
+  {
+   "group": "",
+   "resource": "pods/attach",
+   "kind": "PodAttachOptions",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "get"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "pods/binding",
+   "kind": "Binding",
+   "namespaced": true,
+   "verbs": [
+    "create"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "pods/ephemeralcontainers",
+   "kind": "Pod",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "pods/eviction",
+   "kind": "Eviction",
+   "namespaced": true,
+   "verbs": [
+    "create"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "pods/exec",
+   "kind": "PodExecOptions",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "get"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "pods/log",
+   "kind": "Pod",
+   "namespaced": true,
+   "verbs": [
+    "get"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      0,
+      9
+     ]
+    },
+    "list": {
+     "paths": [
+      0,
+      9
+     ]
+    },
+    "watch": {
+     "paths": [
+      0,
+      9
+     ]
+    }
+   }
+  },
+  {
+   "group": "",
+   "resource": "pods/portforward",
+   "kind": "PodPortForwardOptions",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "get"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "pods/proxy",
+   "kind": "PodProxyOptions",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "pods/status",
+   "kind": "Pod",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "podtemplates",
+   "kind": "PodTemplate",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "replicationcontrollers",
+   "kind": "ReplicationController",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "replicationcontrollers/scale",
+   "kind": "Scale",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "replicationcontrollers/status",
+   "kind": "ReplicationController",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "resourcequotas",
+   "kind": "ResourceQuota",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "resourcequotas/status",
+   "kind": "ResourceQuota",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "secrets",
+   "kind": "Secret",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      5
+     ],
+     "names": [
+      "app-db"
+     ],
+     "danger": "Reads Secrets (including ServiceAccount tokens)"
+    }
+   }
+  },
+  {
+   "group": "",
+   "resource": "serviceaccounts",
+   "kind": "ServiceAccount",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "serviceaccounts/token",
+   "kind": "TokenRequest",
+   "namespaced": true,
+   "verbs": [
+    "create"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "services",
+   "kind": "Service",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      0,
+      9
+     ]
+    },
+    "list": {
+     "paths": [
+      0,
+      9
+     ]
+    },
+    "watch": {
+     "paths": [
+      0,
+      9
+     ]
+    }
+   }
+  },
+  {
+   "group": "",
+   "resource": "services/proxy",
+   "kind": "ServiceProxyOptions",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "",
+   "resource": "services/status",
+   "kind": "Service",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "admissionregistration.k8s.io",
+   "resource": "mutatingwebhookconfigurations",
+   "kind": "MutatingWebhookConfiguration",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "admissionregistration.k8s.io",
+   "resource": "validatingwebhookconfigurations",
+   "kind": "ValidatingWebhookConfiguration",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "apiextensions.k8s.io",
+   "resource": "customresourcedefinitions",
+   "kind": "CustomResourceDefinition",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "apiextensions.k8s.io",
+   "resource": "customresourcedefinitions/status",
+   "kind": "CustomResourceDefinition",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "apiregistration.k8s.io",
+   "resource": "apiservices",
+   "kind": "APIService",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "apiregistration.k8s.io",
+   "resource": "apiservices/status",
+   "kind": "APIService",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "apps",
+   "resource": "controllerrevisions",
+   "kind": "ControllerRevision",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "daemonsets",
+   "kind": "DaemonSet",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "daemonsets/status",
+   "kind": "DaemonSet",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "deployments",
+   "kind": "Deployment",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "deployments/scale",
+   "kind": "Scale",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "deployments/status",
+   "kind": "Deployment",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "replicasets",
+   "kind": "ReplicaSet",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "replicasets/scale",
+   "kind": "Scale",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "replicasets/status",
+   "kind": "ReplicaSet",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "statefulsets",
+   "kind": "StatefulSet",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "statefulsets/scale",
+   "kind": "Scale",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "apps",
+   "resource": "statefulsets/status",
+   "kind": "StatefulSet",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {
+    "get": {
+     "paths": [
+      7
+     ]
+    },
+    "list": {
+     "paths": [
+      7
+     ]
+    },
+    "watch": {
+     "paths": [
+      7
+     ]
+    }
+   }
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "clustercompliancereports",
+   "kind": "ClusterComplianceReport",
+   "namespaced": false,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "clustercompliancereports/status",
+   "kind": "ClusterComplianceReport",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "clusterconfigauditreports",
+   "kind": "ClusterConfigAuditReport",
+   "namespaced": false,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "clusterinfraassessmentreports",
+   "kind": "ClusterInfraAssessmentReport",
+   "namespaced": false,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "clusterrbacassessmentreports",
+   "kind": "ClusterRbacAssessmentReport",
+   "namespaced": false,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "clustersbomreports",
+   "kind": "ClusterSbomReport",
+   "namespaced": false,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "clustervulnerabilityreports",
+   "kind": "ClusterVulnerabilityReport",
+   "namespaced": false,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "configauditreports",
+   "kind": "ConfigAuditReport",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "exposedsecretreports",
+   "kind": "ExposedSecretReport",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "infraassessmentreports",
+   "kind": "InfraAssessmentReport",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "rbacassessmentreports",
+   "kind": "RbacAssessmentReport",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "sbomreports",
+   "kind": "SbomReport",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "aquasecurity.github.io",
+   "resource": "vulnerabilityreports",
+   "kind": "VulnerabilityReport",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "applications",
+   "kind": "Application",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "applicationsets",
+   "kind": "ApplicationSet",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "applicationsets/status",
+   "kind": "ApplicationSet",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "appprojects",
+   "kind": "AppProject",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "clusterworkflowtemplates",
+   "kind": "ClusterWorkflowTemplate",
+   "namespaced": false,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "cronworkflows",
+   "kind": "CronWorkflow",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "workflowartifactgctasks",
+   "kind": "WorkflowArtifactGCTask",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "workflowartifactgctasks/status",
+   "kind": "WorkflowArtifactGCTask",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "workfloweventbindings",
+   "kind": "WorkflowEventBinding",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "workflows",
+   "kind": "Workflow",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "workflowtaskresults",
+   "kind": "WorkflowTaskResult",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "workflowtasksets",
+   "kind": "WorkflowTaskSet",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "workflowtasksets/status",
+   "kind": "WorkflowTaskSet",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "argoproj.io",
+   "resource": "workflowtemplates",
+   "kind": "WorkflowTemplate",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "authentication.k8s.io",
+   "resource": "tokenreviews",
+   "kind": "TokenReview",
+   "namespaced": false,
+   "verbs": [
+    "create"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "authorization.k8s.io",
+   "resource": "localsubjectaccessreviews",
+   "kind": "LocalSubjectAccessReview",
+   "namespaced": true,
+   "verbs": [
+    "create"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "authorization.k8s.io",
+   "resource": "selfsubjectaccessreviews",
+   "kind": "SelfSubjectAccessReview",
+   "namespaced": false,
+   "verbs": [
+    "create"
+   ],
+   "cells": {
+    "create": {
+     "paths": [
+      1
+     ]
+    }
+   }
+  },
+  {
+   "group": "authorization.k8s.io",
+   "resource": "selfsubjectrulesreviews",
+   "kind": "SelfSubjectRulesReview",
+   "namespaced": false,
+   "verbs": [
+    "create"
+   ],
+   "cells": {
+    "create": {
+     "paths": [
+      1
+     ]
+    }
+   }
+  },
+  {
+   "group": "authorization.k8s.io",
+   "resource": "subjectaccessreviews",
+   "kind": "SubjectAccessReview",
+   "namespaced": false,
+   "verbs": [
+    "create"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "autoscaling",
+   "resource": "horizontalpodautoscalers",
+   "kind": "HorizontalPodAutoscaler",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "autoscaling",
+   "resource": "horizontalpodautoscalers/status",
+   "kind": "HorizontalPodAutoscaler",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "batch",
+   "resource": "cronjobs",
+   "kind": "CronJob",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "batch",
+   "resource": "cronjobs/status",
+   "kind": "CronJob",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "batch",
+   "resource": "jobs",
+   "kind": "Job",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "batch",
+   "resource": "jobs/status",
+   "kind": "Job",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "certificates.k8s.io",
+   "resource": "certificatesigningrequests",
+   "kind": "CertificateSigningRequest",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "certificates.k8s.io",
+   "resource": "certificatesigningrequests/approval",
+   "kind": "CertificateSigningRequest",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "certificates.k8s.io",
+   "resource": "certificatesigningrequests/status",
+   "kind": "CertificateSigningRequest",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "coordination.k8s.io",
+   "resource": "leases",
+   "kind": "Lease",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "discovery.k8s.io",
+   "resource": "endpointslices",
+   "kind": "EndpointSlice",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "events.k8s.io",
+   "resource": "events",
+   "kind": "Event",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "example.k8sman.dev",
+   "resource": "widgets",
+   "kind": "Widget",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "example.k8sman.dev",
+   "resource": "widgets/status",
+   "kind": "Widget",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "flowcontrol.apiserver.k8s.io",
+   "resource": "flowschemas",
+   "kind": "FlowSchema",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "flowcontrol.apiserver.k8s.io",
+   "resource": "flowschemas/status",
+   "kind": "FlowSchema",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "flowcontrol.apiserver.k8s.io",
+   "resource": "prioritylevelconfigurations",
+   "kind": "PriorityLevelConfiguration",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "flowcontrol.apiserver.k8s.io",
+   "resource": "prioritylevelconfigurations/status",
+   "kind": "PriorityLevelConfiguration",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "backends",
+   "kind": "Backend",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "backends/status",
+   "kind": "Backend",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "backendtrafficpolicies",
+   "kind": "BackendTrafficPolicy",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "backendtrafficpolicies/status",
+   "kind": "BackendTrafficPolicy",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "clienttrafficpolicies",
+   "kind": "ClientTrafficPolicy",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "clienttrafficpolicies/status",
+   "kind": "ClientTrafficPolicy",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "envoyextensionpolicies",
+   "kind": "EnvoyExtensionPolicy",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "envoyextensionpolicies/status",
+   "kind": "EnvoyExtensionPolicy",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "envoypatchpolicies",
+   "kind": "EnvoyPatchPolicy",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "envoypatchpolicies/status",
+   "kind": "EnvoyPatchPolicy",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "envoyproxies",
+   "kind": "EnvoyProxy",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "envoyproxies/status",
+   "kind": "EnvoyProxy",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "httproutefilters",
+   "kind": "HTTPRouteFilter",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "securitypolicies",
+   "kind": "SecurityPolicy",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.envoyproxy.io",
+   "resource": "securitypolicies/status",
+   "kind": "SecurityPolicy",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.networking.k8s.io",
+   "resource": "gatewayclasses",
+   "kind": "GatewayClass",
+   "namespaced": false,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.networking.k8s.io",
+   "resource": "gatewayclasses/status",
+   "kind": "GatewayClass",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.networking.k8s.io",
+   "resource": "gateways",
+   "kind": "Gateway",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.networking.k8s.io",
+   "resource": "gateways/status",
+   "kind": "Gateway",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.networking.k8s.io",
+   "resource": "grpcroutes",
+   "kind": "GRPCRoute",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.networking.k8s.io",
+   "resource": "grpcroutes/status",
+   "kind": "GRPCRoute",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.networking.k8s.io",
+   "resource": "httproutes",
+   "kind": "HTTPRoute",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "gateway.networking.k8s.io",
+   "resource": "httproutes/status",
+   "kind": "HTTPRoute",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "keda.sh",
+   "resource": "clustertriggerauthentications",
+   "kind": "ClusterTriggerAuthentication",
+   "namespaced": false,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "keda.sh",
+   "resource": "scaledjobs",
+   "kind": "ScaledJob",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "keda.sh",
+   "resource": "scaledjobs/status",
+   "kind": "ScaledJob",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "keda.sh",
+   "resource": "scaledobjects",
+   "kind": "ScaledObject",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "keda.sh",
+   "resource": "scaledobjects/status",
+   "kind": "ScaledObject",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "keda.sh",
+   "resource": "triggerauthentications",
+   "kind": "TriggerAuthentication",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "metrics.k8s.io",
+   "resource": "nodes",
+   "kind": "NodeMetrics",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "list"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "metrics.k8s.io",
+   "resource": "pods",
+   "kind": "PodMetrics",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "list"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "alertmanagers",
+   "kind": "Alertmanager",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "alertmanagers/scale",
+   "kind": "Scale",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "alertmanagers/status",
+   "kind": "Alertmanager",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "podmonitors",
+   "kind": "PodMonitor",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "podmonitors/status",
+   "kind": "PodMonitor",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "probes",
+   "kind": "Probe",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "probes/status",
+   "kind": "Probe",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "prometheuses",
+   "kind": "Prometheus",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "prometheuses/scale",
+   "kind": "Scale",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "prometheuses/status",
+   "kind": "Prometheus",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "prometheusrules",
+   "kind": "PrometheusRule",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "prometheusrules/status",
+   "kind": "PrometheusRule",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "servicemonitors",
+   "kind": "ServiceMonitor",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "servicemonitors/status",
+   "kind": "ServiceMonitor",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "thanosrulers",
+   "kind": "ThanosRuler",
+   "namespaced": true,
+   "verbs": [
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "create",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "monitoring.coreos.com",
+   "resource": "thanosrulers/status",
+   "kind": "ThanosRuler",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "networking.k8s.io",
+   "resource": "ingressclasses",
+   "kind": "IngressClass",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "networking.k8s.io",
+   "resource": "ingresses",
+   "kind": "Ingress",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "networking.k8s.io",
+   "resource": "ingresses/status",
+   "kind": "Ingress",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "networking.k8s.io",
+   "resource": "networkpolicies",
+   "kind": "NetworkPolicy",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "networking.k8s.io",
+   "resource": "networkpolicies/status",
+   "kind": "NetworkPolicy",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "node.k8s.io",
+   "resource": "runtimeclasses",
+   "kind": "RuntimeClass",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "policy",
+   "resource": "poddisruptionbudgets",
+   "kind": "PodDisruptionBudget",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "policy",
+   "resource": "poddisruptionbudgets/status",
+   "kind": "PodDisruptionBudget",
+   "namespaced": true,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "rbac.authorization.k8s.io",
+   "resource": "clusterrolebindings",
+   "kind": "ClusterRoleBinding",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "rbac.authorization.k8s.io",
+   "resource": "clusterroles",
+   "kind": "ClusterRole",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "rbac.authorization.k8s.io",
+   "resource": "rolebindings",
+   "kind": "RoleBinding",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "rbac.authorization.k8s.io",
+   "resource": "roles",
+   "kind": "Role",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "scheduling.k8s.io",
+   "resource": "priorityclasses",
+   "kind": "PriorityClass",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "storage.k8s.io",
+   "resource": "csidrivers",
+   "kind": "CSIDriver",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "storage.k8s.io",
+   "resource": "csinodes",
+   "kind": "CSINode",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "storage.k8s.io",
+   "resource": "csistoragecapacities",
+   "kind": "CSIStorageCapacity",
+   "namespaced": true,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "storage.k8s.io",
+   "resource": "storageclasses",
+   "kind": "StorageClass",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "storage.k8s.io",
+   "resource": "volumeattachments",
+   "kind": "VolumeAttachment",
+   "namespaced": false,
+   "verbs": [
+    "create",
+    "delete",
+    "deletecollection",
+    "get",
+    "list",
+    "patch",
+    "update",
+    "watch"
+   ],
+   "cells": {}
+  },
+  {
+   "group": "storage.k8s.io",
+   "resource": "volumeattachments/status",
+   "kind": "VolumeAttachment",
+   "namespaced": false,
+   "verbs": [
+    "get",
+    "patch",
+    "update"
+   ],
+   "cells": {}
+  }
+ ],
+ "paths": [
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "rbac-demo-sas-read-services"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "demo-reader-core"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:serviceaccounts:rbac-demo"
+   },
+   "scope": "cluster",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "get",
+      "list",
+      "watch"
+     ],
+     "apiGroups": [
+      ""
+     ],
+     "resources": [
+      "pods",
+      "pods/log",
+      "services",
+      "configmaps"
+     ]
+    },
+    "source": {
+     "kind": "ClusterRole",
+     "name": "demo-reader-core"
+    },
+    "index": 0
+   }
+  },
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "system:basic-user"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "system:basic-user"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:authenticated"
+   },
+   "scope": "cluster",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "create"
+     ],
+     "apiGroups": [
+      "authorization.k8s.io"
+     ],
+     "resources": [
+      "selfsubjectaccessreviews",
+      "selfsubjectrulesreviews"
+     ]
+    },
+    "source": {
+     "kind": "ClusterRole",
+     "name": "system:basic-user"
+    },
+    "index": 0
+   }
+  },
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "system:discovery"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "system:discovery"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:authenticated"
+   },
+   "scope": "cluster",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "get"
+     ],
+     "nonResourceURLs": [
+      "/api",
+      "/api/*",
+      "/apis",
+      "/apis/*",
+      "/healthz",
+      "/livez",
+      "/openapi",
+      "/openapi/*",
+      "/readyz",
+      "/version",
+      "/version/"
+     ]
+    },
+    "source": {
+     "kind": "ClusterRole",
+     "name": "system:discovery"
+    },
+    "index": 0
+   }
+  },
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "system:public-info-viewer"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "system:public-info-viewer"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:authenticated"
+   },
+   "scope": "cluster",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "get"
+     ],
+     "nonResourceURLs": [
+      "/healthz",
+      "/livez",
+      "/readyz",
+      "/version",
+      "/version/"
+     ]
+    },
+    "source": {
+     "kind": "ClusterRole",
+     "name": "system:public-info-viewer"
+    },
+    "index": 0
+   }
+  },
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "system:service-account-issuer-discovery"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "system:service-account-issuer-discovery"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:serviceaccounts"
+   },
+   "scope": "cluster",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "get"
+     ],
+     "nonResourceURLs": [
+      "/.well-known/openid-configuration",
+      "/openid/v1/jwks"
+     ]
+    },
+    "source": {
+     "kind": "ClusterRole",
+     "name": "system:service-account-issuer-discovery"
+    },
+    "index": 0
+   }
+  },
+  {
+   "binding": {
+    "kind": "RoleBinding",
+    "name": "app-config",
+    "namespace": "rbac-demo"
+   },
+   "role": {
+    "kind": "Role",
+    "name": "app-config",
+    "namespace": "rbac-demo"
+   },
+   "subject": {
+    "kind": "ServiceAccount",
+    "name": "app",
+    "namespace": "rbac-demo"
+   },
+   "scope": "rbac-demo",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "get"
+     ],
+     "apiGroups": [
+      ""
+     ],
+     "resources": [
+      "secrets"
+     ],
+     "resourceNames": [
+      "app-db"
+     ]
+    },
+    "source": {
+     "kind": "Role",
+     "name": "app-config",
+     "namespace": "rbac-demo"
+    },
+    "index": 0
+   }
+  },
+  {
+   "binding": {
+    "kind": "RoleBinding",
+    "name": "app-config",
+    "namespace": "rbac-demo"
+   },
+   "role": {
+    "kind": "Role",
+    "name": "app-config",
+    "namespace": "rbac-demo"
+   },
+   "subject": {
+    "kind": "ServiceAccount",
+    "name": "app",
+    "namespace": "rbac-demo"
+   },
+   "scope": "rbac-demo",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "get",
+      "list",
+      "watch",
+      "update",
+      "patch"
+     ],
+     "apiGroups": [
+      ""
+     ],
+     "resources": [
+      "configmaps"
+     ]
+    },
+    "source": {
+     "kind": "Role",
+     "name": "app-config",
+     "namespace": "rbac-demo"
+    },
+    "index": 1
+   }
+  },
+  {
+   "binding": {
+    "kind": "RoleBinding",
+    "name": "demo-readers",
+    "namespace": "rbac-demo"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "demo-reader"
+   },
+   "subject": {
+    "kind": "ServiceAccount",
+    "name": "app",
+    "namespace": "rbac-demo"
+   },
+   "scope": "rbac-demo",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "get",
+      "list",
+      "watch"
+     ],
+     "apiGroups": [
+      "apps"
+     ],
+     "resources": [
+      "*"
+     ]
+    },
+    "source": {
+     "kind": "ClusterRole",
+     "name": "demo-reader-apps"
+    },
+    "index": 0
+   }
+  },
+  {
+   "binding": {
+    "kind": "RoleBinding",
+    "name": "demo-readers",
+    "namespace": "rbac-demo"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "demo-reader"
+   },
+   "subject": {
+    "kind": "ServiceAccount",
+    "name": "app",
+    "namespace": "rbac-demo"
+   },
+   "scope": "rbac-demo",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "get",
+      "list"
+     ],
+     "apiGroups": [
+      ""
+     ],
+     "resources": [
+      "nodes"
+     ]
+    },
+    "source": {
+     "kind": "ClusterRole",
+     "name": "demo-reader-apps"
+    },
+    "index": 1
+   }
+  },
+  {
+   "binding": {
+    "kind": "RoleBinding",
+    "name": "demo-readers",
+    "namespace": "rbac-demo"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "demo-reader"
+   },
+   "subject": {
+    "kind": "ServiceAccount",
+    "name": "app",
+    "namespace": "rbac-demo"
+   },
+   "scope": "rbac-demo",
+   "rule": {
+    "rule": {
+     "verbs": [
+      "get",
+      "list",
+      "watch"
+     ],
+     "apiGroups": [
+      ""
+     ],
+     "resources": [
+      "pods",
+      "pods/log",
+      "services",
+      "configmaps"
+     ]
+    },
+    "source": {
+     "kind": "ClusterRole",
+     "name": "demo-reader-core"
+    },
+    "index": 0
+   }
+  }
+ ],
+ "nonResource": [
+  {
+   "urls": [
+    "/api",
+    "/api/*",
+    "/apis",
+    "/apis/*",
+    "/healthz",
+    "/livez",
+    "/openapi",
+    "/openapi/*",
+    "/readyz",
+    "/version",
+    "/version/"
+   ],
+   "verbs": [
+    "get"
+   ],
+   "paths": [
+    2
+   ]
+  },
+  {
+   "urls": [
+    "/healthz",
+    "/livez",
+    "/readyz",
+    "/version",
+    "/version/"
+   ],
+   "verbs": [
+    "get"
+   ],
+   "paths": [
+    3
+   ]
+  },
+  {
+   "urls": [
+    "/.well-known/openid-configuration",
+    "/openid/v1/jwks"
+   ],
+   "verbs": [
+    "get"
+   ],
+   "paths": [
+    4
+   ]
+  }
+ ],
+ "fullWildcard": false,
+ "bindings": [
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "rbac-demo-sas-read-services"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "demo-reader-core"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:serviceaccounts:rbac-demo"
+   },
+   "scope": "cluster",
+   "inherited": true
+  },
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "system:basic-user"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "system:basic-user"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:authenticated"
+   },
+   "scope": "cluster",
+   "inherited": true
+  },
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "system:discovery"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "system:discovery"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:authenticated"
+   },
+   "scope": "cluster",
+   "inherited": true
+  },
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "system:public-info-viewer"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "system:public-info-viewer"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:authenticated"
+   },
+   "scope": "cluster",
+   "inherited": true
+  },
+  {
+   "binding": {
+    "kind": "ClusterRoleBinding",
+    "name": "system:service-account-issuer-discovery"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "system:service-account-issuer-discovery"
+   },
+   "subject": {
+    "kind": "Group",
+    "name": "system:serviceaccounts"
+   },
+   "scope": "cluster",
+   "inherited": true
+  },
+  {
+   "binding": {
+    "kind": "RoleBinding",
+    "name": "app-config",
+    "namespace": "rbac-demo"
+   },
+   "role": {
+    "kind": "Role",
+    "name": "app-config",
+    "namespace": "rbac-demo"
+   },
+   "subject": {
+    "kind": "ServiceAccount",
+    "name": "app",
+    "namespace": "rbac-demo"
+   },
+   "scope": "rbac-demo"
+  },
+  {
+   "binding": {
+    "kind": "RoleBinding",
+    "name": "demo-readers",
+    "namespace": "rbac-demo"
+   },
+   "role": {
+    "kind": "ClusterRole",
+    "name": "demo-reader"
+   },
+   "subject": {
+    "kind": "ServiceAccount",
+    "name": "app",
+    "namespace": "rbac-demo"
+   },
+   "scope": "rbac-demo"
+  }
+ ],
+ "roleBindingNamespaces": [
+  "rbac-demo"
+ ]
+}

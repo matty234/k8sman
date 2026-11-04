@@ -775,6 +775,16 @@ class Demo {
         return f == null ? null : helm(f);
       case 'helm/diff':
         return helm('diff-web-3-5.json');
+      case 'rbac/subjects':
+        return demo(_fx('access/fixtures/subjects.json'));
+      case 'rbac/matrix':
+        return demo(_fx('access/fixtures/matrix-app.json'));
+      case 'rbac/who-can':
+        return demo(_fx('access/fixtures/whocan-secrets.json'));
+      case 'rbac/self':
+        return demo(_fx('access/fixtures/self.json'));
+      case 'rbac/resources':
+        return {'resources': [], 'virtual': []};
     }
     return null;
   }
@@ -1091,6 +1101,19 @@ void main() {
     tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.difference_outlined).at(1)).onPressed!();
     await settle(tester);
     await capture(tester, 'helm');
+  });
+
+  shot('access', (tester) async {
+    final s = await pumpApp(tester, configure: (app) => app.namespace = null);
+    s.app.showView(MainView.access);
+    await settle(tester);
+    await tester.enterText(find.widgetWithText(TextField, 'Find subject'), 'rbac-demo/');
+    await settle(tester);
+    await tester.tap(find.text('rbac-demo/app'));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('cell-/secrets-get')));
+    await settle(tester);
+    await capture(tester, 'access');
   });
 
   shot('nodes', (tester) async {

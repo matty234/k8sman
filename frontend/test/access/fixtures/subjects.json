@@ -1,0 +1,288 @@
+{
+ "groups": [
+  {
+   "kind": "Group",
+   "name": "demo-devs",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "Group",
+   "name": "system:authenticated",
+   "bindings": 3,
+   "exists": true
+  },
+  {
+   "kind": "Group",
+   "name": "system:bootstrappers:kubeadm:default-node-token",
+   "bindings": 6,
+   "exists": true
+  },
+  {
+   "kind": "Group",
+   "name": "system:masters",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "Group",
+   "name": "system:monitoring",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "Group",
+   "name": "system:nodes",
+   "bindings": 3,
+   "exists": true
+  },
+  {
+   "kind": "Group",
+   "name": "system:serviceaccounts",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "Group",
+   "name": "system:serviceaccounts:rbac-demo",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "Group",
+   "name": "system:unauthenticated",
+   "bindings": 1,
+   "exists": true
+  }
+ ],
+ "serviceAccounts": [
+  {
+   "kind": "ServiceAccount",
+   "name": "default",
+   "namespace": "default",
+   "bindings": 0,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "attachdetach-controller",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "bootstrap-signer",
+   "namespace": "kube-system",
+   "bindings": 2,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "certificate-controller",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "cloud-provider",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": false
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "clusterrole-aggregation-controller",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "coredns",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "cronjob-controller",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "daemon-set-controller",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "default",
+   "namespace": "kube-system",
+   "bindings": 0,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "deployment-controller",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "disruption-controller",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "endpoint-controller",
+   "namespace": "kube-system",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "default",
+   "namespace": "monitoring",
+   "bindings": 0,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "kube-prometheus-stack-alertmanager",
+   "namespace": "monitoring",
+   "bindings": 0,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "kube-prometheus-stack-grafana",
+   "namespace": "monitoring",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "kube-prometheus-stack-kube-state-metrics",
+   "namespace": "monitoring",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "kube-prometheus-stack-operator",
+   "namespace": "monitoring",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "kube-prometheus-stack-prometheus",
+   "namespace": "monitoring",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "kube-prometheus-stack-prometheus-node-exporter",
+   "namespace": "monitoring",
+   "bindings": 0,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "prometheus-adapter",
+   "namespace": "monitoring",
+   "bindings": 4,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "app",
+   "namespace": "rbac-demo",
+   "bindings": 2,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "breakglass",
+   "namespace": "rbac-demo",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "ci-deployer",
+   "namespace": "rbac-demo",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "default",
+   "namespace": "rbac-demo",
+   "bindings": 0,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "ci-deployer",
+   "namespace": "security-demo",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "default",
+   "namespace": "security-demo",
+   "bindings": 0,
+   "exists": true
+  },
+  {
+   "kind": "ServiceAccount",
+   "name": "deleted-bot",
+   "namespace": "security-demo",
+   "bindings": 1,
+   "exists": false
+  }
+ ],
+ "users": [
+  {
+   "kind": "User",
+   "name": "jane@example.com",
+   "bindings": 2,
+   "exists": true
+  },
+  {
+   "kind": "User",
+   "name": "system:anonymous",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "User",
+   "name": "system:kube-controller-manager",
+   "bindings": 3,
+   "exists": true
+  },
+  {
+   "kind": "User",
+   "name": "system:kube-proxy",
+   "bindings": 1,
+   "exists": true
+  },
+  {
+   "kind": "User",
+   "name": "system:kube-scheduler",
+   "bindings": 4,
+   "exists": true
+  }
+ ]
+}

@@ -162,7 +162,9 @@ void main() {
     final app = await pumpPanel(tester, _dev('role-pod-reader'),
         api: FakeApiClient(itemsByResource: {'rolebindings.$_rbac': _local('rolebindings')}), size: const Size(560, 900));
     await saveScreenshot(tester, 'cluster-role');
-    expect(find.text('core'), findsOneWidget);
+    expect(find.text('core'), findsNWidgets(2)); // permission matrix group + rules table
+    expect(find.text('Permission matrix'), findsOneWidget);
+    expect(find.text('Edit rules'), findsOneWidget);
     expect(find.text('pods, pods/log'), findsOneWidget);
     expect(find.text('dangerous'), findsNothing);
     expect(find.text('web-pod-reader'), findsOneWidget);

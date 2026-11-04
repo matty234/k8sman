@@ -114,6 +114,9 @@ class ResourceNav extends StatefulWidget {
 /// keep the sidebar calm. User toggles are remembered for the session.
 const _expandedByDefault = {'Workloads', 'Network', 'Config'};
 
+/// Below this height the sidebar scrolls as a whole.
+const _navMinHeight = 520.0;
+
 /// Pages shown under "More" (the rest are always visible).
 const _morePages = {MainView.metrics, MainView.helm, MainView.portForwards, MainView.addons};
 
@@ -148,7 +151,13 @@ class _ResourceNavState extends State<ResourceNav> {
         t.group.contains(q) ||
         t.shortNames.any((s) => s == q);
 
-    return Container(
+    // In very short windows the page items alone would overflow: the whole
+    // sidebar then scrolls (the kinds list keeps its own scroll otherwise).
+    return LayoutBuilder(builder: (context, box) {
+      final tall = box.maxHeight >= _navMinHeight;
+      return SingleChildScrollView(
+        physics: tall ? const NeverScrollableScrollPhysics() : null,
+        child: SizedBox(height: tall ? box.maxHeight : _navMinHeight, child: Container(
       // Over the window's vibrancy on macOS; opaque elsewhere.
       color: nativeMacChrome ? Colors.transparent : AppColors.of(context).sidebar,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -174,6 +183,7 @@ class _ResourceNavState extends State<ResourceNav> {
         _ViewItem(icon: Icons.dns_outlined, label: 'Nodes', view: MainView.nodes, selected: app.view == MainView.nodes),
         GpuNavGate(child: _ViewItem(icon: Icons.memory, label: 'GPUs', view: MainView.gpus, selected: app.view == MainView.gpus)),
         _ViewItem(icon: Icons.shield_outlined, label: 'Security', view: MainView.security, selected: app.view == MainView.security),
+        _ViewItem(icon: Icons.manage_accounts_outlined, label: 'Access', view: MainView.access, selected: app.view == MainView.access),
         // Less-used pages fold under "More" (auto-open when one is active).
         if (_navMoreOpen || _morePages.contains(app.view)) ...[
           _ViewItem(icon: Icons.query_stats, label: 'Metrics', view: MainView.metrics, selected: app.view == MainView.metrics),
@@ -224,7 +234,8 @@ class _ResourceNavState extends State<ResourceNav> {
           ),
         ),
       ]),
-    );
+    )));
+    });
   }
 
   Map<String, List<ResourceType>> _group(List<ResourceType> types) {

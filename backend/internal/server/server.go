@@ -72,6 +72,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.helmRoutes()
 	s.securityRoutes()
 	s.gpuRoutes()
+	s.rbacRoutes()
 	prom.Register(s.mux, mgr, opts.ReadOnly)
 	argoapi.Register(s.mux, mgr, s.settings)
 	s.argowf = argowf.Register(s.mux, mgr)
