@@ -110,7 +110,7 @@ class ApiClient {
   /// login). Completing [abortTrigger] abandons the request, which also
   /// cancels the probe in the backend.
   Future<void> probe(String step, {Future<void>? abortTrigger}) async {
-    final req = http.AbortableRequest('GET', _uri('probe', {'step': step}), abortTrigger: abortTrigger);
+    final req = http.AbortableRequest('GET', _uri('probe', {'step': step}), abortTrigger: abortTrigger)..headers.addAll(authHeaders);
     _decode(await http.Response.fromStream(await _http.send(req)));
   }
 

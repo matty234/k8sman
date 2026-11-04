@@ -87,7 +87,9 @@ void main() {
     await api.deletePortForward('x');
     await api.updateObject(const ResourceRef(resource: 'pods'), name: 'p', yaml: 'kind: Pod');
     await api.groupIcon('example.com');
-    expect(b.seen, hasLength(7));
+    await api.probe('reach'); // its own AbortableRequest, not _get
+    await api.putSidebar(null);
+    expect(b.seen, hasLength(9));
     for (final s in b.seen) {
       expect(s.auth, 'Bearer $_token', reason: '$s');
       if (s.method != 'GET') expect(s.contentType, anyOf(startsWith('application/json'), startsWith('application/yaml')), reason: '$s');
