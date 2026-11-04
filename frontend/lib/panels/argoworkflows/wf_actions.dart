@@ -393,7 +393,7 @@ class ArgoServerLine extends StatelessWidget {
       Expanded(
         child: Text(
           status.available
-              ? 'argo-server ${status.version ?? ''} in ${status.serverNamespace ?? '?'} (${status.authLabel})'
+              ? ['argo-server', ?status.version, if (status.serverNamespace != null) 'in ${status.serverNamespace}', '(${status.authLabel})'].join(' ')
               : 'argo-server unavailable${status.error == null ? '' : ': ${status.error}'}',
           style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
         ),

@@ -43,7 +43,7 @@ Future<AppState> pumpWf(
   ApiClient? api,
   Size size = const Size(560, 2400),
   bool readOnly = false,
-  ArgoWFStatus status = const ArgoWFStatus(found: true, reachable: true, available: true, auth: 'server', version: 'v4.0.1'),
+  ArgoWFStatus status = const ArgoWFStatus(found: true, reachable: true, available: true, auth: 'server', version: 'v4.0.1', serverNamespace: 'argo'),
 }) async {
   final t = wfTypeOf(object);
   final client = api ?? FakeApiClient();
