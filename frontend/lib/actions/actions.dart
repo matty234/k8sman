@@ -70,6 +70,7 @@ Future<ActionResult?> runResourceAction(
       final created = res.created;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
         content: Text(res.message),
+        persist: false,
         action: created == null ? null : SnackBarAction(label: 'Open', onPressed: () => ctx.app.openRef(created)),
       ));
     }

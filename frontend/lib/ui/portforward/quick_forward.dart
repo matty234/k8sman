@@ -89,6 +89,7 @@ class _QuickForwardButtonState extends State<QuickForwardButton> {
         SnackBar(
           content: Text('Forwarding localhost:${f.localPort} → ${widget.kind}/${widget.name}:${widget.port}'),
           action: SnackBarAction(label: 'Open', onPressed: () => openUrl(_url(f))),
+          persist: false,
         ),
       );
     } on ApiException catch (e) {

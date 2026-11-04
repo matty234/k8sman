@@ -68,6 +68,7 @@ Future<PortForward?> showPortForwardDialog(BuildContext context, PanelContext ct
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
       content: Text('Forwarding ${pf.url ?? 'localhost:${pf.localPort}'} → ${pf.target}'),
       action: pf.url == null ? null : SnackBarAction(label: 'Open', onPressed: () => openUrl(pf.url!)),
+      persist: false,
     ));
   }
   return pf;

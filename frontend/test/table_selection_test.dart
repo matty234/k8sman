@@ -205,6 +205,37 @@ void main() {
     expect(find.text('Restarted 6 Deployments'), findsOneWidget);
   });
 
+  testWidgets('bulk progress toast never outlives the run, even with toasts queued around it', (tester) async {
+    final api = apiWith(names)..actionDelay = const Duration(milliseconds: 100);
+    await pumpTable(tester, api, deployType, context: 'kind-dev');
+    final messenger = ScaffoldMessenger.of(tester.element(find.byType(ListView)));
+    // Two toasts already up/queued (e.g. earlier action results): the
+    // progress toast used to queue behind the second one, and the run's end
+    // removed the wrong toast, leaving "Restarting…" up for a day.
+    messenger
+      ..showSnackBar(const SnackBar(content: Text('earlier 1')))
+      ..showSnackBar(const SnackBar(content: Text('earlier 2')));
+    await tester.pump();
+    await tapRow(tester, 'api');
+    await press(tester, LogicalKeyboardKey.keyA, modifier: LogicalKeyboardKey.metaLeft);
+    await tester.tap(find.byKey(const ValueKey('bulk-Restart')));
+    await tester.pump();
+    await tester.tap(find.text('Restart 6'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 110));
+    expect(find.text('Restarting 4/6…'), findsWidgets);
+    messenger.showSnackBar(const SnackBar(content: Text('during the run')));
+    await tester.pump(const Duration(milliseconds: 110));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(api.actions, hasLength(6));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(seconds: 5));
+    }
+    expect(find.textContaining('Restarting'), findsNothing);
+    expect(find.text('during the run'), findsNothing);
+    expect(find.text('Restarted 6 Deployments'), findsNothing, reason: 'the summary times out too');
+  });
+
   testWidgets('right-click inside a multi-selection shows the bulk menu', (tester) async {
     final api = apiWith(names);
     await pumpTable(tester, api, deployType);

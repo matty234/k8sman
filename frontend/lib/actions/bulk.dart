@@ -160,15 +160,23 @@ Future<BulkResult?> runBulkAction(
   final messenger = ScaffoldMessenger.maybeOf(context);
   final notifier = progress ?? ValueNotifier<BulkProgress?>(null);
   notifier.value = BulkProgress(action.doing, 0, n);
+  // The progress toast must be the one showing, not queued behind others:
+  // only the showing toast can be removed, so a queued one would surface
+  // after the run and sit there. Toasts shown during the run queue behind it.
   messenger
-    ?..removeCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      duration: const Duration(days: 1),
-      content: ValueListenableBuilder<BulkProgress?>(
-        valueListenable: notifier,
-        builder: (_, p, _) => Text(p == null ? '${action.doing}…' : '$p'),
-      ),
-    ));
+    ?..clearSnackBars()
+    ..removeCurrentSnackBar();
+  var progressShowing = messenger != null;
+  messenger
+      ?.showSnackBar(SnackBar(
+        duration: const Duration(days: 1),
+        content: ValueListenableBuilder<BulkProgress?>(
+          valueListenable: notifier,
+          builder: (_, p, _) => Text(p == null ? '${action.doing}…' : '$p'),
+        ),
+      ))
+      .closed
+      .whenComplete(() => progressShowing = false);
 
   final succeeded = <BulkTarget>[];
   final failed = <(BulkTarget, String)>[];
@@ -191,13 +199,16 @@ Future<BulkResult?> runBulkAction(
   }
 
   await Future.wait([for (var i = 0; i < math.min(concurrency, n); i++) worker()]);
+  // Remove the toast before disposing the notifier it listens to. Only
+  // remove it if it's still up (something may have dismissed it, and then
+  // the current toast is someone else's).
+  if (progressShowing) messenger?.removeCurrentSnackBar();
   notifier.value = null;
   if (progress == null) notifier.dispose();
   // Keep the input order in the summary.
   failed.sort((a, b) => targets.indexOf(a.$1).compareTo(targets.indexOf(b.$1)));
   final result = BulkResult(succeeded, failed);
 
-  messenger?.removeCurrentSnackBar();
   if (failed.isEmpty) {
     messenger?.showSnackBar(SnackBar(content: Text('${action.done} $n $what')));
   } else if (context.mounted) {
