@@ -417,9 +417,11 @@ exactly as `kubectl` does.
 
 ## Safety and privacy
 
-- **Local only.** The embedded backend listens on `127.0.0.1` on a random
-  port, never on an external interface. Browser CORS is limited to localhost
-  origins.
+- **Local only, and locked.** The embedded backend listens on `127.0.0.1` on
+  a random port, never on an external interface. Every request must carry a
+  secret token the app generates at each launch, so web pages and other user
+  accounts on your Mac can't use it. It also rejects foreign `Host` and
+  `Origin` headers (DNS rebinding) and non-JSON writes (cross-site requests).
 - **No telemetry.** k8sman has no analytics, crash reporting or usage
   tracking. The only outbound requests besides your clusters are:
   - the periodic update check (which you can turn off);
