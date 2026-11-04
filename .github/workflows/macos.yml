@@ -1,0 +1,51 @@
+# Builds the macOS app on GitHub's runner (its Xcode can be older than
+# yours) on every push to main, so compiler differences show up before a
+# release tag instead of during the release. Also runnable by hand:
+# `gh workflow run macos.yml --ref <branch>`. Nothing is signed or published.
+name: macos
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - frontend/**
+      - backend/**
+      - Makefile
+      - .github/workflows/macos.yml
+  pull_request:
+    paths:
+      - frontend/macos/**
+      - .github/workflows/macos.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Build the app (universal, release mode, unsigned updates)
+        run: make release

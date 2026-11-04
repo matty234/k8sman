@@ -106,8 +106,11 @@ final class BackendSupervisor {
   /// (AutoStart ones are restarted by the backend anyway). Blocks for at
   /// most ~2s.
   func rememberRunningForwards() {
-    let (base, token) = queue.sync { (url, token) }
-    guard let base = base, let list = URL(string: "\(base)/api/portforwards") else { return }
+    // Explicit types and `self.`: the tuple form crashed older Swift
+    // compilers (CI's Xcode) at the `token` self-reference.
+    let snapshot: (base: String?, token: String?) = queue.sync { (self.url, self.token) }
+    let token = snapshot.token
+    guard let base = snapshot.base, let list = URL(string: "\(base)/api/portforwards") else { return }
     var req = URLRequest(url: list)
     Self.authorize(&req, token: token)
     req.timeoutInterval = 2
