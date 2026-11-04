@@ -9,6 +9,7 @@ import '../api/models.dart';
 import '../metrics/quantity.dart';
 import 'cluster_error.dart';
 import 'startup_gate.dart';
+import 'table_query.dart';
 
 /// Keeps a live table for one resource type + namespace via /api/watch,
 /// reconnecting with backoff. Also owns client-side filter and sort state.
@@ -17,9 +18,22 @@ class TableController extends ChangeNotifier {
   final ResourceType type;
   final String? namespace;
 
-  TableController({required this.api, required this.type, this.namespace}) {
+  /// Sort per resource kind (column name, ascending), shared across this
+  /// kind's tables so the sort survives navigating away and back, or
+  /// switching namespace. Usually AppState.tableSorts.
+  final Map<String, (String, bool)>? sortMemory;
+
+  TableController({required this.api, required this.type, this.namespace, this.sortMemory}) {
+    final remembered = sortMemory?[type.gk];
+    if (remembered != null) {
+      _pendingSort = remembered.$1;
+      sortAscending = remembered.$2;
+    }
     _connect();
   }
+
+  /// A remembered sort column, applied once the columns are known.
+  String? _pendingSort;
 
   List<ColumnDef> columns = const [];
   bool isDefaultColumns = true;
@@ -104,6 +118,7 @@ class TableController extends ChangeNotifier {
       case 'SNAPSHOT':
         final t = m.table!;
         columns = t.columns;
+        _applyPendingSort();
         isDefaultColumns = t.isDefaultColumns;
         columnErrors = t.columnErrors;
         _rows
@@ -260,8 +275,23 @@ class TableController extends ChangeNotifier {
       sortColumn = col;
       sortAscending = true;
     }
+    _pendingSort = null;
+    if (col < columns.length) sortMemory?[type.gk] = (columns[col].name, sortAscending);
     notifyListeners();
   }
+
+  void _applyPendingSort() {
+    final name = _pendingSort;
+    if (name == null) return;
+    final i = columns.indexWhere((c) => c.name == name);
+    if (i >= 0) {
+      sortColumn = i;
+      _pendingSort = null;
+    }
+  }
+
+  /// Every row, unfiltered (for filter suggestions).
+  Iterable<TableRowData> get allRows => _rows.values;
 
   int get totalCount => _rows.length;
 
@@ -272,8 +302,7 @@ class TableController extends ChangeNotifier {
   List<TableRowData>? _memo;
   (int, String, int?, bool, List<ColumnDef>)? _memoKey;
 
-  /// Rows after filter + sort. Filter matches any cell (case-insensitive);
-  /// a `key=value` filter matches only the named column.
+  /// Rows after filter + sort. See [TableQuery] for the filter language.
   ///
   /// Memoised: recomputed only when the rows, filter, sort or columns
   /// changed, so the many reads per build (selection helpers, key handling)
@@ -293,23 +322,10 @@ class TableController extends ChangeNotifier {
 
   List<TableRowData> _computeRows() {
     Iterable<TableRowData> r = _rows.values;
-    final f = filter.trim().toLowerCase();
-    if (f.isNotEmpty) {
-      final eq = f.indexOf('=');
-      int? colIdx;
-      String needle = f;
-      if (eq > 0) {
-        final name = f.substring(0, eq).trim();
-        final idx = columns.indexWhere((c) => c.name.toLowerCase() == name);
-        if (idx >= 0) {
-          colIdx = idx;
-          needle = f.substring(eq + 1).trim();
-        }
-      }
-      r = r.where((row) {
-        if (colIdx != null) return _cellText(row.cells.elementAtOrNull(colIdx)).toLowerCase().contains(needle);
-        return row.name.toLowerCase().contains(needle) || row.cells.any((c) => _cellText(c).toLowerCase().contains(needle));
-      });
+    if (filter.trim().isNotEmpty) {
+      final q = TableQuery.parse(filter, columns);
+      final now = DateTime.now();
+      r = r.where((row) => q.matches(row, now: now));
     }
     final list = r.toList();
     final sc = sortColumn;
@@ -334,7 +350,7 @@ class TableController extends ChangeNotifier {
     return list;
   }
 
-  static String _cellText(dynamic v) => v == null ? '' : (v is List ? v.join(', ') : '$v');
+  static String _cellText(dynamic v) => cellText(v);
 
   static int _compare(dynamic a, dynamic b) {
     if (a == null && b == null) return 0;

@@ -160,6 +160,10 @@ class AppState extends ChangeNotifier {
   /// Bumped when column config changes so tables re-subscribe.
   int columnsVersion = 0;
 
+  /// Each resource kind's table sort (column name, ascending) for this
+  /// session, so it's kept when you navigate away and back.
+  final Map<String, (String, bool)> tableSorts = {};
+
   /// Set while [init] runs: the connecting screen's context, server and step.
   ConnectProgress? connecting;
 

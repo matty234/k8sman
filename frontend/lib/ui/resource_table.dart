@@ -22,6 +22,7 @@ import 'resource_nav.dart' show showKindMenu;
 import 'row_context_menu.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
+import 'table_filter_field.dart';
 import 'widgets/group_icon.dart';
 import 'widgets/namespace_picker.dart';
 
@@ -36,7 +37,7 @@ class ResourceTableView extends StatelessWidget {
     final app = context.watch<AppState>();
     return ChangeNotifierProvider<TableController>(
       key: ValueKey('${type.gk}|${app.namespace}|${app.columnsVersion}|${app.currentContext}'),
-      create: (_) => TableController(api: context.read<ApiClient>(), type: type, namespace: app.namespace),
+      create: (_) => TableController(api: context.read<ApiClient>(), type: type, namespace: app.namespace, sortMemory: app.tableSorts),
       child: const _TableBody(),
     );
   }
@@ -509,11 +510,7 @@ class _Toolbar extends StatelessWidget {
                   SizedBox(
                     width: filterWidth,
                     height: 26,
-                    child: TextField(
-                      decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Filter  (or column=value)'),
-                      style: theme.textTheme.bodyMedium,
-                      onChanged: controller.setFilter,
-                    ),
+                    child: TableFilterField(controller: controller),
                   ),
                   const SizedBox(width: 4),
                   IconButton(

@@ -1,0 +1,133 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/api/client.dart';
+import 'package:k8sman/api/models.dart';
+import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/state/table_controller.dart';
+import 'package:k8sman/state/table_query.dart';
+import 'package:k8sman/ui/resource_table.dart';
+import 'package:k8sman/ui/theme.dart';
+import 'package:provider/provider.dart';
+
+import 'support/table_fakes.dart';
+
+const cols = [
+  ColumnDef(name: 'Status', query: '.status.phase'),
+  ColumnDef(name: 'Restarts', query: '.r', type: 'number'),
+  ColumnDef(name: 'Pod IP', query: '.status.podIP'),
+  ColumnDef(name: 'Memory', query: '.m', type: 'quantity'),
+  ColumnDef(name: 'Age', query: '.metadata.creationTimestamp', type: 'age'),
+];
+
+final now = DateTime.utc(2026, 11, 4, 12);
+TableRowData row(String name, String status, int restarts, String ip, String mem, Duration age, {String ns = 'demo'}) => TableRowData(
+  uid: name,
+  name: name,
+  namespace: ns,
+  resourceVersion: '1',
+  cells: [status, restarts, ip, mem, now.subtract(age).toIso8601String()],
+);
+
+final rows = [
+  row('api', 'Running', 0, '10.0.0.1', '128Mi', const Duration(minutes: 5)),
+  row('web', 'Running', 3, '10.0.0.2', '2Gi', const Duration(days: 3)),
+  row('job', 'Completed', 0, '10.0.1.9', '64Mi', const Duration(days: 10), ns: 'batch'),
+  row('bad', 'CrashLoopBackOff', 12, '10.0.0.3', '512Mi', const Duration(hours: 2)),
+];
+
+List<String> matching(String q) => [for (final r in rows) if (TableQuery.parse(q, cols).matches(r, now: now)) r.name];
+
+void main() {
+  test('query language: text, fields, negation, comparisons, AND, quotes', () {
+    expect(matching(''), ['api', 'web', 'job', 'bad']);
+    expect(matching('crash'), ['bad'], reason: 'plain text matches any cell');
+    expect(matching('status=running'), ['api', 'web']);
+    expect(matching('status:running'), ['api', 'web']);
+    expect(matching('status!=running'), ['job', 'bad']);
+    expect(matching('restarts>0'), ['web', 'bad']);
+    expect(matching('restarts>=3 restarts<10'), ['web'], reason: 'terms combine');
+    expect(matching('memory>256Mi'), ['web', 'bad'], reason: 'quantities by value');
+    expect(matching('age<1h'), ['api']);
+    expect(matching('age>1d'), ['web', 'job']);
+    expect(matching('pod-ip=10.0.1'), ['job'], reason: 'spaced column names as hyphens');
+    expect(matching('podip=10.0.1'), ['job']);
+    expect(matching('namespace=batch'), ['job'], reason: 'name/namespace work without columns');
+    expect(matching('status=running web'), ['web']);
+    expect(matching('status='), ['api', 'web', 'job', 'bad'], reason: 'half-typed terms are ignored');
+    expect(matching('restarts>lots'), isEmpty);
+    expect(matching('"0.0.3"'), ['bad']);
+    expect(matching('app=web'), isEmpty, reason: 'unknown key: plain text "app=web"');
+  });
+
+  test('suggestions: fields first, then values seen in the column', () {
+    final fields = filterSuggestions('', cols, rows);
+    expect(fields.map((s) => s.label), ['name=', 'namespace=', 'status=', 'restarts=', 'pod-ip=', 'memory=', 'age=']);
+    expect(filterSuggestions('re', cols, rows).map((s) => s.result), ['restarts=']);
+    expect(filterSuggestions('status=running r', cols, rows).map((s) => s.result), ['status=running restarts=']);
+    expect(filterSuggestions('status=running ', cols, rows).map((s) => s.label), isNot(contains('status=')), reason: 'used fields drop out');
+
+    final values = filterSuggestions('status=', cols, rows);
+    expect(values.map((s) => s.label), ['Running', 'Completed', 'CrashLoopBackOff'], reason: 'most common first, then A–Z');
+    expect(values.first.detail, '2');
+    expect(values.first.result, 'status=Running ');
+    expect(filterSuggestions('status=c', cols, rows).map((s) => s.label), ['Completed', 'CrashLoopBackOff']);
+    expect(filterSuggestions('age=', cols, rows).map((s) => s.result), ['age<1h ', 'age<1d ', 'age>7d ']);
+    expect(filterSuggestions('nginx', cols, rows), isEmpty);
+  });
+
+  testWidgets('filter box suggests fields and values; Tab/Enter pick them', (tester) async {
+    final api = TableFakeApi()
+      ..onWatch = () => [
+        WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [fakeRow('api'), fakeRow('web'), fakeRow('db', ns: 'data')])),
+      ];
+    await pumpTable(tester, api, deployType);
+    final tc = Provider.of<TableController>(tester.element(find.byType(ListView).first), listen: false);
+
+    await tester.tap(find.byKey(const ValueKey('table-filter')));
+    await tester.enterText(find.byKey(const ValueKey('table-filter')), 'names');
+    await tester.pump();
+    expect(find.byKey(const ValueKey('filter-suggestions')), findsOneWidget);
+    expect(find.text('namespace='), findsOneWidget);
+    expect(find.text('name='), findsNothing);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    expect(tc.filter, 'namespace=');
+    expect(find.text('demo'), findsWidgets, reason: 'values from the column');
+    expect(find.text('data'), findsWidgets);
+
+    await tester.enterText(find.byKey(const ValueKey('table-filter')), 'namespace=da');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(tc.filter, 'namespace=data ');
+    expect(tc.rows.map((r) => r.name), ['db']);
+  });
+
+  testWidgets('sort is kept when the table is left and reopened', (tester) async {
+    final api = TableFakeApi()
+      ..onWatch = () => [
+        WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [fakeRow('api'), fakeRow('web'), fakeRow('db')])),
+      ];
+    final app = await pumpTable(tester, api, deployType);
+    TableController tc() => Provider.of<TableController>(tester.element(find.byType(ListView).first), listen: false);
+    await tester.tap(find.text('Name').first);
+    await tester.pump();
+    await tester.tap(find.text('Name').first);
+    await tester.pump();
+    expect(tc().rows.map((r) => r.name), ['web', 'db', 'api']);
+
+    // Navigate away (the table is disposed) and back.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(MultiProvider(
+      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+      child: MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: ResourceTableView(type: deployType))),
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(tc().sortColumn, 0);
+    expect(tc().sortAscending, isFalse);
+    expect(tc().rows.map((r) => r.name), ['web', 'db', 'api']);
+  });
+}
