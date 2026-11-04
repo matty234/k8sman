@@ -150,6 +150,11 @@
      "namespace": "ml",
      "name": "trainer-0",
      "gpus": 2
+    },
+    {
+     "namespace": "inference-production",
+     "name": "llm-serving-vllm-mixtral-8x7b-instruct-7d9f8c6b5-x2k4p",
+     "gpus": 1
     }
    ],
    "idleAllocated": 1,

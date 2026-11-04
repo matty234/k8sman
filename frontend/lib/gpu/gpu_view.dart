@@ -292,8 +292,10 @@ class _PodChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final p = pod;
+    // The name may wrap: the Wrap gives each chip at most the card's width,
+    // and long pod names would otherwise run past its edge.
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      GpuPodLink(namespace: ref.namespace, name: ref.name),
+      Flexible(child: GpuPodLink(namespace: ref.namespace, name: ref.name)),
       const SizedBox(width: 4),
       Text(
         [
