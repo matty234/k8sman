@@ -208,16 +208,10 @@ metrics, security, port-forwards and more.
    [**Releases**](https://github.com/matty234/k8sman/releases/latest) and unzip
    it. It's a universal app for Apple silicon and Intel and needs macOS 12 or
    later.
-2. Move `k8sman.app` to `/Applications`.
-3. **First launch (Gatekeeper):** release builds are ad-hoc signed, not
-   notarized, so macOS blocks the first launch. Control-click the app, choose
-   **Open**, and confirm. On recent macOS versions you may instead need to open
-   **System Settings → Privacy & Security** and click **Open Anyway**. You can
-   also clear the quarantine flag yourself:
-
-   ```sh
-   xattr -dr com.apple.quarantine /Applications/k8sman.app
-   ```
+2. Move `k8sman.app` to `/Applications` and open it. Releases are signed with
+   a Developer ID and notarized by Apple, so it opens without a Gatekeeper
+   warning. (Releases up to 0.2.7 weren't: if one of those is blocked, open
+   **System Settings → Privacy & Security** and click **Open Anyway**.)
 
 To verify a download against the release's `SHA256SUMS`, run
 `shasum -a 256 -c SHA256SUMS`.
@@ -232,8 +226,8 @@ brew trust matty234/tap
 brew install --cask matty234/tap/k8sman
 ```
 
-The same Gatekeeper step applies on first launch. k8sman updates itself, so
-`brew upgrade` skips it unless you pass `--greedy`.
+k8sman updates itself, so `brew upgrade` skips it unless you pass
+`--greedy`.
 
 ### Windows
 
@@ -388,7 +382,6 @@ More in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 Next on the list:
 
-- Notarized builds, so there's no Gatekeeper prompt.
 - More kind panels and Overview checks.
 
 Issues and pull requests are welcome. Before opening a PR, run `make test`.

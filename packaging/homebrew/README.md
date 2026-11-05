@@ -31,9 +31,8 @@ brew install --cask matty234/tap/k8sman
 - `auto_updates true` tells Homebrew that the app updates itself through
   Sparkle, so `brew upgrade` skips it unless you pass `--greedy`. The in-app
   update and the cask install the same zip, so they never conflict.
-- Homebrew quarantines what it downloads, so first-launch Gatekeeper
-  behaviour is the same as for a browser download. Older guides suggest
-  `--no-quarantine`, but Homebrew has deprecated that flag. Don't rely on it.
-- Once the app is notarized (see `docs/UPDATES.md`), you can drop the
-  `caveats` block. A notarized app could also go to the official
+- Homebrew quarantines what it downloads, just like a browser. Releases
+  from 0.2.8 on are notarized, so Gatekeeper lets them open. The release
+  workflow removes the old "Open Anyway" `caveats` block from the tap's cask.
+- Now that the app is notarized, it could go to the official
   `homebrew/cask` repo instead of a personal tap.

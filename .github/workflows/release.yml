@@ -3,7 +3,7 @@
 #   1. Bump `version:` in frontend/pubspec.yaml, commit.
 #   2. git tag -a v0.1.1 -m "release notes (Markdown)" && git push origin v0.1.1
 #
-# Assets: k8sman-<version>-macos.zip (universal, ad-hoc signed), appcast.xml
+# Assets: k8sman-<version>-macos.zip (universal, Developer ID signed and notarized), appcast.xml
 # (Sparkle feed, EdDSA-signed), the Windows x64 build from windows.yml
 # (k8sman-<version>-windows-x64.zip and -setup.exe, unsigned), the Linux
 # x64 build from linux.yml (k8sman-<version>-linux-x64.tar.gz and
@@ -16,6 +16,12 @@
 #   secret   SPARKLE_PRIVATE_ED_KEY  output of `generate_keys -x <file>` (the file's contents)
 #   variable SPARKLE_PUBLIC_ED_KEY   output of `generate_keys -p` (optional once committed
 #                                    to frontend/macos/Runner/Configs/AppInfo.xcconfig)
+#   secret   MACOS_CERT_P12          Developer ID Application certificate + key, .p12, base64
+#   secret   MACOS_CERT_PASSWORD     its password
+#   secret   NOTARY_KEY_P8           App Store Connect API key (.p8 contents) for notarytool
+#   secret   NOTARY_KEY_ID           its Key ID
+#   secret   NOTARY_ISSUER_ID        its Issuer ID
+#   variable APPLE_TEAM_ID           the Developer ID team (TL74XU6K79)
 name: release
 
 on:
@@ -73,10 +79,46 @@ jobs:
       - name: Test
         run: make test
 
+      - name: Import the Developer ID certificate
+        id: signing
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          if [ -z "$MACOS_CERT_P12" ]; then
+            if [ "$PRERELEASE" != true ]; then
+              echo "::error::secret MACOS_CERT_P12 is not set; final releases must be Developer ID signed (docs/UPDATES.md)"
+              exit 1
+            fi
+            echo "::warning::no MACOS_CERT_P12: this pre-release is ad-hoc signed"
+            exit 0
+          fi
+          tools/ci-import-cert.sh
+
       - name: Build the app
         env:
           SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
-        run: make release REQUIRE_UPDATE_KEY=1 SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY"
+          IDENTITY: ${{ steps.signing.outputs.identity }}
+          KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+          NOTARY_KEY: ${{ steps.signing.outputs.notary_key }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          flags=()
+          if [ -n "$IDENTITY" ]; then
+            flags+=(MACOS_SIGN_IDENTITY="$IDENTITY" MACOS_KEYCHAIN="$KEYCHAIN" NOTARIZE=1)
+            export NOTARY_KEY_FILE="$NOTARY_KEY"
+          fi
+          make release REQUIRE_UPDATE_KEY=1 SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" "${flags[@]}"
+
+      - name: Clean up the signing keychain
+        if: always() && steps.signing.outputs.keychain != ''
+        run: |
+          security delete-keychain "${{ steps.signing.outputs.keychain }}" || true
+          rm -f "${{ steps.signing.outputs.notary_key }}"
 
       - name: Release notes
         run: |
@@ -151,6 +193,8 @@ jobs:
           git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/matty234/homebrew-tap.git" tap
           cd tap
           sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" Casks/k8sman.rb
+          # Notarized now: drop the old "Open Anyway" caveat (and the blank line before it).
+          perl -0pi -e 's/\n\n  caveats <<~EOS\n.*?\n  EOS\n/\n/s' Casks/k8sman.rb
           if git diff --quiet; then echo "Tap already up to date."; exit 0; fi
           git config user.name "k8sman release"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

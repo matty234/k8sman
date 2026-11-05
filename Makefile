@@ -20,6 +20,15 @@ RELEASE_URL ?= https://github.com/$(GITHUB_REPO)/releases/tag/v$(VERSION)
 DOWNLOAD_URL ?= https://github.com/$(GITHUB_REPO)/releases/download/v$(VERSION)/k8sman-$(VERSION)-macos.zip
 RELEASE_NOTES ?=
 
+# Developer ID signing and notarization (docs/UPDATES.md). With
+# MACOS_SIGN_IDENTITY set, `make release` signs with it (hardened runtime);
+# NOTARIZE=1 also notarizes and staples, using NOTARY_KEY_FILE, NOTARY_KEY_ID
+# and NOTARY_ISSUER_ID (an App Store Connect API key). Without an identity
+# the app is ad-hoc signed, as before.
+MACOS_SIGN_IDENTITY ?=
+MACOS_KEYCHAIN ?=
+NOTARIZE ?=
+
 .PHONY: backend backend-build backend-test frontend-test analyze test app app-dev cluster samples release appcast sparkle-tools update-e2e icon shots clean-dist
 
 backend-build:
@@ -54,7 +63,7 @@ app-dev:
 	cd frontend && flutter run -d macos --dart-define=K8SMAN_BACKEND=http://127.0.0.1:7443 $(if $(K8SMAN_TOKEN),--dart-define=K8SMAN_TOKEN=$(K8SMAN_TOKEN))
 
 ## Build a Release .app (universal, with the embedded backend and Sparkle),
-## zip it to dist/ and write dist/SHA256SUMS. CFBundleVersion is set to the
+## sign it (Developer ID + notarization when configured, else ad-hoc), zip it to dist/ and write dist/SHA256SUMS. CFBundleVersion is set to the
 ## version, which is what Sparkle compares.
 release:
 	cd frontend && flutter build macos --release --build-name=$(VERSION) --build-number=$(VERSION)
@@ -69,7 +78,14 @@ release:
 	  if [ -n "$(REQUIRE_UPDATE_KEY)" ]; then echo "error: no SUPublicEDKey; set SPARKLE_PUBLIC_ED_KEY (docs/UPDATES.md)" >&2; exit 1; fi; \
 	  echo "warning: no SUPublicEDKey, so in-app updates are disabled in this build (docs/UPDATES.md)" >&2; \
 	fi
+ifneq ($(MACOS_SIGN_IDENTITY),)
+	tools/sign-macos.sh "$(RELEASE_APP)" "$(MACOS_SIGN_IDENTITY)" $(MACOS_KEYCHAIN)
+ifneq ($(NOTARIZE),)
+	tools/notarize-macos.sh "$(RELEASE_APP)"
+endif
+else
 	codesign --verify --deep --strict "$(RELEASE_APP)" || codesign --force --deep --sign - "$(RELEASE_APP)"
+endif
 	mkdir -p dist
 	rm -f $(RELEASE_ZIP)
 	ditto -c -k --sequesterRsrc --keepParent "$(RELEASE_APP)" $(RELEASE_ZIP)

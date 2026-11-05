@@ -32,10 +32,4 @@ cask "k8sman" do
     "~/Library/Preferences/dev.k8sman.app.plist",
     "~/Library/Saved Application State/dev.k8sman.app.savedState",
   ]
-
-  caveats <<~EOS
-    k8sman is ad-hoc signed, not notarized. On first launch macOS will block
-    it: open System Settings → Privacy & Security and click "Open Anyway"
-    (or Control-click the app and choose Open).
-  EOS
 end

@@ -1,11 +1,18 @@
 # Builds the macOS app on GitHub's runner (its Xcode can be older than
 # yours) on every push to main, so compiler differences show up before a
 # release tag instead of during the release. Also runnable by hand:
-# `gh workflow run macos.yml --ref <branch>`. Nothing is signed or published.
+# `gh workflow run macos.yml --ref <branch>`. Nothing is published.
+# `gh workflow run macos.yml --ref <branch> -f sign=true` also signs and
+# notarizes it the way release.yml does, and uploads the zip as an artifact.
 name: macos
 
 on:
   workflow_dispatch:
+    inputs:
+      sign:
+        description: Developer ID sign and notarize (uses the release secrets)
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -49,3 +56,38 @@ jobs:
 
       - name: Build the app (universal, release mode, unsigned updates)
         run: make release
+        if: ${{ !inputs.sign }}
+
+      - name: Import the Developer ID certificate
+        if: ${{ inputs.sign }}
+        id: signing
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: tools/ci-import-cert.sh
+
+      - name: Build, sign and notarize the app
+        if: ${{ inputs.sign }}
+        env:
+          IDENTITY: ${{ steps.signing.outputs.identity }}
+          KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+          NOTARY_KEY_FILE: ${{ steps.signing.outputs.notary_key }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: make release MACOS_SIGN_IDENTITY="$IDENTITY" MACOS_KEYCHAIN="$KEYCHAIN" NOTARIZE=1
+
+      - name: Upload the signed app
+        if: ${{ inputs.sign }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-signed
+          path: dist/*.zip
+          retention-days: 3
+
+      - name: Clean up the signing keychain
+        if: ${{ always() && steps.signing.outputs.keychain != '' }}
+        run: |
+          security delete-keychain "${{ steps.signing.outputs.keychain }}" || true
+          rm -f "${{ steps.signing.outputs.notary_key }}"

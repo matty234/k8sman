@@ -96,8 +96,10 @@ make update-e2e # local update test: two versions, local feed, tamper checks
 ```
 
 `make release` builds a universal (arm64 + x86_64) Release `.app` with the
-embedded backend and Sparkle, verifies its ad-hoc signature, and zips it. The
-version comes from `frontend/pubspec.yaml`.
+embedded backend and Sparkle, signs it and zips it. The version comes from
+`frontend/pubspec.yaml`. Locally it's ad-hoc signed; with
+`MACOS_SIGN_IDENTITY` (and `NOTARIZE=1`) it's Developer ID signed and
+notarized, as in CI (see [UPDATES.md](UPDATES.md#developer-id-and-notarization)).
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds, signs
 and publishes the GitHub release. See [UPDATES.md](UPDATES.md)

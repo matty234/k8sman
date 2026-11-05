@@ -3,8 +3,8 @@
 k8sman is distributed as a zip on GitHub Releases (`matty234/k8sman`) and
 updates itself with [Sparkle 2](https://sparkle-project.org). A Homebrew cask
 in a personal tap is an optional extra. This page covers the options that
-were considered, how the chosen one works, how to cut a release, and what
-changes once the app is notarized.
+were considered, how the chosen one works, how to cut a release, and
+how releases are signed and notarized.
 
 ## Options considered
 
@@ -56,14 +56,15 @@ Why not the alternatives:
 - **Homebrew alone** doesn't reach people who downloaded the zip, and it
   doesn't notify anyone. It complements Sparkle: see `packaging/homebrew/`.
 
-### Caveats of ad-hoc signing
+### Caveats of ad-hoc signing (releases up to 0.2.7, and local builds)
 
 - Each build has a new code identity. Keychain items that the *app* created
   with "Always Allow", and privacy (TCC) grants, may prompt again after an
   update. k8sman stores no secrets in the keychain itself; exec credential
   plugins such as `aws` and `kubelogin` run as their own binaries and are
   unaffected.
-- The first launch still needs "Open Anyway" (see the README).
+- The first launch needs "Open Anyway". Releases from 0.2.8 on are Developer
+  ID signed and notarized instead (see below), so neither applies to them.
 
 ## How it works in the app
 
@@ -234,34 +235,50 @@ hand** with two real builds:
    - A `flutter run` build shows **Check for Updates…** greyed out, and
      About says *Updates are off: development build*.
 
-## With a Developer ID and notarization
+## Developer ID and notarization
 
-The Gatekeeper prompts on first launch go away only with an Apple Developer
-ID ($99/year) and notarization. Sparkle supports this directly:
+Releases from 0.2.8 on are signed with `Developer ID Application: Matthew
+Brown (TL74XU6K79)` and the hardened runtime, then notarized and stapled, so
+they open without a Gatekeeper prompt.
 
-- **Signing.** Sign with `Developer ID Application: …`, the hardened runtime
-  and a secure timestamp.
-  - In Xcode: `CODE_SIGN_IDENTITY`, `ENABLE_HARDENED_RUNTIME = YES`, and a
-    team.
-  - `tools/build-backend.sh` already signs `k8sman-server` with
-    `--options runtime` when the hardened runtime is on.
-  - Re-sign Sparkle's helpers inside-out
-    (`Sparkle.framework/Versions/B/{XPCServices/*.xpc,Autoupdate,Updater.app}`)
-    instead of using `codesign --deep`, which Sparkle's docs warn against
-    for Developer ID.
-  - Check whether the hardened runtime needs extra entitlements. The Dart
-    VM's `allow-jit` is only in DebugProfile; Release AOT doesn't need it.
-- **Notarizing.** Notarize the zip, then staple the app:
-  `xcrun notarytool submit … --wait` and `xcrun stapler staple k8sman.app`.
-  Re-zip after stapling, and sign the *stapled* zip for the appcast. In CI,
-  import the certificate from a base64 `.p12` secret into a temporary
-  keychain, and store the App Store Connect API key as secrets.
-- **Keep EdDSA.** Sparkle then accepts an update if EdDSA is valid *or* the
-  Developer ID team matches, which also allows EdDSA key rotation. The first
-  Developer ID release can ship from the ad-hoc version as a normal
-  EdDSA-signed update.
-- **What disappears.** The README's "Open Anyway" step, the TCC and keychain
-  re-prompts (the identity is stable), and the cask `caveats`. The app could
-  then go to the official `homebrew/cask` repo.
-- If the app is ever sandboxed, Sparkle's installer XPC services must be
-  enabled (`SUEnableInstallerLauncherService`). It isn't sandboxed today.
+- **Signing** (`tools/sign-macos.sh`). After `flutter build`, the app is
+  re-signed inside-out with `--options runtime --timestamp`, instead of
+  `codesign --deep` (which Sparkle's docs warn against). The order is:
+  - Sparkle's `Installer.xpc`, `Downloader.xpc` (keeping its entitlements),
+    `Autoupdate`, `Updater.app`, then the framework itself.
+  - The other frameworks and dylibs.
+  - `k8sman-server`.
+  - The app, with `Runner/Release.entitlements`.
+
+  Release builds are AOT, so the hardened runtime needs no `allow-jit`.
+- **Notarizing** (`tools/notarize-macos.sh`). `xcrun notarytool submit --wait`
+  with an App Store Connect API key, then `stapler staple`. If Apple rejects
+  the app, the script prints Apple's log. `make release` zips the *stapled*
+  app, and `make appcast` signs that zip.
+- **Locally:** run `make release MACOS_SIGN_IDENTITY="Developer ID
+  Application: …" NOTARIZE=1` with `NOTARY_KEY_FILE`, `NOTARY_KEY_ID` and
+  `NOTARY_ISSUER_ID` set. Without `MACOS_SIGN_IDENTITY` the app is ad-hoc
+  signed.
+- **In CI** (`release.yml`):
+  - The certificate comes from the base64 `.p12` secret `MACOS_CERT_P12`
+    (password in `MACOS_CERT_PASSWORD`). It goes into a temporary keychain
+    that's deleted afterwards.
+  - The API key comes from `NOTARY_KEY_P8`, `NOTARY_KEY_ID` and
+    `NOTARY_ISSUER_ID`.
+  - The variable `APPLE_TEAM_ID` picks the identity.
+  - A final release without the certificate fails. A pre-release falls back
+    to ad-hoc signing, with a warning.
+- **Keep EdDSA.** Sparkle accepts an update if EdDSA is valid *or* the
+  Developer ID team matches. The first Developer ID release (0.2.8) reaches
+  ad-hoc installs as a normal EdDSA-signed update. After that, the stable
+  identity also means no TCC or keychain re-prompts.
+- **Exporting the `.p12`.** macOS's `security import` can't read the
+  PKCS#12 encryption that OpenSSL 3 and later use by default. Export with
+  `openssl pkcs12 -export … -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES
+  -macalg sha1`.
+- **Renewal.** The certificate expires on 5 December 2027. Before then,
+  create a new CSR and `.p12` and update the two certificate secrets. The
+  Team ID stays the same, so updates keep working.
+- **Sandboxing.** If the app is ever sandboxed, Sparkle's installer XPC
+  services must be enabled (`SUEnableInstallerLauncherService`). It isn't
+  sandboxed today.
