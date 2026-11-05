@@ -116,6 +116,13 @@ Overrides are keyed kubectl-style (`pods`, `deployments.apps`,
 | GET | `/api/actions` | actions supported for a type: `{actions:[...]}` |
 | POST | `/api/actions/{action}?name=` | run an action. Body: `{replicas?, revision?, gracePeriodSeconds?, propagation?, dryRun?}`. Returns `{message, dryRun, context, created?}` |
 
+**Node drain** uses kubectl's drain package (`kubectl drain --ignore-daemonsets`):
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/nodes/drain-plan?name=[&deleteEmptyDirData=][&force=]` | what a drain would do: `{node, evict:[ns/name], warnings:[...], blockers:[...]}`. Warnings are what drain skips or accepts (DaemonSet pods, emptyDir data, unmanaged pods) as kubectl prints them; blockers are why it would refuse (unmanaged pods without `force`, emptyDir without `deleteEmptyDirData`) |
+| POST | `/api/nodes/drain?name=` | body `{deleteEmptyDirData?, force?, gracePeriodSeconds? (default: each pod's own), timeoutSeconds? (default 300)}`. Cordons the node, then evicts through the Eviction API, so PodDisruptionBudgets are honoured (blocked evictions retry until the timeout). Returns `{node, evicted:[ns/name], error?, context}`; `error` is set when it stopped short, and the node stays cordoned, like kubectl. Refused in read-only mode |
+
 The actions are:
 
 | Action | Applies to | Effect |
@@ -127,6 +134,7 @@ The actions are:
 | `suspend` / `unsuspend` | Jobs, CronJobs | sets `spec.suspend` |
 | `trigger` | CronJobs | creates a Job now; `created` points at it |
 | `cordon` / `uncordon` | Nodes | sets `spec.unschedulable` |
+| (drain) | Nodes | see **Node drain** below |
 | `delete` | anything with the delete verb | deletes the object |
 | `argocd-refresh` | Argo CD Applications | annotates `argocd.argoproj.io/refresh: normal`, or `hard` with `{hard: true}` |
 | `argocd-sync` | Argo CD Applications | sets `.operation.sync` like the Argo CD API server. Body: `{prune?, syncDryRun?, targetRevision?, syncOptions?, force?}`. 409 when an operation is pending or running unless `force` (which replaces it). `syncDryRun` is Argo's dry run; `dryRun` stays a kube dry run of the patch |
@@ -145,6 +153,7 @@ See `docs/ARGOCD.md` for how these work without the Argo CD API server.
 | Method | Path | Purpose |
 |---|---|---|
 | WS | `/api/exec` | interactive TTY in a container. Query: `namespace`, `pod`, `container` (default: the `kubectl.kubernetes.io/default-container` annotation, else the first), `command` (repeat the param per argument, or pass one JSON array such as `["redis-cli","-n","1"]`; exec'd as-is), `shell` (`auto` (default), `bash`, `zsh`, ... used when there's no `command`), `cols`/`rows` (initial size) |
+| WS | `/api/local-shell` | interactive login shell on this machine, pointed at the current context (see **Local shells** below) |
 | POST | `/api/debug-container` | body `{namespace, pod, targetContainer, image}` (image defaults to `busybox:1.36`). Adds an ephemeral container like `kubectl debug -it pod --image=... --target=...` and waits (up to 3m) until it runs. Returns `{name, image, context}`. A fatal start (ErrImagePull, ...) or timeout returns 504 `DebugContainerNotRunning` |
 
 **Shell selection** happens in one exec: without `command`, the server runs
@@ -170,6 +179,21 @@ The `reason` for errors is one of:
 Exec uses client-go's WebSocket executor (falling back to SPDY, like kubectl 1.30+).
 Stdin and stdout block end to end, so a slow client applies backpressure to the
 container. Closing the socket ends the exec; the process exiting closes the socket.
+
+**Local shells.** `WS /api/local-shell` (query: `cols`/`rows`) runs the user's
+login shell (`$SHELL -l`, else the passwd entry, else `/bin/zsh` on macOS or
+`/bin/bash`/`/bin/sh`) in a pseudo-terminal on this machine, in their home
+directory, with the same framing as `/api/exec`. `started.container` is the kube
+context it targets. Its environment is the backend's, minus every `K8SMAN_*`
+variable (the API token never reaches it), with `TERM=xterm-256color`,
+`TERM_PROGRAM=k8sman`, `K8SMAN_CONTEXT=<context>` and
+`KUBECONFIG=<session file>:<the app's kubeconfig>`. The session file (0600,
+deleted when the shell ends) only sets `current-context`, so `kubectl` targets
+the app's context without changing any kubeconfig. Read-only mode doesn't
+refuse it, since the shell uses the user's own credentials either way; on a
+read-only context it starts with a yellow notice saying so. Closing the socket
+hangs up the shell's process group (SIGHUP, then SIGKILL after 2s). Not yet
+available on Windows (`error`, `execFailed`).
 
 Debug containers are exec'd into (`/api/exec?container=debugger`), not attached.
 They are created with `stdin`+`tty` so the image's default shell stays alive, which

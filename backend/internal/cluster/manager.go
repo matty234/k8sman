@@ -59,6 +59,12 @@ func NewManager(kubeconfig, contextName string) (*Manager, error) {
 	return m, nil
 }
 
+// NewStatic returns a Manager whose current clients are c (tests, e.g. with
+// a fake clientset). Switching context isn't supported.
+func NewStatic(c *Clients) *Manager {
+	return &Manager{current: c, byName: map[string]*Clients{}}
+}
+
 // NewDisconnected returns a Manager with no active context, e.g. when no
 // usable kubeconfig exists yet. Clients returns nil until SwitchKubeconfig or
 // SwitchContext succeeds; Err reports why.
