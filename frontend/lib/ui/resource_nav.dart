@@ -273,9 +273,10 @@ class _ResourceNavState extends State<ResourceNav> {
                 bool isCustomSection(String key) => !_curated.containsKey(key) && key != 'Other';
                 final custom = isCustomSection(g.key);
                 final firstCustom = custom && (i == 0 || !isCustomSection(groups.keys.elementAt(i - 1)));
-                // A pin showing the selection takes the highlight instead.
-                final selectedHere = selectedPin == null && app.view == MainView.resources && g.value.contains(app.selectedType);
-                final customSelected = selectedPin == null && app.view == MainView.resources && app.selectedType != null && isCustomSection(groups.entries.firstWhere((e) => e.value.contains(app.selectedType), orElse: () => const MapEntry('', [])).key);
+                // Highlighted here even when a pin shows it too, so the list
+                // always marks (and expands to) where you are.
+                final selectedHere = app.view == MainView.resources && g.value.contains(app.selectedType);
+                final customSelected = app.view == MainView.resources && app.selectedType != null && isCustomSection(groups.entries.firstWhere((e) => e.value.contains(app.selectedType), orElse: () => const MapEntry('', [])).key);
                 final customCollapsed = _isCollapsed('Custom Resources', holdsSelection: customSelected);
                 final collapsed = _isCollapsed(g.key, holdsSelection: selectedHere);
                 return [
@@ -286,7 +287,7 @@ class _ResourceNavState extends State<ResourceNav> {
                     _GroupHeader(title: g.key, group: custom ? g.key : null, nested: custom, collapsed: collapsed, onTap: () => _toggle(g.key, currentlyCollapsed: collapsed)),
                     if (!collapsed)
                       for (final t in g.value)
-                        _NavItem(type: t, nested: custom, selected: selectedPin == null && app.view == MainView.resources && app.selectedType == t),
+                        _NavItem(type: t, nested: custom, selected: app.view == MainView.resources && app.selectedType == t),
                   ],
                 ];
               }(),
