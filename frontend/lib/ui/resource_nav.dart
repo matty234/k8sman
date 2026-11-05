@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,7 +9,6 @@ import '../app/window_chrome.dart';
 import '../gpu/gpu_view.dart';
 import '../state/app_state.dart';
 import '../util/k8s.dart' show Severity;
-import 'alerts/alerts_nav_badge.dart';
 import 'keys.dart' show shortcutLabel;
 import 'palette/command_palette.dart';
 import 'sidebar_editor.dart';
@@ -121,7 +122,7 @@ const _expandedByDefault = {'Workloads', 'Network', 'Config'};
 /// Below this height the sidebar scrolls as a whole (plus a row's height
 /// per top-section row beyond the default seven, e.g. pins).
 const _navMinHeight = 520.0;
-const _defaultTopRows = 7;
+const _defaultTopRows = 6;
 const _topRowHeight = 27.0;
 
 /// Icon and label of each sidebar page (see [SidebarConfig.pages]).
@@ -215,25 +216,36 @@ class _ResourceNavState extends State<ResourceNav> {
       color: nativeMacChrome ? Colors.transparent : AppColors.of(context).sidebar,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // Unified titlebar row: traffic lights live here on macOS.
+        // The buttons stay centred on the traffic lights, but the row
+        // ends just below them so the context picker isn't left floating.
         WindowDragArea(
-          child: SizedBox(
-            height: toolbarRowHeight(context),
-            child: Row(children: [
-              const Spacer(),
-              IconButton(
-                key: const ValueKey('customise-sidebar'),
-                tooltip: 'Customise Sidebar…',
-                icon: const Icon(Icons.tune),
-                onPressed: () => showSidebarEditor(context),
+          child: Builder(builder: (context) {
+            final band = toolbarRowHeight(context);
+            const button = 32.0;
+            final top = (band - button) / 2;
+            return SizedBox(
+              height: math.max(band - 10, top + button),
+              child: Container(
+                alignment: Alignment.topCenter,
+                padding: EdgeInsets.only(top: top, right: 8),
+                // A [button]-tall slot centred on the band's midline.
+                child: SizedBox(height: button, child: Row(children: [
+                  const Spacer(),
+                  IconButton(
+                    key: const ValueKey('customise-sidebar'),
+                    tooltip: 'Customise Sidebar…',
+                    icon: const Icon(Icons.tune),
+                    onPressed: () => showSidebarEditor(context),
+                  ),
+                  IconButton(
+                    tooltip: 'Rediscover API resources',
+                    icon: const Icon(Icons.refresh),
+                    onPressed: () => app.refreshTypes(),
+                  ),
+                ])),
               ),
-              IconButton(
-                tooltip: 'Rediscover API resources',
-                icon: const Icon(Icons.refresh),
-                onPressed: () => app.refreshTypes(),
-              ),
-              const SizedBox(width: 8),
-            ]),
-          ),
+            );
+          }),
         ),
         const _ContextPicker(),
         const SizedBox(height: 6),
@@ -462,7 +474,6 @@ class _TopEntry extends StatelessWidget {
         icon: icon,
         label: label,
         selected: context.select<AppState, bool>((a) => a.view == view),
-        trailing: view == MainView.alerts ? const AlertsNavBadge() : null,
         onTap: () => app.showView(view),
         onSecondaryTap: (pos) => showSidebarMenu(context, pos, [
           entry.hidden

@@ -322,8 +322,13 @@ class _Toolbar extends StatelessWidget {
         Flexible(
           child: Text.rich(
             TextSpan(children: [
-              TextSpan(text: s.pod, style: monoStyle(context, size: 11)),
-              TextSpan(text: ' / ${s.container ?? 'default'}', style: monoStyle(context, size: 11, color: theme.hintColor)),
+              if (s.isLocal) ...[
+                TextSpan(text: 'local shell', style: monoStyle(context, size: 11)),
+                if ((s.container ?? '').isNotEmpty) TextSpan(text: ' · kubectl → ${s.container}', style: monoStyle(context, size: 11, color: theme.hintColor)),
+              ] else ...[
+                TextSpan(text: s.pod, style: monoStyle(context, size: 11)),
+                TextSpan(text: ' / ${s.container ?? 'default'}', style: monoStyle(context, size: 11, color: theme.hintColor)),
+              ],
               if (s.debugTarget != null) TextSpan(text: '  (debugging ${s.debugTarget})', style: small),
               TextSpan(text: '  ·  ${terminalPhaseLabel(s)}', style: small),
             ]),
@@ -333,7 +338,7 @@ class _Toolbar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        PopupMenuButton<String>(
+        if (!s.isLocal) PopupMenuButton<String>(
           popUpAnimationStyle: AnimationStyle.noAnimation,
           key: const ValueKey('terminal-shell-picker'),
           tooltip: 'Shell or command (restarts the session)',

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
+import '../../state/log_dock.dart';
 import '../theme.dart';
 import '../widgets/common.dart' show openUrl;
 
@@ -80,9 +82,11 @@ class _QuickForwardButtonState extends State<QuickForwardButton> {
   Future<void> _forward() async {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.maybeOf(context);
+    final dock = context.read<LogDock?>();
     try {
       final f = await widget.api.createPortForward(namespace: widget.namespace, kind: widget.kind, name: widget.name, port: widget.port);
       _ForwardsCache.invalidate();
+      dock?.notifyForwardStarted();
       if (!mounted) return;
       setState(() => _active = f);
       messenger?.showSnackBar(

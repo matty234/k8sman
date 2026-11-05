@@ -276,8 +276,12 @@ String? defaultLogContainer(Json pod) {
   return (troubled.isNotEmpty ? troubled.first : (regular.isNotEmpty ? regular.first : (cs.isNotEmpty ? cs.first : null)))?.name;
 }
 
-/// The bottom dock: open tabs (log streams and terminal sessions), the active
-/// tab, and the panel's height / collapsed state. Not persisted across launches.
+/// Fixed panes at the start of the dock strip, before the closable tabs.
+enum DockPane { alerts, forwards }
+
+/// The bottom dock: a permanent bar along the main column with its fixed
+/// panes (Alerts, Forwards) first, then open tabs (log streams and terminal sessions), the active
+/// one, and the panel's height / collapsed state. Not persisted across launches.
 class LogDock extends ChangeNotifier {
   final ApiClient api;
   LogDock(this.api);
@@ -290,8 +294,10 @@ class LogDock extends ChangeNotifier {
 
   String? _activeId;
 
-  /// The visible tab of any kind.
-  DockTab? get activeTab {
+  /// The visible tab of any kind (null while a fixed pane is showing).
+  DockTab? get activeTab => pane != null ? null : _selectedTab;
+
+  DockTab? get _selectedTab {
     for (final t in _tabs) {
       if (t.id == _activeId) return t;
     }
@@ -304,11 +310,19 @@ class LogDock extends ChangeNotifier {
     return t is LogStream ? t : null;
   }
 
-  /// Whether the dock is on screen at all.
-  bool shown = false;
+  /// The fixed pane showing instead of a log or terminal tab, if any.
+  DockPane? pane;
 
-  /// Collapsed to its tab strip.
-  bool collapsed = false;
+  bool get alertsOpen => pane == DockPane.alerts;
+
+  /// Bumped when a port-forward starts, so the Forwards tab can pulse once
+  /// (and refresh its badge) without taking the panel over.
+  final ValueNotifier<int> forwardsPulse = ValueNotifier(0);
+
+  void notifyForwardStarted() => forwardsPulse.value++;
+
+  /// Collapsed to its tab strip (the bar itself always stays).
+  bool collapsed = true;
 
   double height = defaultHeight;
 
@@ -337,7 +351,7 @@ class LogDock extends ChangeNotifier {
       if (previous != s.previous) s.setOptions(previous: previous);
     }
     if (focus || _activeId == null) _activeId = s.id;
-    shown = true;
+    if (focus) pane = null;
     collapsed = false;
     notifyListeners();
     return s;
@@ -347,15 +361,35 @@ class LogDock extends ChangeNotifier {
   void add(DockTab tab, {bool focus = true}) {
     if (!_tabs.contains(tab)) _tabs.add(tab);
     if (focus || _activeId == null) _activeId = tab.id;
-    shown = true;
+    if (focus) pane = null;
     collapsed = false;
     notifyListeners();
   }
 
   void activate(DockTab s) {
     _activeId = s.id;
+    pane = null;
     if (collapsed) collapsed = false;
     notifyListeners();
+  }
+
+  /// Shows (and expands to) a fixed pane.
+  void showPane(DockPane p) {
+    pane = p;
+    collapsed = false;
+    notifyListeners();
+  }
+
+  void showAlerts() => showPane(DockPane.alerts);
+
+  /// A fixed pane's tab: opens it, or collapses the dock if it's showing.
+  void togglePane(DockPane p) {
+    if (pane == p && !collapsed) {
+      collapsed = true;
+      notifyListeners();
+    } else {
+      showPane(p);
+    }
   }
 
   /// Switches the stream's container. If that stream is already open in
@@ -364,7 +398,7 @@ class LogDock extends ChangeNotifier {
     if (container == s.container) return;
     final existing = find(s.namespace, s.pod, container);
     if (existing != null) return activate(existing);
-    final wasActive = activeTab == s;
+    final wasActive = _selectedTab == s;
     s._setContainer(container);
     if (wasActive) _activeId = s.id;
     notifyListeners();
@@ -376,7 +410,7 @@ class LogDock extends ChangeNotifier {
     _tabs.removeAt(i);
     if (_activeId == s.id) _activeId = _tabs.isEmpty ? null : _tabs[i.clamp(0, _tabs.length - 1)].id;
     s.dispose();
-    if (_tabs.isEmpty) shown = false;
+    if (_tabs.isEmpty && pane == null) collapsed = true;
     notifyListeners();
   }
 
@@ -397,21 +431,15 @@ class LogDock extends ChangeNotifier {
     }
     _tabs.clear();
     _activeId = null;
-    shown = false;
+    if (pane == null) collapsed = true;
     notifyListeners();
   }
 
-  /// ⌘J: show the dock, or toggle it between expanded and its tab strip.
-  /// With no tabs it toggles between hidden and an empty panel.
+  /// ⌘J: toggle the dock between expanded and its tab strip. With nothing
+  /// open it expands to the Alerts pane.
   void toggle() {
-    if (!shown) {
-      shown = true;
-      collapsed = false;
-    } else if (_tabs.isEmpty) {
-      shown = false;
-    } else {
-      collapsed = !collapsed;
-    }
+    collapsed = !collapsed;
+    if (!collapsed && _tabs.isEmpty) pane ??= DockPane.alerts;
     notifyListeners();
   }
 
@@ -430,6 +458,7 @@ class LogDock extends ChangeNotifier {
     for (final t in _tabs) {
       t.dispose();
     }
+    forwardsPulse.dispose();
     super.dispose();
   }
 }

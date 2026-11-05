@@ -127,7 +127,13 @@ class AppState extends ChangeNotifier {
 
   MainView view = MainView.resources;
 
+  /// Opens a view that lives in the bottom dock (set by the shell): Alerts
+  /// and Port Forwards are dock panes rather than pages, so [showView] of
+  /// either opens the pane. Returns false for views that aren't in the dock.
+  bool Function(MainView v)? showInDock;
+
   void showView(MainView v) {
+    if (showInDock?.call(v) ?? false) return;
     if (v != view && detail != null) inspectorCollapsed = true;
     view = v;
     notifyListeners();
@@ -320,6 +326,7 @@ class AppState extends ChangeNotifier {
     loading = true;
     connecting = ConnectProgress(context: name, server: info?.server, auth: info?.auth, started: clock.now());
     _detailStack.clear();
+    recentDetails.clear();
     namespace = null;
     selectedType = null;
     // Drop the old cluster's kinds so a failure shows the error screen.
@@ -500,12 +507,36 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Objects inspected on this context, most recent first (the inspector's
+  /// history menu). Cleared when the context or kubeconfig changes.
+  final List<DetailTarget> recentDetails = [];
+  static const maxRecentDetails = 20;
+
+  void _remember(DetailTarget t) {
+    recentDetails
+      ..remove(t)
+      ..insert(0, t);
+    if (recentDetails.length > maxRecentDetails) recentDetails.removeLast();
+  }
+
   /// Open an object from the table: replaces the sidebar stack.
   void openDetail(DetailTarget t) {
     _detailStack
       ..clear()
       ..add(t);
+    _remember(t);
     inspectorCollapsed = false;
+    notifyListeners();
+  }
+
+  /// The inspector's kind breadcrumb: the table of [t]'s kind, scoped to its
+  /// namespace if the table is scoped to another one, with the inspector
+  /// collapsed so the table gets the width (its row stays selected).
+  void showInList(DetailTarget t) {
+    if (t.namespace != null && namespace != null && namespace != t.namespace) setNamespace(t.namespace);
+    selectedType = t.type;
+    view = MainView.resources;
+    if (detail != null) inspectorCollapsed = true;
     notifyListeners();
   }
 
@@ -517,6 +548,7 @@ class AppState extends ChangeNotifier {
     final target = DetailTarget(type: t, name: ref.name, namespace: t.namespaced ? ref.namespace : null);
     if (detail == target) return true;
     _detailStack.add(target);
+    _remember(target);
     notifyListeners();
     return true;
   }
@@ -593,6 +625,7 @@ class AppState extends ChangeNotifier {
       return '$e';
     }
     _detailStack.clear();
+    recentDetails.clear();
     namespace = null;
     selectedType = null;
     types = const [];

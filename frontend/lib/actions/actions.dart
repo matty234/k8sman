@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../panels/panel.dart';
+import '../ui/nodes/drain_dialog.dart';
 import '../ui/theme.dart';
 import '../util/k8s.dart';
 
@@ -368,6 +369,7 @@ List<ResourceAction> standardActions(PanelContext ctx) {
     out.add(cordoned
         ? simple('uncordon', 'Uncordon', Icons.lock_open, 'Uncordon node $name?')
         : simple('cordon', 'Cordon', Icons.block, 'Cordon node $name?', message: 'New pods will not be scheduled here. Existing pods keep running.', destructive: true));
+    out.add(ResourceAction(id: 'drain', label: 'Drain…', icon: Icons.move_down, destructive: true, run: (c) => showDrainDialog(c, name)));
   }
   if (gk == '/Pod' && ownerRefs(ctx.object).isNotEmpty) {
     out.add(simple('delete', 'Restart pod', Icons.refresh, 'Delete pod $name so its controller recreates it?', destructive: true));

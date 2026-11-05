@@ -57,7 +57,11 @@ void main() {
       expect(find.textContaining('used'), findsWidgets);
       expect(find.text('used'), findsOneWidget, reason: 'legend');
       expect(find.text('CPU requests'), findsNothing, reason: 'requests are drawn as outlines once usage is known');
-      expect(find.textContaining('requests '), findsOneWidget, reason: 'request totals stay visible as text');
+      expect(
+        find.byWidgetPredicate((w) => w is Tooltip && (w.message ?? '').contains('Requested')),
+        findsNWidgets(2),
+        reason: 'CPU and memory request totals are in the bar tooltips',
+      );
       await saveScreenshot(tester, 'metrics-nodes-usage');
       for (var w = 360.0; w <= 1800; w += 60) {
         await _resize(tester, w, 700);

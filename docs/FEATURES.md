@@ -13,7 +13,7 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   for well-known projects, the group's website favicon, or a generated
   monogram. Internet fetches are on by default only for local clusters. Set
   `"remoteIcons"` in `settings.json` or pass `--no-remote-icons` to change it.
-- A calm sidebar: Overview, Alerts, Nodes and Security up top, the rest under
+- A calm sidebar: Overview, Nodes and Security up top, the rest under
   **More**, collapsible sections and a **Custom Resources** group, plus **Search or jump to… ⌘K**
   (the command palette).
 - A searchable namespace picker with recents.
@@ -75,7 +75,11 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   - **Prometheus Operator** Prometheus, Alertmanager, PrometheusRule (live rule
     state), ServiceMonitor and PodMonitor (live target health).
 
-## Bottom dock: logs and terminals
+## Bottom dock: alerts, logs and terminals
+
+- A permanent bar along the main column. Its first tab is **Alerts**, with a
+  badge counting firing critical alerts; click it to open the alerts list
+  without leaving the page you're on.
 
 - Log tabs with search, highlighting and "only matching" filtering, follow,
   previous instance, timestamps, wrap, initial lines, Copy all and Clear.
@@ -83,7 +87,12 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - Terminals into any container, with automatic shell detection
   (zsh → bash → ash → sh). Font size is adjustable (⌘+ / ⌘− / ⌘0) and ⌘K clears.
 - An ephemeral debug container for distroless images that have no shell.
-- ⌘J toggles the dock. It sits beside the inspector, like Xcode's debug area.
+- Local shells (macOS and Linux): **+** opens your login shell on this
+  machine. Its `KUBECONFIG` puts a context-only file in front of your
+  kubeconfig, so `kubectl` and friends target the context on screen while
+  your kubeconfig and other terminals stay as they are. On a read-only
+  context it prints a warning: commands there use your own credentials.
+- ⌘J expands or collapses the dock. It sits beside the inspector, like Xcode's debug area.
 
 ## Port-forwards
 
@@ -92,23 +101,28 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - Supervised: a forward reconnects to a new ready pod when its pod goes away.
 - They persist across launches, with optional auto-start, and are restarted
   after an update relaunch.
-- A **Port Forwards** page with start, stop, remove, labels, Open in browser
-  and Copy URL.
+- A **Forwards** tab in the bottom dock with start, stop, remove, labels,
+  Open in browser and Copy URL. Its badge counts running forwards (amber
+  while one reconnects, red if one fails), and it flashes when you start one.
 
 ## Pages
 
 - **Overview**: cluster health grouped by owning workload, with quick fixes and
   top warning events.
-- **Alerts**: Alertmanager alerts, silences (create, expire, "why is this
-  silenced?") and runbook links.
-- **Nodes**: health, allocation, live usage, and cordon/uncordon.
+- **Alerts** (in the bottom dock): Alertmanager alerts, silences (create,
+  expire, "why is this silenced?") and runbook links.
+- **Nodes**: a sortable list grouped by role, with health, allocation and live
+  usage, plus cordon/uncordon and **drain**. Drain works like `kubectl drain
+  --ignore-daemonsets`. It first shows the pods it will evict, what it skips
+  (DaemonSet and mirror pods), and anything blocking it. Options cover
+  emptyDir data and pods without a controller. Evictions respect
+  PodDisruptionBudgets, retrying for up to 5 minutes.
 - **Metrics**: Top, custom metrics, external metrics and a live HPA view.
 - **Helm**: releases, values, manifest, hooks, history diffs, rollback,
   upgrade with a dry-run diff, uninstall, and stuck-release recovery.
 - **Security**: network exposure, RBAC risk (including unused privileged
   ServiceAccounts), Pod Security, best practices, Trivy image CVEs, and
   **Copy for AI**.
-- **Port Forwards**: every saved forward.
 - **Add-ons**: one-click Helm installs of metrics-server, the Prometheus
   stack, Trivy Operator, Argo CD, Envoy Gateway and cert-manager.
 

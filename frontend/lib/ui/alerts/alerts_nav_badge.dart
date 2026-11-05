@@ -11,11 +11,14 @@ import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 
-/// Count of firing critical alerts for the nav's Alerts item. Polls every
+/// Count of firing critical alerts for the dock's Alerts tab. Polls every
 /// [interval] while an Alertmanager exists; shows nothing otherwise.
 class AlertsNavBadge extends StatefulWidget {
   final Duration interval;
-  const AlertsNavBadge({super.key, this.interval = const Duration(seconds: 30)});
+
+  /// Space before the badge when it shows.
+  final double leading;
+  const AlertsNavBadge({super.key, this.interval = const Duration(seconds: 30), this.leading = 0});
 
   @override
   State<AlertsNavBadge> createState() => _AlertsNavBadgeState();
@@ -24,6 +27,7 @@ class AlertsNavBadge extends StatefulWidget {
 class _AlertsNavBadgeState extends State<AlertsNavBadge> with PollingState {
   int _critical = 0;
   String? _context;
+  bool _seen = false;
   bool _busy = false;
 
   @override
@@ -63,12 +67,13 @@ class _AlertsNavBadgeState extends State<AlertsNavBadge> with PollingState {
   @override
   Widget build(BuildContext context) {
     // Re-poll right away after a context switch.
-    final ctx = context.select<AppState, String>((a) => a.currentContext);
-    if (_context != null && ctx != _context) scheduleMicrotask(_poll);
+    final ctx = context.select<AppState?, String?>((a) => a?.currentContext);
+    if (_seen && ctx != _context) scheduleMicrotask(_poll);
+    _seen = true;
     _context = ctx;
     if (_critical == 0) return const SizedBox.shrink();
     final c = severityColor(context, Severity.error);
-    return Tooltip(
+    return Padding(padding: EdgeInsets.only(left: widget.leading), child: Tooltip(
       message: '$_critical critical alert${_critical == 1 ? '' : 's'} firing',
       child: Container(
         constraints: const BoxConstraints(minWidth: 16),
@@ -78,6 +83,6 @@ class _AlertsNavBadgeState extends State<AlertsNavBadge> with PollingState {
         decoration: BoxDecoration(color: c.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(8)),
         child: Text('$_critical', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: c)),
       ),
-    );
+    ));
   }
 }

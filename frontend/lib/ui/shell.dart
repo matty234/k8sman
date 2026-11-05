@@ -41,17 +41,31 @@ class _ShellState extends State<Shell> {
   double _sidebarWidth = 560;
 
   void _palette() => showCommandPalette(context);
+  late final AppState _app;
+  bool _showInDock(MainView v) {
+    final pane = switch (v) {
+      MainView.alerts => DockPane.alerts,
+      MainView.portForwards => DockPane.forwards,
+      _ => null,
+    };
+    if (pane == null) return false;
+    context.read<LogDock>().showPane(pane);
+    return true;
+  }
 
   @override
   void initState() {
     super.initState();
     // The macOS View menu's "Command Palette…" item.
     WindowChrome.onCommandPalette = _palette;
+    // "Alerts" and "Port Forwards" (palette, links) open their dock panes.
+    _app = context.read<AppState>()..showInDock = _showInDock;
   }
 
   @override
   void dispose() {
     if (WindowChrome.onCommandPalette == _palette) WindowChrome.onCommandPalette = null;
+    if (_app.showInDock == _showInDock) _app.showInDock = null;
     StartupGate.release();
     super.dispose();
   }
@@ -121,7 +135,7 @@ class _ShellState extends State<Shell> {
                             : ResourceTableView(type: type),
                       },
                     ),
-                    if (dock.shown) LogDockView(maxHeight: dockMax),
+                    LogDockView(maxHeight: dockMax),
                   ]),
                 ),
               ),

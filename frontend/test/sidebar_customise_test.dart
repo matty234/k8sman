@@ -35,10 +35,10 @@ double _y(WidgetTester tester, String key) => tester.getTopLeft(find.byKey(Value
 void main() {
   group('SidebarConfig', () {
     test('JSON round trip; normalises missing, unknown and duplicate entries', () {
-      final c = SidebarConfig.defaults.setHidden(MainView.alerts, true).pin(_deploy).pin(_podsKs);
+      final c = SidebarConfig.defaults.setHidden(MainView.security, true).pin(_deploy).pin(_podsKs);
       final back = SidebarConfig.fromJson(c.toJson());
       expect(back.entries, c.entries);
-      expect(back.isHidden(MainView.alerts), isTrue);
+      expect(back.isHidden(MainView.security), isTrue);
       expect(back.pins, [_deploy, _podsKs]);
       // Pins land after the last visible entry, not under More.
       expect(back.entries.indexWhere((e) => e.pin == _deploy), lessThan(back.entries.indexWhere((e) => e.view == MainView.metrics)));
@@ -47,6 +47,7 @@ void main() {
         'items': [
           {'view': 'helm'},
           {'view': 'nope'},
+          {'view': 'alerts'}, // moved to the dock: dropped from saved layouts
           {'view': 'resources'},
           {'kind': 'Pod'},
           {'kind': 'Pod'},
@@ -58,6 +59,7 @@ void main() {
       expect(odd.entries.where((e) => e.view != null).length, SidebarConfig.pages.length);
       expect(odd.isHidden(MainView.metrics), isTrue);
       expect(odd.isHidden(MainView.overview), isFalse);
+      expect(odd.entries.any((e) => e.view == MainView.alerts), isFalse);
       expect(SidebarConfig.fromJson(null).isDefault, isTrue);
     });
 
@@ -81,13 +83,13 @@ void main() {
       const SidebarEntry.pin(_deploy),
       ...SidebarConfig.defaults.entries.where((e) => e.view != MainView.nodes),
       const SidebarEntry.pin(SidebarPin(group: 'example.com', kind: 'Missing')),
-    ]).setHidden(MainView.alerts, true);
+    ]).setHidden(MainView.security, true);
     final (app, _) = await _pumpNav(tester, layout: layout);
 
-    // Order follows the layout; hidden Alerts is folded under More.
+    // Order follows the layout; hidden Security is folded under More.
     expect(_y(tester, 'nav-view-nodes'), lessThan(_y(tester, 'nav-pin-apps/Deployment')));
     expect(_y(tester, 'nav-pin-apps/Deployment'), lessThan(_y(tester, 'nav-view-overview')));
-    expect(find.byKey(const ValueKey('nav-view-alerts')), findsNothing);
+    expect(find.byKey(const ValueKey('nav-view-security')), findsNothing);
     // A pin for a kind this cluster doesn't serve is left out quietly.
     expect(find.byKey(const ValueKey('nav-pin-example.com/Missing')), findsNothing);
 
@@ -101,11 +103,11 @@ void main() {
     // A hidden page stays reachable through More, which stays open while it's active.
     await tester.tap(find.text('More'));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('nav-view-alerts')));
+    await tester.tap(find.byKey(const ValueKey('nav-view-security')));
     await tester.pump();
-    expect(app.view, MainView.alerts);
+    expect(app.view, MainView.security);
     expect(find.text('Less'), findsNothing);
-    expect(find.byKey(const ValueKey('nav-view-alerts')), findsOneWidget);
+    expect(find.byKey(const ValueKey('nav-view-security')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -193,7 +195,7 @@ void main() {
       const SidebarEntry.pin(_podsKs),
       const SidebarEntry.view(MainView.nodes),
       const SidebarEntry.view(MainView.helm),
-      ...SidebarConfig.defaults.entries.map((e) => e.view == MainView.alerts || e.view == MainView.security ? e.withHidden(true) : e),
+      ...SidebarConfig.defaults.entries.map((e) => e.view == MainView.security ? e.withHidden(true) : e),
     ]));
     app.openPin(_podsKs);
     for (var i = 0; i < 3; i++) {

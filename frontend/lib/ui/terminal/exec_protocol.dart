@@ -43,9 +43,16 @@ class ExecRequest {
   final int? cols;
   final int? rows;
 
-  const ExecRequest({required this.namespace, required this.pod, this.container, this.command, this.shell = 'auto', this.cols, this.rows});
+  /// A login shell on this machine (`/api/local-shell`) instead of a pod.
+  final bool local;
+
+  const ExecRequest({required this.namespace, required this.pod, this.container, this.command, this.shell = 'auto', this.cols, this.rows, this.local = false});
+
+  /// A local shell, pointed at the app's current context by the backend.
+  const ExecRequest.localShell() : this(namespace: '', pod: '', local: true);
 
   ExecRequest copyWith({String? container, List<String>? command, bool clearCommand = false, String? shell, int? cols, int? rows}) => ExecRequest(
+        local: local,
         namespace: namespace,
         pod: pod,
         container: container ?? this.container,
@@ -57,7 +64,9 @@ class ExecRequest {
 
   /// Query parameters for `/api/exec`. The command goes JSON-encoded so
   /// arguments with spaces survive.
-  Map<String, String> toQuery() => {
+  Map<String, String> toQuery() => local
+      ? {if (cols != null) 'cols': '$cols', if (rows != null) 'rows': '$rows'}
+      : {
         'namespace': namespace,
         'pod': pod,
         if (container != null && container!.isNotEmpty) 'container': container!,
@@ -69,7 +78,7 @@ class ExecRequest {
 
   Uri uri(Uri base) => base.replace(
         scheme: base.scheme == 'https' ? 'wss' : 'ws',
-        path: '/api/exec',
+        path: local ? '/api/local-shell' : '/api/exec',
         queryParameters: toQuery(),
       );
 }

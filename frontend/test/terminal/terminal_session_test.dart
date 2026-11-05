@@ -157,7 +157,7 @@ void main() {
     final (dock, _) = await pumpDock(tester, tabs: [tab]);
     transport.last.emit(const ExecStarted('nginx', ['/bin/sh']));
     await flush(tester);
-    expect(find.text('Terminal'), findsOneWidget); // strip title
+    expect(find.byKey(const ValueKey('dock-alerts-tab')), findsOneWidget); // the strip's fixed first tab
     expect(find.descendant(of: find.byKey(ValueKey('dock-tab-${tab.id}')), matching: find.byIcon(Icons.terminal)), findsOneWidget);
 
     // Collapsing keeps the session alive.
@@ -225,5 +225,31 @@ void main() {
     tab.terminal.textInput('pwd');
     expect(utf8.decode(transport.last.input.expand((b) => b).toList()), 'pwd');
     tab.dispose();
+  });
+
+  testWidgets('dock + opens a local shell tab labelled with its context', (tester) async {
+    final transport = FakeExecTransport();
+    final old = execTransportFor;
+    execTransportFor = (_) => transport;
+    addTearDown(() => execTransportFor = old);
+    final (dock, _) = await pumpDock(tester, tabs: const [], readOnly: true);
+
+    await tester.tap(find.byKey(const ValueKey('dock-new-local-shell')));
+    await flush(tester);
+    final tab = dock.activeTab! as TerminalTab;
+    expect(tab.isLocal, isTrue, reason: 'allowed in read-only mode: the backend prints a notice instead');
+    expect(transport.last.request.local, isTrue);
+    transport.last.emit(const ExecStarted('kind-dev', ['/bin/zsh', '-l']));
+    transport.last.output('% ');
+    await flush(tester);
+    expect(tab.label, 'local · kind-dev');
+    expect(tab.commandLabel, 'zsh');
+    final tabChip = find.byKey(ValueKey('dock-tab-${tab.id}'));
+    expect(find.descendant(of: tabChip, matching: find.byIcon(Icons.laptop_mac)), findsOneWidget);
+    expect(find.descendant(of: tabChip, matching: find.textContaining('local')), findsOneWidget);
+    expect(find.byKey(const ValueKey('terminal-shell-picker')), findsNothing, reason: 'no pod shell choices');
+    expect(find.textContaining('kubectl → kind-dev'), findsOneWidget);
+    dock.closeAll();
+    await tester.pump();
   });
 }

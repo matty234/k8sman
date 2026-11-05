@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../../actions/actions.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../panels/panel.dart';
+import '../../state/log_dock.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart' show openUrl;
@@ -65,6 +67,7 @@ Future<PortForward?> showPortForwardDialog(BuildContext context, PanelContext ct
     builder: (_) => _PortForwardDialog(ctx: ctx, kind: kind),
   );
   if (pf != null && context.mounted) {
+    context.read<LogDock?>()?.notifyForwardStarted();
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
       content: Text('Forwarding ${pf.url ?? 'localhost:${pf.localPort}'} → ${pf.target}'),
       action: pf.url == null ? null : SnackBarAction(label: 'Open', onPressed: () => openUrl(pf.url!)),

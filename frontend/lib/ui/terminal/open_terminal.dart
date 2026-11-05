@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -30,6 +32,20 @@ TerminalTab? openTerminal(BuildContext context, {required String namespace, requ
     transport: execTransportFor(context.read<ApiClient>()),
     request: ExecRequest(namespace: namespace, pod: pod, container: container, command: command),
   );
+  context.read<LogDock>().add(tab);
+  return tab;
+}
+
+/// Local shells need a pseudo-terminal implementation; Windows (ConPTY)
+/// doesn't have one yet.
+bool get localShellSupported => !Platform.isWindows;
+
+/// Opens a login shell on this machine as a new dock tab. The backend points
+/// its KUBECONFIG at the app's current context. Allowed in read-only mode:
+/// the shell prints a notice that read-only can't apply to it.
+TerminalTab? openLocalShell(BuildContext context) {
+  if (!localShellSupported) return null;
+  final tab = TerminalTab(transport: execTransportFor(context.read<ApiClient>()), request: const ExecRequest.localShell());
   context.read<LogDock>().add(tab);
   return tab;
 }

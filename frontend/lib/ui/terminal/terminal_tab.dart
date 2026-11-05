@@ -8,6 +8,7 @@ import 'package:xterm/xterm.dart';
 import '../../api/client.dart';
 import '../../state/dock_tab.dart';
 import 'exec_protocol.dart';
+import 'sgr_filter.dart';
 
 enum TerminalPhase {
   connecting,
@@ -56,7 +57,11 @@ class TerminalTab extends DockTab {
   String? errorMessage;
 
   /// Resolved container (the backend picks a default when none was given).
+  /// For a local shell: the kube context it was started with.
   String? container;
+
+  /// The command the backend reported starting.
+  List<String>? startedCommand;
 
   /// When set, the session runs in this debug container, targeting
   /// [debugTarget].
@@ -83,10 +88,17 @@ class TerminalTab extends DockTab {
   @override
   String get pod => _request.pod;
   @override
-  String get label => '$pod/${container ?? 'default'}';
+  String get label => isLocal ? 'local · ${container ?? ''}' : '$pod/${container ?? 'default'}';
+
+  /// A login shell on this machine rather than in a pod.
+  bool get isLocal => _request.local;
 
   /// What runs: an explicit command or the shell preference.
   String get commandLabel {
+    if (isLocal) {
+      final sh = startedCommand?.firstOrNull;
+      return sh == null ? 'login shell' : sh.split('/').last;
+    }
     final c = _request.command;
     if (c != null && c.isNotEmpty) return c.join(' ');
     return _request.shell == 'auto' ? 'auto shell' : _request.shell;
@@ -177,8 +189,9 @@ class TerminalTab extends DockTab {
           notifyListeners();
         }
         _decoder?.add(bytes);
-      case ExecStarted(container: final c):
+      case ExecStarted(container: final c, :final command):
         container = c;
+        startedCommand = command;
         phase = TerminalPhase.running;
         notifyListeners();
       case ExecExit(:final code):
@@ -235,9 +248,13 @@ class TerminalTab extends DockTab {
 class _TerminalSink implements Sink<String> {
   final Terminal terminal;
   _TerminalSink(this.terminal);
+
+  /// Rewrites sequences xterm.dart mis-parses (see [SgrFilter]).
+  final _filter = SgrFilter();
   @override
   void add(String data) {
-    if (data.isNotEmpty) terminal.write(data);
+    final text = data.isEmpty ? data : _filter.process(data);
+    if (text.isNotEmpty) terminal.write(text);
   }
 
   @override

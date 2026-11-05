@@ -12,9 +12,13 @@ import '../theme.dart';
 import '../widgets/common.dart';
 
 /// Manage persistent port-forwards: live state, open/copy URL, autostart,
-/// start/stop/remove. Polls the backend every 1.5s while visible.
+/// start/stop/remove. Polls the backend every 1.5s while visible. Lives in
+/// the bottom dock's Forwards pane ([docked]).
 class PortForwardView extends StatefulWidget {
-  const PortForwardView({super.key});
+  /// In the bottom dock: a one-line toolbar instead of the page header, and
+  /// tighter spacing.
+  final bool docked;
+  const PortForwardView({super.key, this.docked = false});
 
   @override
   State<PortForwardView> createState() => _PortForwardViewState();
@@ -60,36 +64,48 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
     final app = context.watch<AppState>();
     final fs = _forwards;
     final active = fs?.where((f) => f.state == 'active').length ?? 0;
+    final help = Tooltip(
+      message: 'Start a forward from a Pod, Service or workload: its inspector, or right-click its row',
+      child: Icon(Icons.help_outline, size: 16, color: theme.hintColor),
+    );
+    final docked = widget.docked;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      PageHeader(
-        title: 'Port Forwards',
-        subtitle: fs == null ? null : Text('$active active · ${fs.length} saved'),
-        actions: [
-          Tooltip(
-            message: 'Start a forward from a Pod, Service or workload in the sidebar',
-            child: Icon(Icons.help_outline, size: 16, color: theme.hintColor),
-          ),
-        ],
-      ),
+      if (docked)
+        SizedBox(
+          height: 34,
+          child: Row(children: [
+            const SizedBox(width: 12),
+            // Expanded, not Flexible + Spacer (they'd split the width and
+            // centre the help icon).
+            Expanded(child: fs == null ? const SizedBox() : Text('$active active · ${fs.length} saved', style: theme.textTheme.bodySmall, overflow: TextOverflow.ellipsis)),
+            help,
+            const SizedBox(width: 12),
+          ]),
+        )
+      else
+        PageHeader(
+          title: 'Port Forwards',
+          subtitle: fs == null ? null : Text('$active active · ${fs.length} saved'),
+          actions: [help],
+        ),
       if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: InlineMessage(_error!, isError: true)),
-      const Divider(),
+      docked ? Divider(height: 1, color: AppColors.of(context).separator) : const Divider(),
       Expanded(
         child: fs == null
             ? const Center(child: CircularProgressIndicator())
             : fs.isEmpty
                 ? Center(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.swap_horiz, size: 40, color: theme.hintColor),
-                      const SizedBox(height: 8),
+                    child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      if (!docked) ...[Icon(Icons.swap_horiz, size: 40, color: theme.hintColor), const SizedBox(height: 8)],
                       Text('No port-forwards yet', style: theme.textTheme.titleMedium),
                       const SizedBox(height: 4),
                       Text('Open a Pod, Service or Deployment and choose "Port forward".', style: TextStyle(color: theme.hintColor)),
-                    ]),
+                    ])),
                   )
                 : ListView.separated(
-                    padding: const EdgeInsets.all(12),
+                    padding: EdgeInsets.all(docked ? 8 : 12),
                     itemCount: fs.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => SizedBox(height: docked ? 6 : 8),
                     itemBuilder: (context, i) => _ForwardCard(
                       pf: fs[i],
                       readOnly: app.readOnly,

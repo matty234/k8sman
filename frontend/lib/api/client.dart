@@ -116,6 +116,16 @@ class ApiClient {
     return (readOnly: j['readOnly'] == true, reason: (j['readOnlyReason'] ?? '') as String);
   }
 
+  /// What draining [node] would do (`GET /api/nodes/drain-plan`).
+  Future<DrainPlan> drainPlan(String node, {bool deleteEmptyDirData = false, bool force = false}) async =>
+      DrainPlan.fromJson(await _get('nodes/drain-plan', {'name': node, 'deleteEmptyDirData': '$deleteEmptyDirData', 'force': '$force'}) as Json);
+
+  /// Cordons [node] and evicts its pods like `kubectl drain`. Returns once it
+  /// finished or gave up (see [DrainResult.error]).
+  Future<DrainResult> drainNode(String node, {bool deleteEmptyDirData = false, bool force = false, int timeoutSeconds = 300}) async =>
+      DrainResult.fromJson(await _send('POST', 'nodes/drain', {'name': node},
+          {'deleteEmptyDirData': deleteEmptyDirData, 'force': force, 'timeoutSeconds': timeoutSeconds}) as Json);
+
   /// Saved table preferences per kind (`group/Kind`).
   Future<Map<String, Json>> getTablePrefs() async {
     final j = await _get('settings/tables') as Json;

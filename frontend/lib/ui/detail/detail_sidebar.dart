@@ -17,6 +17,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/group_icon.dart';
 import '../portforward/portforward_dialog.dart';
+import '../resource_nav.dart' show kindIconWidget;
 import 'metadata_section.dart';
 import 'yaml_editor.dart';
 import '../keys.dart';
@@ -286,8 +287,27 @@ class _Header extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 if (target.type.custom) ...[GroupIcon(group: target.type.group, size: 14), const SizedBox(width: 5)],
-                Text(target.type.kind, style: meta?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
-                if (target.namespace != null) ...[Text('  ·  ', style: meta), Flexible(child: Text(target.namespace!, overflow: TextOverflow.ellipsis, style: meta))],
+                // Breadcrumbs: the kind opens its table (inspector tucked
+                // away), the namespace opens the Namespace object.
+                _Crumb(
+                  key: const ValueKey('crumb-kind'),
+                  text: target.type.kind,
+                  tooltip: 'Show all ${target.type.kind}s${target.namespace != null && app.namespace != null && app.namespace != target.namespace ? ' in ${target.namespace}' : ''}',
+                  style: meta?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
+                  onTap: () => app.showInList(target),
+                ),
+                if (target.namespace != null) ...[
+                  Text('  ·  ', style: meta),
+                  Flexible(
+                    child: _Crumb(
+                      key: const ValueKey('crumb-namespace'),
+                      text: target.namespace!,
+                      tooltip: 'Open namespace ${target.namespace}',
+                      style: meta,
+                      onTap: () => app.openRef(ObjectRef(kind: 'Namespace', name: target.namespace!)),
+                    ),
+                  ),
+                ],
                 if (deleted) ...[const SizedBox(width: 8), const StatusBadge('Deleted', severity: Severity.error, dense: true)],
               ]),
               const SizedBox(height: 2),
@@ -297,6 +317,7 @@ class _Header extends StatelessWidget {
         ),
         for (final a in actions) ActionIconButton(a),
         if (actions.isNotEmpty) Container(width: 1, height: 16, margin: const EdgeInsets.symmetric(horizontal: 6), color: colors.separator),
+        _HistoryButton(current: target),
         IconButton(tooltip: 'Copy name', icon: const Icon(Icons.copy_rounded, size: 14), onPressed: () => copyToClipboard(context, target.name)),
         IconButton(
           key: const ValueKey('inspector-collapse'),
@@ -306,6 +327,69 @@ class _Header extends StatelessWidget {
         ),
         IconButton(tooltip: 'Close (Esc)', icon: const Icon(Icons.close, size: 16), onPressed: app.closeDetail),
       ]),
+    );
+  }
+}
+
+/// A breadcrumb in the inspector header: plain text that underlines on hover.
+class _Crumb extends StatelessWidget {
+  final String text;
+  final String tooltip;
+  final TextStyle? style;
+  final VoidCallback onTap;
+  const _Crumb({super.key, required this.text, required this.tooltip, required this.style, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        waitDuration: const Duration(milliseconds: 500),
+        child: Hoverable(
+          onTap: onTap,
+          builder: (h) => Text(
+            text,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+            style: style?.copyWith(decoration: h ? TextDecoration.underline : null, decorationColor: style?.color),
+          ),
+        ),
+      );
+}
+
+/// Recently inspected objects on this context, newest first.
+class _HistoryButton extends StatelessWidget {
+  final DetailTarget current;
+  const _HistoryButton({required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.read<AppState>();
+    final theme = Theme.of(context);
+    final recent = [for (final t in app.recentDetails) if (t != current) t];
+    return PopupMenuButton<DetailTarget>(
+      key: const ValueKey('inspector-history'),
+      popUpAnimationStyle: AnimationStyle.noAnimation,
+      tooltip: 'Recently inspected',
+      enabled: recent.isNotEmpty,
+      icon: const Icon(Icons.history, size: 16),
+      onSelected: app.openDetail,
+      itemBuilder: (_) => [
+        for (final t in recent)
+          PopupMenuItem(
+            value: t,
+            height: 30,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Row(children: [
+                kindIconWidget(t.type, size: 14, color: theme.hintColor),
+                const SizedBox(width: 8),
+                Flexible(child: Text(t.name, overflow: TextOverflow.ellipsis)),
+                const SizedBox(width: 8),
+                Text(t.namespace == null ? t.type.kind : '${t.type.kind} · ${t.namespace}',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+              ]),
+            ),
+          ),
+      ],
     );
   }
 }

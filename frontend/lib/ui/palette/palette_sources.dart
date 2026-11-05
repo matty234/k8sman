@@ -14,6 +14,7 @@ import '../keys.dart';
 import '../resource_nav.dart';
 import '../resource_table.dart';
 import '../sidebar_editor.dart';
+import '../terminal/open_terminal.dart';
 import 'palette_items.dart';
 
 Widget Function(Color) _icon(IconData i) => (c) => Icon(i, size: 15, color: c);
@@ -86,6 +87,15 @@ List<PaletteItem> paletteItems(BuildContext context) {
         aliases: const ['logs', 'terminal'],
         shortcut: shortcutLabel('J'),
         run: dock.toggle,
+      ),
+    if (dock != null && localShellSupported)
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'New Local Shell',
+        typeLabel: 'Action',
+        icon: _icon(Icons.laptop_mac),
+        aliases: const ['terminal', 'kubectl', 'zsh', 'bash'],
+        run: () => openLocalShell(context),
       ),
     if (app.detail != null)
       PaletteItem(

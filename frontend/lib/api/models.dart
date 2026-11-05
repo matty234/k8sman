@@ -354,3 +354,26 @@ class PortForward {
 
   String get target => '$kind/$name:$port';
 }
+
+List<String> _strings(Object? v) => [for (final e in (v as List? ?? const [])) '$e'];
+
+/// `GET /api/nodes/drain-plan`: what a drain would evict, skip, or refuse.
+class DrainPlan {
+  final String node;
+  final List<String> evict;
+  final List<String> warnings;
+  final List<String> blockers;
+  const DrainPlan({required this.node, this.evict = const [], this.warnings = const [], this.blockers = const []});
+  factory DrainPlan.fromJson(Json j) =>
+      DrainPlan(node: '${j['node'] ?? ''}', evict: _strings(j['evict']), warnings: _strings(j['warnings']), blockers: _strings(j['blockers']));
+}
+
+/// `POST /api/nodes/drain`: the pods evicted, and why it stopped short if it did.
+class DrainResult {
+  final String node;
+  final List<String> evicted;
+  final String? error;
+  const DrainResult({required this.node, this.evicted = const [], this.error});
+  factory DrainResult.fromJson(Json j) =>
+      DrainResult(node: '${j['node'] ?? ''}', evicted: _strings(j['evicted']), error: (j['error'] as String?)?.isEmpty ?? true ? null : j['error'] as String);
+}

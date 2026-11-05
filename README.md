@@ -24,8 +24,10 @@ and logs, terminals, port-forwards, Argo CD, Helm and security in one window.
 - **An inspector that explains why.** k8sman doesn't just print `0/1 ready`. It
   tells you the container crash-looped 7 times with exit code 1, shows the
   termination message, and links you to the previous instance's logs.
-- **Logs, terminals and port-forwards in one place.** A bottom dock holds tabs
-  for logs and shells. Port-forwards survive pod restarts and app relaunches.
+- **Logs, terminals, alerts and port-forwards in one place.** A bottom dock
+  holds alerts and tabs for logs and shells, including a local shell whose
+  `kubectl` follows the cluster on screen. Port-forwards survive pod restarts
+  and app relaunches.
 - **GitOps and Helm built in.** You get Argo CD sync, health and per-resource
   diffs, and Helm history diffs, rollbacks and dry-run upgrades, without leaving
   the app.
@@ -37,7 +39,7 @@ backend embedded, nothing to run in your cluster, and nothing that leaves your
 machine.
 
 <table>
-<tr><td><b>Every kind</b><br>Built-ins and CRDs, discovered live</td><td><b>30+ kind panels</b><br>Pods to Gateways to Argo CD apps</td><td><b>8 cluster pages</b><br>Overview, Alerts, Nodes, Security, Metrics, Helm, Port Forwards, Add-ons</td></tr>
+<tr><td><b>Every kind</b><br>Built-ins and CRDs, discovered live</td><td><b>30+ kind panels</b><br>Pods to Gateways to Argo CD apps</td><td><b>Cluster pages</b><br>Overview, Nodes, Security, Metrics, Helm, Add-ons, plus Alerts and Forwards in the dock</td></tr>
 <tr><td><b>Local only</b><br>Listens on 127.0.0.1, no telemetry</td><td><b>Native</b><br>Vibrancy, unified titlebar, dark and light</td><td><b>Self-updating</b><br>Signed Sparkle updates</td></tr>
 </table>
 
@@ -66,8 +68,8 @@ machine.
 - Issues are grouped under the workload that owns them, with quick fixes such
   as Restart, Delete pod or Resume rollout.
 - Top warning events from the last hour are deduplicated and counted.
-- The **Alerts** page shows firing Alertmanager alerts and silences. A badge
-  in the sidebar shows when something is firing.
+- **Alerts** in the bottom dock shows firing Alertmanager alerts and
+  silences. A badge on its tab shows when something critical is firing.
 
 ### Workloads and the inspector
 
@@ -90,9 +92,16 @@ machine.
   workload at once.
 - **Terminals**: open a shell in any container. k8sman tries zsh, bash, ash
   and sh. For distroless images it offers an ephemeral debug container.
+- **Local shells** (macOS and Linux): **+** in the dock opens your login
+  shell on this machine. Its `kubectl`, `helm` and `k9s` target the context
+  you're viewing, without changing your kubeconfig.
+- **Alerts**: the dock's first tab shows firing Alertmanager alerts and
+  silences, with a badge when something critical is firing, so you can watch
+  them while you work.
 - **Port-forwards** reconnect to a fresh pod when theirs goes away, persist
-  across launches, and can auto-start. You manage them on their own page.
-- **⌘J** toggles the dock. Tabs keep streaming while you browse.
+  across launches, and can auto-start. They live in the dock's **Forwards**
+  tab, whose badge shows how many are running.
+- **⌘J** expands or collapses the dock. Tabs keep streaming while you browse.
 
 ### Argo CD, with real diffs
 
@@ -134,8 +143,10 @@ machine.
 
 ![Nodes: usage and request meters, pressure and cordon state](docs/images/nodes.png)
 
-- The **Nodes** page shows live usage from metrics-server next to requests and
-  limits, with pressure, cordon state and one-click cordon/uncordon.
+- The **Nodes** page lists nodes grouped by role, with live usage from
+  metrics-server next to requests and limits, pressure and cordon state.
+  Each node's menu cordons, uncordons or **drains** it. A drain shows which
+  pods it will evict first, and respects PodDisruptionBudgets.
 - The **Metrics** page has Top pods and nodes, custom and external metrics
   (for example KEDA), and a live HPA view.
 - With Prometheus installed, Pod and Node panels gain 1h/6h history charts.
@@ -204,14 +215,20 @@ metrics, security, port-forwards and more.
 
 ### macOS
 
-1. Download `k8sman-<version>-macos.zip` from
-   [**Releases**](https://github.com/matty234/k8sman/releases/latest) and unzip
+1. Download `k8sman-<version>-macos.dmg` from
+   [**Releases**](https://github.com/matty234/k8sman/releases/latest) and open
    it. It's a universal app for Apple silicon and Intel and needs macOS 12 or
    later.
-2. Move `k8sman.app` to `/Applications` and open it. Releases are signed with
-   a Developer ID and notarized by Apple, so it opens without a Gatekeeper
-   warning. (Releases up to 0.2.7 weren't: if one of those is blocked, open
-   **System Settings → Privacy & Security** and click **Open Anyway**.)
+2. Drag `k8sman.app` onto the **Applications** shortcut beside it, then open
+   it from Applications. Releases are signed with a Developer ID and notarized
+   by Apple, so it opens without a Gatekeeper warning. If you run it straight
+   from the disk image or Downloads, it offers to move itself into
+   Applications, where it can update itself.
+
+A `.zip` of the same app is attached too; it's what in-app updates and
+Homebrew use. (Releases up to 0.2.7 weren't notarized: if one of those is
+blocked, open **System Settings → Privacy & Security** and click **Open
+Anyway**.)
 
 To verify a download against the release's `SHA256SUMS`, run
 `shasum -a 256 -c SHA256SUMS`.
@@ -295,6 +312,9 @@ exactly as `kubectl` does.
   secret token the app generates at each launch, so web pages and other user
   accounts on your Mac can't use it. It also rejects foreign `Host` and
   `Origin` headers (DNS rebinding) and non-JSON writes (cross-site requests).
+- **Local shells run as you.** A local shell tab is your own login shell, so
+  that token guards a real shell on your machine too. Read-only mode can't
+  restrict what you run there, and on read-only contexts the tab says so.
 - **No telemetry.** k8sman has no analytics, crash reporting or usage
   tracking. The only outbound requests besides your clusters are:
   - the periodic update check (which you can turn off);
@@ -327,7 +347,7 @@ exactly as `kubectl` does.
 | Shortcut | Action |
 |---|---|
 | ⌘K or ⌘P | Command palette: jump to a page, kind, namespace, context or object (in a focused terminal, ⌘K clears it) |
-| ⌘J | Show or hide the bottom dock (logs and terminals) |
+| ⌘J | Expand or collapse the bottom dock (alerts, logs and terminals) |
 | ⌘I | Collapse or expand the inspector |
 | ⌘A | Select all visible rows |
 | ⌘-click / ⇧-click | Toggle a row / select a range |

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/detail/detail_sidebar.dart';
+import 'package:k8sman/ui/alerts/alerts_view.dart';
 import 'package:k8sman/ui/logs/log_dock_view.dart';
 import 'package:k8sman/ui/logs/log_stream_view.dart';
 
@@ -38,11 +39,12 @@ void main() {
       final api = FixtureApi();
       final (_, dock) = await pumpShell(tester, api);
       await _openWebPod(tester);
-      expect(find.byType(LogDockView), findsNothing);
+      expect(find.byType(LogDockView), findsOneWidget, reason: 'the bar is always there');
+      expect(dock.collapsed, isTrue);
 
       await tester.tap(find.byKey(const ValueKey('action-logs')));
       await settleLogs(tester);
-      expect(find.byType(LogDockView), findsOneWidget);
+      expect(dock.collapsed, isFalse);
       expect(dock.tabs.map((t) => t.label), ['$_webPod/nginx']);
       expect(find.byKey(const ValueKey('log-tab-demo/$_webPod/nginx')), findsOneWidget);
       expect(find.textContaining('upstream timed out'), findsWidgets);
@@ -100,16 +102,56 @@ void main() {
       expect(ca.hasListener, isTrue);
       expect(dock.tabs, [a]);
 
-      // Closing the last tab hides the dock; ⌘J brings back an empty one.
+      // Closing the last tab collapses the dock to its bar; ⌘J opens Alerts.
       dock.close(a);
       await tester.pump();
       expect(ca.hasListener, isFalse);
-      expect(find.byType(LogDockView), findsNothing);
-      await _meta(tester, LogicalKeyboardKey.keyJ);
+      expect(dock.collapsed, isTrue);
       expect(find.byType(LogDockView), findsOneWidget);
-      expect(find.textContaining('No log streams'), findsOneWidget);
       await _meta(tester, LogicalKeyboardKey.keyJ);
-      expect(find.byType(LogDockView), findsNothing);
+      expect(dock.collapsed, isFalse);
+      expect(find.byType(AlertsView), findsOneWidget);
+      await _meta(tester, LogicalKeyboardKey.keyJ);
+      expect(dock.collapsed, isTrue);
+      expect(find.byType(AlertsView), findsNothing);
+    });
+
+    testWidgets('Alerts lives in the dock: its tab, showView and the logs share the panel', (tester) async {
+      final api = FixtureApi();
+      final (app, dock) = await pumpShell(tester, api);
+      expect(find.byKey(const ValueKey('nav-view-alerts')), findsNothing, reason: 'not a sidebar page any more');
+
+      await tester.tap(find.byKey(const ValueKey('dock-alerts-tab')));
+      await tester.pump();
+      expect(dock.alertsOpen && !dock.collapsed, isTrue);
+      expect(find.byWidgetPredicate((w) => w is AlertsView && w.docked), findsOneWidget);
+      // Clicking it again tucks the dock away.
+      await tester.tap(find.byKey(const ValueKey('dock-alerts-tab')));
+      await tester.pump();
+      expect(dock.collapsed, isTrue);
+
+      // "Alerts" from anywhere else (palette, Prometheus links) opens the pane,
+      // leaving the page that was showing alone.
+      final view = app.view;
+      app.showView(MainView.alerts);
+      await tester.pump();
+      expect(app.view, view);
+      expect(dock.alertsOpen && !dock.collapsed, isTrue);
+
+      // Opening logs switches the panel to them; the Alerts tab switches back.
+      final s = dock.open(FixtureApi.objectFor('pods', _webPod));
+      await settleLogs(tester);
+      expect(dock.alertsOpen, isFalse);
+      expect(dock.activeTab, s);
+      expect(find.byType(LogStreamView), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('dock-alerts-tab')));
+      await tester.pump();
+      expect(find.byType(LogStreamView), findsNothing);
+      expect(find.byWidgetPredicate((w) => w is AlertsView && w.docked), findsOneWidget);
+      dock.closeAll();
+      expect(dock.collapsed, isFalse, reason: 'Alerts was showing, so the panel stays');
+      dock.setCollapsed(true);
+      await tester.pump();
     });
 
     testWidgets('context menu: close others', (tester) async {
@@ -173,14 +215,58 @@ void main() {
       expect(app.detail?.name, 'coredns');
       expect(find.byKey(const ValueKey('inspector-collapsed-tab')), findsNothing);
 
-      // Changing top-level view collapses too (Port Forwards is under "More").
+      // Changing top-level view collapses too (Helm is under "More").
       if (find.text('More').evaluate().isNotEmpty) {
         await tester.tap(find.text('More'));
         await tester.pump();
       }
-      await tester.tap(find.text('Port Forwards').first);
+      await tester.tap(find.text('Helm').first);
       await _settle(tester);
       expect(app.inspectorCollapsed, isTrue);
+    });
+
+    testWidgets('breadcrumbs: kind opens its list, namespace opens the Namespace; history menu', (tester) async {
+      final (app, _) = await pumpShell(tester, FixtureApi());
+      await _openWebPod(tester);
+      final pod = app.detail!;
+      expect(pod.type.kind, 'Pod');
+
+      // Elsewhere first, so the crumb has somewhere to take us back from.
+      app.showView(MainView.overview);
+      await _settle(tester);
+      app.expandInspector();
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('crumb-kind')));
+      await _settle(tester);
+      expect(app.view, MainView.resources);
+      expect(app.selectedType, pod.type);
+      expect(app.inspectorCollapsed, isTrue, reason: 'the table gets the width');
+      expect(app.detail, pod, reason: 'its row stays selected');
+
+      // The namespace crumb pushes the Namespace object (Back returns).
+      app.expandInspector();
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('crumb-namespace')));
+      await _settle(tester);
+      tester.takeException(); // the fixtures have no Namespace object to load
+      final ns = app.detail!;
+      expect(ns.type.kind, 'Namespace');
+      expect(ns.name, pod.namespace);
+      expect(app.canGoBack, isTrue);
+      expect(app.recentDetails.take(2), [ns, pod]);
+
+      // History lists the others (not the current object); picking one
+      // opens it afresh.
+      app.back();
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('inspector-history')));
+      await _settle(tester);
+      expect(find.byType(PopupMenuItem<DetailTarget>), findsOneWidget);
+      await tester.tap(find.byType(PopupMenuItem<DetailTarget>));
+      await _settle(tester);
+      tester.takeException();
+      expect(app.detail, ns);
+      expect(app.canGoBack, isFalse, reason: 'opening from history starts afresh');
     });
 
     testWidgets('⌘I toggles the inspector', (tester) async {

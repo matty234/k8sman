@@ -28,7 +28,11 @@ class AlertsView extends StatefulWidget {
 
   /// Current time (tests).
   final DateTime Function()? clock;
-  const AlertsView({super.key, this.source, this.interval = const Duration(seconds: 15), this.initialSilences = false, this.clock});
+
+  /// In the bottom dock: a one-line toolbar instead of the page header, and
+  /// tighter padding.
+  final bool docked;
+  const AlertsView({super.key, this.source, this.interval = const Duration(seconds: 15), this.initialSilences = false, this.clock, this.docked = false});
 
   @override
   State<AlertsView> createState() => _AlertsViewState();
@@ -158,13 +162,14 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
     final pending = scoped.where((a) => a.state == AlertState.pending).length;
     final ams = _status?.alertmanager ?? const <PromInstance>[];
 
-    final header = PageHeader(
-      title: 'Alerts',
-      subtitle: Row(mainAxisSize: MainAxisSize.min, children: [
-        Flexible(child: PageScopePicker(value: _ns, onChanged: _setScope)),
-        if (data != null && !data.stackMissing) ...[const SizedBox(width: 10), Flexible(child: Text('$firing firing · $pending pending'))],
-      ]),
-      actions: [
+    final summary = Row(mainAxisSize: MainAxisSize.min, children: [
+      Flexible(child: PageScopePicker(value: _ns, onChanged: _setScope)),
+      if (data != null && !data.stackMissing) ...[
+        const SizedBox(width: 10),
+        Flexible(child: Text('$firing firing · $pending pending', overflow: TextOverflow.ellipsis, style: widget.docked ? Theme.of(context).textTheme.bodySmall : null)),
+      ],
+    ]);
+    final actions = <Widget>[
         if (ams.length > 1)
           MenuButton<String>(
             tooltip: 'Alertmanager instance',
@@ -200,8 +205,18 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
           icon: _loading ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5)) : const Icon(Icons.refresh),
           onPressed: _loading ? null : () => _refresh(rediscover: true),
         ),
-      ],
-    );
+    ];
+    final Widget header = widget.docked
+        ? SizedBox(
+            height: 34,
+            child: Row(children: [
+              const SizedBox(width: 10),
+              Expanded(child: Align(alignment: Alignment.centerLeft, child: summary)),
+              ...actions,
+              const SizedBox(width: 6),
+            ]),
+          )
+        : PageHeader(title: 'Alerts', subtitle: summary, actions: actions);
 
     Widget body;
     if (data == null) {
@@ -225,7 +240,7 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       header,
-      const Divider(),
+      widget.docked ? Divider(height: 1, color: AppColors.of(context).separator) : const Divider(),
       Expanded(child: body),
     ]);
   }
@@ -305,7 +320,7 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
     }
 
     return Scrollbar(
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: children),
+      child: ListView(padding: widget.docked ? const EdgeInsets.fromLTRB(12, 8, 12, 12) : const EdgeInsets.fromLTRB(20, 12, 20, 24), children: children),
     );
   }
 

@@ -72,17 +72,15 @@ class SidebarConfig {
   /// under "More".
   static const pages = [
     MainView.overview,
-    MainView.alerts,
     MainView.nodes,
     MainView.gpus,
     MainView.security,
     MainView.access,
     MainView.metrics,
     MainView.helm,
-    MainView.portForwards,
     MainView.addons,
   ];
-  static const _underMoreByDefault = {MainView.metrics, MainView.helm, MainView.portForwards, MainView.addons};
+  static const _underMoreByDefault = {MainView.metrics, MainView.helm, MainView.addons};
 
   static final SidebarConfig defaults = SidebarConfig._(List.unmodifiable([
     for (final p in pages) SidebarEntry.view(p, hidden: _underMoreByDefault.contains(p)),
@@ -96,6 +94,8 @@ class SidebarConfig {
     final seenViews = <MainView>{};
     final seenPins = <SidebarPin>{};
     for (final e in entries) {
+      // Pages that left the sidebar (Alerts, Port Forwards: now in the dock) drop out.
+      if (e.view != null && !pages.contains(e.view)) continue;
       if (e.view != null ? seenViews.add(e.view!) : seenPins.add(e.pin!)) out.add(e);
     }
     for (final p in pages) {
