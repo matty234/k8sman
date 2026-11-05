@@ -20,6 +20,9 @@ class AppDelegate: FlutterAppDelegate {
     UpdateController.shared.installMenuItems()
     // View ▸ Command Palette…
     (mainFlutterWindow as? MainFlutterWindow)?.installMenuItems()
+    // Running from Downloads, a disk image or a translocated copy: offer to
+    // move into Applications (release builds only).
+    AppMover.offerIfNeeded()
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

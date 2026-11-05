@@ -3,7 +3,9 @@
 #   1. Bump `version:` in frontend/pubspec.yaml, commit.
 #   2. git tag -a v0.1.1 -m "release notes (Markdown)" && git push origin v0.1.1
 #
-# Assets: k8sman-<version>-macos.zip (universal, Developer ID signed and notarized), appcast.xml
+# Assets: k8sman-<version>-macos.dmg (drag-to-install disk image) and
+# k8sman-<version>-macos.zip (what Sparkle and Homebrew use), both universal,
+# Developer ID signed and notarized, appcast.xml
 # (Sparkle feed, EdDSA-signed), the Windows x64 build from windows.yml
 # (k8sman-<version>-windows-x64.zip and -setup.exe, unsigned), the Linux
 # x64 build from linux.yml (k8sman-<version>-linux-x64.tar.gz and
@@ -169,8 +171,11 @@ jobs:
           flags=()
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)
           if [ -s dist/notes.md ]; then flags+=(--notes-file dist/notes.md); else flags+=(--generate-notes); fi
+          # The .dmg is only built with a Developer ID (ad-hoc pre-releases: zip only).
+          files=()
+          [ -f "dist/k8sman-$VERSION-macos.dmg" ] && files+=("dist/k8sman-$VERSION-macos.dmg")
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "k8sman $VERSION" "${flags[@]}" \
-            "dist/k8sman-$VERSION-macos.zip" dist/appcast.xml \
+            "${files[@]}" "dist/k8sman-$VERSION-macos.zip" dist/appcast.xml \
             "dist/k8sman-$VERSION-windows-x64.zip" "dist/k8sman-$VERSION-windows-x64-setup.exe" \
             "dist/k8sman-$VERSION-linux-x64.tar.gz" dist/k8sman_*_amd64.deb \
             dist/SHA256SUMS

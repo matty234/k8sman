@@ -7,6 +7,7 @@ export GOTOOLCHAIN := local
 VERSION := $(shell sed -n 's/^version: *\([^+]*\).*/\1/p' frontend/pubspec.yaml)
 RELEASE_APP := frontend/build/macos/Build/Products/Release/k8sman.app
 RELEASE_ZIP := dist/k8sman-$(VERSION)-macos.zip
+RELEASE_DMG := dist/k8sman-$(VERSION)-macos.dmg
 
 # Updates (docs/UPDATES.md). SPARKLE_PUBLIC_ED_KEY overrides the key in
 # frontend/macos/Runner/Configs/AppInfo.xcconfig; REQUIRE_UPDATE_KEY=1 makes a
@@ -63,7 +64,8 @@ app-dev:
 	cd frontend && flutter run -d macos --dart-define=K8SMAN_BACKEND=http://127.0.0.1:7443 $(if $(K8SMAN_TOKEN),--dart-define=K8SMAN_TOKEN=$(K8SMAN_TOKEN))
 
 ## Build a Release .app (universal, with the embedded backend and Sparkle),
-## sign it (Developer ID + notarization when configured, else ad-hoc), zip it to dist/ and write dist/SHA256SUMS. CFBundleVersion is set to the
+## sign it (Developer ID + notarization when configured, else ad-hoc), zip it to dist/ (plus a
+## signed, notarized .dmg with a Developer ID) and write dist/SHA256SUMS. CFBundleVersion is set to the
 ## version, which is what Sparkle compares.
 release:
 	cd frontend && flutter build macos --release --build-name=$(VERSION) --build-number=$(VERSION)
@@ -89,7 +91,14 @@ endif
 	mkdir -p dist
 	rm -f $(RELEASE_ZIP)
 	ditto -c -k --sequesterRsrc --keepParent "$(RELEASE_APP)" $(RELEASE_ZIP)
-	cd dist && shasum -a 256 k8sman-$(VERSION)-macos.zip > SHA256SUMS
+	rm -f $(RELEASE_DMG)
+ifneq ($(MACOS_SIGN_IDENTITY),)
+	tools/make-dmg.sh "$(RELEASE_APP)" $(RELEASE_DMG) "$(MACOS_SIGN_IDENTITY)" $(MACOS_KEYCHAIN)
+ifneq ($(NOTARIZE),)
+	tools/notarize-macos.sh $(RELEASE_DMG)
+endif
+endif
+	cd dist && shasum -a 256 k8sman-$(VERSION)-macos.zip $(if $(MACOS_SIGN_IDENTITY),k8sman-$(VERSION)-macos.dmg) > SHA256SUMS
 	@echo "$(RELEASE_ZIP)"
 
 ## Fetch Sparkle's signing tools (pinned by SHA-256) into build/sparkle.
@@ -104,7 +113,7 @@ appcast: sparkle-tools
 	  $(if $(RELEASE_NOTES),--notes "$(RELEASE_NOTES)") \
 	  $(if $(SPARKLE_ED_KEY_FILE),--ed-key-file "$(SPARKLE_ED_KEY_FILE)") \
 	  --sparkle-bin build/sparkle/bin --out dist/appcast.xml
-	cd dist && shasum -a 256 k8sman-$(VERSION)-macos.zip appcast.xml > SHA256SUMS
+	cd dist && shasum -a 256 k8sman-$(VERSION)-macos.zip $$(ls k8sman-$(VERSION)-macos.dmg 2>/dev/null) appcast.xml > SHA256SUMS
 
 ## Local end-to-end update test: two versions, a local feed, Sparkle's
 ## installer, and tampered-archive checks. No GitHub. See docs/UPDATES.md.

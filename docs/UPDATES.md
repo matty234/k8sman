@@ -268,6 +268,19 @@ they open without a Gatekeeper prompt.
   - The variable `APPLE_TEAM_ID` picks the identity.
   - A final release without the certificate fails. A pre-release falls back
     to ad-hoc signing, with a warning.
+- **The disk image.** `make release` also builds `k8sman-<version>-macos.dmg`
+  (`tools/make-dmg.sh`): the app and an Applications shortcut in a
+  compressed image, signed, notarized and stapled (`tools/notarize-macos.sh`
+  takes a `.dmg` too). It's the download for people. Sparkle and Homebrew keep
+  using the zip.
+- **Moving into Applications.** A release build running from a disk image,
+  from Downloads, or translocated (a quarantined app opened where it was
+  unzipped, which macOS runs from a hidden read-only copy where Sparkle can't
+  install updates) offers once to move itself into `/Applications`
+  (`Runner/AppMover.swift`). That falls back to `~/Applications` for
+  non-admins. It replaces an older copy (which goes to the Trash), clears the
+  quarantine flag, trashes the original or ejects the disk image, and
+  relaunches. "Don't ask again" is remembered in the app's defaults.
 - **Keep EdDSA.** Sparkle accepts an update if EdDSA is valid *or* the
   Developer ID team matches. The first Developer ID release (0.2.8) reaches
   ad-hoc installs as a normal EdDSA-signed update. After that, the stable
