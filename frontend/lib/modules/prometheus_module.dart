@@ -1,4 +1,6 @@
+import '../api/client.dart';
 import '../panels/prometheus/index.dart';
+import '../prometheus/prom_api.dart';
 import 'module.dart';
 
 /// Prometheus Operator: Prometheus, Alertmanager, PrometheusRule and
@@ -30,4 +32,24 @@ class PrometheusModule extends AppModule {
           'monitoring.coreos.com/Alertmanager',
         ]),
       ];
+
+  /// Discovery's result: which Prometheus (and Alertmanager) was found and
+  /// whether it answers. Shared with the alerts badge and the history
+  /// charts through [PromApi.discover].
+  @override
+  Future<ModuleStatus> Function(ApiClient api) get detect => (api) async {
+        final s = await PromApi.of(api).discover();
+        final prom = s.defaultPrometheus;
+        if (prom == null && s.defaultAlertmanager == null) {
+          return ModuleStatus(ModuleState.notInstalled, s.operatorCRDs ? 'Operator CRDs installed, no Prometheus found' : 'no Prometheus found');
+        }
+        if (prom == null) return const ModuleStatus(ModuleState.connected, 'Alertmanager only (no Prometheus found)');
+        final label = '${prom.namespace}/${prom.name}${prom.version.isEmpty ? '' : ' ${prom.version}'}';
+        if (!prom.reachable) return ModuleStatus(ModuleState.error, '$label · ${prom.error ?? 'not reachable'}');
+        return ModuleStatus(ModuleState.connected, [
+          label,
+          if (s.prometheus.length > 1) '${s.prometheus.length} instances',
+          if (s.defaultAlertmanager != null) 'Alertmanager',
+        ].join(' · '));
+      };
 }

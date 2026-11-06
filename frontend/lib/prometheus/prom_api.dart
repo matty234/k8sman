@@ -72,19 +72,24 @@ class PromApi {
 
   // ---- cached availability (history charts) ----
 
-  Future<PromStatus?>? _statusFuture;
+  Future<PromStatus>? _statusFuture;
   DateTime? _statusAt;
 
-  /// Discovery, cached for a minute. Null when the backend has no
-  /// Prometheus endpoints or the request failed.
-  Future<PromStatus?> cachedStatus() {
+  /// Discovery, cached for a minute (failures too), and shared by everything
+  /// that asks: the Prometheus module's `detect`, the alerts badge and the
+  /// charts' availability check make one request between them.
+  Future<PromStatus> discover() {
     final at = _statusAt;
     if (_statusFuture == null || at == null || DateTime.now().difference(at) > const Duration(minutes: 1)) {
       _statusAt = DateTime.now();
-      _statusFuture = status().then<PromStatus?>((s) => s, onError: (_) => null);
+      _statusFuture = status();
     }
     return _statusFuture!;
   }
+
+  /// [discover], or null when the backend has no Prometheus endpoints or
+  /// the request failed.
+  Future<PromStatus?> cachedStatus() => discover().then<PromStatus?>((s) => s, onError: (_) => null);
 
   /// True when a reachable Prometheus exists (charts hide otherwise).
   Future<bool> hasPrometheus() async => (await cachedStatus())?.defaultPrometheus?.reachable ?? false;
