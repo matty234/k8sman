@@ -51,6 +51,9 @@ class _LiveObjectState extends State<_LiveObject> {
   StreamSubscription<WatchMessage>? _sub;
   Timer? _retry;
 
+  /// Bumped for each "edit YAML" request, so the YAML tab starts editing.
+  int _editRequest = 0;
+
   @override
   void initState() {
     super.initState();
@@ -139,7 +142,8 @@ class _LiveObjectState extends State<_LiveObject> {
                 length: 3 + extraTabs.length,
                 // Native-style: tabs switch instantly (no slide, no gliding indicator).
                 animationDuration: Duration.zero,
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                child: Builder(builder: (context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  _applyTabRequest(context, app, extraTabs.length),
                   TabBar(
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
@@ -161,14 +165,28 @@ class _LiveObjectState extends State<_LiveObject> {
                         ],
                       ),
                       for (final x in extraTabs) Builder(builder: (c) => x.builder(c, ctx)),
-                      YamlEditorTab(key: ValueKey('yaml-${ctx.uid}'), target: t, resourceVersion: dig<String>(obj, ['metadata', 'resourceVersion']) ?? ''),
+                      YamlEditorTab(key: ValueKey('yaml-${ctx.uid}'), target: t, resourceVersion: dig<String>(obj, ['metadata', 'resourceVersion']) ?? '', editRequest: _editRequest),
                       _EventsTab(namespace: t.namespace, uid: ctx.uid),
                     ]),
                   ),
-                ]),
+                ])),
               ),
       ),
     ]);
+  }
+
+  /// Switches to the tab the table asked for (once). Returns an empty
+  /// widget so it can sit in the column's children.
+  Widget _applyTabRequest(BuildContext context, AppState app, int extraTabs) {
+    final req = app.takeDetailTab();
+    if (req == null) return const SizedBox.shrink();
+    if (req == DetailTab.edit) _editRequest++;
+    final index = req == DetailTab.overview ? 0 : 1 + extraTabs;
+    final controller = DefaultTabController.of(context);
+    if (controller.index != index) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? controller.index = index : null);
+    }
+    return const SizedBox.shrink();
   }
 
   /// Header actions: "Logs" first (and the only kind kept in read-only

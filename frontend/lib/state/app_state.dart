@@ -14,6 +14,10 @@ export 'sidebar_config.dart';
 /// What the main area shows.
 enum MainView { overview, alerts, nodes, gpus, metrics, resources, portForwards, helm, security, addons, access }
 
+/// A tab of the inspector a caller can ask for. [edit] is the YAML tab,
+/// already in edit mode.
+enum DetailTab { overview, yaml, edit }
+
 /// An object shown in the detail sidebar.
 class DetailTarget {
   final ResourceType type;
@@ -519,12 +523,24 @@ class AppState extends ChangeNotifier {
     if (recentDetails.length > maxRecentDetails) recentDetails.removeLast();
   }
 
-  /// Open an object from the table: replaces the sidebar stack.
-  void openDetail(DetailTarget t) {
+  /// The inspector tab asked for by the last [openDetail], until the
+  /// sidebar picks it up with [takeDetailTab].
+  DetailTab? _requestedTab;
+
+  DetailTab? takeDetailTab() {
+    final t = _requestedTab;
+    _requestedTab = null;
+    return t;
+  }
+
+  /// Open an object from the table: replaces the sidebar stack. [tab]
+  /// switches the inspector to that tab (else it keeps its own).
+  void openDetail(DetailTarget t, {DetailTab? tab}) {
     _detailStack
       ..clear()
       ..add(t);
     _remember(t);
+    _requestedTab = tab;
     inspectorCollapsed = false;
     notifyListeners();
   }
@@ -562,6 +578,7 @@ class AppState extends ChangeNotifier {
 
   void closeDetail() {
     _detailStack.clear();
+    _requestedTab = null;
     inspectorCollapsed = false;
     notifyListeners();
   }

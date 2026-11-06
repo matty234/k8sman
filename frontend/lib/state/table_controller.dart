@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show FocusNode;
 
 import '../api/client.dart';
 import '../api/models.dart';
@@ -61,6 +62,11 @@ class TableController extends ChangeNotifier {
   static Duration failureDebounce = const Duration(seconds: 1);
 
   String filter = '';
+
+  /// Focus of the table body (row keys) and of the filter box, so `/` and
+  /// Esc/Enter in the filter can move between them.
+  final bodyFocus = FocusNode(debugLabel: 'table-body');
+  final filterFocus = FocusNode(debugLabel: 'table-filter');
   int? sortColumn;
   bool sortAscending = true;
 
@@ -383,6 +389,8 @@ class TableController extends ChangeNotifier {
     _retry?.cancel();
     _failureTimer?.cancel();
     _sub?.cancel();
+    bodyFocus.dispose();
+    filterFocus.dispose();
     super.dispose();
   }
 }

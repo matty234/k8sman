@@ -30,8 +30,10 @@ void main() {
   testWidgets('opens instantly with the search field focused; filters case-insensitively with highlight', (tester) async {
     final app = await pumpWithNamespaces(tester, ['default', 'kube-system', 'kube-public', 'payments', 'Kubeflow']);
     await openPicker(tester);
-    expect(tester.hasRunningAnimations, isFalse);
     expect(search, findsOneWidget);
+    // The table body holds focus, so the field's focus border animates in; it must then settle.
+    await tester.pumpAndSettle();
+    expect(tester.hasRunningAnimations, isFalse);
     final field = tester.widget<EditableText>(find.descendant(of: search, matching: find.byType(EditableText)));
     expect(field.focusNode.hasFocus, isTrue);
     expect(find.text('All namespaces'), findsWidgets);
