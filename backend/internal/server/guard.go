@@ -68,7 +68,7 @@ func checkAccess(w http.ResponseWriter, r *http.Request, token string) bool {
 	if origin != "" {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-K8sman-Context")
 		w.Header().Add("Vary", "Origin")
 	}
 	if r.Method == http.MethodOptions {

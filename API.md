@@ -28,6 +28,11 @@ WebSocket upgrades, including `/api/health`) must pass these checks
    even with an empty body. Anything else → 415 (`UnsupportedMediaType`),
    so a cross-site "simple" request (`text/plain`, forms) never reaches a
    handler.
+5. **Context check**: the app sends `X-K8sman-Context: <context it shows>`
+   on every request. A change (any non-GET) for a context other than the
+   current one → 409 (`ContextMismatch`), so an action confirmed for one
+   cluster never runs on another after a switch. Context, kubeconfig and
+   settings endpoints are exempt; requests without the header aren't checked.
 
 The token comes from the `K8SMAN_AUTH_TOKEN` environment variable (at least
 32 characters), which the server removes from its environment after reading.

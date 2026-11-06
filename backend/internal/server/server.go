@@ -130,10 +130,38 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if contextMismatch(w, r, s.mgr.Clients()) {
+		return
+	}
 	s.mux.ServeHTTP(w, r)
 	if r.URL.Path != "/api/health" {
 		log.Printf("%s %s (%s)", r.Method, r.URL.RequestURI(), time.Since(start).Round(time.Millisecond))
 	}
+}
+
+// ContextHeader carries the context the UI showed when it sent a request.
+const ContextHeader = "X-K8sman-Context"
+
+// contextMismatch refuses a change (any non-GET request) made for a context
+// other than the current one: the UI confirmed it against the context it
+// showed, and the backend may have switched since. Switching contexts and
+// kubeconfigs, and app settings, aren't tied to a cluster.
+func contextMismatch(w http.ResponseWriter, r *http.Request, c *cluster.Clients) bool {
+	want := r.Header.Get(ContextHeader)
+	if want == "" || c == nil || r.Method == http.MethodGet || r.Method == http.MethodHead || c.Context == want {
+		return false
+	}
+	for _, p := range []string{"/api/contexts", "/api/kubeconfigs", "/api/settings"} {
+		if strings.HasPrefix(r.URL.Path, p) {
+			return false
+		}
+	}
+	httpx.WriteJSON(w, http.StatusConflict, apiError{
+		Error:  fmt.Sprintf("k8sman is now on context %q, not %q, so nothing was changed. Check the cluster and try again.", c.Context, want),
+		Code:   http.StatusConflict,
+		Reason: "ContextMismatch",
+	})
+	return true
 }
 
 // ---- helpers ---------------------------------------------------------------

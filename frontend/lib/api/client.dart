@@ -58,10 +58,19 @@ class ApiClient {
         token = token ?? (definedToken.isNotEmpty ? definedToken : null),
         _http = httpClient ?? http.Client();
 
-  /// `Authorization: Bearer <token>`, or nothing when no token is known.
+  /// The context the UI is showing (set by AppState). Sent with every
+  /// request so the backend refuses a change meant for another cluster if
+  /// the context switched in between (409 ContextMismatch).
+  String? context;
+
+  /// `Authorization: Bearer <token>` and the context header, when known.
   Map<String, String> get authHeaders {
     final t = token;
-    return t == null || t.isEmpty ? const {} : {'Authorization': 'Bearer $t'};
+    final c = context;
+    return {
+      if (t != null && t.isNotEmpty) 'Authorization': 'Bearer $t',
+      if (c != null && c.isNotEmpty) 'X-K8sman-Context': c,
+    };
   }
 
   /// Opens a WebSocket to the backend with [authHeaders] (desktop only: the

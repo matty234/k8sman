@@ -251,3 +251,27 @@ func TestIsLocalOrigin(t *testing.T) {
 		}
 	}
 }
+
+// A change confirmed for one context must not run on another.
+func TestContextMismatch(t *testing.T) {
+	c := &cluster.Clients{Context: "prod"}
+	for _, tc := range []struct {
+		method, path, ctx string
+		refused           bool
+	}{
+		{"POST", "/api/actions/delete", "dev", true},
+		{"POST", "/api/actions/delete", "prod", false},
+		{"POST", "/api/actions/delete", "", false},
+		{"GET", "/api/table", "dev", false},
+		{"POST", "/api/contexts/current", "dev", false},
+	} {
+		r := httptest.NewRequest(tc.method, tc.path, nil)
+		if tc.ctx != "" {
+			r.Header.Set(ContextHeader, tc.ctx)
+		}
+		w := httptest.NewRecorder()
+		if got := contextMismatch(w, r, c); got != tc.refused || (got && w.Code != http.StatusConflict) {
+			t.Errorf("%s %s (%q): refused=%v code=%d", tc.method, tc.path, tc.ctx, got, w.Code)
+		}
+	}
+}

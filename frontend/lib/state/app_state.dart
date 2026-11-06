@@ -141,7 +141,15 @@ class AppState extends ChangeNotifier {
   /// Read-only contexts → reason (as [readOnlyReason]).
   Map<String, String> readOnlyContexts = const {};
 
-  String currentContext = '';
+  String _currentContext = '';
+
+  /// The context the UI shows. The API client sends it with each request
+  /// (see [ApiClient.context]).
+  String get currentContext => _currentContext;
+  set currentContext(String v) {
+    _currentContext = v;
+    api.context = v;
+  }
   List<ContextInfo> contexts = const [];
   List<ResourceType> types = const [];
   List<String> namespaces = const [];
