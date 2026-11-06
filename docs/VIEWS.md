@@ -15,14 +15,13 @@ that show several clusters at once are out of scope (see "Future work").
 
 | Area | Today | Code |
 |---|---|---|
-| Namespace scope | `AppState.namespace` (`String?`, null = all), `setNamespace`, `recentNamespaces` (kept for the session only). Overview, Security, Alerts and Metrics each keep their own single-namespace scope in `PageScope`. `GET /api/namespaces` falls back to the context's default namespace when listing namespaces is forbidden. | `state/app_state.dart`, `ui/widgets/namespace_picker.dart`, `server/server.go` |
-| Table socket | `WS /api/watch?group&resource&namespace`: **one namespace or all**. Each socket holds one `kcache.Sub`, resolves the jq columns (`columnsFor`) and sends SNAPSHOT, then ADDED/MODIFIED/DELETED/BATCH. `/api/table` and `/api/items` take the same single `namespace`. | `server/stream.go`, `parseResource` |
-| Watch cache | One `kcache.Cache` per `*cluster.Clients` (per context). A `Key` is `{GVR, Namespace ("" = all), LabelSelector, FieldSelector}`. Every table showing the same key shares one upstream LIST+WATCH. `warmLocked` serves a one-namespace key from an already-warm all-namespaces stream through a local filter. A stream nobody uses is stopped after 90 s. | `internal/kcache` |
-| Table state | `TableController(type, namespace)`: rows keyed by `uid`, filter (`table_query.dart`) and sort applied in the client. Sort, widths and **filter** are saved per kind (`group/Kind`) through `TablePrefsStore` → `PUT /api/settings/tables`. Column overrides are saved per group/resource (`/api/columns`) and apply on every cluster. | `state/table_controller.dart`, `state/table_prefs.dart` |
-| Persistence | `settings.Store` writes `~/.config/k8sman/settings.json` (sidebar, table prefs, read-only contexts, the last context used per kubeconfig). `/api/settings/*` works without a cluster connection (`worksDisconnected`). | `internal/settings`, `server/sidebar.go`, `server/tableprefs.go` |
-| Pins | `SidebarPin{group, kind, namespace?}` is already a minimal view that applies to any context: one kind and an optional namespace. `openPin` sets the namespace, then calls `selectType`. | `state/sidebar_config.dart` |
-| Context switch | `switchContext` clears the namespace, selected type and inspector, then runs `init()` (reach/auth probe, discovery, namespaces) behind `ConnectingView`. | `state/app_state.dart` |
-| Welcome screen | There isn't one. At launch the app reconnects to the last context. `ClusterErrorView` (context and kubeconfig pickers) appears only when that fails. | `ui/cluster_error_view.dart`, `ui/connecting_view.dart` |
+| Namespace scope | `AppState.namespace` (`String?`, null = all), `setNamespace`, `recentNamespaces` (session only). Overview, Security, Alerts and Metrics each keep a single-namespace `PageScope`. | `state/app_state.dart`, `ui/widgets/namespace_picker.dart` |
+| Table socket | `WS /api/watch`, `/api/table` and `/api/items` take one `namespace`, or none for all. One `kcache.Sub` per socket. | `server/stream.go`, `parseResource` |
+| Watch cache | One `kcache.Cache` per context; key `{GVR, Namespace, selectors}`; tables with the same key share one upstream LIST+WATCH. `warmLocked` serves a one-namespace key from a warm all-namespaces stream. Streams nobody uses stop after 90 s. | `internal/kcache` |
+| Table state | `TableController` keys rows by `uid`. Filter (`table_query.dart`) and sort run in the client and are saved **per kind** (`/api/settings/tables`). Column overrides are global per resource. | `state/table_controller.dart`, `state/table_prefs.dart` |
+| Persistence | `settings.json` through `settings.Store`. `/api/settings/*` works without a connection. | `internal/settings`, `server/sidebar.go` |
+| Pins | `SidebarPin{group, kind, namespace?}`: already a minimal view that applies to any context. | `state/sidebar_config.dart` |
+| Startup | No welcome screen: the app reconnects to the last context and shows `ClusterErrorView` (with pickers) only on failure. | `ui/cluster_error_view.dart`, `ui/connecting_view.dart` |
 
 ## 1. What a view is
 
