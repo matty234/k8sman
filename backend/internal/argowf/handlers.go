@@ -12,6 +12,8 @@ import (
 type Handler struct {
 	env  func() env
 	disc *discoverer
+	// crd reports whether the Workflow CRD is served (nil = assume so).
+	crd func(ctx context.Context) bool
 }
 
 // Register mounts GET /api/argowf/status. It only reads (discovery and a
@@ -23,6 +25,10 @@ func Register(mux httpx.Router, mgr *cluster.Manager) *Handler {
 			return clientsEnv(c)
 		},
 		disc: newDiscoverer(),
+		crd: func(ctx context.Context) bool {
+			_, err := mgr.Clients().Find(ctx, "argoproj.io", "", "workflows")
+			return err == nil
+		},
 	}
 	mux.HandleFunc("GET /api/argowf/status", h.handleStatus)
 	return h
@@ -34,8 +40,15 @@ func clientsEnv(c *cluster.Clients) env {
 }
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
-	d := h.disc.get(r.Context(), h.env(), r.URL.Query().Get("refresh") != "")
-	httpx.WriteJSON(w, http.StatusOK, d.status)
+	e := h.env()
+	if h.crd != nil && !h.crd(r.Context()) {
+		httpx.WriteJSON(w, http.StatusOK, Status{Context: e.context})
+		return
+	}
+	d := h.disc.get(r.Context(), e, r.URL.Query().Get("refresh") != "")
+	st := d.status
+	st.CRD = true
+	httpx.WriteJSON(w, http.StatusOK, st)
 }
 
 // Retry retries ns/name through argo-server for the clients' context.

@@ -72,7 +72,10 @@ func (s *Server) ProxyPath(p string) string {
 
 // Status is the GET /api/argowf/status payload.
 type Status struct {
-	Context   string  `json:"context"`
+	Context string `json:"context"`
+	// CRD: the Workflow CRD is served, so Argo Workflows is on this
+	// cluster. When it isn't, argo-server isn't looked for.
+	CRD       bool    `json:"crd"`
 	Found     bool    `json:"found"`
 	Reachable bool    `json:"reachable"`
 	Server    *Server `json:"server,omitempty"`

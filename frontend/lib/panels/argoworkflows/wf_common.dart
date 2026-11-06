@@ -133,6 +133,8 @@ String formatResourcesDuration(dynamic rd) {
 
 /// GET /api/argowf/status.
 class ArgoWFStatus {
+  /// The Workflow CRD is served (Argo Workflows is on this cluster).
+  final bool crd;
   final bool found;
   final bool reachable;
   final bool available;
@@ -143,9 +145,10 @@ class ArgoWFStatus {
   final String? version;
   final String? serverNamespace;
   final String? error;
-  const ArgoWFStatus({this.found = false, this.reachable = false, this.available = false, this.auth = '', this.subject, this.version, this.serverNamespace, this.error});
+  const ArgoWFStatus({this.crd = true, this.found = false, this.reachable = false, this.available = false, this.auth = '', this.subject, this.version, this.serverNamespace, this.error});
 
   factory ArgoWFStatus.fromJson(Json j) => ArgoWFStatus(
+        crd: j['crd'] != false,
         found: j['found'] == true,
         reachable: j['reachable'] == true,
         available: j['available'] == true,

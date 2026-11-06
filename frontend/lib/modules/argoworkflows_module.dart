@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../panels/argoworkflows/index.dart';
-import '../state/app_state.dart';
+import '../panels/argoworkflows/wf_common.dart' show ArgoWFApi;
+import '../api/client.dart';
 import 'module.dart';
 
 /// Argo Workflows: Workflow, CronWorkflow and template panels (graph,
@@ -41,6 +42,17 @@ class ArgoWorkflowsModule extends AppModule {
         'argoproj.io/ClusterWorkflowTemplate': Icons.library_books_outlined,
       };
 
+  /// Workflows are served; argo-server (retry and memoized resubmit go
+  /// through it) is reachable, or the module works on the CRs alone.
   @override
-  bool isAvailable(AppState app) => app.typeFor('argoproj.io', 'Workflow') != null;
+  Future<ModuleStatus> Function(ApiClient api) get detect => (api) async {
+        final s = await ArgoWFApi.of(api).fetchStatus();
+        if (!s.crd) return const ModuleStatus(ModuleState.notInstalled, 'Workflow CRD not served');
+        if (!s.found) return const ModuleStatus(ModuleState.connected, 'Workflows served · no argo-server (retry and memoized resubmit off)');
+        final server = s.version == null || s.version!.isEmpty ? 'argo-server' : 'argo-server ${s.version}';
+        if (!s.reachable || !s.available) {
+          return ModuleStatus(ModuleState.error, '$server · ${s.error ?? 'not usable'}');
+        }
+        return ModuleStatus(ModuleState.connected, 'Workflows served · $server (${s.auth} auth)');
+      };
 }
