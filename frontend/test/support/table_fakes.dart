@@ -61,14 +61,26 @@ class TableFakeApi extends ApiClient {
 
   /// Saved views (settings.json stand-in).
   final List<Json> views = [];
+  Map<String, String> kubeconfigKeys = {};
 
   @override
-  Future<({List<Json> views, String launchView})> getViews() async => (views: List.of(views), launchView: '');
+  Future<({List<Json> views, String launchView, Map<String, String> kubeconfigKeys})> getViews() async =>
+      (views: List.of(views), launchView: '', kubeconfigKeys: kubeconfigKeys);
 
   @override
-  Future<void> putView(Json view) async {
+  Future<void> putView(Json view, {int? index}) async {
     final i = views.indexWhere((v) => v['id'] == view['id']);
-    i < 0 ? views.add(view) : views[i] = view;
+    if (index != null) {
+      if (i >= 0) views.removeAt(i);
+      views.insert(index.clamp(0, views.length), view);
+    } else {
+      i < 0 ? views.add(view) : views[i] = view;
+    }
+  }
+
+  @override
+  Future<void> reorderViews(List<String> ids) async {
+    views.sort((a, b) => ids.indexOf('${a['id']}').compareTo(ids.indexOf('${b['id']}')));
   }
 
   @override

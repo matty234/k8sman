@@ -24,7 +24,7 @@ func (s *Server) handleKubeconfigs(w http.ResponseWriter, r *http.Request) {
 	current := s.mgr.Kubeconfig()
 	recent := s.settings.Get().RecentKubeconfigs
 	cands := cluster.DiscoverKubeconfigs(home, env, append([]string{current}, recent...))
-	out := map[string]any{"current": current, "candidates": cands, "home": home}
+	out := map[string]any{"current": current, "currentKey": cluster.KubeconfigKey(home, env, current), "candidates": cands, "home": home}
 	if current == "" {
 		// Default loading rules merging several $KUBECONFIG files.
 		out["merged"] = cluster.SplitKubeconfigEnv(env)

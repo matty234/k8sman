@@ -243,16 +243,26 @@ class ApiClient {
 
   /// Saved view records as stored (records of a newer version included:
   /// callers skip what they can't read) and the view opened at launch.
-  Future<({List<Json> views, String launchView})> getViews() async {
+  ///
+  /// `kubeconfigKeys` maps each kubeconfig path the views mention to its
+  /// canonical key (resolved by the backend), so views match the active
+  /// kubeconfig however its path was spelled.
+  Future<({List<Json> views, String launchView, Map<String, String> kubeconfigKeys})> getViews() async {
     final j = await _get('settings/views') as Json;
     return (
       views: [for (final v in (j['views'] as List? ?? const [])) if (v is Map) Map<String, dynamic>.from(v)],
       launchView: (j['launchView'] as String?) ?? '',
+      kubeconfigKeys: {for (final e in ((j['kubeconfigKeys'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
     );
   }
 
-  /// Adds or replaces a view (by its id).
-  Future<void> putView(Json view) => _send('PUT', 'settings/views/${Uri.encodeComponent('${view['id']}')}', const {}, view);
+  /// Adds or replaces a view (by its id). With [index] the view is placed
+  /// at that position of the order (undoing a delete).
+  Future<void> putView(Json view, {int? index}) =>
+      _send('PUT', 'settings/views/${Uri.encodeComponent('${view['id']}')}', {'index': index?.toString()}, view);
+
+  /// Saves the order of the views.
+  Future<void> reorderViews(List<String> ids) => _send('PUT', 'settings/views/order', const {}, {'ids': ids});
 
   Future<void> deleteView(String id) => _send('DELETE', 'settings/views/${Uri.encodeComponent(id)}', const {}, null);
 

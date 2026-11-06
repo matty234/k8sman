@@ -1,10 +1,13 @@
 package kube
 
 import (
+	"context"
 	"errors"
+	"maps"
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 )
 
 // Namespaces is a namespace scope: nil or empty means all namespaces,
@@ -71,3 +74,48 @@ func (n Namespaces) Contains(ns string) bool {
 
 // String is the comma-separated form ("" = all).
 func (n Namespaces) String() string { return strings.Join(n, ",") }
+
+// Skipped collects the namespaces of a namespace set that could not be
+// read (e.g. RBAC forbids them) while a request listed several types, so
+// the response can say which were left out. Safe for concurrent use.
+type Skipped struct {
+	mu    sync.Mutex
+	order []string
+	errs  map[string]error
+}
+
+type skippedKey struct{}
+
+// WithSkipped returns a context whose scoped lists report the namespaces
+// they leave out to the returned collector.
+func WithSkipped(ctx context.Context) (context.Context, *Skipped) {
+	s := &Skipped{errs: map[string]error{}}
+	return context.WithValue(ctx, skippedKey{}, s), s
+}
+
+// ReportSkipped records that ns was left out because of err. It does
+// nothing when ctx has no collector. The first error per namespace is kept.
+func ReportSkipped(ctx context.Context, ns string, err error) {
+	s, _ := ctx.Value(skippedKey{}).(*Skipped)
+	if s == nil || err == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.errs[ns]; !ok {
+		s.errs[ns] = err
+		s.order = append(s.order, ns)
+	}
+}
+
+// Each calls f for every skipped namespace, sorted by name.
+func (s *Skipped) Each(f func(ns string, err error)) {
+	s.mu.Lock()
+	names := slices.Clone(s.order)
+	errs := maps.Clone(s.errs)
+	s.mu.Unlock()
+	slices.Sort(names)
+	for _, ns := range names {
+		f(ns, errs[ns])
+	}
+}

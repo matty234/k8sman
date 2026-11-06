@@ -9,9 +9,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strconv"
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/columns"
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/settings"
@@ -22,25 +25,62 @@ import (
 func (s *Server) viewRoutes() {
 	s.mux.HandleFunc("GET /api/settings/views", s.handleGetViews)
 	s.mux.HandleFunc("PUT /api/settings/views/launch", s.handlePutLaunchView)
+	s.mux.HandleFunc("PUT /api/settings/views/order", s.handlePutViewOrder)
 	s.mux.HandleFunc("POST /api/settings/views/export", s.handleExportViews)
 	s.mux.HandleFunc("POST /api/settings/views/parse", s.handleParseViews)
 	s.mux.HandleFunc("PUT /api/settings/views/{id}", s.handlePutView)
 	s.mux.HandleFunc("DELETE /api/settings/views/{id}", s.handleDeleteView)
 }
 
-// handleGetViews returns {views: [...], launchView: "<id>"}. Records are
-// returned as stored, including ones of a newer version than this build
-// writes (clients skip what they don't understand).
+// handleGetViews returns {views: [...], launchView: "<id>", kubeconfigKeys:
+// {path: key}}. Records are returned as stored, including ones of a newer
+// version than this build writes (clients skip what they don't understand).
+// kubeconfigKeys maps every kubeconfig path the views mention to its
+// canonical key (cluster.KubeconfigKey), so a client can tell that
+// "default" and an explicit ~/.kube/config are the same file.
 func (s *Server) handleGetViews(w http.ResponseWriter, r *http.Request) {
 	st := s.settings.Get()
 	views := st.Views
 	if views == nil {
 		views = []json.RawMessage{}
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"views": views, "launchView": st.LaunchView})
+	home, _ := os.UserHomeDir()
+	env := os.Getenv("KUBECONFIG")
+	keys := map[string]string{"": cluster.KubeconfigKey(home, env, "")}
+	for _, raw := range views {
+		var v struct {
+			Context *struct {
+				Kubeconfig string `json:"kubeconfig"`
+			} `json:"context"`
+		}
+		if json.Unmarshal(raw, &v) == nil && v.Context != nil {
+			if _, ok := keys[v.Context.Kubeconfig]; !ok {
+				keys[v.Context.Kubeconfig] = cluster.KubeconfigKey(home, env, v.Context.Kubeconfig)
+			}
+		}
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"views": views, "launchView": st.LaunchView, "kubeconfigKeys": keys})
 }
 
-// handlePutView adds or replaces the view with the path's id.
+// handlePutViewOrder reorders views. Body: {"ids": ["<id>", ...]}.
+func (s *Server) handlePutViewOrder(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<18)).Decode(&body); err != nil {
+		writeErr(w, httpx.BadRequest("body must be {\"ids\": [\"<view id>\", ...]}"))
+		return
+	}
+	if err := s.settings.ReorderViews(body.IDs); err != nil {
+		writeErr(w, httpx.BadRequest("%v", err))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handlePutView adds or replaces the view with the path's id. With
+// ?index=N the view is placed at that position of the order (undoing a
+// delete restores the original position).
 func (s *Server) handlePutView(w http.ResponseWriter, r *http.Request) {
 	var v settings.View
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<18)).Decode(&v); err != nil {
@@ -66,7 +106,16 @@ func (s *Server) handlePutView(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
-	if err := s.settings.PutView(v); err != nil {
+	index := -1
+	if q := r.URL.Query().Get("index"); q != "" {
+		n, err := strconv.Atoi(q)
+		if err != nil || n < 0 {
+			writeErr(w, httpx.BadRequest("index must be a non-negative integer"))
+			return
+		}
+		index = n
+	}
+	if err := s.settings.PutViewAt(v, index); err != nil {
 		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}

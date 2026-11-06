@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/api/kubeconfig.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/state/table_controller.dart';
@@ -87,5 +88,31 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(_table(tester).filter, 'web');
+  });
+
+  test('a view matches the active kubeconfig by its resolved key, and an undone delete returns to its place', () async {
+    final api = TableFakeApi()..kubeconfigKeys = {'': '/home/me/.kube/config', '/home/me/.kube/config': '/home/me/.kube/config', '/elsewhere': '/elsewhere'};
+    final app = AppState(api)
+      ..currentContext = 'dev'
+      ..kubeconfigs = const KubeconfigList(current: '', currentKey: '/home/me/.kube/config');
+    SavedView view(String id, {String? kubeconfig}) => SavedView(
+          id: id,
+          name: id,
+          group: 'apps',
+          kind: 'Deployment',
+          context: kubeconfig == null ? null : ViewContext(kubeconfig: kubeconfig, name: 'dev'),
+        );
+    for (final v in [view('a'), view('b', kubeconfig: '/home/me/.kube/config'), view('c', kubeconfig: '/elsewhere'), view('d', kubeconfig: '')]) {
+      await app.saveView(v);
+    }
+    await app.loadViews();
+    // The default kubeconfig and the same file picked explicitly are one context.
+    expect([for (final v in app.savedViews) if (v.context != null) app.isCurrentContext(v.context!)], [true, false, true]);
+
+    final removed = (await app.deleteView('b'))!;
+    await app.restoreView(removed.$1, removed.$2);
+    await app.loadViews();
+    expect([for (final v in app.savedViews) v.id], ['a', 'b', 'c', 'd']);
+    expect([for (final v in api.views) v['id']], ['a', 'b', 'c', 'd']);
   });
 }

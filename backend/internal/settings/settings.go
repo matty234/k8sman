@@ -380,7 +380,12 @@ func (st *Store) SetDisabledModules(ids []string) error {
 
 // PutView adds a view, or replaces the one with the same id (keeping its
 // place in the order).
-func (st *Store) PutView(v View) error {
+func (st *Store) PutView(v View) error { return st.PutViewAt(v, -1) }
+
+// PutViewAt is PutView with a position: index >= 0 places the view at that
+// index of the order (clamped to the end), moving it if it already exists.
+// Undoing a delete uses it to put the view back where it was.
+func (st *Store) PutViewAt(v View, index int) error {
 	if err := v.Valid(); err != nil {
 		return err
 	}
@@ -390,22 +395,52 @@ func (st *Store) PutView(v View) error {
 	}
 	var full bool
 	err = st.Update(func(s *Settings) {
-		for i, r := range s.Views {
-			if recordID(r) == v.ID {
-				s.Views[i] = raw
-				return
-			}
+		at := slices.IndexFunc(s.Views, func(r json.RawMessage) bool { return recordID(r) == v.ID })
+		if at >= 0 && index < 0 {
+			s.Views[at] = raw
+			return
 		}
-		if len(s.Views) >= MaxViews {
+		if at < 0 && len(s.Views) >= MaxViews {
 			full = true
 			return
 		}
-		s.Views = append(s.Views, raw)
+		if at >= 0 {
+			s.Views = slices.Delete(s.Views, at, at+1)
+		}
+		if index < 0 || index > len(s.Views) {
+			index = len(s.Views)
+		}
+		s.Views = slices.Insert(s.Views, index, raw)
 	})
 	if err == nil && full {
 		err = fmt.Errorf("at most %d views can be saved", MaxViews)
 	}
 	return err
+}
+
+// ReorderViews puts the views named in ids in that order. They keep the
+// slots they occupy now, so records this build doesn't read (newer
+// versions) stay where they are. Unknown ids are ignored.
+func (st *Store) ReorderViews(ids []string) error {
+	return st.Update(func(s *Settings) {
+		byID := map[string]json.RawMessage{}
+		for _, r := range s.Views {
+			byID[recordID(r)] = r
+		}
+		var order []json.RawMessage
+		seen := map[string]bool{}
+		for _, id := range ids {
+			if r, ok := byID[id]; ok && !seen[id] {
+				seen[id] = true
+				order = append(order, r)
+			}
+		}
+		for i, r := range s.Views {
+			if seen[recordID(r)] {
+				s.Views[i], order = order[0], order[1:]
+			}
+		}
+	})
 }
 
 // DeleteView removes a view (and the launch setting if it pointed at it).

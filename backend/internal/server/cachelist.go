@@ -111,6 +111,7 @@ func listScope(ctx context.Context, kc *kcache.Cache, key kcache.Key, scope stri
 	ok := false
 	for i, ns := range set {
 		if errs[i] != nil {
+			kube.ReportSkipped(ctx, ns, errs[i])
 			continue
 		}
 		ok = true

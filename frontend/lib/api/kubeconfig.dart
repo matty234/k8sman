@@ -23,16 +23,22 @@ class KubeconfigCandidate {
 class KubeconfigList {
   /// Active kubeconfig path; '' = default loading rules merging [merged].
   final String current;
+
+  /// The backend's canonical identity of [current] (symlinks resolved, `~`
+  /// expanded; for '' what the default loading rules use). Equal keys are
+  /// the same kubeconfig however it was spelled. Older backends send none.
+  final String currentKey;
   final List<String> merged;
   final List<KubeconfigCandidate> candidates;
 
   /// The user's home directory, for shortening paths to `~/…`.
   final String home;
 
-  const KubeconfigList({this.current = '', this.merged = const [], this.candidates = const [], this.home = ''});
+  const KubeconfigList({this.current = '', String? currentKey, this.merged = const [], this.candidates = const [], this.home = ''}) : currentKey = currentKey ?? current;
 
   factory KubeconfigList.fromJson(Map<String, dynamic> j) => KubeconfigList(
         current: j['current'] as String? ?? '',
+        currentKey: j['currentKey'] as String?,
         merged: List<String>.from(j['merged'] as List? ?? const []),
         candidates: [for (final c in (j['candidates'] as List? ?? const [])) KubeconfigCandidate.fromJson(Map<String, dynamic>.from(c))],
         home: j['home'] as String? ?? '',

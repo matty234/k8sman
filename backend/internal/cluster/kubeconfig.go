@@ -81,6 +81,38 @@ func DefaultKubeconfig(home, env string) string {
 	}
 }
 
+// KubeconfigKey is the identity of a kubeconfig path: the same file gets
+// the same key however it was spelled. "" (the default loading rules) is
+// resolved as the loader does ($KUBECONFIG, else ~/.kube/config); `~/` is
+// expanded; the path is made absolute and clean, and symlinks are resolved
+// when the file exists. Several $KUBECONFIG files (merged) give one key
+// from all of their resolved paths.
+func KubeconfigKey(home, env, path string) string {
+	if path == "" {
+		if path = DefaultKubeconfig(home, env); path == "" {
+			var parts []string
+			for _, p := range SplitKubeconfigEnv(env) {
+				parts = append(parts, resolveKubeconfigPath(home, p))
+			}
+			return strings.Join(parts, string(filepath.ListSeparator))
+		}
+	}
+	return resolveKubeconfigPath(home, path)
+}
+
+func resolveKubeconfigPath(home, path string) string {
+	path = filepath.Clean(ExpandHome(path, home))
+	if !filepath.IsAbs(path) {
+		if abs, err := filepath.Abs(path); err == nil {
+			path = abs
+		}
+	}
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
+	return path
+}
+
 // DiscoverKubeconfigs lists candidate kubeconfig files, in display order:
 // each $KUBECONFIG entry, ~/.kube/config, other files under ~/.kube that
 // parse as kubeconfig with at least one context (cache dirs skipped), and

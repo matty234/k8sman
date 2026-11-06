@@ -719,14 +719,19 @@ class AppState extends ChangeNotifier {
       final r = await api.getViews();
       savedViews = [for (final j in r.views) ?SavedView.fromJson(j)];
       launchViewId = r.launchView;
+      _kubeconfigKeys.addAll(r.kubeconfigKeys);
       notifyListeners();
     } catch (e) {
       debugPrint('saved views: $e');
     }
   }
 
-  /// Whether [c] is the context the app is on: same name, same kubeconfig.
-  bool isCurrentContext(ViewContext c) => c.name == currentContext && c.kubeconfig == kubeconfigs.current;
+  /// Whether [c] is the context the app is on: same name, same kubeconfig
+  /// file (compared by [kubeconfigKey], not by how the path was spelled).
+  bool isCurrentContext(ViewContext c) => c.name == currentContext && sameKubeconfig(c.kubeconfig);
+
+  /// Whether [path] is the active kubeconfig file.
+  bool sameKubeconfig(String path) => path == kubeconfigs.current || kubeconfigKey(path) == kubeconfigs.currentKey;
 
   /// Views for the sidebar: those that apply to any context and those
   /// bound to the current one. Views of other contexts are in the palette.
@@ -754,7 +759,7 @@ class AppState extends ChangeNotifier {
   Future<ViewOpenResult> openView(SavedView v) async {
     final c = v.context;
     if (c != null && !isCurrentContext(c)) {
-      if (c.kubeconfig != kubeconfigs.current) {
+      if (!sameKubeconfig(c.kubeconfig)) {
         // '' (the default loading rules) can't be switched to explicitly.
         if (c.kubeconfig.isEmpty) return ViewOpenResult.missingContext;
         final err = await switchKubeconfig(c.kubeconfig);
@@ -825,10 +830,28 @@ class AppState extends ChangeNotifier {
 
   /// Puts a deleted view back where it was (undo).
   Future<void> restoreView(SavedView v, int index) async {
-    await api.putView(v.toJson());
-    // The backend appends; the list here keeps the old place until reload.
-    savedViews = [...savedViews]..insert(index.clamp(0, savedViews.length), v);
+    await api.putView(v.toJson(), index: index);
+    savedViews = [...savedViews.where((x) => x.id != v.id)]..insert(index.clamp(0, savedViews.length), v);
     notifyListeners();
+  }
+
+  /// Moves the view at [from] to [to] (the position it should end up at)
+  /// and saves the order.
+  Future<void> moveView(int from, int to) async {
+    if (from < 0 || from >= savedViews.length) return;
+    final list = [...savedViews];
+    final v = list.removeAt(from);
+    list.insert(to.clamp(0, list.length), v);
+    final before = savedViews;
+    savedViews = list;
+    notifyListeners();
+    try {
+      await api.reorderViews([for (final x in list) x.id]);
+    } catch (_) {
+      savedViews = before;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   /// Opens [id] at launch ('' = reconnect to the last context).
@@ -841,7 +864,23 @@ class AppState extends ChangeNotifier {
   // ---- kubeconfig selection and backend (re)connects ----
 
   /// The active kubeconfig and the files the user can switch to.
-  KubeconfigList kubeconfigs = const KubeconfigList();
+  KubeconfigList get kubeconfigs => _kubeconfigs;
+  set kubeconfigs(KubeconfigList k) {
+    _kubeconfigs = k;
+    _kubeconfigKeys[k.current] = k.currentKey;
+  }
+
+  KubeconfigList _kubeconfigs = const KubeconfigList();
+
+  /// Canonical keys of kubeconfig paths (resolved by the backend: `~`,
+  /// symlinks, the default loading rules), from the views list and from
+  /// every kubeconfig that was active.
+  final Map<String, String> _kubeconfigKeys = {};
+
+  /// The identity of a kubeconfig path as views compare it: the default
+  /// ('') and an explicit `~/.kube/config` are the same file. Falls back
+  /// to the path itself when the backend didn't resolve it.
+  String kubeconfigKey(String path) => _kubeconfigKeys[path] ?? path;
 
   /// Set while a kubeconfig switch is in flight.
   bool switchingKubeconfig = false;
@@ -882,7 +921,7 @@ class AppState extends ChangeNotifier {
   Future<void> _preselectContext(ViewContext c) async {
     try {
       final kc = await api.kubeconfigs();
-      if (c.kubeconfig.isNotEmpty && c.kubeconfig != kc.current) await api.switchKubeconfig(c.kubeconfig);
+      if (c.kubeconfig.isNotEmpty && c.kubeconfig != kc.current && kubeconfigKey(c.kubeconfig) != kc.currentKey) await api.switchKubeconfig(c.kubeconfig);
       final ctx = await api.contexts();
       if (ctx.current != c.name && ctx.contexts.any((x) => x.name == c.name)) await api.switchContext(c.name);
     } catch (e) {
