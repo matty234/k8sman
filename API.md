@@ -24,7 +24,7 @@ WebSocket upgrades, including `/api/health`) must pass these checks
    time. Missing or wrong → 401 (`Unauthorized`). WebSockets send it as a
    handshake header too; a token in the query string is ignored.
 4. **Content-Type** on POST/PUT/PATCH/DELETE: `application/json` (also
-   `application/yaml` for `PUT /api/object` and `POST /api/rbac/apply`),
+   `application/yaml` for `PUT /api/object`, `POST /api/apply` and `POST /api/rbac/apply`),
    even with an empty body. Anything else → 415 (`UnsupportedMediaType`),
    so a cross-site "simple" request (`text/plain`, forms) never reaches a
    handler.
@@ -113,6 +113,7 @@ Overrides are keyed kubectl-style (`pods`, `deployments.apps`,
 | Method | Path | Purpose |
 |---|---|---|
 | PUT | `/api/object?name=[&dryRun=true]` | replace an object from a YAML/JSON body (`kubectl edit` semantics). The body must keep `metadata.resourceVersion`, so a stale edit returns 409 `Conflict`. Validation failures return 422 with `causes:[{field,message}]`. Returns `{dryRun, resourceVersion, yaml, context}` |
+| POST | `/api/apply[?namespace=][&dryRun=true][&mode=create\|apply]` | create objects from a YAML/JSON body of one or more documents (`---`; a v1 `List` expands to its items), in order, like `kubectl create -f`. Kinds resolve through discovery (CRs too). Namespaced objects without `metadata.namespace` go to `namespace` (else the context's default namespace, else `default`); cluster-scoped ones lose any namespace. `mode=apply` uses server-side apply instead (fieldManager `k8sman`, `force=false`), which also updates existing objects; fields owned by another manager come back as a per-document `Conflict`. Always 200 once the body parses: `{dryRun, mode, context, results:[{index, line, group, version, kind, namespace?, name, created, error?, reason?, causes?}]}`, one per object; `line` is the document's first line in the body, `reason` the Kubernetes StatusReason (e.g. `AlreadyExists`, `Invalid`) and `causes` as for `PUT /api/object`. Refused in read-only mode |
 | GET | `/api/actions` | actions supported for a type: `{actions:[...]}` |
 | POST | `/api/actions/{action}?name=` | run an action. Body: `{replicas?, revision?, gracePeriodSeconds?, propagation?, dryRun?}`. Returns `{message, dryRun, context, created?}` |
 

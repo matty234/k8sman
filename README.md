@@ -82,6 +82,13 @@ machine.
   workloads, routes) and you can navigate back.
 - Edit YAML with server-side dry-run validation, a diff review before you
   apply, and conflict detection when the object changed underneath you.
+- **Open in Editor** gives a full-window, split-screen YAML editor: a live
+  diff against the server on the right, validation errors pinned to lines,
+  and the target context and namespace always in view.
+- **Create resources** in the same editor from templates (Deployment, Service,
+  ConfigMap, Secret, Job, CronJob, Ingress, PVC, Namespace, ServiceAccount,
+  Role + RoleBinding) or pasted multi-document YAML. A dry run shows the
+  result for each document before anything is created.
 
 ### Logs, terminals and port-forwards
 
@@ -354,9 +361,9 @@ exactly as `kubectl` does.
 | ↑ / ↓, ⇧↑ / ⇧↓ | Move the selection / extend it |
 | ⌘⌫ | Delete the selected rows (with confirmation) |
 | Esc | Clear a multi-selection, else close the inspector; leave an unchanged YAML edit; close pickers |
-| ⌘S | YAML editor: review and apply |
+| ⌘S | YAML editor: review and apply (full-window editor: validate, review, apply) |
 | ⌘F | YAML editor: find |
-| ⌘↩ | Run the dry run (Helm upgrade) or apply (add-on install) |
+| ⌘↩ | Run the dry run (Helm upgrade), apply (add-on install), or apply or create (full-window editor) |
 | ⌘+ / ⌘− / ⌘0, ⌘K | Terminal: font size, clear |
 
 On Windows and Linux, use Ctrl in place of ⌘. In a terminal tab, Ctrl keys go to the

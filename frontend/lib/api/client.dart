@@ -255,6 +255,18 @@ class ApiClient {
     return UpdateResult.fromJson(_decode(await http.Response.fromStream(await _http.send(req))));
   }
 
+  /// Creates the objects in [yaml] (one or more `---` documents) with
+  /// `POST /api/apply`; [namespace] is the default for namespaced objects
+  /// without one. [serverSide] uses server-side apply, which also updates
+  /// existing objects. Per-object failures come back in the results.
+  Future<ManifestResult> applyManifests(String yaml, {String? namespace, bool dryRun = false, bool serverSide = false}) async {
+    final req = http.Request('POST', _uri('apply', {'namespace': namespace, 'dryRun': dryRun ? 'true' : null, 'mode': serverSide ? 'apply' : null}))
+      ..headers.addAll(authHeaders)
+      ..headers['Content-Type'] = 'application/yaml'
+      ..body = yaml;
+    return ManifestResult.fromJson(_decode(await http.Response.fromStream(await _http.send(req))));
+  }
+
   /// Action names supported for a type (scale, restart, delete, ...).
   Future<List<String>> availableActions(ResourceRef r) async =>
       List<String>.from(((await _get('actions', r.toQuery())) as Json)['actions'] ?? const []);

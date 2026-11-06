@@ -46,6 +46,21 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - A metadata summary: namespace, owners, age, labels and annotations.
 - A YAML view and editor with dry-run validation, diff review before apply,
   conflict detection and ⌘S. Optionally show managedFields.
+- **Open in Editor** (in the YAML tab) opens the object in a full-window
+  split-screen editor: YAML on the left; on the right a resizable, collapsible
+  pane with a debounced live diff against the server and a Validation tab.
+  The title bar shows the kube context (amber when not local) and namespace.
+  A "changed on the server" notice appears when the object moves on. ⌘S
+  validates, reviews the diff and applies; ⌘↩ goes straight to the confirm;
+  Esc closes the find bar, then the editor (warning about unsaved changes).
+- **New Resource**: the same editor in create mode, with templates for
+  Deployment, Service, ConfigMap, Secret (stringData), Job, CronJob, Ingress,
+  PersistentVolumeClaim, Namespace, ServiceAccount, Role + RoleBinding and
+  Blank (or a skeleton for any kind, CRs included), in a namespace you pick.
+  Validate dry-runs every document and lists the result per object, with
+  field errors mapped to editor lines. Create confirms with the context named,
+  then offers to open what it made. When objects already exist you can retry
+  with server-side apply. Read-only contexts get a read-only editor.
 - An Events tab, and header actions for the kind.
 - Panels by kind:
   - **Pod**: why it isn't ready, containers, probes, env references, volumes,

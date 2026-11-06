@@ -158,6 +158,7 @@ func mutating(method string) bool {
 var yamlBodies = map[string]bool{
 	"PUT /api/object":      true,
 	"POST /api/rbac/apply": true,
+	"POST /api/apply":      true,
 }
 
 func allowedContentType(r *http.Request) bool {

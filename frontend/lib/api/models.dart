@@ -270,6 +270,69 @@ class UpdateResult {
       UpdateResult(dryRun: j['dryRun'] ?? false, resourceVersion: j['resourceVersion'] ?? '', yaml: j['yaml'] ?? '', context: j['context'] ?? '');
 }
 
+/// `POST /api/apply`: one result per object in the submitted documents.
+class ManifestResult {
+  final bool dryRun;
+
+  /// `create`, or `apply` for server-side apply.
+  final String mode;
+  final String context;
+  final List<ManifestItem> results;
+  const ManifestResult({required this.dryRun, this.mode = 'create', this.context = '', required this.results});
+  factory ManifestResult.fromJson(Json j) => ManifestResult(
+        dryRun: j['dryRun'] ?? false,
+        mode: j['mode'] ?? 'create',
+        context: j['context'] ?? '',
+        results: [for (final r in (j['results'] as List? ?? const [])) ManifestItem.fromJson(Map<String, dynamic>.from(r))],
+      );
+  bool get ok => results.every((r) => r.ok);
+}
+
+class ManifestItem {
+  /// Document index, and the document's first line (1-based) in the body.
+  final int index;
+  final int line;
+  final String group;
+  final String version;
+  final String kind;
+  final String? namespace;
+  final String name;
+  final bool created;
+  final String? error;
+
+  /// Kubernetes StatusReason, e.g. AlreadyExists, Invalid, Conflict.
+  final String? reason;
+  final List<Map<String, dynamic>> causes;
+  const ManifestItem({
+    this.index = 0,
+    this.line = 1,
+    this.group = '',
+    this.version = '',
+    required this.kind,
+    this.namespace,
+    required this.name,
+    this.created = false,
+    this.error,
+    this.reason,
+    this.causes = const [],
+  });
+  factory ManifestItem.fromJson(Json j) => ManifestItem(
+        index: j['index'] ?? 0,
+        line: j['line'] ?? 1,
+        group: j['group'] ?? '',
+        version: j['version'] ?? '',
+        kind: j['kind'] ?? '',
+        namespace: j['namespace'],
+        name: j['name'] ?? '',
+        created: j['created'] ?? false,
+        error: j['error'],
+        reason: j['reason'],
+        causes: [for (final c in (j['causes'] as List? ?? const [])) Map<String, dynamic>.from(c)],
+      );
+  bool get ok => error == null || error!.isEmpty;
+  ObjectRef get ref => ObjectRef(group: group, kind: kind, name: name, namespace: namespace);
+}
+
 class ActionResult {
   final String message;
   final bool dryRun;

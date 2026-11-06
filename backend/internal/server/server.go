@@ -70,6 +70,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	}
 	s.routes()
 	s.mutationRoutes()
+	s.applyRoutes()
 	s.actionRoutes()
 	s.drainRoutes()
 	s.overviewRoutes()
