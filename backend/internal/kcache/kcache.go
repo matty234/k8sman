@@ -340,6 +340,15 @@ func (c *Cache) start(key Key) *stream {
 
 func objKey(u *unstructured.Unstructured) string { return u.GetNamespace() + "/" + u.GetName() }
 
+// trim drops what no cache reader uses as an object enters the cache:
+// metadata.managedFields is often the largest part of an object, and only
+// the YAML tab shows it, from a live GET (/api/object).
+func trim(u *unstructured.Unstructured) {
+	if md, ok := u.Object["metadata"].(map[string]any); ok {
+		delete(md, "managedFields")
+	}
+}
+
 func (s *stream) isWarm() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -451,6 +460,7 @@ func (s *stream) replace(list *unstructured.UnstructuredList) {
 	clear(s.items)
 	for i := range list.Items {
 		u := &list.Items[i]
+		trim(u)
 		s.items[objKey(u)] = u
 	}
 	s.rv = list.GetResourceVersion()
@@ -467,6 +477,7 @@ func (s *stream) replace(list *unstructured.UnstructuredList) {
 }
 
 func (s *stream) apply(t watch.EventType, u *unstructured.Unstructured) {
+	trim(u)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k := objKey(u)

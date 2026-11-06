@@ -407,6 +407,24 @@ func TestMemoRecomputesOnlyOnChange(t *testing.T) {
 	}
 }
 
+func TestCacheStripsManagedFields(t *testing.T) {
+	withMF := func(u *unstructured.Unstructured) *unstructured.Unstructured {
+		u.SetManagedFields([]metav1.ManagedFieldsEntry{{Manager: "kubectl", Operation: metav1.ManagedFieldsOperationUpdate}})
+		return u
+	}
+	api := newFakeAPI(t, withMF(cm("a", "x", "1", nil)))
+	c := testCache(t, api)
+	sub := c.Subscribe(Key{GVR: cmGVR})
+	defer sub.Close()
+	if u := next(t, sub); u.Snapshot == nil || len(u.Snapshot.Items) != 1 || u.Snapshot.Items[0].GetManagedFields() != nil {
+		t.Fatalf("listed object kept managedFields: %+v", u)
+	}
+	api.nextWatch().w.Add(withMF(cm("a", "y", "2", nil)))
+	if u := next(t, sub); len(u.Events) != 1 || u.Events[0].Object.GetManagedFields() != nil {
+		t.Fatalf("watched object kept managedFields: %+v", u)
+	}
+}
+
 func TestListStartsStreamAndCtxCancel(t *testing.T) {
 	api := newFakeAPI(t, cm("a", "x", "1", nil))
 	c := testCache(t, api)
