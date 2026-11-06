@@ -100,21 +100,26 @@ Argo's own `argocd.token` cookie.
 
 **Authentication.** Argo's API needs its own token. In order of preference:
 
-1. **A token you paste.** "Paste a token…" in the connection strip. It is
+You sign in from one form: **Integrations → Argo CD settings**, or
+"Connect…" in the strip on an Application, which opens the same form.
+
+1. **A token you paste.** The token field in that form. It is
    checked against `/api/v1/session/userinfo` (a rejected token isn't saved)
    and stored per kube context in `~/.config/k8sman/settings.json` (mode
-   0600). Create one with `argocd account generate-token`, or for a local
+   0600, `moduleSettings.argocd`; earlier releases kept it in
+   `argocdTokens`, which is moved over when the file is opened). It is never
+   shown or returned again. Create one with `argocd account generate-token`, or for a local
    account with the `apiKey` capability (`accounts.k8sman: apiKey` in
    `argocd-cm`) with `argocd account generate-token --account k8sman`. It
    needs Argo RBAC to get applications (`role:readonly` is enough).
 2. **The initial admin password, opt-in.** When
    `argocd/argocd-initial-admin-secret` exists and your kube RBAC can read
-   it, the strip offers "Use initial admin password". It always asks first
+   it, the form offers "Use initial admin password". It always asks first
    ("Use the initial admin password from argocd/argocd-initial-admin-secret?").
    k8sman then calls `POST /api/v1/session` as `admin` and keeps the session
    token **in memory only**, for that context, until the backend exits or the
    session expires. The password is never stored or returned.
-3. Otherwise the strip shows how to create a token, as above.
+3. Otherwise the form shows how to create a token, as above.
 
 A 401 from Argo shows "Argo CD rejected the token (it may be expired or
 revoked)", with options to paste another token or forget the saved one. A
@@ -140,7 +145,7 @@ numbers, + and − colours). The diff shows the kind/name, the sync status,
 "will be created", "will be pruned" or "hook" badges, and the line counts.
 **Show all diffs** in the filter row opens them all. When diffs aren't
 available, a small strip says "Connect to the Argo CD API to see diffs" with
-the options above. When connected, a quiet line reads "Diffs via
+a Connect… button (the form above). When connected, a quiet line reads "Diffs via
 argocd-server · session" (or "· token"), with a Disconnect link. Diffs are
 only fetched when something is out of sync. They are cached per app and
 refetched only when `status.sync.revision(s)` or `status.reconciledAt`

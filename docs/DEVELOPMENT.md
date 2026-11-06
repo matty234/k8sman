@@ -180,7 +180,12 @@ Sidebar → Integrations…** (or the palette's **Integrations…**), saved as
      choice), saved per kube context in settings.json's `moduleSettings`
      and served by `GET/PUT /api/settings/modules/{id}`. You validate the
      JSON in `ValidateSettings`; read it with
-     `d.Settings.ModuleSettings(id, context, &yourStruct)`.
+     `d.Settings.ModuleSettings(id, context, &yourStruct)`. When the
+     settings hold a secret (Argo CD's API token), also implement
+     `SecretSettings`: GET then shows `RedactSettings` instead of what is
+     saved, and a PUT body goes through `MergeSettings` first, so the UI
+     can change one field without ever reading the secret back. Never
+     log settings values.
 3. Add it to `builtinModules()`. While it is turned off its routes answer
    404 (`reason: "ModuleDisabled"`) and it adds no overview inputs or
    actions.
@@ -211,18 +216,30 @@ than importing Cilium).
      rebuild);
    - `navGroups` (a section of the kinds list, placed `after` a core one),
      `kindIcons` and `requires` (other module ids it needs);
-   - `isAvailable(app)` when discovery alone tells whether the cluster has
-     what you need (e.g. your CRD is served), or `detect` when it takes a
-     backend call (finding and reaching a service). `detect` runs once per
-     kube context, after the first table has painted; read its cached
+   - `detect` when the Integrations dialog (or a page, tab or section)
+     should know how the module stands on the cluster: its CRDs or service
+     found, whether it works. It takes the `ApiClient` and returns a
      `ModuleStatus` (checking, notInstalled, connected, error, plus a
-     message) with `moduleStatuses.of(module, api, context)` and listen to
-     `moduleStatuses` to rebuild when it lands. The Integrations dialog
-     shows it, and it is the place to hide a page's sidebar row (`navGate`)
-     or a tab on clusters without the integration;
+     one-line message); throwing is an error status. It runs once per kube
+     context, after the first table has painted, so keep it to one or two
+     cheap backend calls and never stream. Read the cached status with
+     `moduleStatuses.of(module, api, context)` and listen to
+     `moduleStatuses` to rebuild when it lands (`refresh` detects again,
+     e.g. after settings change). Examples: Hubble (relay), GPUs (nodes,
+     then DCGM), Argo CD (CRD, argocd-server, sign-in), Argo Workflows
+     (argo-server), Prometheus (instances), Gateway API (GatewayClasses and
+     controllers), Metrics (metrics-server). Where discovery alone is
+     enough (Helm, Add-ons) there is nothing to detect;
+   - `navGate` on a page: use `ModuleNavGate(module: this, child: item)`
+     (`module_nav_gate.dart`) to show the sidebar row only on clusters
+     where `detect` found the integration (GPUs, Hubble);
    - `settingsBuilder`: a form for your `Configurable` settings, opened
      from the Integrations dialog. Read and save them with
-     `ApiClient.getModuleSettings` / `putModuleSettings`.
+     `ApiClient.getModuleSettings` / `putModuleSettings` (Hubble's form),
+     or, when saving needs checks against the service, through your own
+     endpoints (Argo CD's sign-in form verifies a token with Argo before
+     saving it). Entry points elsewhere in the app, such as the Argo CD
+     inspector's "Connect…", open the same form.
 2. Add it to `builtInModules` in `modules.dart`, after any module whose
    page it is placed `after`.
 
@@ -233,11 +250,12 @@ buffer, counts what was lost, and pauses without losing rows while the
 reader scrolls. Render it with a fixed-height `ListView.builder`, as
 Hubble's `FlowList` does.
 
-Older modules predate some of these hooks and could use them: the GPU
-module's `GpuNavGate` keeps its own per-context check (`detect`), Argo CD
-keeps its token and CLI-login choice in dedicated settings fields
-(`Configurable` / `moduleSettings`), and Argo Workflows' status endpoint
-could back a `detect`.
+Overview issues: Hubble produces `overview.Finding`s itself. Argo CD,
+Argo Workflows, Gateway API and alerts instead hand the overview their
+objects, because the overview's counts (`counts.argoApps`, `gateways`,
+`routes`), its fixed category order and its owner resolution for alerts
+live in the overview package; a `Finding` can't carry those. Use findings
+for new modules whose issues stand alone.
 
 That's all: `shell.dart`, `app_state.dart`, `resource_nav.dart`, the
 palette and `server.go` don't change. Saved sidebar layouts store page ids,

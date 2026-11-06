@@ -84,8 +84,8 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | POST | `/api/settings/views/export` | `{views: [View]}` → the views as YAML documents (`application/yaml`) |
 | POST | `/api/settings/views/parse` | `{yaml}` → `{views: [View]}`: YAML documents as exported, with fresh ids, validated but not saved |
 | GET/PUT | `/api/settings/tables` | per-kind table preferences in settings.json: read `{tables: {"group/Kind": {sortColumn?, sortDescending?, widths?, filter?}}}`, save one with `{kind, prefs}` (prefs null forgets it) |
-| GET/PUT | `/api/settings/modules` | integrations the user turned off, in settings.json: read or save `{disabled: [ids]}`. Ids: `argocd`, `argoworkflows`, `helm`, `gpus`, `prometheus`, `gateway`, `hubble` (backend modules) and UI-only ones (`metrics`, `addons`). A turned-off module's endpoints (`/api/argocd/*`, `/api/argowf/*`, `/api/helm/*`, `/api/gpu`, `/api/prom/*`, `/api/hubble/*`) answer 404 with `reason: "ModuleDisabled"`, its actions are not offered, and the overview skips its checks. Works without a cluster connection |
-| GET/PUT | `/api/settings/modules/{id}[?context=]` | a module's own settings for a kube context (default: the current one), in settings.json's `moduleSettings`: read `{context, settings}` (`{}` when none are saved) or save a JSON object (`{}` clears). The module validates it (400 with the reason). Only modules with settings (today `hubble`); others answer 404. Allowed in read-only mode: it changes k8sman's settings, not the cluster |
+| GET/PUT | `/api/settings/modules` | integrations the user turned off, in settings.json: read or save `{disabled: [ids]}`. Ids: `argocd`, `argoworkflows`, `helm`, `gpus`, `prometheus`, `gateway`, `hubble` (backend modules) and UI-only ones (`metrics`, `addons`). A turned-off module's endpoints (`/api/argocd/*`, `/api/argowf/*`, `/api/helm/*`, `/api/gpu`, `/api/prom/*`, `/api/gateway/*`, `/api/hubble/*`) answer 404 with `reason: "ModuleDisabled"`, its actions are not offered, and the overview skips its checks. Works without a cluster connection |
+| GET/PUT | `/api/settings/modules/{id}[?context=]` | a module's own settings for a kube context (default: the current one), in settings.json's `moduleSettings`: read `{context, settings}` (`{}` when none are saved) or save a JSON object (`{}` clears). The module validates it (400 with the reason). Only modules with settings (`hubble`, `argocd`); others answer 404. Modules whose settings hold a secret show a redacted form on read and merge a partial body on write (Argo CD, below). Allowed in read-only mode: it changes k8sman's settings, not the cluster |
 | POST | `/api/columns/preview[?limit=]` | body `{columns}`: evaluates unsaved columns against live objects and returns a table |
 | WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. With `namespaces`, `{type:"PARTIAL_ERROR", namespace, error, reason, code}` reports a namespace of the set that can't be watched (e.g. Forbidden) while the socket stays open for the others. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true`. `columns=<JSON array>` renders the rows through those columns instead of the kind's (a saved view's own columns; invalid queries are a 400). With `batch=true` the server may also send `{type:"BATCH",events:[{type,row},…]}`: deltas from a ~75ms window, in order (apply all, then redraw once). See [Shared watches](#shared-watches) |
 | WS | `/api/logs` | `namespace`, `pod`, `container`, `tailLines` (default 500, `-1` = all), `previous`, `timestamps`, `sinceSeconds`, `follow` (default true). Sends frames `{line}`, ending with `{eof:true}` or `{error}` |
@@ -507,10 +507,11 @@ for errors from the Kubernetes API itself (such as a forbidden `services/proxy`)
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/argocd/status[?namespace=&refresh=1]` | `{context, found, reachable, server?:{namespace, service, port, scheme, rootPath?, version}, auth: none/configured/session, authValid?, username?, initialAdminAvailable, error?}`. `namespace` is the Application's. Checks the token with `/api/v1/session/userinfo`. Discovery is cached for 30s (10s on failure) |
-| POST | `/api/argocd/auth` | body `{token, context?, namespace?}` (context defaults to the current one; a pasted `Bearer ` prefix is dropped). Saves the token per kube context in `~/.config/k8sman/settings.json` (mode 0600) and drops any session. A token Argo rejects is not saved (401). Returns the status |
+| GET | `/api/argocd/status[?namespace=&refresh=1]` | `{context, crd, found, reachable, server?:{namespace, service, port, scheme, rootPath?, version}, auth: none/configured/session, authValid?, username?, initialAdminAvailable, error?}`. `crd` is whether the Application CRD is served; when it is false nothing else is looked up. `namespace` is the Application's. Checks the token with `/api/v1/session/userinfo`. Discovery is cached for 30s (10s on failure) |
+| POST | `/api/argocd/auth` | body `{token, context?, namespace?}` (context defaults to the current one; a pasted `Bearer ` prefix is dropped). Saves the token per kube context in `~/.config/k8sman/settings.json` (mode 0600, `moduleSettings.argocd[context]`) and drops any session. A token Argo rejects is not saved (401). Returns the status |
 | DELETE | `/api/argocd/auth[?context=&namespace=]` | forget the saved token and the session for the context. Returns the status |
 | POST | `/api/argocd/auth/initial-admin` | body `{namespace?}`. Opt-in only (the UI asks first): reads the password from `<argo ns>/argocd-initial-admin-secret` with your kube RBAC, `POST /api/v1/session` as `admin`, and keeps the session token in memory for this context. The password is never stored. 404/403 `NoInitialAdmin` when the Secret is missing or unreadable, 401 when the password was changed. A session takes precedence over a saved token until it is cleared or expires |
+| GET/PUT | `/api/settings/modules/argocd[?context=]` | the generic module-settings endpoint. Saved per context as `{token?, useCli?}` (at most one; choosing one clears the other). GET never returns the token: `{useCli?, tokenSet?}`. PUT takes `{token?, useCli?}`: a field that is present replaces the saved one (`token: ""` removes it), absent fields are kept, `{}` clears both; no check against Argo (use `POST /api/argocd/auth` for that). Settings from releases that kept `argocdTokens` / `argocdUseCli` at the top of settings.json are moved here when the file is opened, and the old fields are dropped (a context that already has `moduleSettings.argocd` keeps it) |
 | GET | `/api/argocd/diff?name=[&namespace=]` | Argo's `GET /api/v1/applications/{name}/managed-resources?appNamespace=`, converted: `{resources:[{group, kind, namespace?, name, status: Synced/OutOfSync, hook, requiresPruning, target: yaml/null, live: yaml/null}], server, auth}`. Out-of-sync resources come first. It compares `normalizedLiveState` with `predictedLiveState` when Argo predicted one (the diff the Argo UI shows), else `liveState` with `targetState`. Removed noise: `status`, `metadata.managedFields`, `resourceVersion`, `uid`, `generation`, `creationTimestamp`, `selfLink`, and the annotations `kubectl.kubernetes.io/last-applied-configuration` and `deployment.kubernetes.io/revision`. A null `target` means "to be pruned" and a null `live` means "to be created". Secret data arrives masked by Argo |
 
 ## Argo Workflows (argo-server)
@@ -529,11 +530,20 @@ those two actions are unavailable. Tokens are never returned or logged.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/argowf/status[?refresh=1]` | `{context, found, reachable, server?:{namespace, service, port, scheme, version?}, auth: server/client/"", subject?, available, error?}`. Cached per context for 30s (10s when unavailable). Read-only |
+| GET | `/api/argowf/status[?refresh=1]` | `{context, crd, found, reachable, server?:{namespace, service, port, scheme, version?}, auth: server/client/"", subject?, available, error?}`. `crd` is whether the Workflow CRD is served; when false, argo-server isn't looked for. Cached per context for 30s (10s when unavailable). Read-only |
 
 The Health overview reports `workflowFailed` issues: Workflows that failed in
 the last 24h, one per CronWorkflow / WorkflowTemplate (the latest failure,
 with a count); critical unless a later run of the same origin succeeded.
+
+## Gateway API status
+
+Gateway API objects are read through the generic resource endpoints. One
+small endpoint backs the Integrations dialog.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/gateway/status` | `{crd, classes: [{name, controller, accepted}]}`. `crd` is whether the Gateway API CRDs are served; `classes` are the GatewayClasses (one direct list, no watch) with their controller and whether it accepted the class. Read-only |
 
 ## Cilium Hubble
 

@@ -238,4 +238,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - Integrations you don't use (Argo CD, Argo Workflows, Helm, GPUs,
   Prometheus, Gateway API, Metrics, Add-ons) can be turned off in
   **Customise Sidebar → Integrations…**: their pages, panels, palette
-  entries and overview checks go away.
+  entries and overview checks go away. The dialog also says how each
+  integration stands on the current cluster (for example "2 GPU nodes ·
+  DCGM metrics", "using kubectl only", the Prometheus instance found,
+  metrics-server available or not), checked once per cluster after the
+  first table appears, and opens the settings of those that have some:
+  Hubble's relay, and Argo CD's sign-in (token, argocd CLI login or initial
+  admin password).
