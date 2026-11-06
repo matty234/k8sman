@@ -26,6 +26,7 @@ import 'resource_table.dart';
 import 'security/security_view.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
+import 'keyboard_help.dart';
 import 'keys.dart';
 
 const _navWidth = 232.0;
@@ -42,12 +43,19 @@ class _ShellState extends State<Shell> {
 
   void _palette() => showCommandPalette(context);
 
-  /// `:` opens command mode (k9s-style), unless the user is typing
+  /// `:` opens command mode (k9s-style) and `?` the key help, unless the user is typing
   /// somewhere. Not a shortcut binding: a matched shortcut always consumes
   /// the key, which would swallow ':' in text fields and terminals.
   KeyEventResult _commandMode(FocusNode _, KeyEvent e) {
-    if (e is! KeyDownEvent || e.character != ':' || textEntryFocused) return KeyEventResult.ignored;
-    showCommandPalette(context, command: true);
+    if (e is! KeyDownEvent || textEntryFocused) return KeyEventResult.ignored;
+    switch (e.character) {
+      case ':':
+        showCommandPalette(context, command: true);
+      case '?':
+        showKeyboardHelp(context);
+      default:
+        return KeyEventResult.ignored;
+    }
     return KeyEventResult.handled;
   }
   late final AppState _app;
