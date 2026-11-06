@@ -23,7 +23,9 @@ class YamlEditorTab extends StatefulWidget {
   /// Live resourceVersion from the sidebar's watch — used to refresh the
   /// view and to detect concurrent changes while editing.
   final String resourceVersion;
-  const YamlEditorTab({super.key, required this.target, required this.resourceVersion});
+  /// Bumped to ask for edit mode (and focus in the editor) if allowed.
+  final int editRequest;
+  const YamlEditorTab({super.key, required this.target, required this.resourceVersion, this.editRequest = 0});
 
   @override
   State<YamlEditorTab> createState() => _YamlEditorTabState();
@@ -50,10 +52,15 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
   ApiClient get _api => context.read<ApiClient>();
   DetailTarget get _t => widget.target;
 
+  final _editorFocus = FocusNode();
+
+  bool get _canEdit => !context.read<AppState>().readOnly && _t.type.can('update');
+
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.editRequest > 0 && _canEdit) _editing = true;
+    _load().then((_) => _editing && widget.editRequest > 0 && mounted ? _editorFocus.requestFocus() : null);
     _controller.addListener(_onEdit);
   }
 
@@ -62,6 +69,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
     _controller.removeListener(_onEdit);
     _controller.dispose();
     _scroll.dispose();
+    _editorFocus.dispose();
     super.dispose();
   }
 
@@ -100,6 +108,10 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
   @override
   void didUpdateWidget(covariant YamlEditorTab old) {
     super.didUpdateWidget(old);
+    if (widget.editRequest != old.editRequest && !_editing && _canEdit) {
+      _startEditing().then((_) => mounted ? _editorFocus.requestFocus() : null);
+      return;
+    }
     if (old.resourceVersion == widget.resourceVersion || widget.resourceVersion.isEmpty) return;
     if (_editing) {
       if (widget.resourceVersion != _baseRv) setState(() => _serverChanged = true);
@@ -299,6 +311,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
     return CodeEditor(
       controller: _controller,
       scrollController: _scroll,
+      focusNode: _editorFocus,
       readOnly: !_editing,
       wordWrap: false,
       style: CodeEditorStyle(

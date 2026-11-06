@@ -21,7 +21,13 @@ import '../util/k8s.dart';
 import 'cluster_error_view.dart';
 import 'column_editor.dart';
 import 'resource_nav.dart' show showKindMenu;
+import '../actions/actions.dart' show ResourceAction;
+import '../panels/registry.dart';
+import 'detail/detail_sidebar.dart' show resourceActionsFor;
+import 'keyboard_help.dart';
+import 'logs/open_logs.dart' show kLogsActionId;
 import 'row_context_menu.dart';
+import 'terminal/open_terminal.dart' show kTerminalActionId;
 import 'theme.dart';
 import 'widgets/common.dart';
 import 'table_filter_field.dart';
@@ -55,7 +61,7 @@ class _TableBody extends StatefulWidget {
 class _TableBodyState extends State<_TableBody> {
   final _hScroll = ScrollController();
   final _vScroll = ScrollController();
-  final _focus = FocusNode();
+  FocusNode get _focus => context.read<TableController>().bodyFocus;
   Timer? _ageTicker;
 
   static const _rowHeight = 28.0;
@@ -72,7 +78,6 @@ class _TableBodyState extends State<_TableBody> {
     _ageTicker?.cancel();
     _hScroll.dispose();
     _vScroll.dispose();
-    _focus.dispose();
     _bulkProgress.dispose();
     super.dispose();
   }
@@ -138,6 +143,8 @@ class _TableBodyState extends State<_TableBody> {
                                     ? _EmptyTable(controller: tc)
                                     : Focus(
                                         focusNode: _focus,
+                                        // Keys work without a click first; never steals from a focused field.
+                                        autofocus: true,
                                         onKeyEvent: (node, e) => _onKey(e, rows, app),
                                         child: Scrollbar(
                                           controller: _vScroll,
@@ -313,8 +320,8 @@ class _TableBodyState extends State<_TableBody> {
   static bool _isInspected(AppState app, ResourceType type, TableRowData row) =>
       app.detail?.type == type && app.detail?.name == row.name && app.detail?.namespace == (type.namespaced ? row.namespace : null);
 
-  void _open(AppState app, ResourceType type, TableRowData row) =>
-      app.openDetail(DetailTarget(type: type, name: row.name, namespace: type.namespaced ? row.namespace : null));
+  void _open(AppState app, ResourceType type, TableRowData row, {DetailTab? tab}) =>
+      app.openDetail(DetailTarget(type: type, name: row.name, namespace: type.namespaced ? row.namespace : null), tab: tab);
 
   /// Plain click: select just this row and inspect it. ⌘-click toggles it
   /// in the selection; ⇧-click selects the range from the anchor.
@@ -406,15 +413,96 @@ class _TableBodyState extends State<_TableBody> {
     }
   }
 
-  /// ↑/↓ move the selection (and the inspector); ⇧↑/⇧↓ extend it; ⌘A
-  /// selects every visible row; Esc clears a multi-selection, else closes
-  /// the inspector; ⌘⌫ deletes the selection.
+  /// Select just row [idx], inspect it and scroll it into view.
+  void _goto(TableController tc, AppState app, List<TableRowData> rows, int idx, {DetailTab? tab}) {
+    tc.selectOnly(rows[idx].uid);
+    _open(app, tc.type, rows[idx], tab: tab);
+    _scrollTo(idx);
+  }
+
+  /// The row single-row keys act on: the cursor, else the inspected row.
+  int _currentIndex(TableController tc, AppState app, List<TableRowData> rows) {
+    final i = tc.cursor == null ? -1 : rows.indexWhere((r) => r.uid == tc.cursor);
+    return i >= 0 ? i : rows.indexWhere((r) => _isInspected(app, tc.type, r));
+  }
+
+  /// Runs the row's resource action [id] (the one labelled [label], if
+  /// given) for l / s / ⇧F / ⌃D, or says why it isn't available.
+  Future<void> _rowAction(TableController tc, AppState app, TableRowData row, String id, String what, {String? label}) async {
+    final api = context.read<ApiClient>();
+    final type = tc.type;
+    final ns = type.namespaced ? row.namespace : null;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    ResourceAction? action;
+    try {
+      final object = await api.object(type.ref, namespace: ns, name: row.name);
+      if (!mounted) return;
+      final target = DetailTarget(type: type, name: row.name, namespace: ns);
+      final actions = resourceActionsFor(app, target, panelFor(type), PanelContext(object: object, type: type, api: api, app: app));
+      action = actions.where((a) => a.id == id && (label == null || a.label == label)).firstOrNull;
+    } catch (_) {}
+    if (!mounted) return;
+    if (action == null) {
+      messenger?.showSnackBar(SnackBar(content: Text('No $what for ${type.kind}'), duration: const Duration(seconds: 2)));
+      return;
+    }
+    await action.run(context);
+  }
+
+  /// Single-key bindings (k9s style), only without ⌘/Ctrl/Alt; see
+  /// [showKeyboardHelp] for the list. Returns whether [e] was one.
+  bool _letterKey(KeyEvent e, List<TableRowData> rows, AppState app, TableController tc) {
+    final shift = HardwareKeyboard.instance.isShiftPressed;
+    final key = e.logicalKey;
+    final repeat = e is KeyRepeatEvent;
+    bool did(VoidCallback f) {
+      f();
+      return true;
+    }
+
+    final idx = _currentIndex(tc, app, rows);
+    final row = idx < 0 ? null : rows[idx];
+
+    void step(int d) => _goto(tc, app, rows, ((idx < 0 && d < 0 ? 0 : idx) + d).clamp(0, rows.length - 1));
+    void inspect(DetailTab? tab) => row == null ? _goto(tc, app, rows, 0, tab: tab) : _goto(tc, app, rows, idx, tab: tab);
+    void act(String id, String what) => row == null
+        ? ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Select a row first'), duration: Duration(seconds: 2)))
+        : _rowAction(tc, app, row, id, what);
+
+    if (!shift) {
+      if (key == LogicalKeyboardKey.keyJ) return did(() => step(1));
+      if (key == LogicalKeyboardKey.keyK) return did(() => step(-1));
+      if (key == LogicalKeyboardKey.keyG) return did(() => _goto(tc, app, rows, 0));
+      if (key == LogicalKeyboardKey.slash) return did(() => tc.filterFocus.requestFocus());
+    }
+    if (shift && key == LogicalKeyboardKey.keyG) return did(() => _goto(tc, app, rows, rows.length - 1));
+    if (repeat) return false;
+    if (shift && key == LogicalKeyboardKey.slash) return did(() => showKeyboardHelp(context));
+    if (shift && key == LogicalKeyboardKey.keyF) return did(() => act('port-forward', 'port-forward'));
+    if (shift) return false;
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) return did(() => inspect(null));
+    if (key == LogicalKeyboardKey.keyD) return did(() => inspect(DetailTab.overview));
+    if (key == LogicalKeyboardKey.keyY) return did(() => inspect(DetailTab.yaml));
+    if (key == LogicalKeyboardKey.keyE) return did(() => inspect(DetailTab.edit));
+    if (key == LogicalKeyboardKey.keyL) return did(() => act(kLogsActionId, 'logs'));
+    if (key == LogicalKeyboardKey.keyS) return did(() => act(kTerminalActionId, 'shell'));
+    return false;
+  }
+
+  /// ↑/↓ (or j/k) move the selection (and the inspector); ⇧↑/⇧↓ extend it;
+  /// ⌘A selects every visible row; Esc clears a multi-selection, else closes
+  /// the inspector; ⌘⌫ / ⌃D delete the selection; plus [_letterKey]s.
   KeyEventResult _onKey(KeyEvent e, List<TableRowData> rows, AppState app) {
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
     final tc = context.read<TableController>();
     final keys = HardwareKeyboard.instance;
     final meta = keys.isMetaPressed || keys.isControlPressed;
     final key = e.logicalKey;
+    // k9s' ⌃D (literal Control on every platform) deletes, like ⌘⌫.
+    final ctrlD = keys.isControlPressed && !keys.isMetaPressed && !keys.isAltPressed && key == LogicalKeyboardKey.keyD;
+    if (!meta && !keys.isAltPressed) {
+      if (_letterKey(e, rows, app, tc)) return KeyEventResult.handled;
+    }
     if (meta && key == LogicalKeyboardKey.keyA) {
       tc.selectAll();
       return KeyEventResult.handled;
@@ -425,6 +513,17 @@ class _TableBodyState extends State<_TableBody> {
       } else {
         tc.clearSelection();
         app.closeDetail();
+      }
+      return KeyEventResult.handled;
+    }
+    if (ctrlD && e is KeyDownEvent) {
+      final sel = tc.selectedRows;
+      final i = _currentIndex(tc, app, rows);
+      if (sel.length >= 2) {
+        final del = bulkActionsFor(app, tc.type, sel).where((a) => a.action == 'delete' && a.label != 'Restart pods').firstOrNull;
+        if (del != null) _runBulk(del, sel);
+      } else if (i >= 0) {
+        _rowAction(tc, app, rows[i], 'delete', 'delete', label: 'Delete');
       }
       return KeyEventResult.handled;
     }

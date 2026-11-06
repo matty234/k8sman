@@ -19,13 +19,24 @@ class TableFilterField extends StatefulWidget {
 
 class _TableFilterFieldState extends State<TableFilterField> {
   late final _text = TextEditingController(text: widget.controller.filter);
-  final _focus = FocusNode(debugLabel: 'table-filter');
+  FocusNode get _focus => widget.controller.filterFocus;
   List<FilterSuggestion> _shown = const [];
 
   @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocus);
+  }
+
+  /// `/` (or a click) into the box selects its text, ready to retype.
+  void _onFocus() {
+    if (_focus.hasFocus) _text.selection = TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+  }
+
+  @override
   void dispose() {
+    _focus.removeListener(_onFocus);
     _text.dispose();
-    _focus.dispose();
     super.dispose();
   }
 
@@ -59,6 +70,16 @@ class _TableFilterFieldState extends State<TableFilterField> {
         skipTraversal: true,
         // Tab takes the highlighted suggestion, like Enter.
         onKeyEvent: (_, e) {
+          // Esc with no suggestions open hands focus back to the table; with
+          // some open, the first Esc just closes them.
+          if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.escape && focus.hasFocus) {
+            if (_shown.isEmpty) {
+              widget.controller.bodyFocus.requestFocus();
+              return KeyEventResult.handled;
+            }
+            _shown = const [];
+            return KeyEventResult.ignored;
+          }
           if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.tab && _shown.isNotEmpty && focus.hasFocus && !HardwareKeyboard.instance.isShiftPressed) {
             onSubmitted();
             return KeyEventResult.handled;
@@ -72,7 +93,10 @@ class _TableFilterFieldState extends State<TableFilterField> {
           decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Filter  (or status=…, age<1h)'),
           style: theme.textTheme.bodyMedium,
           onChanged: widget.controller.setFilter,
-          onSubmitted: (_) => onSubmitted(),
+          onSubmitted: (_) {
+            if (_shown.isEmpty) widget.controller.bodyFocus.requestFocus();
+            onSubmitted();
+          },
         ),
       ),
       optionsViewBuilder: (context, onSelected, options) => _SuggestionList(options: options.toList(), onSelected: onSelected),

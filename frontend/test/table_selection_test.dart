@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
+import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/state/table_controller.dart';
 import 'package:provider/provider.dart';
 
@@ -256,5 +257,22 @@ void main() {
     await tester.pump();
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('3 deployments selected'), findsNothing);
+  });
+
+  testWidgets('j/k move the selection, / focuses the filter, y asks for the YAML tab', (tester) async {
+    final app = await pumpTable(tester, apiWith(names), deployType);
+    final tc = controllerOf(tester);
+
+    await press(tester, LogicalKeyboardKey.keyJ);
+    await press(tester, LogicalKeyboardKey.keyJ);
+    expect(selectedNames(tester), {'cache'});
+    await press(tester, LogicalKeyboardKey.keyK);
+    expect(app.detail?.name, 'api');
+
+    await press(tester, LogicalKeyboardKey.keyY);
+    expect(app.takeDetailTab(), DetailTab.yaml);
+
+    await press(tester, LogicalKeyboardKey.slash);
+    expect(tc.filterFocus.hasFocus, isTrue);
   });
 }
