@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../actions/actions.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../modules/modules.dart' show moduleInspectorTabs, moduleStatuses;
 import '../../panels/registry.dart';
 import '../../state/app_state.dart';
 import '../../state/table_controller.dart';
@@ -58,6 +59,13 @@ class _LiveObjectState extends State<_LiveObject> {
   void initState() {
     super.initState();
     _subscribe();
+    // Module tabs can depend on a module's detection (e.g. Hubble's Flows
+    // tab only where Hubble is installed).
+    moduleStatuses.addListener(_onModuleStatus);
+  }
+
+  void _onModuleStatus() {
+    if (mounted) setState(() {});
   }
 
   void _subscribe() {
@@ -109,6 +117,7 @@ class _LiveObjectState extends State<_LiveObject> {
 
   @override
   void dispose() {
+    moduleStatuses.removeListener(_onModuleStatus);
     _retry?.cancel();
     _sub?.cancel();
     super.dispose();
@@ -123,7 +132,7 @@ class _LiveObjectState extends State<_LiveObject> {
     context.select<AppState, Set<String>>((a) => a.disabledModules);
     final panel = panelFor(t.type, app);
     final ctx = obj == null ? null : PanelContext(object: obj, type: t.type, api: context.read<ApiClient>(), app: app);
-    final extraTabs = ctx == null ? const <PanelTab>[] : panel.tabs(ctx);
+    final extraTabs = ctx == null ? const <PanelTab>[] : [...panel.tabs(ctx), ...moduleInspectorTabs(ctx)];
 
     final actions = ctx == null || _deleted ? const <ResourceAction>[] : _actionsFor(app, t, panel, ctx);
     final primary = actions.where((a) => !a.destructive).take(3).toList();

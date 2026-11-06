@@ -6,7 +6,9 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../api/client.dart';
 import '../state/app_state.dart';
+import '../state/startup_gate.dart';
 import '../ui/pages.dart';
 import 'addons_module.dart';
 import 'argocd_module.dart';
@@ -84,3 +86,59 @@ List<AppPage> enabledPages(AppState app) => [for (final p in allPages) if (pageE
 
 /// Sidebar glyphs the modules give their kinds.
 final Map<String, IconData> moduleKindIcons = {for (final m in builtInModules) ...m.kindIcons};
+
+/// Inspector tabs the enabled modules add for [ctx]'s object.
+List<PanelTab> moduleInspectorTabs(PanelContext ctx) => [
+      for (final m in enabledModules(ctx.app)) ...m.inspectorTabs(ctx),
+    ];
+
+/// The results of [AppModule.detect], per module and kube context: each
+/// runs once, on first ask, and listeners hear when a result lands. Ask
+/// with [of]; [refresh] detects again (e.g. after the settings changed).
+class ModuleStatuses extends ChangeNotifier {
+  final Map<(ApiClient, String, String), ModuleStatus> _done = {};
+  final Set<(ApiClient, String, String)> _running = {};
+
+  /// Module [m]'s status on kube context [contextName]: the result, or
+  /// [ModuleStatus.checking] while detection (started now if it isn't
+  /// running) is under way. Null when [m] has nothing to detect.
+  ModuleStatus? of(AppModule m, ApiClient api, String contextName) {
+    final detect = m.detect;
+    if (detect == null) return null;
+    final key = (api, m.id, contextName);
+    final done = _done[key];
+    if (done != null) return done;
+    if (_running.add(key)) {
+      // Never synchronously ([of] is called from build methods), and only
+      // once the first table has painted, like other non-critical fetches.
+      StartupGate.ready.then((_) async {
+        ModuleStatus s;
+        try {
+          s = await detect(api);
+        } catch (e) {
+          s = ModuleStatus(ModuleState.error, '$e');
+        }
+        _running.remove(key);
+        _done[key] = s;
+        notifyListeners();
+      });
+    }
+    return ModuleStatus.checking;
+  }
+
+  /// Forgets [m]'s result for [contextName] and detects again.
+  void refresh(AppModule m, ApiClient api, String contextName) {
+    _done.remove((api, m.id, contextName));
+    notifyListeners();
+  }
+
+  /// Sets a result directly (tests and screenshots).
+  @visibleForTesting
+  void debugSet(AppModule m, ApiClient api, String contextName, ModuleStatus s) {
+    _done[(api, m.id, contextName)] = s;
+    notifyListeners();
+  }
+}
+
+/// The app's [ModuleStatuses].
+final moduleStatuses = ModuleStatuses();

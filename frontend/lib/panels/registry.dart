@@ -9,7 +9,6 @@ import 'cluster/index.dart';
 import 'config/index.dart';
 import 'custom/index.dart';
 import 'network/index.dart';
-import 'panel.dart';
 import 'pod/index.dart';
 import 'storage/index.dart';
 import 'workloads/index.dart';

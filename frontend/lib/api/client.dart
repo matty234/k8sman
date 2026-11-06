@@ -294,6 +294,15 @@ class ApiClient {
 
   Future<void> putDisabledModules(Set<String> ids) => _send('PUT', 'settings/modules', const {}, {'disabled': [...ids]..sort()});
 
+  /// Module [id]'s own settings for the current kube context ({} when none
+  /// are saved). See `Configurable` in backend/internal/server/module.go.
+  Future<Json> getModuleSettings(String id) async =>
+      Map<String, dynamic>.from((await _get('settings/modules/${Uri.encodeComponent(id)}') as Json)['settings'] as Map? ?? const {});
+
+  /// Saves module [id]'s settings for the current kube context ({} clears).
+  /// The module validates them: a bad value is an [ApiException] (400).
+  Future<void> putModuleSettings(String id, Json settings) => _send('PUT', 'settings/modules/${Uri.encodeComponent(id)}', const {}, settings);
+
   // ---- columns ----
 
   Future<ColumnsConfig> getColumns(ResourceRef r) async => ColumnsConfig.fromJson(await _get('columns', r.toQuery()));
@@ -439,6 +448,11 @@ class ApiClient {
     };
     return controller.stream;
   }
+
+  /// A backend WebSocket under /api/[path] whose frames are JSON objects,
+  /// for modules' own streams (e.g. `hubble/flows`). Cancelling the
+  /// subscription closes the socket.
+  Stream<Json> jsonStream(String path, [Map<String, String?> query = const {}]) => _wsStream(_ws(path, query));
 
   /// Live table: a SNAPSHOT, then ADDED/MODIFIED/DELETED rows. Use a
   /// `fieldSelector` of `metadata.name=<name>` with [includeObject] to watch
