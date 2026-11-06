@@ -170,7 +170,7 @@ class _DrainDialogState extends State<_DrainDialog> {
               TextButton(onPressed: _running ? null : () => Navigator.pop(context), child: const Text('Cancel')),
               FilledButton(
                 key: const ValueKey('drain-confirm'),
-                style: FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError),
+                style: destructiveButtonStyle(context),
                 onPressed: _running || blocked ? null : _drain,
                 child: _running
                     ? Row(mainAxisSize: MainAxisSize.min, children: [

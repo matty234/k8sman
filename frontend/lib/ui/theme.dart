@@ -280,23 +280,31 @@ ThemeData buildTheme(Brightness b) {
                 : null),
       ),
     ),
-    textButtonTheme: TextButtonThemeData(style: compactButton.copyWith(foregroundColor: WidgetStatePropertyAll(accent))),
+    textButtonTheme: TextButtonThemeData(
+      style: compactButton.copyWith(
+        foregroundColor: WidgetStatePropertyAll(accent),
+        backgroundBuilder: _pushButton(dark, _Push.secondary),
+        foregroundBuilder: _pushLabel(text),
+      ),
+    ),
+    // Toolbars and panels: quiet tinted fills, no borders. Dialog footers:
+    // native push buttons (see [_pushButton]).
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: compactButton.copyWith(
-        foregroundColor: WidgetStatePropertyAll(text),
-        backgroundColor: WidgetStatePropertyAll(dark ? const Color(0x12FFFFFF) : Colors.white),
-        side: WidgetStatePropertyAll(BorderSide(color: dark ? const Color(0x1FFFFFFF) : const Color(0x26000000), width: 0.8)),
+        foregroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.disabled) ? colors.faint : text),
+        backgroundColor: _tint(text, dark, rest: (0.05, 0.07), hover: (0.08, 0.11), press: (0.12, 0.16)),
+        side: const WidgetStatePropertyAll(BorderSide.none),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        backgroundBuilder: _pushButton(dark, _Push.secondary),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: compactButton.copyWith(
-        backgroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.disabled) ? accent.withValues(alpha: 0.4) : accent),
-        foregroundColor: const WidgetStatePropertyAll(Colors.white),
-        overlayColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.pressed)
-            ? Colors.black.withValues(alpha: 0.12)
-            : s.contains(WidgetState.hovered)
-                ? Colors.white.withValues(alpha: 0.08)
-                : null),
+        backgroundColor: _tint(accent, dark, rest: (0.13, 0.20), hover: (0.19, 0.27), press: (0.25, 0.34)),
+        foregroundColor: WidgetStateProperty.resolveWith((s) => _tintText(accent, dark).withValues(alpha: s.contains(WidgetState.disabled) ? 0.45 : 1)),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        backgroundBuilder: _pushButton(dark, _Push.primary),
+        foregroundBuilder: _pushLabel(Colors.white),
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(style: compactButton.copyWith(elevation: const WidgetStatePropertyAll(0))),
@@ -440,4 +448,85 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 
   @override
   Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) => child;
+}
+
+/// A tinted fill per state, with (light, dark) alphas.
+WidgetStateProperty<Color> _tint(Color c, bool dark, {required (double, double) rest, required (double, double) hover, required (double, double) press}) =>
+    WidgetStateProperty.resolveWith((s) {
+      final a = s.contains(WidgetState.disabled)
+          ? rest
+          : s.contains(WidgetState.pressed)
+              ? press
+              : s.contains(WidgetState.hovered)
+                  ? hover
+                  : rest;
+      return c.withValues(alpha: (dark ? a.$2 : a.$1) * (s.contains(WidgetState.disabled) ? 0.6 : 1));
+    });
+
+/// Text on a tinted fill: the colour, a step darker (light) or lighter (dark).
+Color _tintText(Color c, bool dark) {
+  final hsl = HSLColor.fromColor(c);
+  return hsl.withLightness((hsl.lightness + (dark ? 0.16 : -0.09)).clamp(0.0, 1.0)).toColor();
+}
+
+enum _Push { secondary, primary, destructive }
+
+/// Whether a button sits in a dialog's action row (AlertDialog lays its
+/// actions out in an [OverflowBar]).
+bool _inDialogActions(BuildContext context) =>
+    context.findAncestorWidgetOfExactType<OverflowBar>() != null && context.findAncestorWidgetOfExactType<Dialog>() != null;
+
+/// In dialog footers, paints a macOS push button over the tinted fill: a
+/// soft shadow ring for secondary buttons, a gently graded fill for the
+/// default (and destructive) one. Elsewhere the tinted fill shows as is.
+ButtonLayerBuilder _pushButton(bool dark, _Push kind) => (context, states, child) {
+      if (child == null || !_inDialogActions(context)) return child ?? const SizedBox.shrink();
+      final pressed = states.contains(WidgetState.pressed);
+      final disabled = states.contains(WidgetState.disabled);
+      final List<Color> fill;
+      final Color ring;
+      switch (kind) {
+        case _Push.secondary:
+          final c = dark ? (pressed ? const Color(0xFF6A6B70) : const Color(0xFF5A5B60)) : (pressed ? const Color(0xFFEDEDED) : Colors.white);
+          fill = [c, c];
+          ring = Colors.black.withValues(alpha: dark ? 0.5 : 0.18);
+        case _Push.primary:
+          fill = pressed ? const [Color(0xFF2A88EE), Color(0xFF0068D6)] : const [Color(0xFF3B9BFF), Color(0xFF0A7CF4)];
+          ring = const Color(0x59003CA0);
+        case _Push.destructive:
+          fill = pressed ? const [Color(0xFFEE5249), Color(0xFFD92B22)] : const [Color(0xFFFF6259), Color(0xFFF13A30)];
+          ring = const Color(0x59961408);
+      }
+      final a = disabled ? 0.45 : 1.0;
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [for (final c in fill) c.withValues(alpha: c.a * a)]),
+          border: Border.all(color: ring.withValues(alpha: ring.a * a), width: 0.5),
+          boxShadow: disabled ? null : [BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.3 : 0.14), offset: const Offset(0, 0.5), blurRadius: 1.5)],
+        ),
+        child: child,
+      );
+    };
+
+/// The label colour of a push button in a dialog footer: white on filled
+/// ones, the text colour on secondary ones (text buttons become push buttons).
+ButtonLayerBuilder _pushLabel(Color base) => (context, states, child) {
+      if (child == null || !_inDialogActions(context)) return child ?? const SizedBox.shrink();
+      final color = base.withValues(alpha: states.contains(WidgetState.disabled) ? 0.6 : 1);
+      return IconTheme.merge(data: IconThemeData(color: color), child: DefaultTextStyle.merge(style: TextStyle(color: color), child: child));
+    };
+
+/// For a destructive [FilledButton] (Delete, Drain…): a soft red tint, or a
+/// red push button in a dialog footer.
+ButtonStyle destructiveButtonStyle(BuildContext context) {
+  final theme = Theme.of(context);
+  final dark = theme.brightness == Brightness.dark;
+  final red = theme.colorScheme.error;
+  return ButtonStyle(
+    backgroundColor: _tint(red, dark, rest: (0.10, 0.15), hover: (0.15, 0.21), press: (0.21, 0.28)),
+    foregroundColor: WidgetStateProperty.resolveWith((s) => _tintText(red, dark).withValues(alpha: s.contains(WidgetState.disabled) ? 0.45 : 1)),
+    backgroundBuilder: _pushButton(dark, _Push.destructive),
+    foregroundBuilder: _pushLabel(Colors.white),
+  );
 }

@@ -158,7 +158,7 @@ Future<bool?> confirmAction(
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           FilledButton(
             autofocus: true, // Return confirms, Esc cancels.
-            style: destructive ? FilledButton.styleFrom(backgroundColor: theme.colorScheme.error, foregroundColor: theme.colorScheme.onError) : null,
+            style: destructive ? destructiveButtonStyle(context) : null,
             onPressed: () => Navigator.pop(context, true),
             child: Text(confirmLabel ?? 'Confirm'),
           ),
