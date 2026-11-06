@@ -82,7 +82,6 @@ class _IntegrationsDialogState extends State<IntegrationsDialog> {
                       : null,
                   title: Text.rich(TextSpan(children: [
                     TextSpan(text: m.name),
-                    if (status == null && !m.isAvailable(app)) TextSpan(text: '   not on this cluster', style: muted),
                     if (m.requires.isNotEmpty) TextSpan(text: '   needs ${m.requires.map(_nameOf).join(', ')}', style: muted),
                   ])),
                   subtitle: status == null ? null : _StatusLine(status),

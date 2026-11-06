@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../panels/panel.dart';
-import '../state/app_state.dart';
 import '../ui/pages.dart';
 
 export '../panels/panel.dart' show PanelContext, PanelTab, ResourcePanel;
@@ -81,16 +80,11 @@ abstract class AppModule {
   /// Sidebar glyphs for the module's kinds (`group/Kind` → icon).
   Map<String, IconData> get kindIcons => const {};
 
-  /// Whether the current cluster has what the module works with (e.g. its
-  /// CRDs are served). Only informational: a module works the same either
-  /// way, its panels and groups simply have nothing to show.
-  bool isAvailable(AppState app) => true;
-
-  /// Asks the backend how the module stands on the current cluster, for
-  /// modules that can't tell from discovery alone (a service to find and
-  /// reach). Run once per kube context, on first use, and cached: read it
-  /// through [moduleStatuses] (modules.dart), which the Integrations dialog
-  /// shows. Null = nothing to detect.
+  /// Asks the backend how the module stands on the current cluster: its
+  /// CRDs or service found, and whether it works (see [ModuleStatus]). Run
+  /// once per kube context, on first use, and cached: read it through
+  /// [moduleStatuses] (modules.dart), which the Integrations dialog shows.
+  /// Null = nothing to detect.
   Future<ModuleStatus> Function(ApiClient api)? get detect => null;
 
   /// Inspector tabs the module adds to objects of any kind, including
