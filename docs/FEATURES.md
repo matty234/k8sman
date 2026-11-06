@@ -198,8 +198,30 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   **Copy for AI**.
 - **Add-ons**: one-click Helm installs of metrics-server, the Prometheus
   stack, Trivy Operator, Argo CD, Envoy Gateway and cert-manager.
-- **Hubble** (on clusters running Cilium with Hubble Relay): live network
-  flows for the cluster or a namespace, filtered by verdict, protocol, port
+- **Hubble** (on clusters running Cilium with Hubble Relay): a **Map** of
+  which namespaces talk to each other and which receive from and send to
+  the world, over the last 1, 5 or 15 minutes. The cluster is drawn as a
+  disc with a lane per namespace: chords inside join namespaces that talk
+  (thicker for more flows, red for drops, with an arrowhead at the
+  receiving end), and rays crossing the boundary are traffic to the world
+  (blue, labelled with the top destination's DNS name or IP) and from it
+  (violet); Cilium Ingress has its own lane at the top, as the door most
+  outside traffic comes through. Hover for counts, ports, workloads, world
+  peers and drop reasons; click a namespace to focus it and open it in the
+  inspector, or an edge for its details, **Can A reach B?** prefilled, and
+  the namespace's flows. A side panel lists the edges of the cluster:
+  namespaces reached from the world (via Ingress or directly, with ports),
+  namespaces calling out (with their destinations), dropping links and the
+  busiest ones. A **Matrix** view shows the same counts as a grid (sources
+  down, destinations across, the world first). Filter namespaces by name
+  (matches and their neighbours stay), show the host and other nodes, the
+  API server or other reserved identities (hidden by default, with their
+  volume on the toggle), and turn on **Live** to see dots move along the
+  links that carried traffic in the last half minute (off by default, and
+  never while the system asks to reduce motion). Past what fits, the
+  quietest namespaces share one lane. The backend counts flows while the map
+  is open (the relay itself only holds seconds) and stops a minute after
+  you leave it. Then live network flows for the cluster or a namespace, filtered by verdict, protocol, port
   and direction at the relay; **Drops**, grouped live by source, destination
   and reason (with the denying policy where Hubble knows it); and **Can A
   reach B?**, which says whether traffic between two endpoints was forwarded

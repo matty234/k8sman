@@ -175,6 +175,12 @@ machine.
 
 ### Cilium Hubble
 
+- A **Map** of who talks to whom: namespaces around a disc, chords between
+  those that talk, and rays crossing the edge for traffic to and from the
+  world (and through Cilium Ingress), over the last 1, 5 or 15 minutes.
+  Drops show in red. Hover for ports, workloads and world destinations;
+  click through to **Can A reach B?** or the flows. A matrix shows the same
+  counts as a grid.
 - Live network flows from Hubble Relay: for the whole cluster or a
   namespace on the Hubble page, and for one object in a **Flows** tab on
   Pods, Services, Namespaces and workloads. Drops stand out with their
