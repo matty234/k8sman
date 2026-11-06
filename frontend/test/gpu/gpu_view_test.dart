@@ -114,11 +114,31 @@ void main() {
     expect(find.text('gpu-node-a'), findsOneWidget);
     expect(find.text('No exporter'), findsOneWidget);
     expect(find.text('Waiting for GPUs'), findsOneWidget);
-    expect(find.textContaining('1 allocated GPU idle'), findsOneWidget);
+    expect(find.byTooltip('1 allocated GPU idle for the last hour'), findsOneWidget);
     expect(find.text('ml/trainer-0'), findsWidgets);
     // One range query feeds every sparkline.
     expect(prom.queries.where((q) => q.contains('by (UUID)')), isNotEmpty);
     await tester.pumpWidget(const SizedBox()); // dispose the poll timer
+  });
+
+  testWidgets('GPUs table: device sub-rows collapse and expand with their node', (tester) async {
+    await loadRealFonts();
+    addTearDown(tester.view.reset);
+    await _pumpView(tester, const Size(1200, 800));
+    await saveScreenshot(tester, 'gpus-1200x800');
+    expect(find.text('GPU 1'), findsOneWidget);
+    expect(find.text('Idle'), findsOneWidget);
+    expect(find.text('4 × Tesla V100 SXM2 32GB · no live stats'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.expand_more).at(1)); // gpu-node-b's chevron
+    await tester.pump();
+    expect(find.text('GPU 1'), findsNothing);
+    await tester.tap(find.byIcon(Icons.chevron_right).first);
+    await tester.pump();
+    expect(find.text('GPU 1'), findsOneWidget);
+    await _pumpView(tester, const Size(800, 600));
+    expect(tester.takeException(), isNull);
+    await saveScreenshot(tester, 'gpus-800x600');
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('node panel shows the GPU section and history; pod panel its GPUs', (tester) async {

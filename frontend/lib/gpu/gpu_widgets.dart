@@ -52,7 +52,7 @@ class GpuDeviceTile extends StatelessWidget {
           ],
           for (final h in d.health) ...[
             const SizedBox(width: 6),
-            Tooltip(message: h, child: StatusBadge(_shortHealth(h), severity: Severity.error, dense: true)),
+            Tooltip(message: h, child: StatusBadge(shortHealth(h), severity: Severity.error, dense: true)),
           ],
           const SizedBox(width: 8),
           Expanded(
@@ -117,7 +117,7 @@ class GpuDeviceTile extends StatelessWidget {
     );
   }
 
-  static String _shortHealth(String h) {
+  static String shortHealth(String h) {
     final l = h.toLowerCase();
     if (l.startsWith('xid')) return h.split(' ').take(2).join(' ');
     if (l.contains('remapping failed')) return 'Remap failed';
