@@ -1,7 +1,8 @@
 // Package settings persists small app preferences (the chosen kubeconfig,
 // recently used kubeconfigs, the last context per kubeconfig, the sidebar
-// layout, read-only contexts, table preferences, turned-off integrations
-// and saved views) in ~/.config/k8sman/settings.json.
+// layout, read-only contexts, table preferences, turned-off integrations,
+// saved views and integrations' own settings) in
+// ~/.config/k8sman/settings.json.
 package settings
 
 import (
@@ -57,6 +58,10 @@ type Settings struct {
 	// LaunchView is the id of a view to open at launch instead of
 	// reconnecting to the last context ("" = reconnect).
 	LaunchView string `json:"launchView,omitempty"`
+	// ModuleSettings holds integration modules' own settings: module id →
+	// kube context → the module's JSON object. Opaque here; each module
+	// validates and decodes its own (see ModuleSettings).
+	ModuleSettings map[string]map[string]json.RawMessage `json:"moduleSettings,omitempty"`
 }
 
 // ViewVersion is the view record version this build writes.
@@ -262,6 +267,7 @@ func (st *Store) Get() Settings {
 	out.Tables = cloneTables(st.s.Tables)
 	out.DisabledModules = slices.Clone(st.s.DisabledModules)
 	out.Views = slices.Clone(st.s.Views)
+	out.ModuleSettings = cloneModuleSettings(st.s.ModuleSettings)
 	return out
 }
 
@@ -282,6 +288,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	next.Tables = cloneTables(st.s.Tables)
 	next.DisabledModules = slices.Clone(st.s.DisabledModules)
 	next.Views = slices.Clone(st.s.Views)
+	next.ModuleSettings = cloneModuleSettings(st.s.ModuleSettings)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -463,6 +470,74 @@ func (st *Store) SetLaunchView(id string) error {
 		return fmt.Errorf("invalid view id %q", id)
 	}
 	return st.Update(func(s *Settings) { s.LaunchView = id })
+}
+
+// ModuleSettings decodes module id's settings for a kube context into v
+// (a pointer to the module's settings struct). It reports whether any were
+// saved; v is left alone when not.
+func (st *Store) ModuleSettings(id, context string, v any) (bool, error) {
+	if st == nil {
+		return false, nil
+	}
+	st.mu.Lock()
+	raw := st.s.ModuleSettings[id][context]
+	st.mu.Unlock()
+	if raw == nil {
+		return false, nil
+	}
+	return true, json.Unmarshal(raw, v)
+}
+
+// RawModuleSettings returns module id's settings for a kube context as
+// saved (nil = none).
+func (st *Store) RawModuleSettings(id, context string) json.RawMessage {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return slices.Clone(st.s.ModuleSettings[id][context])
+}
+
+// SetModuleSettings saves module id's settings (a JSON object) for a kube
+// context; nil or {} removes them.
+func (st *Store) SetModuleSettings(id, context string, raw json.RawMessage) error {
+	if !moduleID.MatchString(id) {
+		return fmt.Errorf("invalid module id %q", id)
+	}
+	var obj map[string]any
+	if raw != nil {
+		if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
+			return fmt.Errorf("module settings must be a JSON object")
+		}
+	}
+	return st.Update(func(s *Settings) {
+		if len(obj) == 0 {
+			delete(s.ModuleSettings[id], context)
+			if len(s.ModuleSettings[id]) == 0 {
+				delete(s.ModuleSettings, id)
+			}
+			if len(s.ModuleSettings) == 0 {
+				s.ModuleSettings = nil
+			}
+			return
+		}
+		if s.ModuleSettings == nil {
+			s.ModuleSettings = map[string]map[string]json.RawMessage{}
+		}
+		if s.ModuleSettings[id] == nil {
+			s.ModuleSettings[id] = map[string]json.RawMessage{}
+		}
+		s.ModuleSettings[id][context] = slices.Clone(raw)
+	})
+}
+
+func cloneModuleSettings(m map[string]map[string]json.RawMessage) map[string]map[string]json.RawMessage {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]map[string]json.RawMessage, len(m))
+	for id, byCtx := range m {
+		out[id] = maps.Clone(byCtx)
+	}
+	return out
 }
 
 // SetLastContext remembers the selected context for a kubeconfig path.

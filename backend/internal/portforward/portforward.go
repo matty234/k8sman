@@ -17,7 +17,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,11 +28,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/portforward"
-	"k8s.io/client-go/transport/spdy"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 )
@@ -439,18 +436,9 @@ func (m *Manager) runOnce(ctx context.Context, f *forward, spec Spec) error {
 		}
 	}()
 
-	req := c.Typed.CoreV1().RESTClient().Post().Resource("pods").Namespace(spec.Namespace).Name(pod.Name).SubResource("portforward")
-	transport, upgrader, err := spdy.RoundTripperFor(c.RESTConfig)
+	dialer, err := podDialer(c, spec.Namespace, pod.Name)
 	if err != nil {
 		return err
-	}
-	spdyDialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, req.URL())
-	// Prefer websockets (newer API servers), fall back to SPDY like kubectl.
-	dialer := spdyDialer
-	if ws, err := portforward.NewSPDYOverWebsocketDialer(req.URL(), c.RESTConfig); err == nil {
-		dialer = portforward.NewFallbackDialer(ws, spdyDialer, func(err error) bool {
-			return httpstream.IsUpgradeFailure(err) || httpstream.IsHTTPSProxyError(err)
-		})
 	}
 
 	stop := make(chan struct{})

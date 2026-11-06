@@ -8,6 +8,7 @@ package overview
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -69,6 +70,19 @@ type Input struct {
 	Routes   []unstructured.Unstructured
 	// Alerts are firing Alertmanager alerts (nil when none is installed).
 	Alerts []prom.Alert
+	// Findings are issues a module worked out itself (e.g. Hubble: relay
+	// unreachable, dropped flows), added as they are.
+	Findings []Finding
+}
+
+// Finding is a module's ready-made issue. Its Category gets a summary tile
+// labelled Label in Section (the module's id is a good section).
+type Finding struct {
+	Issue
+	Label   string
+	Section string
+	// Since is when the problem started (zero = unknown).
+	Since time.Time
 }
 
 // Owner is the top-level controller of an object (Deployment, StatefulSet,
@@ -316,6 +330,10 @@ func Analyze(in Input) *Result {
 	a.argoApps()
 	a.argoWorkflows()
 	a.alerts()
+	for _, f := range in.Findings {
+		f.Issue.since = f.Since
+		a.add(f.Issue)
+	}
 	a.finish()
 	return a.res
 }
@@ -1297,7 +1315,13 @@ func (a *analyzer) finish() {
 			worst[is.Category] = is.Severity
 		}
 	}
-	for _, d := range categoryDefs {
+	defs := categoryDefs
+	for _, f := range a.in.Findings {
+		if !slices.ContainsFunc(defs, func(d categoryDef) bool { return d.id == f.Category }) {
+			defs = append(slices.Clip(defs), categoryDef{f.Category, f.Label, f.Section, f.Severity})
+		}
+	}
+	for _, d := range defs {
 		if n := count[d.id]; n > 0 {
 			a.res.Categories = append(a.res.Categories, Category{ID: d.id, Label: d.label, Section: d.section, Severity: worst[d.id], Count: n})
 		}

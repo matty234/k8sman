@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 
@@ -21,8 +22,9 @@ import (
 // inputs and actions. Core features (tables, logs, exec, port-forwards,
 // nodes, security, RBAC, the editor) are not modules.
 //
-// To add one: implement Module (plus OverviewSource / ActionSource if it
-// needs them) and add it to builtinModules. See docs/DEVELOPMENT.md.
+// To add one: implement Module (plus OverviewSource / ActionSource /
+// Configurable if it needs them) and add it to builtinModules. See
+// docs/DEVELOPMENT.md.
 
 // Module is one built-in integration. The user can turn it off
 // (settings.json's disabledModules, set by the UI): then its routes answer
@@ -67,6 +69,17 @@ type ActionSource interface {
 	RunAction(a ActionCall) (ActionResult, error)
 }
 
+// Configurable is implemented by modules with their own settings (e.g.
+// Hubble's relay address). They are JSON objects saved per kube context in
+// settings.json's moduleSettings, read and written through
+// GET/PUT /api/settings/modules/{id}; the module reads them with
+// Deps.Settings.ModuleSettings.
+type Configurable interface {
+	// ValidateSettings checks a PUT body (a JSON object; {} clears) before
+	// it is saved.
+	ValidateSettings(raw json.RawMessage) error
+}
+
 // ActionCall is one action request, already checked to be available for
 // the target's type.
 type ActionCall struct {
@@ -109,6 +122,72 @@ func (s *Server) mountModules() {
 	}
 	s.mux.HandleFunc("GET /api/settings/modules", s.handleGetModules)
 	s.mux.HandleFunc("PUT /api/settings/modules", s.handlePutModules)
+	s.mux.HandleFunc("GET /api/settings/modules/{id}", s.handleGetModuleSettings)
+	s.mux.HandleFunc("PUT /api/settings/modules/{id}", s.handlePutModuleSettings)
+}
+
+// configurable returns module id when it has settings.
+func (s *Server) configurable(id string) (Configurable, bool) {
+	for _, m := range s.modules {
+		if m.Name() == id {
+			c, ok := m.(Configurable)
+			return c, ok
+		}
+	}
+	return nil, false
+}
+
+// settingsContext is ?context=, else the current kube context.
+func (s *Server) settingsContext(r *http.Request) string {
+	if c := r.URL.Query().Get("context"); c != "" {
+		return c
+	}
+	if c := s.mgr.Clients(); c != nil {
+		return c.Context
+	}
+	return ""
+}
+
+// handleGetModuleSettings returns {context, settings}: module id's settings
+// for the context ({} when none are saved).
+func (s *Server) handleGetModuleSettings(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, ok := s.configurable(id); !ok {
+		httpx.WriteJSON(w, http.StatusNotFound, apiError{Error: fmt.Sprintf("module %q has no settings", id), Code: http.StatusNotFound})
+		return
+	}
+	ctx := s.settingsContext(r)
+	raw := s.settings.RawModuleSettings(id, ctx)
+	if raw == nil {
+		raw = json.RawMessage("{}")
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"context": ctx, "settings": raw})
+}
+
+// handlePutModuleSettings validates and saves the body (a JSON object; {}
+// clears) as module id's settings for the context. Allowed in read-only
+// mode: it changes k8sman's settings, not the cluster.
+func (s *Server) handlePutModuleSettings(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	m, ok := s.configurable(id)
+	if !ok {
+		httpx.WriteJSON(w, http.StatusNotFound, apiError{Error: fmt.Sprintf("module %q has no settings", id), Code: http.StatusNotFound})
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	if err != nil {
+		writeErr(w, httpx.BadRequest("%v", err))
+		return
+	}
+	if err := m.ValidateSettings(raw); err != nil {
+		writeErr(w, httpx.BadRequest("%v", err))
+		return
+	}
+	if err := s.settings.SetModuleSettings(id, s.settingsContext(r), raw); err != nil {
+		writeErr(w, httpx.BadRequest("%v", err))
+		return
+	}
+	s.handleGetModuleSettings(w, r)
 }
 
 // moduleRouter mounts a module's handlers on the server's mux.
