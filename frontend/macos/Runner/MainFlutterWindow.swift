@@ -112,6 +112,11 @@ class MainFlutterWindow: NSWindow {
       case "chooseKubeconfig":
         let args = call.arguments as? [String: Any]
         self?.chooseFile(startingAt: args?["directory"] as? String, result: result)
+      case "chooseYaml":
+        self?.chooseYaml(result: result)
+      case "saveYaml":
+        let args = call.arguments as? [String: Any]
+        self?.saveYaml(suggestedName: args?["name"] as? String ?? "views.yaml", result: result)
       case "reveal":
         if let path = call.arguments as? String {
           NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
@@ -194,6 +199,34 @@ class MainFlutterWindow: NSWindow {
 
   @objc func showCommandPalette(_ sender: Any?) {
     windowChannel?.invokeMethod("commandPalette", arguments: nil)
+  }
+
+  /// Open panel for a .yaml / .yml file (importing saved views).
+  private func chooseYaml(result: @escaping FlutterResult) {
+    let panel = NSOpenPanel()
+    panel.title = "Choose a YAML file"
+    panel.prompt = "Import"
+    panel.canChooseFiles = true
+    panel.canChooseDirectories = false
+    panel.allowsMultipleSelection = false
+    panel.allowedFileTypes = ["yaml", "yml"]
+    panel.beginSheetModal(for: self) { response in
+      result(response == .OK ? panel.url?.path : nil)
+    }
+  }
+
+  /// Save panel for a .yaml file (exporting saved views); returns the
+  /// chosen path, which Dart writes.
+  private func saveYaml(suggestedName: String, result: @escaping FlutterResult) {
+    let panel = NSSavePanel()
+    panel.title = "Export"
+    panel.prompt = "Export"
+    panel.nameFieldStringValue = suggestedName
+    panel.allowedFileTypes = ["yaml", "yml"]
+    panel.canCreateDirectories = true
+    panel.beginSheetModal(for: self) { response in
+      result(response == .OK ? panel.url?.path : nil)
+    }
   }
 
   private func chooseFile(startingAt directory: String?, result: @escaping FlutterResult) {

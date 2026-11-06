@@ -132,6 +132,7 @@ List<PaletteItem> paletteItems(BuildContext context) {
         typeLabel: 'Action',
         icon: _icon(Icons.bookmark_add_outlined),
         aliases: const ['view', 'bookmark'],
+        shortcut: shortcutLabel('S'),
         run: () => _saveTableAsView(context),
       ),
     PaletteItem(
@@ -272,6 +273,17 @@ PaletteItem viewPaletteItem(BuildContext context, AppState app, SavedView v) {
     run: () => openSavedView(context, v),
   );
 }
+
+/// `:view save <name>`: saves [tc]'s table as a view that applies to any
+/// context (like the dialog's default).
+PaletteItem saveViewPaletteItem(BuildContext context, TableController tc, String name) => PaletteItem(
+      group: PaletteGroup.views,
+      title: 'Save current table as “$name”',
+      detail: 'any context',
+      typeLabel: 'Action',
+      icon: _icon(Icons.bookmark_add_outlined),
+      run: () => saveNamedView(context, tc, name),
+    );
 
 /// Save Current Table as View: the open table's controller holds what to
 /// save (filter, sort, columns).

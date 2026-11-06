@@ -50,6 +50,7 @@ Future<void> showCommandPalette(BuildContext context, {bool command = false}) as
       skip: table?.type,
       command: command,
       viewItem: (v) => viewPaletteItem(context, app, v),
+      saveViewItem: table == null || app.view != MainView.resources ? null : (name) => saveViewPaletteItem(context, table, name),
     ),
   );
   picked?.run();
@@ -71,7 +72,10 @@ class CommandPalette extends StatefulWidget {
   /// Builds a saved view's item for `:view` (with the shell's context, so
   /// opening it can still show dialogs once the palette has closed).
   final PaletteItem Function(SavedView v)? viewItem;
-  const CommandPalette({super.key, required this.items, required this.app, this.api, this.skip, this.command = false, this.viewItem});
+
+  /// Builds the item for `:view save <name>` (null: no table to save).
+  final PaletteItem Function(String name)? saveViewItem;
+  const CommandPalette({super.key, required this.items, required this.app, this.api, this.skip, this.command = false, this.viewItem, this.saveViewItem});
 
   @override
   State<CommandPalette> createState() => _CommandPaletteState();
@@ -129,7 +133,7 @@ class _CommandPaletteState extends State<CommandPalette> {
   void _rank() {
     final active = _flat.elementAtOrNull(_active);
     if (_command) {
-      final r = rankCommand(_query.text.substring(1), widget.app, viewItem: widget.viewItem);
+      final r = rankCommand(_query.text.substring(1), widget.app, viewItem: widget.viewItem, saveViewItem: widget.saveViewItem);
       _sections = r.sections;
       _highlight = r.highlight;
     } else {

@@ -21,7 +21,15 @@ class CommandResults {
 ///
 /// [viewItem] builds a saved view's item (it needs a BuildContext to open
 /// views; see palette_sources.dart).
-CommandResults rankCommand(String text, AppState app, {PaletteItem Function(SavedView v)? viewItem}) {
+///
+/// [saveViewItem] builds the `:view save <name>` item (null when no table
+/// is open to save).
+CommandResults rankCommand(
+  String text,
+  AppState app, {
+  PaletteItem Function(SavedView v)? viewItem,
+  PaletteItem Function(String name)? saveViewItem,
+}) {
   final lower = text.trimLeft().toLowerCase();
   final space = lower.indexOf(RegExp(r'\s'));
   final cmd = space < 0 ? lower : lower.substring(0, space);
@@ -54,8 +62,16 @@ CommandResults rankCommand(String text, AppState app, {PaletteItem Function(Save
     final all = arg == 'all' || arg == '-a';
     return CommandResults([PaletteSection(PaletteGroup.namespaces, _filter(all ? '' : arg, items, first: all ? items.first : null))], arg);
   }
-  // `:view [name]`: saved views, fuzzy matched like :ctx.
+  // `:view [name]`: saved views, fuzzy matched like :ctx. `:view save
+  // <name>` saves the open table (the name keeps its case).
   if (cmd == 'view' || cmd == 'views') {
+    final saveWord = RegExp(r'^save(\s+|$)', caseSensitive: false);
+    if (saveWord.hasMatch(arg)) {
+      final name = text.trimLeft().substring(space).trim().replaceFirst(saveWord, '').trim();
+      return CommandResults([
+        if (saveViewItem != null && name.isNotEmpty) PaletteSection(PaletteGroup.views, [saveViewItem(name)]),
+      ], '');
+    }
     final items = [if (viewItem != null) for (final v in app.savedViews) viewItem(v)];
     return CommandResults([PaletteSection(PaletteGroup.views, _filter(arg, items))], arg);
   }

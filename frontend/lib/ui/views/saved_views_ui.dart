@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'dart:io';
+
 import '../../actions/actions.dart' show showActionError;
+import '../../app/kubeconfig_picker.dart' show NativeFiles;
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
@@ -112,6 +115,31 @@ Future<SavedView?> showRepointDialog(BuildContext context, SavedView v, {String?
   );
 }
 
+/// A view of [tc]'s table as it is now: kind, namespaces, filter, sort and
+/// columns. Applies to any context unless [anyContext] is false.
+SavedView viewFromTable(AppState app, TableController tc, {required String name, bool anyContext = true, bool rememberSort = true}) {
+  final scope = tc.type.namespaced ? app.namespaceScope : NamespaceScope.all;
+  final sort = tc.sortColumn != null && tc.sortColumn! < tc.columns.length ? tc.columns[tc.sortColumn!].name : null;
+  final info = app.contexts.where((c) => c.name == app.currentContext).firstOrNull;
+  return SavedView(
+    id: SavedView.newId(),
+    name: name,
+    context: anyContext ? null : ViewContext(kubeconfig: app.kubeconfigs.current, name: app.currentContext, server: info?.server),
+    group: tc.type.group,
+    kind: tc.type.kind,
+    namespaces: scope.namespaces,
+    filter: tc.filter.trim(),
+    sortColumn: rememberSort ? sort : null,
+    sortDescending: rememberSort && sort != null && !tc.sortAscending,
+    columns: tc.columns,
+  );
+}
+
+/// `:view save <name>`: saves the table as a view for any context, without
+/// the dialog, and opens it.
+Future<SavedView?> saveNamedView(BuildContext context, TableController tc, String name) =>
+    _saveAndOpen(context, viewFromTable(context.read<AppState>(), tc, name: name));
+
 /// The table toolbar's "Save view…" (and the palette's "Save current table
 /// as view"): name, what is saved, and any context (default) or this
 /// context only.
@@ -121,7 +149,12 @@ Future<SavedView?> showSaveViewDialog(BuildContext context, TableController tc) 
     context: context,
     builder: (_) => ChangeNotifierProvider<AppState>.value(value: app, child: _SaveViewDialog(tc: tc)),
   );
-  if (saved == null) return null;
+  if (saved == null || !context.mounted) return null;
+  return _saveAndOpen(context, saved);
+}
+
+Future<SavedView?> _saveAndOpen(BuildContext context, SavedView saved) async {
+  final app = context.read<AppState>();
   try {
     await app.saveView(saved);
     // The table now shows the view (same state, as a view session).
@@ -161,22 +194,7 @@ class _SaveViewDialogState extends State<_SaveViewDialog> {
   void _save() {
     final name = _name.text.trim();
     if (name.isEmpty) return;
-    final info = app.contexts.where((c) => c.name == app.currentContext).firstOrNull;
-    Navigator.pop(
-      context,
-      SavedView(
-        id: SavedView.newId(),
-        name: name,
-        context: _anyContext ? null : ViewContext(kubeconfig: app.kubeconfigs.current, name: app.currentContext, server: info?.server),
-        group: tc.type.group,
-        kind: tc.type.kind,
-        namespaces: scope.namespaces,
-        filter: tc.filter.trim(),
-        sortColumn: _sort ? _sortName : null,
-        sortDescending: _sort && !tc.sortAscending,
-        columns: tc.columns,
-      ),
-    );
+    Navigator.pop(context, viewFromTable(app, tc, name: name, anyContext: _anyContext, rememberSort: _sort));
   }
 
   @override
@@ -312,6 +330,13 @@ List<(String, VoidCallback)?> viewMenuItems(BuildContext context, SavedView v) {
           )
         : ('Apply to Any Context', () => guard(() => app.saveView(v.copyWith(context: () => null)))),
     (
+      'Export to File…',
+      () => guard(() async {
+            final yaml = await app.api.exportViews([v.toJson()]);
+            if (context.mounted) await saveYamlFile(context, yaml, '${v.name}.yaml', label: 'view “${v.name}”');
+          })
+    ),
+    (
       'Copy as YAML',
       () => guard(() async {
             final yaml = await app.api.exportViews([v.toJson()]);
@@ -341,7 +366,6 @@ List<(String, VoidCallback)?> viewMenuItems(BuildContext context, SavedView v) {
 /// A bound context that doesn't exist here is re-pointed: to the context
 /// with the same API server URL when there is exactly one, else by asking.
 Future<void> showImportViewsDialog(BuildContext context) async {
-  final app = context.read<AppState>();
   final text = TextEditingController();
   final yaml = await showDialog<String>(
     context: context,
@@ -364,12 +388,45 @@ Future<void> showImportViewsDialog(BuildContext context) async {
         ]),
       ),
       actions: [
+        TextButton(
+          key: const ValueKey('import-views-file'),
+          onPressed: () async {
+            final yaml = await _readYamlFile(context);
+            if (yaml != null && context.mounted) Navigator.pop(context, yaml);
+          },
+          child: const Text('From File…'),
+        ),
+        const SizedBox(width: 8),
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(onPressed: () => Navigator.pop(context, text.text), child: const Text('Import')),
       ],
     ),
   ).whenComplete(text.dispose);
   if (yaml == null || yaml.trim().isEmpty || !context.mounted) return;
+  await importViewsYaml(context, yaml);
+}
+
+/// "Import from File…": choose a `.yaml` / `.yml` file and import its views.
+Future<void> importViewsFromFile(BuildContext context) async {
+  final yaml = await _readYamlFile(context);
+  if (yaml != null && context.mounted) await importViewsYaml(context, yaml);
+}
+
+/// Asks for a YAML file and returns its text (null when cancelled).
+Future<String?> _readYamlFile(BuildContext context) async {
+  try {
+    final path = await NativeFiles.chooseYaml();
+    if (path == null) return null;
+    return await File(path).readAsString();
+  } catch (e) {
+    if (context.mounted) showActionError(context, 'Could not read the file: $e');
+    return null;
+  }
+}
+
+/// Imports the view documents in [yaml] (see [showImportViewsDialog]).
+Future<void> importViewsYaml(BuildContext context, String yaml) async {
+  final app = context.read<AppState>();
   try {
     final parsed = [for (final j in await app.api.parseViews(yaml)) ?SavedView.fromJson(j)];
     var imported = 0;
@@ -398,6 +455,31 @@ Future<void> showImportViewsDialog(BuildContext context) async {
     if (context.mounted) showActionError(context, 'Could not import: ${e.message}');
   } catch (e) {
     if (context.mounted) showActionError(context, 'Could not import: $e');
+  }
+}
+
+/// Saves [yaml] to a file the user chooses; where the platform has no save
+/// panel, copies it to the clipboard instead.
+Future<void> saveYamlFile(BuildContext context, String yaml, String suggestedName, {required String label}) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  try {
+    final path = await NativeFiles.saveYaml(suggestedName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_'), yaml);
+    if (path != null) messenger?.showSnackBar(SnackBar(content: Text('Exported $label to $path')));
+  } on UnsupportedError {
+    if (context.mounted) copyToClipboard(context, yaml, label: '$label as YAML');
+  } catch (e) {
+    if (context.mounted) showActionError(context, 'Could not export: $e');
+  }
+}
+
+/// Saves every saved view to a YAML file.
+Future<void> exportAllViewsToFile(BuildContext context) async {
+  final app = context.read<AppState>();
+  try {
+    final yaml = await app.api.exportViews([for (final v in app.savedViews) v.toJson()]);
+    if (context.mounted) await saveYamlFile(context, yaml, 'k8sman-views.yaml', label: '${app.savedViews.length} views');
+  } catch (e) {
+    if (context.mounted) showActionError(context, 'Could not export: $e');
   }
 }
 

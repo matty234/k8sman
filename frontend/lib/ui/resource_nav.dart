@@ -506,7 +506,10 @@ class _TopEntry extends StatelessWidget {
 /// The Views section's menu (right-click on its header).
 List<(String, VoidCallback)?> _viewsSectionMenu(BuildContext context) => [
       ('Import Views…', () => showImportViewsDialog(context)),
+      ('Import from File…', () => importViewsFromFile(context)),
+      if (context.read<AppState>().savedViews.isNotEmpty) ('Export All Views to File…', () => exportAllViewsToFile(context)),
       if (context.read<AppState>().savedViews.isNotEmpty) ('Copy All Views as YAML', () => exportAllViews(context)),
+      if (context.read<AppState>().savedViews.length > 1) ('Reorder Views…', () => showSidebarEditor(context)),
     ];
 
 /// A saved view in the sidebar. The open one is highlighted, with a dot

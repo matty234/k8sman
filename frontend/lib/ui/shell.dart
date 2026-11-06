@@ -18,7 +18,9 @@ import 'resource_nav.dart';
 import 'resource_table.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
+import '../actions/actions.dart' show showActionError;
 import 'keyboard_help.dart';
+import 'views/saved_views_ui.dart' show showSaveViewDialog;
 import 'keys.dart';
 
 const _navWidth = 232.0;
@@ -34,6 +36,24 @@ class _ShellState extends State<Shell> {
   double _sidebarWidth = 560;
 
   void _palette() => showCommandPalette(context);
+
+  /// ⌘S: with a table showing and no view open, the Save View dialog; with
+  /// a modified view open, Update View. Text fields and the editors own ⌘S
+  /// while they have focus (the editors bind it themselves; the check here
+  /// covers plain text fields).
+  void _saveView() {
+    if (textEntryFocused || _app.view != MainView.resources) return;
+    final session = _app.viewSession;
+    if (session != null) {
+      if (!session.modified) return;
+      _app.updateActiveView().catchError((Object e) {
+        if (mounted) showActionError(context, 'Could not update the view: $e');
+      });
+      return;
+    }
+    final table = visibleTable(context);
+    if (table != null) showSaveViewDialog(context, table);
+  }
 
   /// `:` opens command mode (k9s-style) and `?` the key help, unless the user is typing
   /// somewhere. Not a shortcut binding: a matched shortcut always consumes
@@ -125,6 +145,7 @@ class _ShellState extends State<Shell> {
         primaryShortcut(LogicalKeyboardKey.keyI): app.toggleInspector,
         // Editors and the log search handle ⌘F themselves when focused.
         primaryShortcut(LogicalKeyboardKey.keyF): () => visibleTable(context)?.filterFocus.requestFocus(),
+        primaryShortcut(LogicalKeyboardKey.keyS): _saveView,
         for (final a in commandPaletteShortcuts) a: _palette,
       },
       child: Focus(

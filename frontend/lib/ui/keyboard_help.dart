@@ -32,7 +32,7 @@ Future<void> showKeyboardHelp(BuildContext context) => showDialog<void>(
     );
 
 final _navigation = [
-  (':', 'Command mode: :po, :ns <name>, :ctx'),
+  (':', 'Command mode: :po, :ns <name>, :ctx, :view [save <name>]'),
   ('/  ${shortcutLabel('F')}', 'Filter the table'),
   ('j / k  ↑ / ↓', 'Move the selection'),
   ('g / G', 'First / last row'),
@@ -54,6 +54,7 @@ final _app = [
   (shortcutLabel('K'), 'Command palette'),
   (shortcutLabel('J'), 'Bottom dock'),
   (shortcutLabel('I'), 'Inspector'),
+  (shortcutLabel('S'), 'Save the table as a view / update the open view'),
   ('?', 'This help'),
 ];
 

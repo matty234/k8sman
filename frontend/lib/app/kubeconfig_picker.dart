@@ -37,6 +37,48 @@ class NativeFiles {
     }
   }
 
+  static const _yaml = XTypeGroup(label: 'YAML', extensions: ['yaml', 'yml']);
+
+  /// Shows an open panel for a `.yaml` / `.yml` file; returns the chosen path.
+  static Future<String?> chooseYaml() async {
+    if (_windows || _linux) {
+      final file = await FileSelectorPlatform.instance.openFile(acceptedTypeGroups: const [_yaml], confirmButtonText: 'Import');
+      return file?.path;
+    }
+    try {
+      return await _channel.invokeMethod<String>('chooseYaml');
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  /// Asks where to save [text] as `.yaml` and writes it. Returns the path,
+  /// or null when cancelled. Throws [UnsupportedError] when the platform
+  /// has no save panel (the caller then falls back to the clipboard).
+  static Future<String?> saveYaml(String suggestedName, String text) async {
+    String? path;
+    if (_windows || _linux) {
+      try {
+        final loc = await FileSelectorPlatform.instance.getSaveLocation(
+          acceptedTypeGroups: const [_yaml],
+          options: SaveDialogOptions(suggestedName: suggestedName, confirmButtonText: 'Export'),
+        );
+        path = loc?.path;
+      } on UnimplementedError {
+        throw UnsupportedError('no save panel');
+      }
+    } else {
+      try {
+        path = await _channel.invokeMethod<String>('saveYaml', {'name': suggestedName});
+      } on MissingPluginException {
+        throw UnsupportedError('no save panel');
+      }
+    }
+    if (path == null) return null;
+    await File(path).writeAsString(text);
+    return path;
+  }
+
   static Future<void> reveal(String path) async {
     if (_windows) {
       // Explorer exits non-zero even when it worked.

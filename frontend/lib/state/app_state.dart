@@ -835,13 +835,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Moves the view at [from] to [to] (the position it should end up at)
-  /// and saves the order.
-  Future<void> moveView(int from, int to) async {
-    if (from < 0 || from >= savedViews.length) return;
-    final list = [...savedViews];
-    final v = list.removeAt(from);
-    list.insert(to.clamp(0, list.length), v);
+  /// Saves a new order of the views: [ids] first, in that order (views
+  /// not listed keep their relative order after them).
+  Future<void> setViewOrder(List<String> ids) async {
+    final byId = {for (final v in savedViews) v.id: v};
+    final list = [for (final id in ids) ?byId[id], for (final v in savedViews) if (!ids.contains(v.id)) v];
     final before = savedViews;
     savedViews = list;
     notifyListeners();

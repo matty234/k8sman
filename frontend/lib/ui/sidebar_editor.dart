@@ -35,12 +35,22 @@ class _SidebarEditorDialogState extends State<SidebarEditorDialog> {
 
   static const _rowHeight = 32.0;
 
+  /// Saved views, in order; applied on Done like the rest.
+  late final List<SavedView> _views = [...context.read<AppState>().savedViews];
+
   String _keyOf(SidebarEntry e) => e.view != null ? 'view-${e.view!.name}' : 'pin-${e.pin!.gk}@${e.pin!.namespace ?? ''}';
 
   void _done() {
     final app = context.read<AppState>();
     final next = SidebarConfig(_entries);
     if (!listEquals(next.entries, app.sidebar.entries)) app.setSidebar(next);
+    final order = [for (final v in _views) v.id];
+    if (!listEquals(order, [for (final v in app.savedViews) v.id])) {
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      app.setViewOrder(order).catchError((Object e) {
+        messenger?.showSnackBar(SnackBar(content: Text('Could not save the order of the views: $e')));
+      });
+    }
     Navigator.of(context).pop();
   }
 
@@ -62,7 +72,7 @@ class _SidebarEditorDialogState extends State<SidebarEditorDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
-    final listHeight = math.min(_entries.length * _rowHeight + 8, 420.0);
+    final listHeight = math.min(_entries.length * _rowHeight + 8, _views.length > 1 ? 300.0 : 420.0);
     return Dialog(
       key: const ValueKey('sidebar-editor'),
       insetPadding: const EdgeInsets.all(32),
@@ -90,6 +100,25 @@ class _SidebarEditorDialogState extends State<SidebarEditorDialog> {
               itemBuilder: (context, i) => _row(context, i),
             ),
           ),
+          if (_views.length > 1) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+              child: Text('Saved views: drag to reorder', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+            ),
+            Container(
+              key: const ValueKey('sidebar-views-list'),
+              height: math.min(_views.length * _rowHeight + 8, 160.0),
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(border: Border.all(color: colors.separator), borderRadius: BorderRadius.circular(6)),
+              child: ReorderableListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                buildDefaultDragHandles: false,
+                itemCount: _views.length,
+                onReorderItem: (a, b) => setState(() => _views.insert(b, _views.removeAt(a))),
+                itemBuilder: (context, i) => _viewRow(context, i),
+              ),
+            ),
+          ],
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 6, 16, 0),
             child: Row(children: [
@@ -132,6 +161,41 @@ class _SidebarEditorDialogState extends State<SidebarEditorDialog> {
               const SizedBox(width: 8),
               FilledButton(onPressed: _done, child: const Text('Done')),
             ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _viewRow(BuildContext context, int i) {
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    final v = _views[i];
+    return SizedBox(
+      key: ValueKey('view-${v.id}'),
+      height: _rowHeight,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Row(children: [
+          ReorderableDragStartListener(
+            index: i,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: SizedBox(width: 22, height: _rowHeight, child: Icon(Icons.drag_indicator, size: 16, color: colors.faint)),
+            ),
+          ),
+          Icon(Icons.bookmark_outline, size: 15, color: theme.hintColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: v.name),
+                TextSpan(text: '   ${v.context == null ? 'any context' : v.context!.name}', style: theme.textTheme.bodySmall?.copyWith(color: colors.faint)),
+              ]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium,
+            ),
           ),
         ]),
       ),
