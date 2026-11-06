@@ -133,6 +133,14 @@ void main() {
     await command(':ns $ns');
     expect(app.namespace, ns);
 
+    // Still works on another page with focus lost to the window's scope.
+    await tester.tap(find.text('Overview').first);
+    await _pump(tester);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _pump(tester);
+    await command(':po');
+    expect(app.selectedType?.kind, 'Pod');
+
     // With a text field focused the shell's ':' shortcut stands down.
     await tester.pumpWidget(const MaterialApp(home: Material(child: TextField(autofocus: true))));
     await tester.pump();

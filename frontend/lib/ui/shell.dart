@@ -69,10 +69,27 @@ class _ShellState extends State<Shell> {
     WindowChrome.onCommandPalette = _palette;
     // "Alerts" and "Port Forwards" (palette, links) open their dock panes.
     _app = context.read<AppState>()..showInDock = _showInDock;
+    HardwareKeyboard.instance.addHandler(_strayKey);
+  }
+
+  final _focus = FocusNode(debugLabel: 'shell');
+
+  /// Keys pressed while keyboard focus sits outside the shell (it can end up
+  /// on the window's scope, e.g. after the focused widget goes away) never
+  /// reach the shell's handlers. Pull focus back and handle `:` and `?`.
+  bool _strayKey(KeyEvent e) {
+    if (e is! KeyDownEvent || !mounted) return false;
+    final primary = FocusManager.instance.primaryFocus;
+    if (primary != null && (primary == _focus || primary.ancestors.contains(_focus))) return false;
+    if (ModalRoute.of(context)?.isCurrent == false || textEntryFocused) return false;
+    _focus.requestFocus();
+    return _commandMode(_focus, e) == KeyEventResult.handled;
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_strayKey);
+    _focus.dispose();
     if (WindowChrome.onCommandPalette == _palette) WindowChrome.onCommandPalette = null;
     if (_app.showInDock == _showInDock) _app.showInDock = null;
     StartupGate.release();
@@ -111,6 +128,7 @@ class _ShellState extends State<Shell> {
         for (final a in commandPaletteShortcuts) a: _palette,
       },
       child: Focus(
+        focusNode: _focus,
         autofocus: true,
         onKeyEvent: _commandMode,
         child: Scaffold(
