@@ -6,3 +6,7 @@ This product includes software developed by The k8sman Authors
 
 Bundled third-party icons are subject to their own terms; see
 frontend/assets/icons/ATTRIBUTION.md.
+
+backend/internal/hubble/proto holds Hubble API definitions copied from
+Cilium (https://github.com/cilium/cilium), Copyright Authors of Hubble,
+licensed under the Apache License, Version 2.0.
