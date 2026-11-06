@@ -178,6 +178,106 @@ everything while the app was hidden or minimised.
 - Every WebSocket user (inspector, log streams, terminals) closes its socket
   on dispose; terminal scrollback stays at 10k lines (user-selectable to 50k).
 
+## Memory
+
+Release builds of both processes, measured with `footprint` (phys_footprint,
+which unlike RSS counts compressed pages; macOS compresses an idle Go heap
+heavily, so the backend's RSS can read *below* its live heap) and the Go
+heap from `--pprof`.
+
+**Setup.** Kind v1.25, one node, `make cluster` plus `dev/bulk.sh`: 917
+ConfigMaps (~2 KB each), 502 Secrets, 208 Deployments, 305 Services and 168
+pods (147 running pause pods), all applied with client-side `kubectl apply`
+(so they carry `last-applied-configuration` and `managedFields`). The
+scenario (`tools/membench/bench_scenario.dart`, driven inside the app so
+nothing takes focus) opens the Pod, ConfigMap, Secret, Deployment and
+Service tables for all namespaces (~2,100 objects), inspects a Deployment, a
+ConfigMap, a Service and the kube-apiserver pod, opens that pod's logs
+(continuously logging), a local shell and the ⌘K palette, then idles 2
+minutes. Window 1728×1025 pt on a Retina display (3456×2050 px).
+
+| | before | after |
+|---|---|---|
+| App, after launch | 119 MB | 126 MB |
+| App, after scenario | 202 MB | 186 MB |
+| App, after 2 min idle | 187 MB | 174 MB |
+| App, peak | 326 MB | 405 MB |
+| Backend, after launch | 33 MB | 30 MB |
+| Backend, after scenario | 95 MB | 58 MB |
+| Backend, after 2 min idle | 82 MB | 53 MB |
+| Backend, peak | 95 MB | 68 MB |
+| Backend live heap after GC, after scenario | 37.7 MiB | 17–25 MiB |
+| Backend CPU time, whole run | 2.0–2.2 s | 2.1–2.8 s |
+
+Medians of 3 runs before and 2 after (the third pair was cut short). The
+app's code didn't change: its differences are run-to-run noise. Its
+footprint swings by 100–200 MB within a second while frames are produced
+(see below), so each point is the median of five one-second samples, and
+its peak (319 MB to 1 GB across runs) is a transient.
+
+Backend alone, with a small WebSocket client holding the five table watches
+open (no app; live heap after a forced GC, footprint just before it; 2–3
+alternating runs each):
+
+| | live heap | footprint |
+|---|---|---|
+| baseline | 36.6 MiB | 85–86 MB |
+| strip `managedFields` in the cache | 23.3 MiB | 70–84 MB (median 73) |
+| + `GOGC=50` | 23.2 MiB | 56–64 MB (median 58) |
+
+**What holds the memory.**
+
+- *Backend:* the shared watch cache's decoded objects. `managedFields` is
+  20% of the five kinds' JSON but a third of the live heap, being many
+  small maps. With Go's default GOGC=100 the heap also carries as much
+  garbage (LIST decoding, table rendering) as live data before collecting.
+- *App:* mostly the engine, not Dart. After the scenario the Dart heap is
+  ~27 MiB (VM service, profile build), ~16 MiB of it code; table rows, palette lookups and log buffers
+  are a few MiB. The image cache stayed empty (0 bytes). The rest is
+  graphics and malloc: two full-window IOSurfaces (27 MB each at
+  3456×2050), ~30 MB of large and ~25 MB of small malloc blocks in the
+  engine, and "owned unmapped" memory that the surface pool gives back
+  over the following minute. During bursts of frames the macOS embedder
+  allocates a fresh full-window IOSurface while WindowServer still holds
+  the previous ones: up to 16 at once (~480 MB) for under a second. That,
+  not app data, sets the app's peak. On the test machine an accessibility
+  client was active, so the semantics tree was built (~4 MB of Dart heap
+  plus its native side); most users won't pay that.
+
+**Changes.**
+
+- `kcache` strips `metadata.managedFields` as objects enter the cache.
+- `k8sman-server` sets `GOGC=50` unless `$GOGC` is set.
+
+**Tried and dropped.**
+
+- Shrinking `last-applied-configuration` in the cache (to just apiVersion
+  and kind, which the Security check needs): another 2.9 MiB of live heap
+  even with every object kubectl-applied, but the inspector's metadata
+  section would show a doctored annotation.
+- `GOMEMLIMIT=64MiB` instead of GOGC: 65–66 MB, and it thrashes when a
+  large cluster's live cache exceeds the limit.
+- Capping the image cache: it held nothing (kind icons are glyphs; group
+  icons are already decoded at display size).
+- Stopping idle watches sooner: streams already stop 90s after their last
+  user, which is what keeps table switching instant.
+
+**Re-running.**
+
+```sh
+make cluster                                      # dev kind cluster, .kubeconfig-dev
+KUBECONFIG=$PWD/.kubeconfig-dev dev/bulk.sh       # the bulk objects
+git checkout <base> && tools/membench/build.sh before
+git checkout <change> && tools/membench/build.sh after
+for i in 1 2 3; do tools/membench/run.sh before $i; tools/membench/run.sh after $i; done
+cat /tmp/k8sman-membench/results/*.txt
+```
+
+`run.sh` starts its own backend (`--kubeconfig .kubeconfig-dev`, `--pprof`)
+and launches the app in the background with `HOME` pointed at a scratch
+directory, so your settings and chosen kubeconfig are neither used nor
+changed. Each run takes about four minutes.
+
 ## Tried, or considered, and not done
 
 - **Protobuf for the typed client.** The same clientset backs raw requests
@@ -192,13 +292,12 @@ everything while the app was hidden or minimised.
   at p50, but 21-50ms at min) was client-side rate-limiter wait after
   Overview's ~15 parallel lists drained the burst. Removing the lists (cache)
   fixed it; 50/100 is kept.
-- **`GOMEMLIMIT`/`GOGC`.** Idle CPU is ~0% and the live heap returns to
-  ~9 MiB once streams are evicted; peaks come from decoding large LISTs,
-  which a soft limit would only make slower (more GC during the decode).
-  Not justified by the measurements.
-- **Stripping `managedFields` from cached objects** would cut cache memory
-  substantially but changes `includeObject` rows and `/api/items` output,
-  so it was left out (behaviour-preserving pass).
+- **`GOMEMLIMIT`.** Peaks come from decoding large LISTs, which a soft limit
+  would only make slower (more GC during the decode), and a limit below a
+  big cluster's live cache makes the GC thrash. `GOGC=50` was adopted later
+  instead (see [Memory](#memory)).
+- **Stripping `managedFields` from cached objects** was left out of this
+  behaviour-preserving pass; the memory pass did it (see [Memory](#memory)).
 - **Batching log lines** (one frame per line today) would need a protocol
   change on `/api/logs`; the log stream already applies backpressure (a slow
   client blocks the reader, nothing is buffered), so it was left alone.
@@ -238,6 +337,10 @@ and selector set, shared by every user:
   subscriber as the same ERROR frame. `Forbidden`/`NotFound` end the stream
   (and the socket) and the stream is forgotten, so the next attempt LISTs
   again (e.g. after an RBAC fix); other errors retry with 1s..30s backoff.
+- **Trimmed objects.** `metadata.managedFields` is dropped as objects enter
+  the cache (nothing reads it there; the YAML tab GETs the live object), so
+  `includeObject` rows and `/api/items` answered from the cache don't
+  carry it.
 - **Bounded memory per client.** Each subscriber has a queue of at most
   4,096 events; a client that falls further behind gets a fresh SNAPSHOT
   instead, so a stalled UI can't grow backend memory without bound.

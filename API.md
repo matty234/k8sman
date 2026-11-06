@@ -84,7 +84,9 @@ client; a single-object or label-selector watch rides on an already open
 watch of the same type and is filtered locally. `/api/table` and
 `/api/items` answer from an open watch when there is one (else they LIST),
 and `/api/overview` and `/api/security` list through the same cache, so
-repeated polls cost no API requests. A watch nobody uses is kept for 90s,
+repeated polls cost no API requests. Objects in the cache have
+`metadata.managedFields` removed, so watch rows with `includeObject` and
+`/api/items` answered from it don't carry it (`/api/object` still can). A watch nobody uses is kept for 90s,
 then stopped. Errors are those of the upstream LIST: `Forbidden` and
 `NotFound` end the watch (the socket closes after the ERROR frame), other
 errors are retried with backoff. A watch that ends normally resumes from
