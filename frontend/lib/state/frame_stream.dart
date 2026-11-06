@@ -49,6 +49,16 @@ class FrameStream<T> extends ChangeNotifier {
   List<T> get pending => List.unmodifiable(_pending);
   int get pendingCount => _pending.length;
 
+  /// Whether the socket is open.
+  bool get running => _sub != null;
+
+  /// Closes the socket and keeps the rows (e.g. while the view is hidden).
+  void stop() {
+    _sub?.cancel();
+    _sub = null;
+    if (phase == FramePhase.connecting || phase == FramePhase.live) phase = FramePhase.ended;
+  }
+
   void start() {
     _sub?.cancel();
     phase = FramePhase.connecting;
@@ -58,6 +68,7 @@ class FrameStream<T> extends ChangeNotifier {
       error = '$e';
       _notify();
     }, onDone: () {
+      _sub = null;
       if (phase == FramePhase.connecting || phase == FramePhase.live) phase = FramePhase.ended;
       _notify();
     });

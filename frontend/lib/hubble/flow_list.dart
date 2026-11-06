@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -68,10 +69,34 @@ class _FlowStreamViewState extends State<FlowStreamView> {
 
   FlowQuery get _query => widget.query.copyWith(verdicts: _verdict == null ? widget.query.verdicts : {_verdict!});
 
+  /// Off while hidden (an inactive inspector tab, a collapsed inspector):
+  /// the stream is closed then, and reopened fresh when shown again.
+  ValueListenable<TickerModeData>? _visible;
+  bool get _shown => _visible?.value.enabled ?? true;
+
   @override
   void initState() {
     super.initState();
-    _stream = widget.api.stream(_query)..start();
+    _stream = widget.api.stream(_query);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final n = TickerMode.getValuesNotifier(context);
+    if (n != _visible) {
+      _visible?.removeListener(_onVisibility);
+      _visible = n..addListener(_onVisibility);
+      _onVisibility();
+    }
+  }
+
+  void _onVisibility() {
+    if (_shown && !_stream.running) {
+      _stream.restart();
+    } else if (!_shown && _stream.running) {
+      _stream.stop();
+    }
   }
 
   @override
@@ -83,11 +108,13 @@ class _FlowStreamViewState extends State<FlowStreamView> {
   void _restart() {
     _stream.dispose();
     _selected = null;
-    _stream = widget.api.stream(_query)..start();
+    _stream = widget.api.stream(_query);
+    if (_shown) _stream.start();
   }
 
   @override
   void dispose() {
+    _visible?.removeListener(_onVisibility);
     _stream.dispose();
     super.dispose();
   }

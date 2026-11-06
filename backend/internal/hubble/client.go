@@ -89,6 +89,9 @@ func (h *Hub) Observer(ctx context.Context, c *cluster.Clients, s Settings) (obs
 	return observerpb.NewObserverClient(cc), st.Relay, nil
 }
 
+// idleTimeout is how long the relay connection stays open with no calls.
+var idleTimeout = time.Minute
+
 func (h *Hub) connFor(ctx context.Context, c *cluster.Clients, r *Relay, s Settings) (*grpc.ClientConn, error) {
 	key := fmt.Sprintf("%p|%s/%s:%s|%v|%s", c, r.Namespace, r.Service, r.Port, r.TLS, s.ServerName)
 	h.mu.Lock()
@@ -122,6 +125,10 @@ func (h *Hub) connFor(ctx context.Context, c *cluster.Clients, r *Relay, s Setti
 		grpc.WithContextDialer(dial),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(16<<20)),
+		// Close the tunnel to the relay soon after the last stream or query
+		// ends (gRPC's default keeps it for 30 minutes); the next call
+		// reconnects.
+		grpc.WithIdleTimeout(idleTimeout),
 	)
 	if err != nil {
 		return nil, err
