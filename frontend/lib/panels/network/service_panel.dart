@@ -1,7 +1,9 @@
+import '../../ui/logs/open_logs.dart';
 import '../../ui/portforward/quick_forward.dart';
 
 import 'package:flutter/material.dart';
 
+import '../../actions/actions.dart' show ResourceAction;
 import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
@@ -126,6 +128,10 @@ class ServicePanel extends ResourcePanel {
 
   @override
   Set<String> get kinds => {'/Service'};
+
+  /// Merged logs of the pods the selector picks (none for selector-less services).
+  @override
+  List<ResourceAction> actions(PanelContext ctx) => asMap(ctx.spec['selector']).isEmpty ? const [] : [workloadLogsAction(ctx)];
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {

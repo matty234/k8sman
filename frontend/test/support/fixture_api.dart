@@ -141,6 +141,32 @@ class FixtureApi extends ApiClient {
     if (!liveLogs || !follow) c.add(const LogMessage(eof: true));
     return c.stream;
   }
+
+  /// `selector=… container=…` of each aggregated log request.
+  final aggregateRequests = <String>[];
+
+  @override
+  Stream<AggregateMessage> aggregateLogs({
+    required String namespace,
+    String? selector,
+    List<String>? pods,
+    String? container,
+    int tailLines = 200,
+    bool follow = true,
+    int? sinceSeconds,
+  }) {
+    aggregateRequests.add('selector=$selector pods=${pods?.join(',')} container=$container');
+    final names = pods ?? ['web-6fd47b8fcb-4v4m9', 'web-6fd47b8fcb-z7wpf'];
+    final c = StreamController<AggregateMessage>();
+    for (final n in names) {
+      c.add(AggregateMessage(event: 'added', pod: n, container: 'nginx'));
+    }
+    c.add(AggregateMessage(lines: [
+      for (var i = 0; i < 4; i++)
+        for (final n in names) AggLine(n, 'nginx', '2026-11-03T11:23:0$i.000000000Z', 'request $i served by $n'),
+    ]));
+    return c.stream;
+  }
 }
 
 /// Pumps the whole app (shell) against [api] at [size] and returns the

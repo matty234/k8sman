@@ -25,7 +25,7 @@ import '../actions/actions.dart' show ResourceAction;
 import '../panels/registry.dart';
 import 'detail/detail_sidebar.dart' show resourceActionsFor;
 import 'keyboard_help.dart';
-import 'logs/open_logs.dart' show kLogsActionId;
+import 'logs/open_logs.dart' show kLogsActionId, openPodsLogs;
 import 'row_context_menu.dart';
 import 'terminal/open_terminal.dart' show kTerminalActionId;
 import 'theme.dart';
@@ -346,6 +346,17 @@ class _TableBodyState extends State<_TableBody> {
     _open(app, tc.type, row);
   }
 
+  /// One merged log tab for exactly the selected pods (one per namespace).
+  void _openSelectedPodLogs(List<TableRowData> rows) {
+    final byNs = <String, List<String>>{};
+    for (final r in rows) {
+      (byNs[r.namespace ?? ''] ??= []).add(r.name);
+    }
+    for (final e in byNs.entries) {
+      openPodsLogs(context, e.key, e.value);
+    }
+  }
+
   Future<void> _runBulk(BulkAction action, List<TableRowData> rows) async {
     final tc = context.read<TableController>();
     await runBulkAction(
@@ -395,6 +406,7 @@ class _TableBodyState extends State<_TableBody> {
           height: 26,
           child: Text('${rows.length} ${tc.type.resource} selected', style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)),
         ),
+        if (tc.type.gk == '/Pod') item(Icons.layers_outlined, 'Logs (${rows.length} pods)', () => _openSelectedPodLogs(rows)),
         for (final a in safe) item(a.icon, '${a.verb} ${rows.length} ${tc.type.resource}', () => _runBulk(a, rows)),
         const PopupMenuDivider(height: 9),
         item(Icons.content_copy, 'Copy names', () => copyToClipboard(context, names, label: '${rows.length} names')),
@@ -485,7 +497,10 @@ class _TableBodyState extends State<_TableBody> {
     if (key == LogicalKeyboardKey.keyD) return did(() => inspect(DetailTab.overview));
     if (key == LogicalKeyboardKey.keyY) return did(() => inspect(DetailTab.yaml));
     if (key == LogicalKeyboardKey.keyE) return did(() => inspect(DetailTab.edit));
-    if (key == LogicalKeyboardKey.keyL) return did(() => act(kLogsActionId, 'logs'));
+    if (key == LogicalKeyboardKey.keyL) {
+      final sel = tc.selectedRows;
+      return did(() => sel.length >= 2 && tc.type.gk == '/Pod' ? _openSelectedPodLogs(sel) : act(kLogsActionId, 'logs'));
+    }
     if (key == LogicalKeyboardKey.keyS) return did(() => act(kTerminalActionId, 'shell'));
     return false;
   }

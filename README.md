@@ -95,8 +95,12 @@ machine.
 <picture><source srcset="docs/images/demo-logs.avif" type="image/avif"><img src="docs/images/terminal.png" alt="Logs streaming into the bottom dock, then a shell in the same pod" width="100%"></picture>
 
 - **Logs**: follow, previous instance, timestamps, wrap, and search with
-  highlighting or "only matching". You can open the logs of up to N pods of a
-  workload at once.
+  highlighting or "only matching".
+- **Aggregated logs**: press `l` on a Deployment, StatefulSet, DaemonSet,
+  ReplicaSet, Job or Service (or on two or more selected pods) to see all its
+  pods in one tab, merged by timestamp, each line labelled and colour-coded by
+  pod (and container). The pod set follows rollouts and scaling live; hide
+  sources or search by pod name.
 - **Terminals**: open a shell in any container. k8sman tries zsh, bash, ash
   and sh. For distroless images it offers an ephemeral debug container.
 - **Local shells** (macOS and Linux): **+** in the dock opens your login

@@ -7,12 +7,12 @@ import 'dart:collection';
 /// Also numbers lines with a running sequence ([firstSeq] is the number of
 /// `this[0]`), so per-line state such as search matches can be kept
 /// incrementally across evictions.
-class LogBuffer extends ListBase<String> {
+class LogBuffer<T> extends ListBase<T> {
   final int capacity;
   LogBuffer(this.capacity) : assert(capacity > 0);
 
   // Grows to [capacity], then wraps; [_head] is the oldest line once full.
-  final List<String> _buf = [];
+  final List<T> _buf = [];
   int _head = 0;
   int _firstSeq = 0;
 
@@ -32,24 +32,24 @@ class LogBuffer extends ListBase<String> {
   }
 
   @override
-  String operator [](int i) {
+  T operator [](int i) {
     RangeError.checkValidIndex(i, this);
     final j = _head + i;
     return _buf[j < _buf.length ? j : j - _buf.length];
   }
 
   @override
-  void operator []=(int i, String v) => throw UnsupportedError('LogBuffer is append-only');
+  void operator []=(int i, T v) => throw UnsupportedError('LogBuffer is append-only');
 
   @override
-  void add(String element) => append([element]);
+  void add(T element) => append([element]);
 
   @override
-  void addAll(Iterable<String> iterable) => append(iterable);
+  void addAll(Iterable<T> iterable) => append(iterable);
 
   /// Appends [lines], evicting the oldest past [capacity]. Returns how many
   /// lines were evicted.
-  int append(Iterable<String> lines) {
+  int append(Iterable<T> lines) {
     var evicted = 0;
     for (final l in lines) {
       if (_buf.length < capacity) {

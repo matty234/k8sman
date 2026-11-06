@@ -72,7 +72,7 @@ class LogDockView extends StatelessWidget {
                             ),
                           )
                         : switch (active) {
-                            LogStream s => LogStreamView(key: ObjectKey(s), stream: s),
+                            LogSession s => LogStreamView(key: ObjectKey(s), stream: s),
                             TerminalTab t => TerminalSession(key: ObjectKey(t), session: t),
                             _ => const SizedBox.shrink(),
                           },
@@ -155,7 +155,7 @@ class _TabStrip extends StatelessWidget {
                 icon: const Icon(Icons.add, size: 17),
                 onPressed: localShellSupported ? () => openLocalShell(context) : null,
               ),
-              if (active is LogStream && !narrow) _ActiveStatus(stream: active),
+              if (active is LogSession && !narrow) _ActiveStatus(stream: active),
               IconButton(
                 tooltip: '${dock.collapsed ? 'Expand' : 'Collapse'} panel (${shortcutLabel('J')})',
                 icon: Icon(dock.collapsed ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 18),
@@ -265,7 +265,7 @@ class _PaneTabState extends State<_PaneTab> with SingleTickerProviderStateMixin 
 }
 
 class _ActiveStatus extends StatelessWidget {
-  final LogStream stream;
+  final LogSession stream;
   const _ActiveStatus({required this.stream});
 
   @override
@@ -334,7 +334,7 @@ class _DockTab extends StatelessWidget {
         item('others', 'Close others', enabled: dock.tabs.length > 1),
         item('all', 'Close all'),
         const PopupMenuDivider(height: 9),
-        item('copy', 'Copy pod name'),
+        item('copy', 'Copy pod name', enabled: tab is! AggregateLogStream),
       ],
     );
     if (!context.mounted) return;
@@ -358,7 +358,8 @@ class _DockTab extends StatelessWidget {
     final colors = AppColors.of(context);
     final dock = context.read<LogDock>();
     final tab = this.tab;
-    final stream = tab is LogStream ? tab : null;
+    final stream = tab is LogSession ? tab : null;
+    final agg = tab is AggregateLogStream ? tab : null;
     final term = tab is TerminalTab ? tab : null;
     return ListenableBuilder(
       listenable: tab,
@@ -392,18 +393,21 @@ class _DockTab extends StatelessWidget {
                     _Dot(color: severityColor(context, logPhaseSeverity(stream)), pulse: stream.phase == LogPhase.streaming && stream.follow)
                   else
                     Icon(term?.isLocal ?? false ? Icons.laptop_mac : Icons.terminal, size: 13, color: severityColor(context, term == null ? Severity.neutral : terminalSeverity(term))),
+                  if (agg != null) ...[const SizedBox(width: 5), Icon(Icons.layers_outlined, size: 13, color: theme.hintColor)],
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text.rich(
                       TextSpan(
                         children: [
-                          if (term != null && term.isLocal) ...[
+                          if (agg != null)
+                            TextSpan(text: agg.label)
+                          else if (term != null && term.isLocal) ...[
                             const TextSpan(text: 'local'),
                             if ((term.container ?? '').isNotEmpty) TextSpan(text: ' · ${term.container}', style: TextStyle(color: theme.hintColor)),
                           ] else ...[
                             TextSpan(text: tab.pod),
                             TextSpan(
-                              text: '/${stream?.container ?? term?.container ?? ''}',
+                              text: '/${(stream is LogStream ? stream.container : null) ?? term?.container ?? ''}',
                               style: TextStyle(color: theme.hintColor),
                             ),
                           ],

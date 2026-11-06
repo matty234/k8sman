@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
+import 'package:k8sman/state/aggregate_log_stream.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/detail/detail_sidebar.dart';
 import 'package:k8sman/ui/alerts/alerts_view.dart';
@@ -170,15 +171,28 @@ void main() {
       dock.closeAll();
     });
 
-    testWidgets('Deployment Logs opens a tab per pod', (tester) async {
+    testWidgets('Deployment Logs opens one merged tab; sources can be hidden', (tester) async {
       final api = FixtureApi();
       final (app, dock) = await pumpShell(tester, api);
       app.openDetail(DetailTarget(type: app.typeFor('apps', 'Deployment')!, name: 'web', namespace: 'demo'));
       await _settle(tester);
       await tester.tap(find.byKey(const ValueKey('action-logs')));
       await settleLogs(tester);
-      expect(dock.tabs.map((t) => t.label), ['$_webPod/nginx', 'web-6fd47b8fcb-z7wpf/nginx']);
-      expect(dock.active?.pod, _webPod);
+      expect(api.aggregateRequests, hasLength(1));
+      expect(api.aggregateRequests.single, startsWith('selector=app=web'));
+      expect(dock.tabs.map((t) => t.label), ['deploy/web (2 pods)']);
+
+      // Lines carry a short pod label (the name minus the shared prefix).
+      expect(find.text('4v4m9'), findsWidgets);
+      expect(find.text('z7wpf'), findsWidgets);
+      expect(find.textContaining('served by web-6fd47b8fcb-z7wpf'), findsWidgets);
+
+      // Hiding a source drops its lines.
+      final s = dock.tabs.single as AggregateLogStream;
+      s.setPodHidden('web-6fd47b8fcb-z7wpf', true);
+      await tester.pump();
+      expect(find.textContaining('served by web-6fd47b8fcb-z7wpf'), findsNothing);
+      expect(find.textContaining('served by web-6fd47b8fcb-4v4m9'), findsWidgets);
       dock.closeAll();
     });
   });

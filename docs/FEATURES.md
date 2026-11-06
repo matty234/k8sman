@@ -98,7 +98,15 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 
 - Log tabs with search, highlighting and "only matching" filtering, follow,
   previous instance, timestamps, wrap, initial lines, Copy all and Clear.
-- Logs for a whole workload: a tab per pod, up to a limit.
+- Aggregated logs (k9s style): **Logs** on a Deployment, StatefulSet, DaemonSet,
+  ReplicaSet, Job or Service, or `l` / **Logs (N pods)** on two or more selected
+  pods, opens one tab merging every pod's logs in timestamp order. Each line
+  has a fixed-width, colour-coded prefix (the pod name minus the prefix its
+  siblings share, plus `/container` with **All containers**); hover shows the full
+  name and a click opens the pod in the inspector. The tab follows the pod set
+  live (new pods start streaming, deleted ones stop, with a dim divider line),
+  shows a live pod count, and has a **Sources** menu to hide pods or containers.
+  Search also matches the pod name. Up to 50 pods; a warning shows beyond that.
 - Terminals into any container, with automatic shell detection
   (zsh → bash → ash → sh). Font size is adjustable (⌘+ / ⌘− / ⌘0) and ⌘K clears.
 - An ephemeral debug container for distroless images that have no shell.

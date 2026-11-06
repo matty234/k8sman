@@ -207,6 +207,35 @@ class LogMessage {
   factory LogMessage.fromJson(Json j) => LogMessage(line: j['line'], error: j['error'], eof: j['eof'] ?? false);
 }
 
+/// One line of an aggregated log stream.
+class AggLine {
+  final String pod;
+  final String container;
+  final String ts;
+  final String line;
+  const AggLine(this.pod, this.container, this.ts, this.line);
+}
+
+/// A frame of `/api/logs/aggregate`: a batch of [lines], or an [event]
+/// (`added` / `removed`) for a pod container, or an [error] / [warning].
+class AggregateMessage {
+  final List<AggLine> lines;
+  final String? event;
+  final String? pod;
+  final String? container;
+  final String? error;
+  final String? warning;
+  const AggregateMessage({this.lines = const [], this.event, this.pod, this.container, this.error, this.warning});
+
+  factory AggregateMessage.fromJson(dynamic j) {
+    if (j is List) {
+      return AggregateMessage(lines: [for (final l in j) AggLine('${l['pod']}', '${l['container']}', '${l['ts'] ?? ''}', '${l['line'] ?? ''}')]);
+    }
+    final m = j as Json;
+    return AggregateMessage(event: m['event'], pod: m['pod'], container: m['container'], error: m['error'], warning: m['warning']);
+  }
+}
+
 class ContextInfo {
   final String name;
   final String cluster;

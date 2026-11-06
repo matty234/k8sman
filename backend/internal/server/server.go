@@ -113,6 +113,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/columns/preview", s.handlePreviewColumns)
 	s.mux.HandleFunc("GET /api/watch", s.handleWatch)
 	s.mux.HandleFunc("GET /api/logs", s.handleLogs)
+	s.mux.HandleFunc("GET /api/logs/aggregate", s.handleLogsAggregate)
 }
 
 // ServeHTTP checks Host, Origin, the bearer token and Content-Type

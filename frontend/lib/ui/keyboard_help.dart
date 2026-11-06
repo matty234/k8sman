@@ -41,7 +41,7 @@ final _navigation = [
 ];
 
 final _actions = [
-  ('l', 'Logs'),
+  ('l', 'Logs (merged for workloads / 2+ pods)'),
   ('s', 'Shell'),
   ('d', 'Overview'),
   ('y', 'YAML'),

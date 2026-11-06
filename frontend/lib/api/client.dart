@@ -347,10 +347,13 @@ class ApiClient {
 
   /// One WebSocket per listen. Cancelling the subscription closes the socket
   /// (and drops anything still in flight); the socket closing ends the stream.
-  Stream<Json> _wsStream(Uri uri) {
+  Stream<Json> _wsStream(Uri uri) => _wsRaw(uri).cast<Json>();
+
+  /// Like [_wsStream] for sockets whose frames may be JSON arrays.
+  Stream<dynamic> _wsRaw(Uri uri) {
     WebSocketChannel? ch;
     StreamSubscription<dynamic>? sub;
-    final controller = StreamController<Json>();
+    final controller = StreamController<dynamic>();
     controller.onListen = () {
       try {
         ch = connectWebSocket(uri);
@@ -365,7 +368,7 @@ class ApiClient {
       sub = ch!.stream.listen(
         (m) {
           try {
-            controller.add(jsonDecode(m as String) as Json);
+            controller.add(jsonDecode(m as String));
           } catch (e, st) {
             controller.addError(e, st);
           }
@@ -425,4 +428,26 @@ class ApiClient {
         'timestamps': timestamps ? 'true' : null,
         'sinceSeconds': sinceSeconds?.toString(),
       })).map(LogMessage.fromJson);
+
+  /// Merged logs of many pods (one `/api/logs/aggregate` socket): follow a
+  /// label [selector] or a fixed list of [pods]. [container] is a name, `*`
+  /// for every container, or null for each pod's default.
+  Stream<AggregateMessage> aggregateLogs({
+    required String namespace,
+    String? selector,
+    List<String>? pods,
+    String? container,
+    int tailLines = 200,
+    bool follow = true,
+    int? sinceSeconds,
+  }) =>
+      _wsRaw(_ws('logs/aggregate', {
+        'namespace': namespace,
+        'selector': selector,
+        'pods': pods?.join(','),
+        'container': container,
+        'tailLines': '$tailLines',
+        'follow': follow ? null : 'false',
+        'sinceSeconds': sinceSeconds?.toString(),
+      })).map(AggregateMessage.fromJson);
 }

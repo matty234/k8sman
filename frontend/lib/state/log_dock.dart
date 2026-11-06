@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
@@ -8,19 +7,17 @@ import '../api/models.dart';
 import '../panels/pod/pod_logic.dart';
 import '../util/k8s.dart';
 import 'dock_tab.dart';
-import 'log_buffer.dart';
+import 'aggregate_log_stream.dart';
+import 'log_session.dart';
 
+export 'aggregate_log_stream.dart';
 export 'dock_tab.dart';
-
-/// Maximum lines kept in memory per stream; older lines are dropped.
-const int kMaxLogLines = 10000;
-
-enum LogPhase { connecting, streaming, eof, error, notStarted }
+export 'log_session.dart';
 
 /// One (pod, container) log stream. Owns its subscription and buffer, so it
 /// keeps streaming while its tab is hidden or the dock is collapsed. The
 /// [LogDock] disposes it (cancelling the subscription) when the tab closes.
-class LogStream extends DockTab {
+class LogStream extends LogSession {
   final ApiClient api;
   @override
   final String namespace;
@@ -33,35 +30,21 @@ class LogStream extends DockTab {
   /// waiting for a container to start.
   Json podObject;
 
-  // Options; changing any of these resubscribes.
-  bool follow = true;
+  // Changing any option resubscribes.
+  @override
   bool previous;
-  bool timestamps = false;
   int tail = 500;
 
-  // View options (kept here so they survive tab switches and collapse).
-  bool wrap = false;
-  bool onlyMatching = false;
-  String query = '';
-
-  /// The last [kMaxLogLines] lines, oldest first (a ring buffer: dropping
-  /// the oldest costs nothing per flush).
-  final LogBuffer lines = LogBuffer(kMaxLogLines);
   final List<String> _pending = [];
-  int dropped = 0;
-  int maxLen = 0;
-  LogPhase phase = LogPhase.connecting;
-  String? error;
 
   StreamSubscription<LogMessage>? _sub;
   Timer? _flushTimer;
   Timer? _startPoll;
-  List<int>? _filtered;
   bool _disposed = false;
 
   LogStream({required this.api, required this.namespace, required this.pod, required String container, required this.podObject, this.previous = false})
-      // ignore: prefer_initializing_formals
-      : _container = container {
+    // ignore: prefer_initializing_formals
+    : _container = container {
     _subscribe();
   }
 
@@ -70,7 +53,7 @@ class LogStream extends DockTab {
   @override
   String get label => '$pod/$_container';
 
-  /// True while the subscription is open (useful for tests).
+  @override
   bool get isSubscribed => _sub != null;
 
   List<PodContainer> get containers => podContainers(podObject);
@@ -84,46 +67,6 @@ class LogStream extends DockTab {
   bool get canPrevious {
     final c = current;
     return (c?.restarts ?? 0) > 0 || (c?.lastTerminated.isNotEmpty ?? false);
-  }
-
-  // Matches are kept as line sequence numbers ([LogBuffer.firstSeq]-based)
-  // for [_matchQuery], scanned up to [_matchedTo]: new lines are searched as
-  // they arrive instead of re-lowercasing the whole buffer on every flush.
-  final Queue<int> _matchSeqs = Queue();
-  String? _matchQuery;
-  int _matchedTo = 0;
-
-  /// Indices of lines matching [query] (cached until lines/query change).
-  List<int> get matching {
-    if (_filtered != null) return _filtered!;
-    final q = query.toLowerCase();
-    if (q.isEmpty) return _filtered = const [];
-    if (q != _matchQuery || _matchedTo < lines.firstSeq) {
-      _matchQuery = q;
-      _matchSeqs.clear();
-      _matchedTo = lines.firstSeq;
-    }
-    while (_matchSeqs.isNotEmpty && _matchSeqs.first < lines.firstSeq) {
-      _matchSeqs.removeFirst();
-    }
-    for (var seq = _matchedTo; seq < lines.nextSeq; seq++) {
-      if (lines[seq - lines.firstSeq].toLowerCase().contains(q)) _matchSeqs.add(seq);
-    }
-    _matchedTo = lines.nextSeq;
-    final first = lines.firstSeq;
-    return _filtered = List.unmodifiable([for (final s in _matchSeqs) s - first]);
-  }
-
-  void setQuery(String q) {
-    query = q;
-    _filtered = null;
-    notifyListeners();
-  }
-
-  void setView({bool? wrap, bool? onlyMatching}) {
-    if (wrap != null) this.wrap = wrap;
-    if (onlyMatching != null) this.onlyMatching = onlyMatching;
-    notifyListeners();
   }
 
   /// Change subscription options and reconnect.
@@ -145,14 +88,7 @@ class LogStream extends DockTab {
     notifyListeners();
   }
 
-  void clear() {
-    dropped += lines.length;
-    lines.clear();
-    _filtered = null;
-    maxLen = 0;
-    notifyListeners();
-  }
-
+  @override
   void reconnect() {
     _subscribe();
     notifyListeners();
@@ -173,7 +109,7 @@ class LogStream extends DockTab {
     _pending.clear();
     dropped = 0;
     maxLen = 0;
-    _filtered = null;
+    invalidateRows();
     error = null;
     final c = current;
     if (c == null) {
@@ -198,7 +134,11 @@ class LogStream extends DockTab {
   void _pollUntilStarted() {
     _startPoll = Timer.periodic(const Duration(seconds: 3), (_) async {
       try {
-        final o = await api.object(const ResourceRef(resource: 'pods'), namespace: namespace, name: pod);
+        final o = await api.object(
+          const ResourceRef(resource: 'pods'),
+          namespace: namespace,
+          name: pod,
+        );
         if (_disposed || phase != LogPhase.notStarted) return;
         podObject = o;
         if (current?.everStarted ?? false) _subscribe();
@@ -234,7 +174,11 @@ class LogStream extends DockTab {
   /// tab was opened.
   Future<void> _refreshPod() async {
     try {
-      final o = await api.object(const ResourceRef(resource: 'pods'), namespace: namespace, name: pod);
+      final o = await api.object(
+        const ResourceRef(resource: 'pods'),
+        namespace: namespace,
+        name: pod,
+      );
       if (_disposed) return;
       podObject = o;
       notifyListeners();
@@ -252,7 +196,7 @@ class LogStream extends DockTab {
     }
     dropped += lines.append(_pending);
     _pending.clear();
-    _filtered = null;
+    invalidateRows();
     if (phase == LogPhase.connecting) phase = LogPhase.streaming;
     notifyListeners();
   }
@@ -349,6 +293,32 @@ class LogDock extends ChangeNotifier {
       // "View logs" and "Previous instance" both reuse the tab: switch it to
       // the instance asked for.
       if (previous != s.previous) s.setOptions(previous: previous);
+    }
+    if (focus || _activeId == null) _activeId = s.id;
+    if (focus) pane = null;
+    collapsed = false;
+    notifyListeners();
+    return s;
+  }
+
+  /// Opens (or focuses, if already open) one tab merging the logs of every
+  /// pod matching [selector], or of exactly [pods]; the tab follows pods as
+  /// they come and go. [title] is e.g. `deploy/web`.
+  AggregateLogStream openAggregate(
+    String namespace, {
+    String? selector,
+    List<String> pods = const [],
+    String? title,
+    bool allContainers = false,
+    bool focus = true,
+  }) {
+    final id = aggregateId(namespace, selector, pods);
+    var s = _tabs.whereType<AggregateLogStream>().where((t) => t.id == id).firstOrNull;
+    if (s == null) {
+      s = AggregateLogStream(api: api, namespace: namespace, selector: selector, podNames: pods, title: title, allContainers: allContainers);
+      _tabs.add(s);
+    } else if (s.phase == LogPhase.error || s.phase == LogPhase.eof) {
+      s.reconnect();
     }
     if (focus || _activeId == null) _activeId = s.id;
     if (focus) pane = null;
