@@ -16,6 +16,7 @@ import 'argoworkflows_module.dart';
 import 'gateway_module.dart';
 import 'gpus_module.dart';
 import 'helm_module.dart';
+import 'hubble_module.dart';
 import 'metrics_module.dart';
 import 'module.dart';
 import 'prometheus_module.dart';
@@ -33,6 +34,7 @@ const List<AppModule> builtInModules = [
   ArgoWorkflowsModule(),
   PrometheusModule(),
   GatewayModule(),
+  HubbleModule(),
 ];
 
 /// Whether module [id] is on: not turned off in [disabled], nor any module
