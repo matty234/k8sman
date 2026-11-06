@@ -50,6 +50,11 @@ func runningPod(name string) *corev1.Pod {
 func TestAggregateMergesByTimestampAndCleansUp(t *testing.T) {
 	aggReorderWindow, aggFlushEvery = 60*time.Millisecond, 10*time.Millisecond
 	base := runtime.NumGoroutine()
+	// Default container: annotation, then "main", then the first.
+	dp := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "wait"}, {Name: "main"}}}}
+	if got := (&aggregator{}).containersFor(dp); !reflect.DeepEqual(got, []string{"main"}) {
+		t.Errorf("default container = %v, want [main]", got)
+	}
 	f := &fakeLogs{open: map[string]*io.PipeWriter{}}
 	var mu sync.Mutex
 	var lines, events []string

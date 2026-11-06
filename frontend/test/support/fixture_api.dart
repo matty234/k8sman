@@ -153,9 +153,10 @@ class FixtureApi extends ApiClient {
     String? container,
     int tailLines = 200,
     bool follow = true,
+    bool previous = false,
     int? sinceSeconds,
   }) {
-    aggregateRequests.add('selector=$selector pods=${pods?.join(',')} container=$container');
+    aggregateRequests.add('selector=$selector pods=${pods?.join(',')} container=$container${previous ? ' previous' : ''}');
     final names = pods ?? ['web-6fd47b8fcb-4v4m9', 'web-6fd47b8fcb-z7wpf'];
     final c = StreamController<AggregateMessage>();
     for (final n in names) {

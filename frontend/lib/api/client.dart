@@ -439,6 +439,7 @@ class ApiClient {
     String? container,
     int tailLines = 200,
     bool follow = true,
+    bool previous = false,
     int? sinceSeconds,
   }) =>
       _wsRaw(_ws('logs/aggregate', {
@@ -448,6 +449,7 @@ class ApiClient {
         'container': container,
         'tailLines': '$tailLines',
         'follow': follow ? null : 'false',
+        'previous': previous ? 'true' : null,
         'sinceSeconds': sinceSeconds?.toString(),
       })).map(AggregateMessage.fromJson);
 }

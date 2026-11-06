@@ -193,6 +193,15 @@ void main() {
       await tester.pump();
       expect(find.textContaining('served by web-6fd47b8fcb-z7wpf'), findsNothing);
       expect(find.textContaining('served by web-6fd47b8fcb-4v4m9'), findsWidgets);
+
+      // Previous reconnects with previous=true, then back to normal.
+      s.setOptions(previous: true);
+      await settleLogs(tester);
+      expect(api.aggregateRequests.last, endsWith('previous'));
+      expect(s.previous, isTrue);
+      s.setOptions(previous: false);
+      await settleLogs(tester);
+      expect(api.aggregateRequests.last, isNot(endsWith('previous')));
       dock.closeAll();
     });
   });

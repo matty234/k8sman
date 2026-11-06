@@ -107,6 +107,11 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   live (new pods start streaming, deleted ones stop, with a dim divider line),
   shows a live pod count, and has a **Sources** menu to hide pods or containers.
   Search also matches the pod name. Up to 50 pods; a warning shows beyond that.
+  **Previous** shows each container's previous instance (containers without one
+  are skipped) and stops following the pod set. Each pod's default container is
+  its `default-container` annotation, else `main`, else the first.
+- **Logs** on an Argo Workflow opens one such tab for all its step pods
+  (`main` container), following new steps live.
 - Terminals into any container, with automatic shell detection
   (zsh → bash → ash → sh). Font size is adjustable (⌘+ / ⌘− / ⌘0) and ⌘K clears.
 - An ephemeral debug container for distroless images that have no shell.

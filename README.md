@@ -100,7 +100,8 @@ machine.
   ReplicaSet, Job or Service (or on two or more selected pods) to see all its
   pods in one tab, merged by timestamp, each line labelled and colour-coded by
   pod (and container). The pod set follows rollouts and scaling live; hide
-  sources or search by pod name.
+  sources or search by pod name, or switch to the previous instances. **Logs**
+  on an Argo Workflow opens the same tab for its step pods.
 - **Terminals**: open a shell in any container. k8sman tries zsh, bash, ash
   and sh. For distroless images it offers an ephemeral debug container.
 - **Local shells** (macOS and Linux): **+** in the dock opens your login

@@ -219,7 +219,7 @@ class _LogStreamViewState extends State<LogStreamView> {
         body = InlineMessage(s.error ?? 'error', isError: true);
       case LogPhase.eof || LogPhase.streaming:
         final hint = !s.previous && (c?.restarts ?? 0) > 0 ? ' — the container has restarted; try "Previous"' : '';
-        body = InlineMessage(s is AggregateLogStream && (s as AggregateLogStream).podCount == 0 ? 'No running pods match yet' : 'No log output$hint', icon: Icons.notes);
+        body = InlineMessage(s is AggregateLogStream && (s as AggregateLogStream).podCount == 0 ? (s.previous ? 'No previous instances' : 'No running pods match yet') : 'No log output$hint', icon: Icons.notes);
     }
     return SingleChildScrollView(
       child: Align(
@@ -412,14 +412,22 @@ class _Toolbar extends StatelessWidget {
             compact: compact,
             onChanged: (v) => ls != null ? ls.setOptions(follow: v) : agg!.setOptions(follow: v),
           ),
-          if (ls != null)
+          if (ls != null || agg != null)
             _Toggle(
               label: 'Previous',
               icon: Icons.history,
-              value: ls.previous,
+              value: s.previous,
               compact: compact,
-              tooltip: ls.canPrevious ? 'Logs of the previous (crashed) instance' : 'No restarts: no previous instance',
-              onChanged: ls.canPrevious || ls.previous ? (v) => ls.setOptions(previous: v) : null,
+              tooltip: ls == null
+                  ? 'Logs of the previous instance of each container that has one (the pod set is not followed)'
+                  : ls.canPrevious
+                      ? 'Logs of the previous (crashed) instance'
+                      : 'No restarts: no previous instance',
+              onChanged: ls == null
+                  ? (v) => agg!.setOptions(previous: v)
+                  : ls.canPrevious || ls.previous
+                      ? (v) => ls.setOptions(previous: v)
+                      : null,
             ),
           _Toggle(label: 'Timestamps', icon: Icons.schedule, value: s.timestamps, compact: compact, onChanged: setTimestamps),
           _Toggle(

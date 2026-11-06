@@ -155,6 +155,9 @@ func (a *aggregator) containersFor(p *corev1.Pod) []string {
 		if d := p.Annotations[defaultContainerA]; d != "" {
 			return []string{d}
 		}
+		if hasContainer(p, "main") { // Argo steps: main next to wait and init
+			return []string{"main"}
+		}
 		if len(p.Spec.Containers) > 0 {
 			return []string{p.Spec.Containers[0].Name}
 		}
@@ -317,7 +320,7 @@ func (a *aggregator) merge(ctx context.Context, in <-chan *aggEntry, cancel cont
 
 // handleLogsAggregate streams the merged logs of several pods.
 // Query: namespace; selector or pods (comma-separated); container (name, *,
-// or empty for each pod's default); tailLines (per stream, default 200),
+// or empty for each pod's default: annotation, then main, then the first); tailLines (per stream, default 200),
 // sinceSeconds, previous, follow (default true).
 func (s *Server) handleLogsAggregate(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -413,6 +416,10 @@ func (s *Server) handleLogsAggregate(w http.ResponseWriter, r *http.Request) {
 		select {
 		case pods <- set:
 		case <-ctx.Done():
+			return
+		}
+		if a.previous { // previous logs are finite: the pod set is not followed
+			<-ctx.Done()
 			return
 		}
 	}

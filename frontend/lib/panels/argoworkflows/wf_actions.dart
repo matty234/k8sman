@@ -10,7 +10,7 @@ import 'package:provider/provider.dart';
 import '../../actions/actions.dart';
 import '../../api/models.dart';
 import '../../state/log_dock.dart';
-import '../../ui/logs/open_logs.dart' show kLogsActionId, kMaxWorkloadLogTabs;
+import '../../ui/logs/open_logs.dart' show kLogsActionId;
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -57,8 +57,13 @@ List<ResourceAction> workflowActions(PanelContext ctx) {
   ];
 }
 
-/// Opens logs (main container) of the workflow's failed pods, else running
-/// ones, else the latest, up to [kMaxWorkloadLogTabs].
+/// Most pods the aggregated endpoint streams (see API.md).
+const _kMaxAggregatePods = 50;
+
+/// Opens one merged log tab (`main` container of each step pod). It follows
+/// the workflow's pods by label, so new steps appear live; with more pods
+/// than the endpoint streams, the failed, then running, then latest ones are
+/// opened by name instead.
 Future<void> openWorkflowLogs(BuildContext context, PanelContext ctx) async {
   final dock = context.read<LogDock>();
   final messenger = ScaffoldMessenger.maybeOf(context);
@@ -73,6 +78,12 @@ Future<void> openWorkflowLogs(BuildContext context, PanelContext ctx) async {
     messenger?.showSnackBar(SnackBar(content: Text('${ctx.name} has no pods left (garbage-collected or archived)')));
     return;
   }
+  final ns = ctx.namespace ?? '';
+  final title = 'workflow/${ctx.name}';
+  if (pods.length <= _kMaxAggregatePods) {
+    dock.openAggregate(ns, selector: '$labelWorkflow=${ctx.name}', title: title);
+    return;
+  }
   int rank(Json p) => switch ('${dig(p, ['status', 'phase'])}') {
         'Failed' => 0,
         'Running' => 1,
@@ -84,12 +95,9 @@ Future<void> openWorkflowLogs(BuildContext context, PanelContext ctx) async {
     if (r != 0) return r;
     return '${dig(b, ['metadata', 'creationTimestamp'])}'.compareTo('${dig(a, ['metadata', 'creationTimestamp'])}');
   });
-  final take = pods.take(kMaxWorkloadLogTabs).toList();
-  for (final (i, p) in take.indexed) {
-    final cs = [for (final c in asMapList(dig(p, ['spec', 'containers']))) '${c['name']}'];
-    dock.open(p, container: cs.contains('main') ? 'main' : cs.firstOrNull, focus: i == 0);
-  }
-  if (pods.length > take.length) messenger?.showSnackBar(SnackBar(content: Text('Opened logs for ${take.length} of ${pods.length} pods')));
+  final take = pods.take(_kMaxAggregatePods).toList();
+  dock.openAggregate(ns, pods: [for (final p in take) '${dig(p, ['metadata', 'name'])}'], title: title);
+  messenger?.showSnackBar(SnackBar(content: Text('Opened logs for ${take.length} of ${pods.length} pods')));
 }
 
 Future<void> showRetryDialog(BuildContext context, PanelContext ctx) async {

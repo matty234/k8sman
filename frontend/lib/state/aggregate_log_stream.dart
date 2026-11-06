@@ -65,6 +65,11 @@ class AggregateLogStream extends LogSession {
 
   bool _allContainers;
   bool get allContainers => _allContainers;
+  bool _previous = false;
+
+  /// Previous container instances (finite; the pod set is not followed).
+  @override
+  bool get previous => _previous;
   int tail = 200;
 
   /// Parallel to [lines]: the source and timestamp of each row.
@@ -131,9 +136,12 @@ class AggregateLogStream extends LogSession {
 
   // --- options ---
 
-  void setOptions({bool? follow, bool? timestamps, int? tail, bool? allContainers}) {
-    final reconnect =
-        (follow != null && follow != this.follow) || (tail != null && tail != this.tail) || (allContainers != null && allContainers != _allContainers);
+  void setOptions({bool? follow, bool? previous, bool? timestamps, int? tail, bool? allContainers}) {
+    final reconnect = (follow != null && follow != this.follow) ||
+        (previous != null && previous != _previous) ||
+        (tail != null && tail != this.tail) ||
+        (allContainers != null && allContainers != _allContainers);
+    if (previous != null) _previous = previous;
     if (follow != null) this.follow = follow;
     if (timestamps != null) this.timestamps = timestamps;
     if (tail != null) this.tail = tail;
@@ -320,7 +328,8 @@ class AggregateLogStream extends LogSession {
           pods: selector == null ? podNames : null,
           container: _allContainers ? '*' : null,
           tailLines: tail,
-          follow: follow,
+          follow: follow && !_previous,
+          previous: _previous,
         )
         .listen(_onMessage, onError: (Object e) => _finish(LogPhase.error, '$e'), onDone: () => _finish(LogPhase.eof));
   }
