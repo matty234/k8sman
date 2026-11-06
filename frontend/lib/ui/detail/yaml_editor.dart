@@ -11,6 +11,7 @@ import '../../api/client.dart';
 import '../../state/app_state.dart';
 import '../../util/diff.dart';
 import '../../util/k8s.dart';
+import '../editor/resource_editor_screen.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../keys.dart';
@@ -254,6 +255,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
             },
           ),
           IconButton(tooltip: 'Copy YAML', icon: const Icon(Icons.copy, size: 16), onPressed: () => copyToClipboard(context, _original, label: 'YAML')),
+          IconButton(tooltip: 'Open in Editor', icon: const Icon(Icons.open_in_full, size: 16), onPressed: () => openResourceEditor(context, _t)),
           if (canEdit) FilledButton.tonalIcon(style: FilledButton.styleFrom(visualDensity: VisualDensity.compact), onPressed: _startEditing, icon: const Icon(Icons.edit, size: 16), label: const Text('Edit')),
         ] else ...[
           SegmentedButton<bool>(
