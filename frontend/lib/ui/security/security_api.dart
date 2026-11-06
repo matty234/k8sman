@@ -8,7 +8,9 @@ import 'package:http/http.dart' as http;
 import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../state/cluster_error.dart';
 import '../../util/k8s.dart';
+import '../widgets/partial_banner.dart' show parsePartialErrors;
 
 /// Talks to the backend behind an [ApiClient], reusing its base URL. Tests
 /// subclass this to serve canned JSON.
@@ -329,6 +331,10 @@ class SecurityData {
   final bool gatewayApi;
   final Map<String, String> errors;
 
+  /// Namespaces of the set that could not be read (RBAC); the rest is
+  /// analysed.
+  final Map<String, ClusterError> partialErrors;
+
   const SecurityData({
     required this.generatedAt,
     required this.namespace,
@@ -343,6 +349,7 @@ class SecurityData {
     this.trivyOperator = false,
     this.gatewayApi = false,
     this.errors = const {},
+    this.partialErrors = const {},
   });
 
   factory SecurityData.fromJson(Json j) {
@@ -361,6 +368,7 @@ class SecurityData {
       trivyOperator: sources['trivyOperator'] == true,
       gatewayApi: sources['gatewayAPI'] == true,
       errors: {for (final e in asMap(j['errors']).entries) e.key: '${e.value}'},
+      partialErrors: parsePartialErrors(j['partialErrors']),
     );
   }
 

@@ -65,7 +65,7 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | GET | `/api/health` | `{ok, connected, context, host, kubeconfig, readOnly, error?}` |
 | GET | `/api/contexts` | `{current, contexts:[{name,cluster,user,namespace,server,auth?}]}`; `auth` names an exec plugin / auth provider (e.g. `kubelogin`) |
 | POST | `/api/contexts/current` | body `{name}`: switch the kube context (remembered per kubeconfig) |
-| GET | `/api/kubeconfigs` | `{current, context, home, merged?, candidates:[{path, contexts:[names], currentContext, source, error?}]}`. `current` is the active file (`""` = default rules merging the `merged` $KUBECONFIG files). Candidates: each `$KUBECONFIG` entry, `~/.kube/config`, other files under `~/.kube` that parse as kubeconfig (cache dirs skipped), and recently used files. `source` is `KUBECONFIG`, `default`, `kube-dir` or `recent`. Only paths and context names are returned |
+| GET | `/api/kubeconfigs` | `{current, currentKey, context, home, merged?, candidates:[{path, contexts:[names], currentContext, source, error?}]}`. `current` is the active file (`""` = default rules merging the `merged` $KUBECONFIG files). `currentKey` is its canonical identity (see [Saved views](#saved-views)). Candidates: each `$KUBECONFIG` entry, `~/.kube/config`, other files under `~/.kube` that parse as kubeconfig (cache dirs skipped), and recently used files. `source` is `KUBECONFIG`, `default`, `kube-dir` or `recent`. Only paths and context names are returned |
 | POST | `/api/kubeconfigs/current` | body `{path}` (absolute or `~/…`): validate the file, make it active and connect to its last used context (else its current-context). Returns the same shape as GET |
 | GET | `/api/probe?step=reach\|auth` | connection check for the current context, run before discovery: `reach` = unauthenticated `GET /version`, fails in 10 s with `reason: "Unreachable"`; `auth` = the same with credentials (runs exec plugins; 30 s, 5 min for exec) |
 | GET | `/api/resources[?refresh=true]` | discovered listable types `[{group,version,resource,kind,namespaced,verbs,shortNames,categories,custom}]` |
@@ -77,8 +77,9 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | GET/PUT/DELETE | `/api/columns` | read `{columns, isDefault, defaults}`, save `{columns}`, or reset the user's column override |
 | GET/PUT/DELETE | `/api/settings/sidebar` | the sidebar's top section, persisted in settings.json: read `{sidebar: {items} \| null}` (null = app default), save `{items}`, or reset. Each item is a page `{view, hidden?}` (hidden pages fold under "More") or a pinned kind `{group, kind, namespace?}` (keyed by group/kind, applies across clusters). Works without a cluster connection |
 | PUT | `/api/settings/readonly` | lock or unlock a kube context: `{context, readOnly: true \| false \| null}` (null = automatic: read-only when the name looks like production). Returns `{context, readOnly, readOnlyReason}`. `GET /api/health` reports the current context's `readOnly` and `readOnlyReason` (`flag`, `context` or `auto`); `GET /api/contexts` adds `readOnly: {context: reason}` |
-| GET | `/api/settings/views` | saved views (see [Saved views](#saved-views)): `{views: [View], launchView}`. Works without a cluster connection |
-| PUT/DELETE | `/api/settings/views/{id}` | add or replace a view (body: the View, its `id` matching the URL), or delete it |
+| GET | `/api/settings/views` | saved views (see [Saved views](#saved-views)): `{views: [View], launchView, kubeconfigKeys: {path: key}}`. Works without a cluster connection |
+| PUT/DELETE | `/api/settings/views/{id}` | add or replace a view (body: the View, its `id` matching the URL), or delete it. `PUT ?index=N` places the view at position N of the order (moving it if it exists; clamped to the end), so undoing a delete restores the old position. Without `index` a new view goes last and an existing one keeps its place |
+| PUT | `/api/settings/views/order` | `{ids: [...]}`: puts those views in that order. They keep the slots they occupy now, so records of a newer version stay where they are. Unknown ids are ignored. 204 |
 | PUT | `/api/settings/views/launch` | `{id}`: the view to open at launch (`""` = reconnect to the last context) |
 | POST | `/api/settings/views/export` | `{views: [View]}` → the views as YAML documents (`application/yaml`) |
 | POST | `/api/settings/views/parse` | `{yaml}` → `{views: [View]}`: YAML documents as exported, with fresh ids, validated but not saved |
@@ -130,6 +131,8 @@ newer than this backend writes are kept and returned untouched.
 leaves out the kubeconfig path; a bound view keeps its context name and API
 server URL so an importer can re-point it.
 
+**Context identity.** A bound view's `context.kubeconfig` is the path as saved (`""` = the default loading rules). Clients compare kubeconfigs by canonical key, not by that string: `GET /api/settings/views` returns `kubeconfigKeys` (every kubeconfig path the views mention, and `""`, mapped to its key) and `GET /api/kubeconfigs` returns `currentKey`. The key is `cluster.KubeconfigKey`: `""` resolves like the loader does (the one `$KUBECONFIG` entry, else `~/.kube/config`; several entries give all of them joined), `~/` is expanded, the path is made clean and absolute, and symlinks are resolved when the file exists. So the default kubeconfig and an explicitly picked `~/.kube/config` are the same context. Stored views are unchanged.
+
 ## Namespace sets
 
 `/api/watch`, `/api/table`, `/api/items`, `/api/overview`, `/api/security`,
@@ -153,7 +156,10 @@ namespaces. One namespace in the set behaves exactly like `namespace=`.
 - **Overview, Security, Metrics** list each namespace of the set and
   analyse the union. Namespaces that can't be read are left out (unless
   none can). `/api/overview` and `/api/security` report the set as
-  `namespace: "a,b"`. Custom and external metrics stay per namespace.
+  `namespace: "a,b"` and list the namespaces they left out in `partialErrors`
+  (same shape as in `/api/table`), so pages show the table's banner. Metrics
+  Top reads its pod list through `/api/items`, which has `partialErrors`;
+  Alerts filter by label and read no namespace, so they have none. Custom and external metrics stay per namespace.
 
 ## Columns
 

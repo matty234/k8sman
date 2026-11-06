@@ -373,7 +373,7 @@ exactly as `kubectl` does.
 | ↑ / ↓, ⇧↑ / ⇧↓ | Move the selection / extend it |
 | ⌘⌫ | Delete the selected rows (with confirmation) |
 | Esc | Clear a multi-selection, else close the inspector; leave an unchanged YAML edit; close pickers |
-| ⌘S | YAML editor: review and apply (full-window editor: validate, review, apply) |
+| ⌘S | YAML editor: review and apply (full-window editor: validate, review, apply). Elsewhere with a table showing: save it as a view, or update the open view |
 | ⌘F | YAML editor: find |
 | ⌘↩ | Run the dry run (Helm upgrade), apply (add-on install), or apply or create (full-window editor) |
 | ⌘+ / ⌘− / ⌘0, ⌘K | Terminal: font size, clear |

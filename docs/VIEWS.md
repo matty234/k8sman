@@ -317,7 +317,7 @@ Where the build differs from the design above:
   namespace, merged by `kcache.MultiSub`. `/api/table` and `/api/items`
   report unreadable namespaces in `partialErrors`. Overview, Security and
   Metrics list each namespace and leave out the unreadable ones (unless all
-  are), without a banner.
+  are). A banner names the skipped namespaces (see Follow-ups).
 - **Metrics.** Top, Storage and Network take the set. The custom metrics API
   reads one namespace or all, so a set reads all and keeps the set's rows;
   external metrics read the first namespace of the set.
@@ -338,9 +338,32 @@ Where the build differs from the design above:
   with the same API server URL, else asks.
 - **Launch.** A launch view bound to a context is connected to directly. If
   it can't be opened, the sidebar's Views section says why.
-- **Not built:** ⌘S for Save View, `:view save <name>`, reordering views in
-  the sidebar editor, and **Locate file…** for a missing kubeconfig (a view
-  whose kubeconfig can't be switched to is treated as a missing context and
+- **Follow-ups.**
+  - **⌘S** (Ctrl+S on Windows and Linux): with a table showing and no view
+    open it opens Save View; with a modified view open it is Update View.
+    Text fields and the two YAML editors keep ⌘S for themselves.
+  - **`:view save <name>`** saves the open table as a view for any context
+    (the name keeps its case); `:view` alone lists views.
+  - **Reordering** is in the sidebar editor (the same drag handles as pins),
+    saved with `PUT /api/settings/views/order`. Undoing a delete puts the
+    view back with `PUT …/{id}?index=N`.
+  - **Files.** Import Views… has **From File…**, and the Views menu has
+    **Import from File…**, **Export All Views to File…** and a per-view
+    **Export to File…**: `.yaml`/`.yml` through the open and save panels
+    (the macOS panels are in `MainFlutterWindow.swift`; Windows and Linux use
+    file_selector). Where there is no save panel, export copies to the
+    clipboard.
+  - **Context match by resolved path.** The backend resolves kubeconfig paths
+    to a canonical key (`cluster.KubeconfigKey`), returned as
+    `kubeconfigKeys` and `currentKey`; `AppState.sameKubeconfig` compares
+    those, so the default kubeconfig and an explicit `~/.kube/config` match.
+    Without keys (an older backend) it compares the strings, as before.
+  - **Banner on pages.** Overview and Security report namespaces they
+    skipped in `partialErrors`; Metrics Top uses the one on `/api/items`. All
+    show the table's banner (`PartialBanner`). Alerts read no namespace, so
+    have nothing to report.
+- **Not built:** **Locate file…** for a missing kubeconfig (a view whose
+  kubeconfig can't be switched to is treated as a missing context and
   offered for re-pointing).
 
 ## Open questions for the owner (answered above)

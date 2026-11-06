@@ -7,7 +7,9 @@ import 'package:http/http.dart' as http;
 import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../state/cluster_error.dart';
 import '../../util/k8s.dart';
+import '../widgets/partial_banner.dart' show parsePartialErrors;
 
 /// Fetches the health overview from the backend behind an [ApiClient],
 /// reusing its base URL. Tests subclass this to serve canned JSON.
@@ -180,6 +182,10 @@ class OverviewData {
   /// Lists the backend could not read (e.g. nodes when RBAC forbids it).
   final Map<String, String> errors;
 
+  /// Namespaces of the set that could not be read (RBAC); the rest is
+  /// analysed.
+  final Map<String, ClusterError> partialErrors;
+
   const OverviewData({
     this.generatedAt,
     this.namespace = '',
@@ -189,6 +195,7 @@ class OverviewData {
     this.nodes = const [],
     this.topWarnings = const [],
     this.errors = const {},
+    this.partialErrors = const {},
   });
 
   factory OverviewData.fromJson(Json j) => OverviewData(
@@ -200,6 +207,7 @@ class OverviewData {
         nodes: [for (final n in asMapList(j['nodes'])) NodeHealth.fromJson(n)],
         topWarnings: [for (final w in asMapList(j['topWarnings'])) WarningReason.fromJson(w)],
         errors: {for (final e in asMap(j['errors']).entries) e.key: '${e.value}'},
+        partialErrors: parsePartialErrors(j['partialErrors']),
       );
 
   int count(String type, String field) => (dig<num>(counts, [type, field]) ?? 0).toInt();

@@ -44,15 +44,22 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   name, a dot when it has changed, and **Update View** / **Revert**.
   Choosing another kind, namespace or context closes the view.
 - Right-click a view: Rename, Duplicate, Only on <context> / Apply to Any
-  Context, Copy as YAML, Open at Launch, Delete (with Undo). Right-click the
-  section header: Import Views… (paste YAML) and Copy All Views as YAML.
+  Context, Export to File…, Copy as YAML, Open at Launch, Delete (with
+  Undo). Right-click the section header: Import Views… (paste, or From
+  File…), Import from File…, Export All Views to File…, Copy All Views as
+  YAML and Reorder Views…. Drag views to reorder them in Customise Sidebar.
+- **⌘S** saves the table as a view, or updates the open view. `:view save
+  <name>` saves it from command mode. A view's kubeconfig matches by the
+  file it resolves to, so the default kubeconfig and an explicit
+  `~/.kube/config` are the same context.
 - A view bound to a context that isn't in the kubeconfig never opens on
   another one by itself: k8sman offers to **re-point** it (contexts with the
   same API server URL first) or make it apply to any context. Importing does
   the same, re-pointing automatically when exactly one context has the
   view's API server URL.
 - Namespaces of a view that the cluster doesn't have show struck through in
-  the picker; namespaces you can't read show a banner while the rest load.
+  the picker; namespaces you can't read show a banner (on Overview, Security and Metrics
+  Top too) while the rest load.
 - The connecting and cluster error screens list views bound to other
   contexts, so a dead context isn't a dead end. **Open at Launch** opens a
   view instead of reconnecting to the last context (straight to its context

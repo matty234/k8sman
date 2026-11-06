@@ -39,6 +39,14 @@ class FakeApiClient extends ApiClient {
   }
 
   @override
+  Future<({List<Json> items, Object? partialErrors})> itemsWithPartial(ResourceRef r,
+          {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async =>
+      (items: await items(r, namespace: namespace, scope: scope, labelSelector: labelSelector, fieldSelector: fieldSelector), partialErrors: partialErrors);
+
+  /// What the fake reports as a response's `partialErrors`.
+  Object? partialErrors;
+
+  @override
   Future<List<Json>> events({String? namespace, String? uid, String? kind, String? name}) async => eventItems;
 
   /// The saved sidebar layout (settings.json stand-in).

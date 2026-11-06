@@ -9,6 +9,7 @@ import '../widgets/common.dart';
 import 'overview_api.dart';
 import 'overview_widgets.dart';
 import '../widgets/namespace_picker.dart';
+import '../widgets/partial_banner.dart';
 import '../../state/namespace_scope.dart';
 
 /// Cluster health overview: what is crashlooping, stuck, failing or
@@ -141,6 +142,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
       children: [
         header,
         const Divider(),
+        if (data.partialErrors.isNotEmpty) PartialBanner(errors: data.partialErrors),
         Expanded(
           child: Scrollbar(
             child: ListView(

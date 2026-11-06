@@ -7,8 +7,10 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../panels/cluster/logic.dart' show PodResources, podResources, isTerminalPod;
 import '../state/app_state.dart';
+import '../state/cluster_error.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
+import '../ui/widgets/partial_banner.dart';
 import '../util/k8s.dart';
 import 'cache.dart';
 import 'metrics_api.dart';
@@ -89,6 +91,7 @@ class TopView extends StatefulWidget {
 class _TopViewState extends State<TopView> with AutomaticKeepAliveClientMixin, PollingState {
   List<TopNode>? _nodes;
   List<TopPod>? _pods;
+  Map<String, ClusterError> _partial = const {};
   Object? _error;
   DateTime? _updated;
 
@@ -114,12 +117,14 @@ class _TopViewState extends State<TopView> with AutomaticKeepAliveClientMixin, P
         cache.nodes(),
         cache.pods(widget.scope.param),
         _api.items(const ResourceRef(resource: 'nodes')),
-        _api.items(const ResourceRef(resource: 'pods'), scope: widget.scope),
+        _api.itemsWithPartial(const ResourceRef(resource: 'pods'), scope: widget.scope),
       ]);
+      final podList = r[3] as ({List<Json> items, Object? partialErrors});
       if (!mounted) return;
       setState(() {
         _nodes = joinTopNodes(r[0] as List<NodeUsage>, r[2] as List<Json>);
-        _pods = joinTopPods(r[1] as List<PodUsage>, r[3] as List<Json>);
+        _pods = joinTopPods(r[1] as List<PodUsage>, podList.items);
+        _partial = parsePartialErrors(podList.partialErrors);
         _error = null;
         _updated = DateTime.now();
       });
@@ -170,6 +175,7 @@ class _TopViewState extends State<TopView> with AutomaticKeepAliveClientMixin, P
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
       children: [
+        if (_partial.isNotEmpty) ...[PartialBanner(errors: _partial), const SizedBox(height: 10)],
         _SectionTitle('Nodes', '${nodes.length}', trailing: _updated == null ? null : 'updated ${formatAge(_updated!.toUtc())} ago'),
         SortableTable<TopNode>(
           rows: nodes,

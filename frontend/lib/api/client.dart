@@ -198,14 +198,20 @@ class ApiClient {
   /// Raw objects. Use for related resources, e.g.
   /// `items(ResourceRef(resource: 'pods'), namespace: ns, labelSelector: 'app=web')`.
   /// [scope] (a namespace set) replaces [namespace] when given.
-  Future<List<Json>> items(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async {
+  Future<List<Json>> items(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async =>
+      (await itemsWithPartial(r, namespace: namespace, scope: scope, labelSelector: labelSelector, fieldSelector: fieldSelector)).items;
+
+  /// [items] plus the response's `partialErrors` as sent (namespaces of a
+  /// set that could not be read; see `parsePartialErrors`).
+  Future<({List<Json> items, Object? partialErrors})> itemsWithPartial(ResourceRef r,
+      {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async {
     final j = await _get('items', {
       ...r.toQuery(),
       ...scope?.query ?? {'namespace': namespace},
       'labelSelector': labelSelector,
       'fieldSelector': fieldSelector,
     }) as Json;
-    return [for (final i in (j['items'] as List? ?? const [])) Map<String, dynamic>.from(i)];
+    return (items: [for (final i in (j['items'] as List? ?? const [])) Map<String, dynamic>.from(i)], partialErrors: j['partialErrors']);
   }
 
   Future<Json> object(ResourceRef r, {String? namespace, required String name}) async =>

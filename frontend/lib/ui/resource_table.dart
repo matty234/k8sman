@@ -34,6 +34,7 @@ import 'editor/resource_editor_screen.dart';
 import 'table_filter_field.dart';
 import 'widgets/group_icon.dart';
 import 'widgets/namespace_picker.dart';
+import 'widgets/partial_banner.dart';
 import 'views/saved_views_ui.dart';
 
 /// Live table for the selected resource type. Re-created (via key) whenever
@@ -103,7 +104,7 @@ class _TableBodyState extends State<_TableBody> {
       children: [
         _toolbar(tc, rows.length),
         if (tc.error != null && !failedEmpty) _StaleBanner(controller: tc),
-        if (tc.partialErrors.isNotEmpty) _PartialBanner(controller: tc),
+        if (tc.partialErrors.isNotEmpty) PartialBanner(errors: tc.partialErrors),
         const Divider(),
         if (multi) ...[
           _SelectionBar(
@@ -1133,43 +1134,6 @@ class _Row extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Over the rows of a namespace set when some of its namespaces can't be
-/// read (PARTIAL_ERROR): "No access to team-5 (forbidden)".
-class _PartialBanner extends StatelessWidget {
-  final TableController controller;
-  const _PartialBanner({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final byWhy = <String, List<String>>{};
-    for (final e in controller.partialErrors.entries) {
-      final why = switch (e.value.kind) {
-        ClusterErrorKind.forbidden => 'forbidden',
-        ClusterErrorKind.notFound => 'not found',
-        _ => 'unavailable',
-      };
-      (byWhy[why] ??= []).add(e.key);
-    }
-    final text = [for (final e in byWhy.entries) '${(e.value..sort()).join(', ')} (${e.key})'].join('; ');
-    return Container(
-      key: const ValueKey('partial-banner'),
-      color: severityColor(context, Severity.warn).withValues(alpha: 0.12),
-      padding: const EdgeInsets.fromLTRB(14, 5, 8, 5),
-      child: Row(children: [
-        Icon(Icons.lock_outline, size: 14, color: severityColor(context, Severity.warn)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Tooltip(
-            message: [for (final e in controller.partialErrors.entries) '${e.key}: ${e.value.message}'].join('\n'),
-            child: Text('No access to $text. Showing the other namespaces.', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
-          ),
-        ),
-      ]),
     );
   }
 }

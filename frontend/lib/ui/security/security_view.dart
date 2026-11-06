@@ -11,6 +11,7 @@ import 'ai_summary.dart';
 import 'security_api.dart';
 import 'security_widgets.dart';
 import '../widgets/namespace_picker.dart';
+import '../widgets/partial_banner.dart';
 
 /// Security overview: network exposure, permissive/unused RBAC, workload
 /// hardening (Pod Security Standards), best practices and image
@@ -160,6 +161,7 @@ class _SecurityViewState extends State<SecurityView> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       header,
       const Divider(),
+      if (data.partialErrors.isNotEmpty) PartialBanner(errors: data.partialErrors),
       Expanded(
         child: Scrollbar(
           child: ListView(
