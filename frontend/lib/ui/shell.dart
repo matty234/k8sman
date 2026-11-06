@@ -42,9 +42,13 @@ class _ShellState extends State<Shell> {
 
   void _palette() => showCommandPalette(context);
 
-  /// `:` (k9s-style), unless the user is typing somewhere.
-  void _commandMode() {
-    if (!textEntryFocused) showCommandPalette(context, command: true);
+  /// `:` opens command mode (k9s-style), unless the user is typing
+  /// somewhere. Not a shortcut binding: a matched shortcut always consumes
+  /// the key, which would swallow ':' in text fields and terminals.
+  KeyEventResult _commandMode(FocusNode _, KeyEvent e) {
+    if (e is! KeyDownEvent || e.character != ':' || textEntryFocused) return KeyEventResult.ignored;
+    showCommandPalette(context, command: true);
+    return KeyEventResult.handled;
   }
   late final AppState _app;
   bool _showInDock(MainView v) {
@@ -103,10 +107,10 @@ class _ShellState extends State<Shell> {
         primaryShortcut(LogicalKeyboardKey.keyJ): dock.toggle,
         primaryShortcut(LogicalKeyboardKey.keyI): app.toggleInspector,
         for (final a in commandPaletteShortcuts) a: _palette,
-        const CharacterActivator(':'): _commandMode,
       },
       child: Focus(
         autofocus: true,
+        onKeyEvent: _commandMode,
         child: Scaffold(
           // On macOS the nav shows the window's sidebar vibrancy through.
           backgroundColor: nativeMacChrome ? Colors.transparent : null,
