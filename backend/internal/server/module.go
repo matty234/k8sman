@@ -110,6 +110,7 @@ func builtinModules() []Module {
 		&gpuModule{},
 		&promModule{},
 		&gatewayModule{},
+		&hubbleModule{},
 	}
 }
 
