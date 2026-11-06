@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"sort"
@@ -33,10 +35,8 @@ type ActionRequest struct {
 	Propagation        string `json:"propagation,omitempty"` // Background|Foreground|Orphan
 	// Run admission/validation without persisting.
 	DryRun bool `json:"dryRun,omitempty"`
-	// argocd-refresh / argocd-sync options (see argocd.go).
-	argoActionRequest
-	// argowf-* options (see argowf.go).
-	argoWFActionRequest
+	// Module actions decode their own fields from the same body (see
+	// ActionCall.Body).
 }
 
 // ActionResult is returned by every action.
@@ -56,8 +56,9 @@ type ObjectRefJSON struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// Which actions apply to which group/resource. "*" = any type that supports
-// the delete verb. Exposed at GET /api/actions so the UI can render buttons.
+// Which core actions apply to which group/resource. "*" = any type that
+// supports the delete verb. Exposed at GET /api/actions so the UI can render
+// buttons. Modules add their own (see ActionSource).
 var actionTargets = map[string][]string{
 	"scale":     {"apps/deployments", "apps/statefulsets", "apps/replicasets", "*scale"},
 	"restart":   {"apps/deployments", "apps/statefulsets", "apps/daemonsets"},
@@ -70,10 +71,6 @@ var actionTargets = map[string][]string{
 	"cordon":    {"/nodes"},
 	"uncordon":  {"/nodes"},
 	"delete":    {"*"},
-	// Argo CD (see argocd.go).
-	"argocd-refresh":   {"argoproj.io/applications"},
-	"argocd-sync":      {"argoproj.io/applications"},
-	"argocd-terminate": {"argoproj.io/applications"},
 }
 
 func (s *Server) actionRoutes() {
@@ -88,13 +85,37 @@ func (s *Server) handleListActions(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"actions": availableActions(c, rq.Type), "readOnly": s.isReadOnly()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"actions": s.availableActions(c, rq.Type), "readOnly": s.isReadOnly()})
 }
 
-func availableActions(c *cluster.Clients, rt cluster.ResourceType) []string {
+// allActionTargets is actionTargets plus the enabled modules' actions, and
+// which module runs each module action.
+func (s *Server) allActionTargets() (map[string][]string, map[string]ActionSource) {
+	targets := make(map[string][]string, len(actionTargets))
+	for a, t := range actionTargets {
+		targets[a] = t
+	}
+	owners := map[string]ActionSource{}
+	for _, m := range s.enabledModules() {
+		src, ok := m.(ActionSource)
+		if !ok {
+			continue
+		}
+		for a, t := range src.ActionTargets() {
+			if _, core := actionTargets[a]; !core {
+				owners[a] = src
+			}
+			targets[a] = append(slices.Clone(targets[a]), t...)
+		}
+	}
+	return targets, owners
+}
+
+func (s *Server) availableActions(c *cluster.Clients, rt cluster.ResourceType) []string {
 	gr := rt.Group + "/" + rt.Resource
 	var out []string
-	for action, targets := range actionTargets {
+	all, _ := s.allActionTargets()
+	for action, targets := range all {
 		for _, t := range targets {
 			ok := t == gr ||
 				(t == "*" && slices.Contains(rt.Verbs, "delete")) ||
@@ -139,14 +160,18 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ActionRequest
+	var body []byte
 	if r.ContentLength != 0 {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if body, err = io.ReadAll(r.Body); err == nil {
+			err = json.NewDecoder(bytes.NewReader(body)).Decode(&req)
+		}
+		if err != nil {
 			writeErr(w, httpx.BadRequest("invalid body: %v", err))
 			return
 		}
 	}
 	allowed := false
-	for _, a := range availableActions(c, rq.Type) {
+	for _, a := range s.availableActions(c, rq.Type) {
 		allowed = allowed || a == action
 	}
 	if !allowed {
@@ -208,11 +233,14 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		}
 		err = ri.Delete(ctx, name, opts)
 		res.Message = "Deleted " + name
-	case "argocd-refresh", "argocd-sync", "argocd-terminate":
-		res.Message, err = runArgoAction(ctx, ri, action, name, req.argoActionRequest, patchOpts)
 	default:
-		if _, ok := argoWFActionTargets[action]; ok {
-			res, err = s.runArgoWFAction(ctx, c, rq, ri, action, name, req, dry)
+		// A module's action (allowed above, so its module is enabled).
+		if _, owners := s.allActionTargets(); owners[action] != nil {
+			res, err = owners[action].RunAction(ActionCall{
+				Ctx: ctx, Clients: c, Action: action,
+				Type: rq.Type, Namespace: rq.Namespace, Name: name, Resource: ri,
+				DryRun: req.DryRun, DryRunOpt: dry, Body: body,
+			})
 		}
 	}
 	if err != nil {
@@ -223,6 +251,18 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		res.Message = "Dry run OK: " + res.Message
 	}
 	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
+// decodeActionBody decodes a module's fields from an action body (an empty
+// body leaves v as is).
+func decodeActionBody(b []byte, v any) error {
+	if len(b) == 0 {
+		return nil
+	}
+	if err := json.NewDecoder(bytes.NewReader(b)).Decode(v); err != nil {
+		return httpx.BadRequest("invalid body: %v", err)
+	}
+	return nil
 }
 
 // triggerCronJob creates a Job from the CronJob's template (`kubectl create

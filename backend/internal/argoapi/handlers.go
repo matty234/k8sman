@@ -51,7 +51,7 @@ type Handler struct {
 // Register mounts the endpoints. None of them writes to the cluster: the
 // diff is a read, and auth only touches local settings (or memory), so
 // they are all allowed in --read-only mode.
-func Register(mux *http.ServeMux, mgr *cluster.Manager, st *settings.Store) *Handler {
+func Register(mux httpx.Router, mgr *cluster.Manager, st *settings.Store) *Handler {
 	h := &Handler{
 		env: func() env {
 			c := mgr.Clients()
@@ -66,7 +66,7 @@ func Register(mux *http.ServeMux, mgr *cluster.Manager, st *settings.Store) *Han
 	return h
 }
 
-func (h *Handler) register(mux *http.ServeMux) {
+func (h *Handler) register(mux httpx.Router) {
 	mux.HandleFunc("GET /api/argocd/status", h.handleStatus)
 	mux.HandleFunc("POST /api/argocd/auth", h.handleSetToken)
 	mux.HandleFunc("DELETE /api/argocd/auth", h.handleClearToken)

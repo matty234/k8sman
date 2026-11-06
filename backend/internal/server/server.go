@@ -20,8 +20,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/yaml"
 
-	"github.com/matty234/k8sman/backend/internal/argoapi"
-	"github.com/matty234/k8sman/backend/internal/argowf"
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/columns"
 	"github.com/matty234/k8sman/backend/internal/httpx"
@@ -29,7 +27,6 @@ import (
 	"github.com/matty234/k8sman/backend/internal/kcache"
 	"github.com/matty234/k8sman/backend/internal/metrics"
 	"github.com/matty234/k8sman/backend/internal/portforward"
-	"github.com/matty234/k8sman/backend/internal/prom"
 	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
@@ -42,8 +39,9 @@ type Server struct {
 	settings *settings.Store
 	mux      *http.ServeMux
 	icons    *icons.Resolver
-	argowf   *argowf.Handler
 	token    string
+	// modules are the built-in integrations (see module.go).
+	modules []Module
 }
 
 // Options configures optional server behaviour.
@@ -80,15 +78,13 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.tablePrefsRoutes()
 	s.execRoutes()
 	s.localShellRoutes()
-	s.helmRoutes()
 	s.securityRoutes()
-	s.gpuRoutes()
 	s.rbacRoutes()
-	prom.Register(s.mux, mgr, opts.ReadOnly)
-	argoapi.Register(s.mux, mgr, s.settings)
-	s.argowf = argowf.Register(s.mux, mgr)
 	metrics.Register(s.mux, mgr)
 	s.iconRoutes(opts)
+	// Integrations (Argo CD, Helm, GPUs, …): see module.go.
+	s.modules = builtinModules()
+	s.mountModules()
 	return s
 }
 

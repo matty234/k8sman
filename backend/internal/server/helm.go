@@ -16,21 +16,29 @@ import (
 	"github.com/matty234/k8sman/backend/internal/httpx"
 )
 
-func (s *Server) helmRoutes() {
-	s.mux.HandleFunc("GET /api/helm/releases", s.handleHelmReleases)
-	s.mux.HandleFunc("GET /api/helm/release", s.handleHelmRelease)
-	s.mux.HandleFunc("GET /api/helm/history", s.handleHelmHistory)
-	s.mux.HandleFunc("GET /api/helm/diff", s.handleHelmDiff)
-	s.mux.HandleFunc("POST /api/helm/rollback", s.handleHelmRollback)
-	s.mux.HandleFunc("POST /api/helm/uninstall", s.handleHelmUninstall)
-	s.mux.HandleFunc("POST /api/helm/upgrade", s.handleHelmUpgrade)
-	s.mux.HandleFunc("POST /api/helm/install", s.handleHelmInstall)
-	s.mux.HandleFunc("GET /api/helm/chart-versions", s.handleHelmChartVersions)
+// helmModule is the Helm integration: releases, history, diffs,
+// rollback, upgrade, uninstall and install (/api/helm/*), through the Helm
+// SDK on the active context.
+type helmModule struct{ d Deps }
+
+func (m *helmModule) Name() string { return "helm" }
+
+func (m *helmModule) Routes(r httpx.Router, d Deps) {
+	m.d = d
+	r.HandleFunc("GET /api/helm/releases", m.handleHelmReleases)
+	r.HandleFunc("GET /api/helm/release", m.handleHelmRelease)
+	r.HandleFunc("GET /api/helm/history", m.handleHelmHistory)
+	r.HandleFunc("GET /api/helm/diff", m.handleHelmDiff)
+	r.HandleFunc("POST /api/helm/rollback", m.handleHelmRollback)
+	r.HandleFunc("POST /api/helm/uninstall", m.handleHelmUninstall)
+	r.HandleFunc("POST /api/helm/upgrade", m.handleHelmUpgrade)
+	r.HandleFunc("POST /api/helm/install", m.handleHelmInstall)
+	r.HandleFunc("GET /api/helm/chart-versions", m.handleHelmChartVersions)
 }
 
-// helmConfig builds a Helm action configuration on the active context.
-func (s *Server) helmConfig(namespace string) (*cluster.Clients, *action.Configuration, error) {
-	c := s.mgr.Clients()
+// config builds a Helm action configuration on the active context.
+func (m *helmModule) config(namespace string) (*cluster.Clients, *action.Configuration, error) {
+	c := m.d.Mgr.Clients()
 	cfg, err := helm.NewConfig(c, namespace)
 	return c, cfg, err
 }
@@ -78,8 +86,8 @@ func writeHelmErr(w http.ResponseWriter, err error) {
 	}
 }
 
-func (s *Server) handleHelmInstall(w http.ResponseWriter, r *http.Request) {
-	if s.readOnlyRefused(w) {
+func (m *helmModule) handleHelmInstall(w http.ResponseWriter, r *http.Request) {
+	if m.d.RefuseReadOnly(w) {
 		return
 	}
 	var req helm.InstallRequest
@@ -87,7 +95,7 @@ func (s *Server) handleHelmInstall(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	c, cfg, err := s.helmConfig(req.Namespace)
+	c, cfg, err := m.config(req.Namespace)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -100,7 +108,7 @@ func (s *Server) handleHelmInstall(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, helmResult(c, res))
 }
 
-func (s *Server) handleHelmChartVersions(w http.ResponseWriter, r *http.Request) {
+func (m *helmModule) handleHelmChartVersions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if q.Get("repo") == "" || q.Get("chart") == "" {
 		writeErr(w, httpx.BadRequest("repo and chart are required"))
@@ -114,16 +122,8 @@ func (s *Server) handleHelmChartVersions(w http.ResponseWriter, r *http.Request)
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"versions": v})
 }
 
-func (s *Server) readOnlyRefused(w http.ResponseWriter) bool {
-	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
-		return true
-	}
-	return false
-}
-
-func (s *Server) handleHelmReleases(w http.ResponseWriter, r *http.Request) {
-	_, cfg, err := s.helmConfig(r.URL.Query().Get("namespace"))
+func (m *helmModule) handleHelmReleases(w http.ResponseWriter, r *http.Request) {
+	_, cfg, err := m.config(r.URL.Query().Get("namespace"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -136,7 +136,7 @@ func (s *Server) handleHelmReleases(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, res)
 }
 
-func (s *Server) handleHelmRelease(w http.ResponseWriter, r *http.Request) {
+func (m *helmModule) handleHelmRelease(w http.ResponseWriter, r *http.Request) {
 	ns, name, err := helmTarget(r)
 	if err != nil {
 		writeErr(w, err)
@@ -147,7 +147,7 @@ func (s *Server) handleHelmRelease(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	c, cfg, err := s.helmConfig(ns)
+	c, cfg, err := m.config(ns)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -160,13 +160,13 @@ func (s *Server) handleHelmRelease(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, d)
 }
 
-func (s *Server) handleHelmHistory(w http.ResponseWriter, r *http.Request) {
+func (m *helmModule) handleHelmHistory(w http.ResponseWriter, r *http.Request) {
 	ns, name, err := helmTarget(r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	_, cfg, err := s.helmConfig(ns)
+	_, cfg, err := m.config(ns)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -179,7 +179,7 @@ func (s *Server) handleHelmHistory(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"history": h})
 }
 
-func (s *Server) handleHelmDiff(w http.ResponseWriter, r *http.Request) {
+func (m *helmModule) handleHelmDiff(w http.ResponseWriter, r *http.Request) {
 	ns, name, err := helmTarget(r)
 	if err != nil {
 		writeErr(w, err)
@@ -195,7 +195,7 @@ func (s *Server) handleHelmDiff(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	_, cfg, err := s.helmConfig(ns)
+	_, cfg, err := m.config(ns)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -227,8 +227,8 @@ func helmResult(c *cluster.Clients, res *helm.Result) map[string]any {
 	}
 }
 
-func (s *Server) handleHelmRollback(w http.ResponseWriter, r *http.Request) {
-	if s.readOnlyRefused(w) {
+func (m *helmModule) handleHelmRollback(w http.ResponseWriter, r *http.Request) {
+	if m.d.RefuseReadOnly(w) {
 		return
 	}
 	var req helm.RollbackRequest
@@ -236,7 +236,7 @@ func (s *Server) handleHelmRollback(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	c, cfg, err := s.helmConfig(req.Namespace)
+	c, cfg, err := m.config(req.Namespace)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -249,8 +249,8 @@ func (s *Server) handleHelmRollback(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, helmResult(c, res))
 }
 
-func (s *Server) handleHelmUninstall(w http.ResponseWriter, r *http.Request) {
-	if s.readOnlyRefused(w) {
+func (m *helmModule) handleHelmUninstall(w http.ResponseWriter, r *http.Request) {
+	if m.d.RefuseReadOnly(w) {
 		return
 	}
 	var req helm.UninstallRequest
@@ -258,7 +258,7 @@ func (s *Server) handleHelmUninstall(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	c, cfg, err := s.helmConfig(req.Namespace)
+	c, cfg, err := m.config(req.Namespace)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -271,8 +271,8 @@ func (s *Server) handleHelmUninstall(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, helmResult(c, res))
 }
 
-func (s *Server) handleHelmUpgrade(w http.ResponseWriter, r *http.Request) {
-	if s.readOnlyRefused(w) {
+func (m *helmModule) handleHelmUpgrade(w http.ResponseWriter, r *http.Request) {
+	if m.d.RefuseReadOnly(w) {
 		return
 	}
 	var req helm.UpgradeRequest
@@ -280,7 +280,7 @@ func (s *Server) handleHelmUpgrade(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	c, cfg, err := s.helmConfig(req.Namespace)
+	c, cfg, err := m.config(req.Namespace)
 	if err != nil {
 		writeErr(w, err)
 		return

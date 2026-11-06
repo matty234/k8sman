@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/matty234/k8sman/backend/internal/argoapi"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kcache"
+	"github.com/matty234/k8sman/backend/internal/overview"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -14,6 +17,62 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 )
+
+// argoCDModule is the Argo CD integration: the Argo CD API endpoints
+// (/api/argocd/*: auth and per-resource diffs), the argocd-* actions and
+// Application health in the overview.
+type argoCDModule struct{}
+
+func (m *argoCDModule) Name() string { return "argocd" }
+
+func (m *argoCDModule) Routes(r httpx.Router, d Deps) {
+	argoapi.Register(r, d.Mgr, d.Settings)
+}
+
+// OverviewInputs lists Applications, only when the CRD is served. They are
+// listed across all namespaces (apps live in the Argo CD namespace) and
+// filtered to those in, or deploying to, the selected namespace.
+func (m *argoCDModule) OverviewInputs(l *OverviewLists) {
+	rt, err := l.Clients.Find(l.Ctx, "argoproj.io", "", "applications")
+	if err != nil {
+		return
+	}
+	ns := l.Namespace
+	l.Go("applications.argoproj.io", func() (func(*overview.Input), error) {
+		items, err := listCached(l.Ctx, kcache.For(l.Clients), rt.GVR(), "")
+		if err != nil {
+			return nil, err
+		}
+		apps := []map[string]any{}
+		for _, it := range items {
+			dest, _, _ := unstructured.NestedString(it.Object, "spec", "destination", "namespace")
+			if ns == "" || it.GetNamespace() == ns || dest == ns {
+				apps = append(apps, it.Object)
+			}
+		}
+		return func(in *overview.Input) { in.ArgoApps = apps }, nil
+	})
+}
+
+func (m *argoCDModule) ActionTargets() map[string][]string {
+	return map[string][]string{
+		"argocd-refresh":   {"argoproj.io/applications"},
+		"argocd-sync":      {"argoproj.io/applications"},
+		"argocd-terminate": {"argoproj.io/applications"},
+	}
+}
+
+func (m *argoCDModule) RunAction(a ActionCall) (ActionResult, error) {
+	res := ActionResult{DryRun: a.DryRun, Context: a.Clients.Context}
+	var req argoActionRequest
+	if err := decodeActionBody(a.Body, &req); err != nil {
+		return res, err
+	}
+	opts := metav1.PatchOptions{FieldManager: fieldManager, DryRun: a.DryRunOpt}
+	var err error
+	res.Message, err = runArgoAction(a.Ctx, a.Resource, a.Action, a.Name, req, opts)
+	return res, err
+}
 
 // Argo CD actions work directly on the Application CR, the same way the Argo
 // CD API server does (it writes to the CR and the application controller does
@@ -35,7 +94,7 @@ const (
 
 var argoAppsGR = schema.GroupResource{Group: "argoproj.io", Resource: "applications"}
 
-// argoActionRequest holds the Argo-specific fields of ActionRequest.
+// argoActionRequest holds the Argo CD fields of an action body.
 type argoActionRequest struct {
 	// argocd-refresh: hard refresh (also invalidates the manifest cache).
 	Hard bool `json:"hard,omitempty"`

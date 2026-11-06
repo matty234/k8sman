@@ -16,7 +16,7 @@ type Handler struct {
 
 // Register mounts GET /api/argowf/status. It only reads (discovery and a
 // userinfo probe), so it is allowed in --read-only mode.
-func Register(mux *http.ServeMux, mgr *cluster.Manager) *Handler {
+func Register(mux httpx.Router, mgr *cluster.Manager) *Handler {
 	h := &Handler{
 		env: func() env {
 			c := mgr.Clients()

@@ -30,13 +30,13 @@ func envFor(c *cluster.Clients) env {
 
 // Register mounts the Prometheus endpoints on mux. Mutations (silences)
 // are refused with 403 when readOnly.
-func Register(mux *http.ServeMux, mgr *cluster.Manager, readOnly bool) *Handler {
+func Register(mux httpx.Router, mgr *cluster.Manager, readOnly bool) *Handler {
 	h := &Handler{env: func() env { return envFor(mgr.Clients()) }, disc: shared, readOnly: readOnly, now: time.Now}
 	h.register(mux)
 	return h
 }
 
-func (h *Handler) register(mux *http.ServeMux) {
+func (h *Handler) register(mux httpx.Router) {
 	mux.HandleFunc("GET /api/prom/status", h.handleStatus)
 	mux.HandleFunc("GET /api/prom/alerts", h.handleAlerts)
 	mux.HandleFunc("GET /api/prom/silences", h.handleSilences)

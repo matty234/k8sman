@@ -12,6 +12,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
+// Router is where handlers are mounted: an *http.ServeMux, or a wrapper
+// around one (the server gates each integration module's routes).
+type Router interface {
+	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+}
+
 // WriteJSON writes v as a JSON response with the given status.
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")

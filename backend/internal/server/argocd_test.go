@@ -166,11 +166,15 @@ func TestArgoTerminatePatch(t *testing.T) {
 }
 
 func TestArgoActionRequestDecode(t *testing.T) {
+	body := []byte(`{"hard":true,"prune":true,"syncDryRun":true,"targetRevision":"v2","syncOptions":["A=b"],"force":true,"dryRun":true}`)
 	var req ActionRequest
-	if err := json.Unmarshal([]byte(`{"hard":true,"prune":true,"syncDryRun":true,"targetRevision":"v2","syncOptions":["A=b"],"force":true,"dryRun":true}`), &req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		t.Fatal(err)
 	}
-	a := req.argoActionRequest
+	var a argoActionRequest
+	if err := decodeActionBody(body, &a); err != nil {
+		t.Fatal(err)
+	}
 	if !a.Hard || !a.Prune || !a.SyncDryRun || a.TargetRevision != "v2" || len(a.SyncOptions) != 1 || !a.Force || !req.DryRun {
 		t.Errorf("decoded %+v", req)
 	}

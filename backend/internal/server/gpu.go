@@ -20,8 +20,15 @@ import (
 // pod lists come from the watch cache anyway.
 const gpuCacheTTL = 10 * time.Second
 
-func (s *Server) gpuRoutes() {
-	s.mux.HandleFunc("GET /api/gpu", s.handleGPU)
+// gpuModule is the NVIDIA GPU integration: the GPU inventory (/api/gpu),
+// merged with DCGM exporter stats from Prometheus when there are any.
+type gpuModule struct{ d Deps }
+
+func (m *gpuModule) Name() string { return "gpus" }
+
+func (m *gpuModule) Routes(r httpx.Router, d Deps) {
+	m.d = d
+	r.HandleFunc("GET /api/gpu", m.handleGPU)
 }
 
 type gpuCacheEntry struct {
@@ -36,9 +43,9 @@ var gpuCache = struct {
 
 // handleGPU serves the GPU inventory. live=false skips Prometheus (for the
 // nav's "does this cluster have GPUs" check).
-func (s *Server) handleGPU(w http.ResponseWriter, r *http.Request) {
+func (m *gpuModule) handleGPU(w http.ResponseWriter, r *http.Request) {
 	live := r.URL.Query().Get("live") != "false"
-	c := s.mgr.Clients()
+	c := m.d.Mgr.Clients()
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	res, err := gpuInventory(ctx, c, live, r.URL.Query().Get("refresh") == "true")

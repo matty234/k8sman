@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -9,12 +8,45 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/dynamic"
 
 	"github.com/matty234/k8sman/backend/internal/argowf"
-	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kcache"
+	"github.com/matty234/k8sman/backend/internal/overview"
 )
+
+// argoWFModule is the Argo Workflows integration: argo-server status
+// (/api/argowf/status), the argowf-* actions and failed Workflows in the
+// health overview.
+type argoWFModule struct {
+	// h reaches argo-server (retry, memoized resubmit).
+	h *argowf.Handler
+}
+
+func (m *argoWFModule) Name() string { return "argoworkflows" }
+
+func (m *argoWFModule) Routes(r httpx.Router, d Deps) {
+	m.h = argowf.Register(r, d.Mgr)
+}
+
+// OverviewInputs lists Workflows, only when the CRD is served.
+func (m *argoWFModule) OverviewInputs(l *OverviewLists) {
+	rt, err := l.Clients.Find(l.Ctx, "argoproj.io", "", "workflows")
+	if err != nil {
+		return
+	}
+	l.Go("workflows.argoproj.io", func() (func(*overview.Input), error) {
+		items, err := listCached(l.Ctx, kcache.For(l.Clients), rt.GVR(), l.Namespace)
+		if err != nil {
+			return nil, err
+		}
+		wfs := make([]map[string]any, len(items))
+		for i, it := range items {
+			wfs[i] = it.Object
+		}
+		return func(in *overview.Input) { in.Workflows = wfs }, nil
+	})
+}
 
 // Argo Workflows actions (see internal/argowf for how each maps onto what
 // the argo CLI / argo-server do). CronWorkflow suspend/resume reuse the
@@ -25,25 +57,22 @@ import (
 //   - argowf-retry (through argo-server only)
 //   - argowf-submit: a Workflow from a CronWorkflow or a
 //     (Cluster)WorkflowTemplate, with parameters for templates
-var argoWFActionTargets = map[string][]string{
-	"argowf-stop":      {"argoproj.io/workflows"},
-	"argowf-terminate": {"argoproj.io/workflows"},
-	"argowf-suspend":   {"argoproj.io/workflows"},
-	"argowf-resume":    {"argoproj.io/workflows"},
-	"argowf-resubmit":  {"argoproj.io/workflows"},
-	"argowf-retry":     {"argoproj.io/workflows"},
-	"argowf-submit":    {"argoproj.io/cronworkflows", "argoproj.io/workflowtemplates", "argoproj.io/clusterworkflowtemplates"},
-}
-
-func init() {
-	for a, t := range argoWFActionTargets {
-		actionTargets[a] = t
+func (m *argoWFModule) ActionTargets() map[string][]string {
+	return map[string][]string{
+		"argowf-stop":      {"argoproj.io/workflows"},
+		"argowf-terminate": {"argoproj.io/workflows"},
+		"argowf-suspend":   {"argoproj.io/workflows"},
+		"argowf-resume":    {"argoproj.io/workflows"},
+		"argowf-resubmit":  {"argoproj.io/workflows"},
+		"argowf-retry":     {"argoproj.io/workflows"},
+		"argowf-submit":    {"argoproj.io/cronworkflows", "argoproj.io/workflowtemplates", "argoproj.io/clusterworkflowtemplates"},
+		// Core actions, extended to CronWorkflows.
+		"suspend":   {"argoproj.io/cronworkflows"},
+		"unsuspend": {"argoproj.io/cronworkflows"},
 	}
-	actionTargets["suspend"] = append(actionTargets["suspend"], "argoproj.io/cronworkflows")
-	actionTargets["unsuspend"] = append(actionTargets["unsuspend"], "argoproj.io/cronworkflows")
 }
 
-// argoWFActionRequest holds the Argo Workflows fields of ActionRequest.
+// argoWFActionRequest holds the Argo Workflows fields of an action body.
 type argoWFActionRequest struct {
 	// argowf-submit (templates): parameters and an optional entrypoint.
 	Parameters []argowf.Param `json:"parameters,omitempty"`
@@ -56,9 +85,14 @@ type argoWFActionRequest struct {
 	RestartSuccessful bool `json:"restartSuccessful,omitempty"`
 }
 
-// runArgoWFAction performs one argowf-* action.
-func (s *Server) runArgoWFAction(ctx context.Context, c *cluster.Clients, rq resourceQuery, ri dynamic.ResourceInterface, action, name string, req ActionRequest, dry []string) (ActionResult, error) {
-	res := ActionResult{DryRun: req.DryRun, Context: c.Context}
+// RunAction performs one argowf-* action.
+func (m *argoWFModule) RunAction(a ActionCall) (ActionResult, error) {
+	ctx, c, ri, action, name, dry := a.Ctx, a.Clients, a.Resource, a.Action, a.Name, a.DryRunOpt
+	res := ActionResult{DryRun: a.DryRun, Context: c.Context}
+	var req argoWFActionRequest
+	if err := decodeActionBody(a.Body, &req); err != nil {
+		return res, err
+	}
 	obj, err := ri.Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return res, err
@@ -81,7 +115,7 @@ func (s *Server) runArgoWFAction(ctx context.Context, c *cluster.Clients, rq res
 		res.Created = &ObjectRefJSON{Group: argowf.Group, Kind: "Workflow", Name: out.GetName(), Namespace: ns}
 		return out.GetName(), nil
 	}
-	ns := rq.Namespace
+	ns := a.Namespace
 
 	switch action {
 	case "argowf-stop", "argowf-terminate":
@@ -111,10 +145,10 @@ func (s *Server) runArgoWFAction(ctx context.Context, c *cluster.Clients, rq res
 		return res, patch(p)
 	case "argowf-resubmit":
 		if req.Memoized {
-			if req.DryRun {
+			if a.DryRun {
 				return res, httpx.BadRequest("dry run is not supported for a memoized resubmit")
 			}
-			created, err := s.argowf.ResubmitMemoized(ctx, c, ns, name)
+			created, err := m.h.ResubmitMemoized(ctx, c, ns, name)
 			if err != nil {
 				return res, err
 			}
@@ -128,13 +162,13 @@ func (s *Server) runArgoWFAction(ctx context.Context, c *cluster.Clients, rq res
 		res.Message = "Resubmitted " + name + " as " + created
 		return res, err
 	case "argowf-retry":
-		if req.DryRun {
+		if a.DryRun {
 			return res, httpx.BadRequest("dry run is not supported for retry")
 		}
 		if phase, _, _ := unstructured.NestedString(obj.Object, "status", "phase"); phase != "Failed" && phase != "Error" {
 			return res, httpx.BadRequest("only Failed or Error workflows can be retried (this one is %s)", phase)
 		}
-		if err := s.argowf.Retry(ctx, c, ns, name, req.RestartSuccessful); err != nil {
+		if err := m.h.Retry(ctx, c, ns, name, req.RestartSuccessful); err != nil {
 			return res, err
 		}
 		res.Message = "Retrying " + name
@@ -142,11 +176,11 @@ func (s *Server) runArgoWFAction(ctx context.Context, c *cluster.Clients, rq res
 	case "argowf-submit":
 		var wf map[string]any
 		target := ns
-		switch rq.Type.Resource {
+		switch a.Type.Resource {
 		case "cronworkflows":
 			wf = argowf.FromCronWorkflow(obj.Object, time.Now())
 		case "workflowtemplates", "clusterworkflowtemplates":
-			cluster := rq.Type.Resource == "clusterworkflowtemplates"
+			cluster := a.Type.Resource == "clusterworkflowtemplates"
 			if cluster {
 				target = req.TargetNamespace
 				if target == "" {
@@ -158,10 +192,10 @@ func (s *Server) runArgoWFAction(ctx context.Context, c *cluster.Clients, rq res
 			}
 			wf = argowf.FromTemplate(obj.Object, cluster, target, req.Parameters, req.Entrypoint)
 		default:
-			return res, httpx.BadRequest("cannot submit from %s", rq.Type.Resource)
+			return res, httpx.BadRequest("cannot submit from %s", a.Type.Resource)
 		}
 		created, err := create(target, wf)
-		res.Message = fmt.Sprintf("Submitted %s from %s %s", created, rq.Type.Kind, name)
+		res.Message = fmt.Sprintf("Submitted %s from %s %s", created, a.Type.Kind, name)
 		return res, err
 	}
 	return res, httpx.BadRequest("unknown action %q", action)
