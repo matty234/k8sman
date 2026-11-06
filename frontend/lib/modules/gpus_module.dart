@@ -30,7 +30,7 @@ class GpusModule extends AppModule {
           label: 'GPUs',
           commands: const ['gpus', 'gpu'],
           after: MainView.nodes,
-          navGate: (item) => ModuleNavGate(module: this, child: item),
+          navGate: (item) => ModuleNavGate(module: this, showOnError: false, child: item),
           navNote: 'Only on clusters with GPUs',
           builder: (_) => const GpusView(),
         ),

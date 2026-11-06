@@ -232,7 +232,8 @@ than importing Cilium).
      enough (Helm, Add-ons) there is nothing to detect;
    - `navGate` on a page: use `ModuleNavGate(module: this, child: item)`
      (`module_nav_gate.dart`) to show the sidebar row only on clusters
-     where `detect` found the integration (GPUs, Hubble);
+     where `detect` found the integration (GPUs, Hubble; `showOnError:
+     false` also hides it when the check failed);
    - `settingsBuilder`: a form for your `Configurable` settings, opened
      from the Integrations dialog. Read and save them with
      `ApiClient.getModuleSettings` / `putModuleSettings` (Hubble's form),

@@ -8,12 +8,15 @@ import 'modules.dart';
 /// Shows a module page's sidebar row (`navGate` of its [AppPage]) only on
 /// clusters where the module's [AppModule.detect] found what it integrates
 /// with, and always while the page itself is open. Hidden while the check
-/// is under way and when it says the integration isn't there; an error
-/// still shows the row (the page explains it).
+/// is under way and when it says the integration isn't there. When it
+/// found the integration but it fails (an error), the row still shows if
+/// [showOnError] (Hubble: the page explains what's wrong); GPUs hide it,
+/// as their failing check means nothing was found.
 class ModuleNavGate extends StatelessWidget {
   final AppModule module;
   final Widget child;
-  const ModuleNavGate({super.key, required this.module, required this.child});
+  final bool showOnError;
+  const ModuleNavGate({super.key, required this.module, required this.child, this.showOnError = true});
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +32,10 @@ class ModuleNavGate extends StatelessWidget {
       builder: (context, _) {
         final s = moduleStatuses.of(module, api, app.currentContext);
         final show = app.view == module.pages.first.view ||
-            (s != null && s.state != ModuleState.notInstalled && s.state != ModuleState.checking);
+            (s != null &&
+                s.state != ModuleState.notInstalled &&
+                s.state != ModuleState.checking &&
+                (showOnError || s.state != ModuleState.error));
         return show ? child : const SizedBox.shrink();
       },
     );
