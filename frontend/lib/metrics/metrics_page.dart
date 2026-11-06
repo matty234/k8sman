@@ -18,7 +18,7 @@ import 'widgets.dart';
 import '../ui/widgets/namespace_picker.dart';
 import '../state/poller.dart';
 
-/// The Metrics page (MainView.metrics): which metrics APIs are served, top
+/// The Metrics page (MetricsModule, lib/modules): which metrics APIs are served, top
 /// nodes/pods by usage, PVC storage usage, network throughput, and browsers
 /// for custom and external metrics.
 class MetricsPage extends StatefulWidget {

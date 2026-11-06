@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../modules/modules.dart' show allPages;
 import 'app_state.dart';
 
 /// A resource kind pinned to the top of the sidebar. Keyed by API group and
@@ -45,7 +46,8 @@ class SidebarEntry {
   static SidebarEntry? fromJson(Map<String, dynamic> j) {
     final v = j['view'] as String?;
     if (v != null) {
-      final view = MainView.values.where((m) => m.name == v && m != MainView.resources).firstOrNull;
+      // Ids are the old enum names, so saved layouts load as they are.
+      final view = SidebarConfig.pages.where((m) => m.name == v).firstOrNull;
       return view == null ? null : SidebarEntry.view(view, hidden: j['hidden'] == true);
     }
     final kind = j['kind'] as String?;
@@ -68,19 +70,11 @@ class SidebarConfig {
   final List<SidebarEntry> entries;
   const SidebarConfig._(this.entries);
 
-  /// Pages in the sidebar, in the default order. Less-used ones start
-  /// under "More".
-  static const pages = [
-    MainView.overview,
-    MainView.nodes,
-    MainView.gpus,
-    MainView.security,
-    MainView.access,
-    MainView.metrics,
-    MainView.helm,
-    MainView.addons,
-  ];
-  static const _underMoreByDefault = {MainView.metrics, MainView.helm, MainView.addons};
+  /// Pages in the sidebar, in the default order: the core pages and every
+  /// module's (also those turned off, so they keep their place). Less-used
+  /// ones start under "More".
+  static final pages = [for (final p in allPages) if (p.inSidebar) p.view];
+  static final _underMoreByDefault = {for (final p in allPages) if (p.underMore) p.view};
 
   static final SidebarConfig defaults = SidebarConfig._(List.unmodifiable([
     for (final p in pages) SidebarEntry.view(p, hidden: _underMoreByDefault.contains(p)),

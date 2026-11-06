@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
+import 'package:k8sman/modules/helm_module.dart';
+import 'package:k8sman/modules/metrics_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/resource_nav.dart';
 import 'package:k8sman/ui/sidebar_editor.dart';
@@ -41,7 +43,7 @@ void main() {
       expect(back.isHidden(MainView.security), isTrue);
       expect(back.pins, [_deploy, _podsKs]);
       // Pins land after the last visible entry, not under More.
-      expect(back.entries.indexWhere((e) => e.pin == _deploy), lessThan(back.entries.indexWhere((e) => e.view == MainView.metrics)));
+      expect(back.entries.indexWhere((e) => e.pin == _deploy), lessThan(back.entries.indexWhere((e) => e.view == MetricsModule.page)));
 
       final odd = SidebarConfig.fromJson({
         'items': [
@@ -53,11 +55,11 @@ void main() {
           {'kind': 'Pod'},
         ],
       });
-      expect(odd.entries.first, const SidebarEntry.view(MainView.helm));
+      expect(odd.entries.first, const SidebarEntry.view(HelmModule.page));
       expect(odd.pins, [const SidebarPin(group: '', kind: 'Pod')]);
       // Every page is present exactly once; ones the file lacked keep their default visibility.
       expect(odd.entries.where((e) => e.view != null).length, SidebarConfig.pages.length);
-      expect(odd.isHidden(MainView.metrics), isTrue);
+      expect(odd.isHidden(MetricsModule.page), isTrue);
       expect(odd.isHidden(MainView.overview), isFalse);
       expect(odd.entries.any((e) => e.view == MainView.alerts), isFalse);
       expect(SidebarConfig.fromJson(null).isDefault, isTrue);
@@ -194,7 +196,7 @@ void main() {
       const SidebarEntry.pin(SidebarPin(group: 'apps', kind: 'Deployment')),
       const SidebarEntry.pin(_podsKs),
       const SidebarEntry.view(MainView.nodes),
-      const SidebarEntry.view(MainView.helm),
+      const SidebarEntry.view(HelmModule.page),
       ...SidebarConfig.defaults.entries.map((e) => e.view == MainView.security ? e.withHidden(true) : e),
     ]));
     app.openPin(_podsKs);

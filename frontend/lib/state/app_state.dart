@@ -11,8 +11,30 @@ import 'table_prefs.dart';
 
 export 'sidebar_config.dart';
 
-/// What the main area shows.
-enum MainView { overview, alerts, nodes, gpus, metrics, resources, portForwards, helm, security, addons, access }
+/// What the main area shows: a page, by id. The core pages are the
+/// constants below; integration modules (lib/modules) declare their own,
+/// e.g. `MainView('helm')`. The id is what the saved sidebar layout stores.
+@immutable
+class MainView {
+  final String name;
+  const MainView(this.name);
+
+  /// The table of the selected kind.
+  static const resources = MainView('resources');
+  static const overview = MainView('overview');
+  static const alerts = MainView('alerts');
+  static const nodes = MainView('nodes');
+  static const security = MainView('security');
+  static const access = MainView('access');
+  static const portForwards = MainView('portForwards');
+
+  @override
+  bool operator ==(Object other) => other is MainView && other.name == name;
+  @override
+  int get hashCode => name.hashCode;
+  @override
+  String toString() => 'MainView($name)';
+}
 
 /// A tab of the inspector a caller can ask for. [edit] is the YAML tab,
 /// already in edit mode.
@@ -136,22 +158,19 @@ class AppState extends ChangeNotifier {
   /// either opens the pane. Returns false for views that aren't in the dock.
   bool Function(MainView v)? showInDock;
 
-  void showView(MainView v) {
+  /// Shows page [v]. [focus] is handed to the page as [pageFocus] (e.g. the
+  /// Helm page's `namespace/name` release to select).
+  void showView(MainView v, {String? focus}) {
+    if (focus != null) pageFocus = focus;
     if (showInDock?.call(v) ?? false) return;
     if (v != view && detail != null) inspectorCollapsed = true;
     view = v;
     notifyListeners();
   }
 
-  /// `namespace/name` of a release the Helm page should select next time it
-  /// builds (set by [showHelmRelease], consumed by the page).
-  String? helmFocus;
-
-  void showHelmRelease(String namespace, String name) {
-    helmFocus = '$namespace/$name';
-    if (this.namespace != null && this.namespace != namespace) this.namespace = null;
-    showView(MainView.helm);
-  }
+  /// What the page shown by the last [showView] should select when it
+  /// builds; the page clears it once used.
+  String? pageFocus;
 
   /// The inspector is open but collapsed to a slim tab on the right edge
   /// (set when the user moves to another kind or view, so the new table

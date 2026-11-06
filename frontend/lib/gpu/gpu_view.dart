@@ -1,4 +1,4 @@
-/// The GPUs page (MainView.gpus): every NVIDIA GPU node with allocation,
+/// The GPUs page (GpusModule, lib/modules): every NVIDIA GPU node with allocation,
 /// live DCGM device stats, the pods holding GPUs, and problems worth acting
 /// on (idle allocated GPUs, unhealthy devices, unmonitored nodes).
 library;
@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../metrics/quantity.dart';
+import '../modules/gpus_module.dart';
 import '../prometheus/prom_api.dart';
 import '../state/app_state.dart';
 import '../state/poller.dart';
@@ -262,7 +263,7 @@ class GpuNavGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    if (app.view == MainView.gpus) return child;
+    if (app.view == GpusModule.page) return child;
     final ApiClient api;
     try {
       api = context.read<ApiClient>();

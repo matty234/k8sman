@@ -11,6 +11,7 @@ library;
 
 import 'package:flutter/widgets.dart';
 
+import '../modules/metrics_module.dart';
 import '../state/app_state.dart';
 import '../ui/addons/addon_install_dialog.dart';
 
@@ -112,7 +113,7 @@ const addonCatalog = <Addon>[
     // Local clusters (kind, k3d, Docker Desktop) use self-signed kubelet certs.
     values: 'args:\n  - --kubelet-insecure-tls\n',
     detectDeployments: ['kube-system/metrics-server'],
-    links: [AddonLink.page('Nodes', MainView.nodes), AddonLink.page('Metrics', MainView.metrics)],
+    links: [AddonLink.page('Nodes', MainView.nodes), AddonLink.page('Metrics', MetricsModule.page)],
     nextSteps: 'Usage appears within a minute, once the first scrape completes. See Nodes and Metrics.',
     clusterWide: 'an APIService (v1beta1.metrics.k8s.io) and ClusterRoles',
     uninstallNote: 'kubectl top and HorizontalPodAutoscalers on CPU or memory stop working.',
@@ -133,7 +134,7 @@ const addonCatalog = <Addon>[
         '    ruleSelectorNilUsesHelmValues: false\n    serviceMonitorSelectorNilUsesHelmValues: false\n'
         '    podMonitorSelectorNilUsesHelmValues: false\n    probeSelectorNilUsesHelmValues: false\n',
     detectCrds: ['prometheuses.monitoring.coreos.com'],
-    links: [AddonLink.page('Alerts', MainView.alerts), AddonLink.page('Metrics', MainView.metrics)],
+    links: [AddonLink.page('Alerts', MainView.alerts), AddonLink.page('Metrics', MetricsModule.page)],
     nextSteps: 'Prometheus starts scraping within a couple of minutes; history charts fill in from then on. See Alerts for firing rules.',
     clusterWide: 'the monitoring.coreos.com CRDs, an admission webhook and ClusterRoles',
     uninstallNote: 'All stored metrics and Alertmanager silences are lost. The monitoring.coreos.com CRDs stay (Helm never deletes CRDs), '

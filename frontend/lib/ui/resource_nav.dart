@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../api/models.dart';
 import '../app/kubeconfig_picker.dart';
 import '../app/window_chrome.dart';
-import '../gpu/gpu_view.dart';
+import '../modules/modules.dart';
 import '../state/app_state.dart';
 import '../util/k8s.dart' show Severity;
 import 'keys.dart' show shortcutLabel;
@@ -16,58 +16,38 @@ import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/group_icon.dart';
 
-/// Curated groups for built-in kinds, in display order. Anything not listed
-/// lands in "Custom Resources" (CRDs, grouped by API group) or "Other".
-const _curated = <String, List<String>>{
-  'Workloads': ['/Pod', 'apps/Deployment', 'apps/StatefulSet', 'apps/DaemonSet', 'apps/ReplicaSet', 'batch/Job', 'batch/CronJob'],
-  'Network': ['/Service', 'networking.k8s.io/Ingress', 'networking.k8s.io/IngressClass', 'discovery.k8s.io/EndpointSlice', '/Endpoints', 'networking.k8s.io/NetworkPolicy'],
-  'Gateway API': [
-    'gateway.networking.k8s.io/GatewayClass',
-    'gateway.networking.k8s.io/Gateway',
-    'gateway.networking.k8s.io/HTTPRoute',
-    'gateway.networking.k8s.io/GRPCRoute',
-    'gateway.networking.k8s.io/TLSRoute',
-    'gateway.networking.k8s.io/TCPRoute',
-    'gateway.networking.k8s.io/UDPRoute',
-    'gateway.networking.k8s.io/ReferenceGrant',
-  ],
-  'Config': ['/ConfigMap', '/Secret', '/ServiceAccount', 'autoscaling/HorizontalPodAutoscaler', '/ResourceQuota', '/LimitRange', 'policy/PodDisruptionBudget'],
-  'Monitoring': [
-    'monitoring.coreos.com/PrometheusRule',
-    'monitoring.coreos.com/ServiceMonitor',
-    'monitoring.coreos.com/PodMonitor',
-    'monitoring.coreos.com/Prometheus',
-    'monitoring.coreos.com/Alertmanager',
-  ],
-  'Storage': ['/PersistentVolumeClaim', '/PersistentVolume', 'storage.k8s.io/StorageClass'],
-  'Cluster': ['/Node', '/Namespace', '/Event', 'apiextensions.k8s.io/CustomResourceDefinition', 'apiregistration.k8s.io/APIService'],
-  'Access Control': [
+/// Curated sections for built-in kinds, in display order. Modules add
+/// theirs (Gateway API, Monitoring, Argo CD, …). Anything not listed lands
+/// in "Custom Resources" (CRDs, grouped by API group) or "Other".
+const _coreSections = [
+  NavGroup('Workloads', ['/Pod', 'apps/Deployment', 'apps/StatefulSet', 'apps/DaemonSet', 'apps/ReplicaSet', 'batch/Job', 'batch/CronJob']),
+  NavGroup('Network', ['/Service', 'networking.k8s.io/Ingress', 'networking.k8s.io/IngressClass', 'discovery.k8s.io/EndpointSlice', '/Endpoints', 'networking.k8s.io/NetworkPolicy']),
+  NavGroup('Config', ['/ConfigMap', '/Secret', '/ServiceAccount', 'autoscaling/HorizontalPodAutoscaler', '/ResourceQuota', '/LimitRange', 'policy/PodDisruptionBudget']),
+  NavGroup('Storage', ['/PersistentVolumeClaim', '/PersistentVolume', 'storage.k8s.io/StorageClass']),
+  NavGroup('Cluster', ['/Node', '/Namespace', '/Event', 'apiextensions.k8s.io/CustomResourceDefinition', 'apiregistration.k8s.io/APIService']),
+  NavGroup('Access Control', [
     'rbac.authorization.k8s.io/Role',
     'rbac.authorization.k8s.io/ClusterRole',
     'rbac.authorization.k8s.io/RoleBinding',
     'rbac.authorization.k8s.io/ClusterRoleBinding',
-  ],
-  'Argo CD': ['argoproj.io/Application', 'argoproj.io/ApplicationSet', 'argoproj.io/AppProject'],
-  'Argo Workflows': [
-    'argoproj.io/Workflow',
-    'argoproj.io/CronWorkflow',
-    'argoproj.io/WorkflowTemplate',
-    'argoproj.io/ClusterWorkflowTemplate',
-    'argoproj.io/WorkflowEventBinding',
-    'argoproj.io/WorkflowTaskSet',
-    'argoproj.io/WorkflowTaskResult',
-    'argoproj.io/WorkflowArtifactGCTask',
-  ],
-};
+  ]),
+];
+
+/// Section title → kinds: the core sections plus the enabled modules'.
+Map<String, List<String>> _curatedFor(AppState app) => {
+      for (final g in placeAfter(_coreSections, [for (final m in enabledModules(app)) ...m.navGroups], (g) => g.title, (g) => g.after)) g.title: g.kinds,
+    };
 
 /// Source-list glyphs for well-known kinds (others get a generic one).
 /// The nav's icon for a kind (also used by the collapsed inspector tab).
-IconData kindIcon(ResourceType type) => _kindIcons[type.gk] ?? (type.custom ? Icons.extension_outlined : Icons.article_outlined);
+IconData kindIcon(ResourceType type) => _iconOf(type) ?? (type.custom ? Icons.extension_outlined : Icons.article_outlined);
+
+IconData? _iconOf(ResourceType type) => _kindIcons[type.gk] ?? moduleKindIcons[type.gk];
 
 /// [kindIcon], except custom resources without a built-in glyph get their
 /// API group's app icon.
 Widget kindIconWidget(ResourceType type, {double size = 15, Color? color}) =>
-    type.custom && !_kindIcons.containsKey(type.gk) ? GroupIcon(group: type.group, size: size) : Icon(kindIcon(type), size: size, color: color);
+    type.custom && _iconOf(type) == null ? GroupIcon(group: type.group, size: size) : Icon(kindIcon(type), size: size, color: color);
 
 const _kindIcons = <String, IconData>{
   '/Pod': Icons.view_in_ar_outlined,
@@ -102,10 +82,6 @@ const _kindIcons = <String, IconData>{
   'rbac.authorization.k8s.io/ClusterRole': Icons.admin_panel_settings_outlined,
   'rbac.authorization.k8s.io/RoleBinding': Icons.link,
   'rbac.authorization.k8s.io/ClusterRoleBinding': Icons.add_link,
-  'argoproj.io/Workflow': Icons.account_tree_outlined,
-  'argoproj.io/CronWorkflow': Icons.update,
-  'argoproj.io/WorkflowTemplate': Icons.description_outlined,
-  'argoproj.io/ClusterWorkflowTemplate': Icons.library_books_outlined,
 };
 
 class ResourceNav extends StatefulWidget {
@@ -124,20 +100,6 @@ const _expandedByDefault = {'Workloads', 'Network', 'Config'};
 const _navMinHeight = 520.0;
 const _defaultTopRows = 6;
 const _topRowHeight = 27.0;
-
-/// Icon and label of each sidebar page (see [SidebarConfig.pages]).
-const sidebarPages = <MainView, (IconData, String)>{
-  MainView.overview: (Icons.space_dashboard_outlined, 'Overview'),
-  MainView.alerts: (Icons.notifications_none, 'Alerts'),
-  MainView.nodes: (Icons.dns_outlined, 'Nodes'),
-  MainView.gpus: (Icons.memory, 'GPUs'),
-  MainView.security: (Icons.shield_outlined, 'Security'),
-  MainView.access: (Icons.manage_accounts_outlined, 'Access'),
-  MainView.metrics: (Icons.query_stats, 'Metrics'),
-  MainView.helm: (Icons.sailing_outlined, 'Helm'),
-  MainView.portForwards: (Icons.swap_horiz, 'Port Forwards'),
-  MainView.addons: (Icons.extension_outlined, 'Add-ons'),
-};
 
 /// A native-style context menu of (label, action) items; null = divider.
 Future<void> showSidebarMenu(BuildContext context, Offset globalPosition, List<(String, VoidCallback)?> items) async {
@@ -192,7 +154,8 @@ class _ResourceNavState extends State<ResourceNav> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final groups = _group(app.types);
+    final curated = _curatedFor(app);
+    final groups = _group(app.types, curated);
 
     // Top section: the user's layout (pages and pins); hidden pages fold
     // under "More", which opens by itself while one of them is active.
@@ -270,7 +233,7 @@ class _ResourceNavState extends State<ResourceNav> {
               for (final (i, g) in groups.entries.indexed) ...() {
                 // Curated sections (incl. CRD-based ones like Argo CD) stand on
                 // their own; only uncurated API groups nest under "Custom Resources".
-                bool isCustomSection(String key) => !_curated.containsKey(key) && key != 'Other';
+                bool isCustomSection(String key) => !curated.containsKey(key) && key != 'Other';
                 final custom = isCustomSection(g.key);
                 final firstCustom = custom && (i == 0 || !isCustomSection(groups.keys.elementAt(i - 1)));
                 // Highlighted here even when a pin shows it too, so the list
@@ -299,11 +262,11 @@ class _ResourceNavState extends State<ResourceNav> {
     });
   }
 
-  Map<String, List<ResourceType>> _group(List<ResourceType> types) {
+  Map<String, List<ResourceType>> _group(List<ResourceType> types, Map<String, List<String>> curated) {
     final byGk = {for (final t in types) t.gk: t};
     final out = <String, List<ResourceType>>{};
     final used = <String>{};
-    for (final e in _curated.entries) {
+    for (final e in curated.entries) {
       final list = [for (final gk in e.value) if (byGk[gk] != null) byGk[gk]!];
       used.addAll(e.value);
       if (list.isNotEmpty) out[e.key] = list;
@@ -469,7 +432,8 @@ class _TopEntry extends StatelessWidget {
     final app = context.read<AppState>();
     final view = entry.view;
     if (view != null) {
-      final (icon, label) = sidebarPages[view]!;
+      final page = pageFor(view)!;
+      final (icon, label) = (page.icon, page.label);
       final item = _SourceListItem(
         key: ValueKey('nav-view-${view.name}'),
         icon: icon,
@@ -485,7 +449,7 @@ class _TopEntry extends StatelessWidget {
         ]),
       );
       // Per-cluster gating applies whatever the layout says.
-      return view == MainView.gpus ? GpuNavGate(child: item) : item;
+      return page.navGate?.call(item) ?? item;
     }
     final pin = entry.pin!;
     final type = app.typeForPin(pin);

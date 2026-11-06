@@ -3,27 +3,18 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app/window_chrome.dart';
-import '../gpu/gpu_view.dart';
-import '../metrics/metrics_page.dart';
+import '../modules/modules.dart';
 import '../state/app_state.dart';
 import '../state/cluster_error.dart';
 import '../state/log_dock.dart';
 import '../state/startup_gate.dart';
-import 'access/access_view.dart';
-import 'addons/addons_view.dart';
-import 'alerts/alerts_view.dart';
 import 'cluster_error_view.dart';
 import 'connecting_view.dart';
 import 'detail/detail_sidebar.dart';
 import 'logs/log_dock_view.dart';
-import 'helm/helm_view.dart';
-import 'nodes/nodes_view.dart';
-import 'overview/overview_view.dart';
 import 'palette/command_palette.dart';
-import 'portforward/portforward_view.dart';
 import 'resource_nav.dart';
 import 'resource_table.dart';
-import 'security/security_view.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 import 'keyboard_help.dart';
@@ -137,18 +128,10 @@ class _ShellState extends State<Shell> {
                   color: theme.colorScheme.surface,
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(
-                      child: switch (app.view) {
-                        MainView.overview => const OverviewView(),
-                        MainView.alerts => const AlertsView(),
-                        MainView.nodes => const NodesView(),
-                        MainView.gpus => const GpusView(),
-                        MainView.security => const SecurityView(),
-                        MainView.access => const AccessView(),
-                        MainView.metrics => const MetricsPage(),
-                        MainView.portForwards => const PortForwardView(),
-                        MainView.helm => const HelmView(),
-                        MainView.addons => const AddonsView(),
-                        MainView.resources => type == null
+                      // A page (core or a module's), else the selected kind's table.
+                      child: switch (pageEnabled(app, app.view) ? pageFor(app.view) : null) {
+                        final page? => page.builder(context),
+                        null => type == null
                             ? WindowDragArea(child: Center(child: Text('Select a resource kind', style: TextStyle(color: theme.hintColor))))
                             : ResourceTableView(type: type),
                       },

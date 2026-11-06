@@ -8,6 +8,7 @@ import 'package:k8sman/api/client.dart';
 import 'package:k8sman/gpu/gpu_api.dart';
 import 'package:k8sman/gpu/gpu_view.dart';
 import 'package:k8sman/prometheus/prom_api.dart';
+import 'package:k8sman/modules/gpus_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
@@ -66,7 +67,7 @@ Future<void> _pumpView(WidgetTester tester, Size size) async {
   final app = AppState(api)
     ..types = testTypes
     ..currentContext = 'gpu-cluster'
-    ..view = MainView.gpus;
+    ..view = GpusModule.page;
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   await tester.pumpWidget(MultiProvider(

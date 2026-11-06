@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/models.dart';
+import '../modules/modules.dart' show pageFor;
 import '../state/app_state.dart';
-import 'resource_nav.dart' show kindIconWidget, sidebarPages;
+import 'resource_nav.dart' show kindIconWidget;
 import 'theme.dart';
 import 'widgets/searchable_picker.dart';
 
@@ -140,10 +141,10 @@ class _SidebarEditorDialogState extends State<SidebarEditorDialog> {
     Widget lead;
     Widget? end;
     if (e.view != null) {
-      final (icon, l) = sidebarPages[e.view]!;
-      label = l;
-      glyph = Icon(icon, size: 15, color: theme.hintColor);
-      if (e.view == MainView.gpus) note = 'Only on clusters with GPUs';
+      final page = pageFor(e.view!)!;
+      label = page.label;
+      glyph = Icon(page.icon, size: 15, color: theme.hintColor);
+      note = page.navNote;
       lead = Checkbox(
         key: ValueKey('sidebar-show-${e.view!.name}'),
         value: !e.hidden,

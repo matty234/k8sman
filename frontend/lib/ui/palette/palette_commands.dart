@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../modules/modules.dart';
 import '../../state/app_state.dart';
 import '../resource_nav.dart';
 import 'palette_items.dart';
@@ -14,20 +15,6 @@ class CommandResults {
   final String highlight;
   const CommandResults(this.sections, this.highlight);
 }
-
-/// Names that `:name` goes to a page by.
-const _pageNames = <MainView, List<String>>{
-  MainView.overview: ['overview'],
-  MainView.alerts: ['alerts'],
-  MainView.nodes: ['nodes'],
-  MainView.gpus: ['gpus', 'gpu'],
-  MainView.security: ['security'],
-  MainView.access: ['access', 'rbac'],
-  MainView.metrics: ['metrics'],
-  MainView.helm: ['helm'],
-  MainView.portForwards: ['pf', 'forwards', 'portforwards', 'port-forwards'],
-  MainView.addons: ['addons', 'add-ons'],
-};
 
 /// Resolves k9s-style commands: `:po`, `:deploy`, `:ns [name]`,
 /// `:ctx [name]`, `:pf`, `:alerts`, … ([text] is what follows the colon).
@@ -102,21 +89,20 @@ CommandResults rankCommand(String text, AppState app) {
   // Pages, unless a kind has the name (`:nodes` is the Node kind).
   final pages = <(bool, int, PaletteItem)>[];
   if (!scored.any((k) => k.$1)) {
-    for (final e in _pageNames.entries) {
-      final label = sidebarPages[e.key];
-      if (label == null) continue;
+    // `:name` goes to a page by its commands.
+    for (final p in enabledPages(app)) {
       final item = PaletteItem(
         group: PaletteGroup.pages,
-        title: label.$2,
+        title: p.label,
         typeLabel: 'Page',
-        icon: _icon(label.$1),
-        aliases: e.value,
-        exactAliases: e.value,
-        current: app.view == e.key,
-        run: () => app.showView(e.key),
+        icon: _icon(p.icon),
+        aliases: p.commands,
+        exactAliases: p.commands,
+        current: app.view == p.view,
+        run: () => app.showView(p.view),
       );
       final s = cmd.isEmpty ? 0 : item.score(cmd);
-      if (s != null) pages.add((e.value.contains(cmd), s, item));
+      if (s != null) pages.add((p.commands.contains(cmd), s, item));
     }
     pages.sort((a, b) => a.$1 != b.$1 ? (a.$1 ? -1 : 1) : b.$2 - a.$2);
   }

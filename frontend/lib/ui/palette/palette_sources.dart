@@ -7,6 +7,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../app/updates/update_controller.dart';
 import '../../app/updates/update_ui.dart';
+import '../../modules/modules.dart';
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../../state/table_controller.dart';
@@ -27,16 +28,15 @@ List<PaletteItem> paletteItems(BuildContext context) {
   final dock = context.read<LogDock?>();
   final updates = context.read<UpdateController?>();
   return [
-    for (final v in MainView.values)
-      if (sidebarPages[v] case (final icon, final label))
-        PaletteItem(
-          group: PaletteGroup.pages,
-          title: label,
-          typeLabel: 'Page',
-          icon: _icon(icon),
-          current: app.view == v,
-          run: () => app.showView(v),
-        ),
+    for (final p in enabledPages(app))
+      PaletteItem(
+        group: PaletteGroup.pages,
+        title: p.label,
+        typeLabel: 'Page',
+        icon: _icon(p.icon),
+        current: app.view == p.view,
+        run: () => app.showView(p.view),
+      ),
     for (final t in app.types)
       // events.k8s.io/Event duplicates core Event (the sidebar hides it too).
       if (t.gk != 'events.k8s.io/Event')

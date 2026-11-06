@@ -23,6 +23,7 @@ import 'package:http/testing.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/main.dart';
+import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/panels/argocd/app_diff.dart';
 import 'package:k8sman/state/log_dock.dart';
@@ -1092,7 +1093,7 @@ void main() {
 
   shot('helm', (tester) async {
     final s = await pumpApp(tester, configure: (app) => app.namespace = null);
-    s.app.showView(MainView.helm);
+    s.app.showView(HelmModule.page);
     await settle(tester);
     await tester.tap(find.text('web').first);
     await settle(tester);

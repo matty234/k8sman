@@ -7,6 +7,7 @@ import '../../actions/actions.dart';
 import '../../addons/addon_status.dart';
 import '../../addons/addons.dart';
 import '../../api/client.dart';
+import '../../modules/helm_module.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../helm/helm_api.dart';
@@ -338,7 +339,7 @@ class AddonCard extends StatelessWidget {
         const SizedBox(height: 10),
         Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.end, children: [
           if (r != null)
-            TextButton(style: compact, onPressed: () => app.showHelmRelease(r.namespace, r.name), child: const Text('View release')),
+            TextButton(style: compact, onPressed: () => showHelmRelease(app, r.namespace, r.name), child: const Text('View release')),
           if (!readOnly && r != null)
             TextButton(
               style: compact.copyWith(foregroundColor: WidgetStatePropertyAll(theme.colorScheme.error)),

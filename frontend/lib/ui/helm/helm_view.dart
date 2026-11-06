@@ -91,9 +91,9 @@ class _HelmViewState extends State<HelmView> with PollingState {
       scheduleMicrotask(_refresh);
     }
     // A release to focus (from Add-ons → View release).
-    if (app.helmFocus != null) {
-      _selected = app.helmFocus;
-      app.helmFocus = null;
+    if (app.pageFocus != null) {
+      _selected = app.pageFocus;
+      app.pageFocus = null;
     }
     final l = _list;
     final all = l == null ? null : sortReleases(l.releases);

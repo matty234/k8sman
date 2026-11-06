@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/main.dart';
+import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/state/log_dock.dart';
 import 'package:k8sman/ui/helm/helm_api.dart';
@@ -44,7 +45,7 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 60));
     }
-    expect(app.view, MainView.helm);
+    expect(app.view, HelmModule.page);
     expect(find.byType(HelmView), findsOneWidget);
 
     final pod = DetailTarget(type: app.typeFor('', 'Pod')!, name: 'web-6fd47b8fcb-4v4m9', namespace: 'demo');

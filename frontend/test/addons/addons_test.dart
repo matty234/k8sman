@@ -4,6 +4,8 @@ import 'package:k8sman/addons/addon_status.dart';
 import 'package:k8sman/addons/addons.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
+import 'package:k8sman/modules/addons_module.dart';
+import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/addons/addons_view.dart';
 import 'package:k8sman/ui/helm/helm_api.dart';
@@ -45,7 +47,7 @@ Future<(AppState, FakeAddonHelmApi)> pumpAddons(
     ..types = client.types
     ..readOnly = readOnly
     ..currentContext = context
-    ..view = MainView.addons;
+    ..view = AddonsModule.page;
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -187,8 +189,8 @@ void main() {
     testWidgets('View release opens the Helm page focused on it', (tester) async {
       final (app, _) = await pumpAddons(tester);
       await tester.tap(inCard(AddonIds.trivyOperator, find.text('View release')));
-      expect(app.view, MainView.helm);
-      expect(app.helmFocus, 'trivy-system/trivy-operator');
+      expect(app.view, HelmModule.page);
+      expect(app.pageFocus, 'trivy-system/trivy-operator');
     });
 
     testWidgets('Security link navigates', (tester) async {
