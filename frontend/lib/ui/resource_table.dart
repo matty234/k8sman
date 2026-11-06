@@ -198,7 +198,7 @@ class _TableBodyState extends State<_TableBody> {
   _Toolbar? _toolbarCache;
   _Toolbar _toolbar(TableController tc, int shown) {
     final t = _toolbarCache;
-    if (t != null && t.shown == shown && t.total == tc.totalCount && t.isDefaultColumns == tc.isDefaultColumns) return t;
+    if (t != null && t.shown == shown && t.total == tc.totalCount && t.loaded == tc.loaded && t.isDefaultColumns == tc.isDefaultColumns) return t;
     return _toolbarCache = _Toolbar(controller: tc, shown: shown);
   }
 
@@ -619,8 +619,12 @@ class _Toolbar extends StatelessWidget {
 
   // What the toolbar shows from the controller (the cache key in _toolbar).
   final int total;
+  final bool loaded;
   final bool isDefaultColumns;
-  _Toolbar({required this.controller, required this.shown}) : total = controller.totalCount, isDefaultColumns = controller.isDefaultColumns;
+  _Toolbar({required this.controller, required this.shown})
+      : total = controller.totalCount,
+        loaded = controller.loaded,
+        isDefaultColumns = controller.isDefaultColumns;
 
   @override
   Widget build(BuildContext context) {
@@ -657,12 +661,15 @@ class _Toolbar extends StatelessWidget {
                           Flexible(
                             child: Text(t.kind, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.titleLarge),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            count,
-                            maxLines: 1,
-                            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]),
-                          ),
+                          // No count until the first list arrives (not "0").
+                          if (loaded) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              count,
+                              maxLines: 1,
+                              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]),
+                            ),
+                          ],
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
