@@ -133,8 +133,11 @@ Severity severityOf(String? status) {
   const warn = {'pending', 'containercreating', 'podinitializing', 'waiting', 'terminating', 'unknown', 'progressing', 'released', 'suspended', 'warning'};
   const err = {'failed', 'error', 'crashloopbackoff', 'imagepullbackoff', 'errimagepull', 'notready', 'false', 'lost', 'oomkilled', 'evicted', 'createcontainerconfigerror', 'invalidimagename', 'backofflimitexceeded', 'deadlineexceeded'};
   final head = s.split(RegExp(r'[,:]')).where((p) => p.isNotEmpty).toList();
-  if (head.any(err.contains) || s.startsWith('init:') && !s.contains('/')) return Severity.error;
-  if (head.any(warn.contains) || s.contains('schedulingdisabled')) return Severity.warn;
+  if (head.any(err.contains)) return Severity.error;
+  // Init containers still starting (Init:PodInitializing, Init:0/2) are in
+  // progress; any other Init: reason means one failed.
+  if (s.startsWith('init:') && !head.any(warn.contains) && !s.contains('/')) return Severity.error;
+  if (head.any(warn.contains) || s.startsWith('init:') || s.contains('schedulingdisabled')) return Severity.warn;
   if (head.any(ok.contains)) return Severity.ok;
   return Severity.info;
 }
