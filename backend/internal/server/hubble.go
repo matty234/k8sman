@@ -18,15 +18,21 @@ import (
 )
 
 // hubbleModule is the Cilium Hubble integration: relay discovery and
-// status, live flows over a WebSocket, grouped drops and "can A reach B",
-// all read from Hubble Relay over gRPC through an in-process port-forward
-// (see internal/hubble). Read-only: it changes nothing in the cluster.
+// status, live flows over a WebSocket, grouped drops, "can A reach B" and
+// the namespace traffic map, all read from Hubble Relay over gRPC through
+// an in-process port-forward (see internal/hubble). Read-only: it changes
+// nothing in the cluster.
 type hubbleModule struct {
 	d   Deps
 	hub *hubble.Hub
 
 	dropsMu    sync.Mutex
 	dropsCache map[string]hubbleDropsEntry
+
+	// The traffic maps being counted, per context and settings; each
+	// stops after hubble.TrafficIdle without a request.
+	mapsMu sync.Mutex
+	maps   map[string]*hubble.Traffic
 }
 
 type hubbleDropsEntry struct {
@@ -51,10 +57,12 @@ func (m *hubbleModule) Routes(r httpx.Router, d Deps) {
 	m.d = d
 	m.hub = hubble.NewHub()
 	m.dropsCache = map[string]hubbleDropsEntry{}
+	m.maps = map[string]*hubble.Traffic{}
 	r.HandleFunc("GET /api/hubble/status", m.handleStatus)
 	r.HandleFunc("GET /api/hubble/flows", m.handleFlows)
 	r.HandleFunc("GET /api/hubble/drops", m.handleDrops)
 	r.HandleFunc("GET /api/hubble/connectivity", m.handleConnectivity)
+	r.HandleFunc("GET /api/hubble/map", m.handleMap)
 }
 
 // ValidateSettings implements Configurable.
@@ -230,6 +238,60 @@ func (m *hubbleModule) handleConnectivity(w http.ResponseWriter, r *http.Request
 	}
 	res.Oldest = timePtr(oldest)
 	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
+// handleMap returns the traffic between namespaces, and between them and
+// the world, over ?window (default 5m, at most 15m). The first request
+// starts following the relay for the context; the map keeps counting
+// while it is asked for (the app polls it every few seconds while it is
+// on screen) and stops a minute after the last request.
+func (m *hubbleModule) handleMap(w http.ResponseWriter, r *http.Request) {
+	window := 5 * time.Minute
+	if v := r.URL.Query().Get("window"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 || d > hubble.MaxTrafficWindow {
+			writeErr(w, httpx.BadRequest("bad window %q (want a duration up to %s)", v, hubble.MaxTrafficWindow))
+			return
+		}
+		window = d
+	}
+	if _, ok := m.observer(w, r); !ok {
+		return
+	}
+	c := m.d.Mgr.Clients()
+	httpx.WriteJSON(w, http.StatusOK, m.traffic(c, m.settings(c)).Snapshot(window))
+}
+
+// traffic returns the context's running map, starting one.
+func (m *hubbleModule) traffic(c *cluster.Clients, s hubble.Settings) *hubble.Traffic {
+	key := fmt.Sprintf("%p|%+v", c, s)
+	m.mapsMu.Lock()
+	defer m.mapsMu.Unlock()
+	if t := m.maps[key]; t != nil {
+		return t
+	}
+	t := hubble.NewTraffic()
+	t.Start(func(ctx context.Context) (observerpb.ObserverClient, error) {
+		obs, _, err := m.hub.Observer(ctx, c, s)
+		return obs, err
+	})
+	m.maps[key] = t
+	go func() {
+		tick := time.NewTicker(hubble.TrafficIdle / 4)
+		defer tick.Stop()
+		for range tick.C {
+			if t.Idle() {
+				m.mapsMu.Lock()
+				if m.maps[key] == t {
+					delete(m.maps, key)
+				}
+				m.mapsMu.Unlock()
+				t.Stop()
+				return
+			}
+		}
+	}()
+	return t
 }
 
 func writeHubbleErr(w http.ResponseWriter, err error) {

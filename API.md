@@ -580,6 +580,7 @@ far they got (`oldest`).
 | WS | `/api/hubble/flows` | live flows, filtered by the relay. Frames `{flows?:[Flow], lost?, end?, error?}`, at most every 100 ms and 500 flows per frame. A following stream passes at most 1,000 flows a second; the rest, and flows the relay itself reports lost, are counted in `lost`. Query below; `follow` defaults to true, with recent history first (`since=5s`, or `5m` for a narrow query: some endpoints, or only non-FORWARDED verdicts). Without `follow`, the last 200 flows (or `last`/`since`) then a frame with `end`. Bad parameters are a 400 before the upgrade; an unreachable relay is an `error` frame |
 | GET | `/api/hubble/drops` | recent drops grouped: `{groups:[{source, destination, reason, protocol?, port?, count, first, last, deniedBy?}], flows, truncated?, lost?, since, oldest?, partial?}`, most frequent first. Takes `namespace` (comma-separated), `since` (default 15m), `last` (default 1000). `partial` when the relay was too slow (15 s) |
 | GET | `/api/hubble/connectivity?from=&to=` | "can A reach B": the flows from `from` to `to` (endpoint specs) as `{from, to, since, verdict: allowed\|dropped\|mixed\|unknown, verdicts:{VERDICT: n}, drops:[groups], allowedBy?:[policies], recent:[Flow] (last 50), reverse:{VERDICT: n} (the other way), lost?, oldest?}`. `since` defaults to 15m |
+| GET | `/api/hubble/map[?window=5m]` | the traffic map: flows between namespaces, and between them and the world, counted over the last `window` (a Go duration, at most 15m; default 5m). `{window, since, now, startedAt, flows, drops, rate, lost?, uncounted?, state: starting\|live\|error, error?, edges:[{from, to, flows, drops, rate?, ports?, peers?, fromWorkloads?, toWorkloads?, reasons?}]}`, busiest first. See below |
 
 Flow query (`/api/hubble/flows`, and `namespace` for drops), translated into
 Hubble `FlowFilter`s:
@@ -606,6 +607,49 @@ dns?: {query, rcode, ips}}, node?, event? (observation point), policies?:
 identity?, names? (DNS names), reserved? (world, host, remote-node,
 kube-apiserver, … for non-pod endpoints)}`. Policies need Cilium's policy
 correlation (`hubble-network-policy-correlation-enabled`).
+
+**Traffic map** (`/api/hubble/map`). The relay holds seconds of history, so
+the backend counts: the first request starts following the relay for the
+current context, and later requests read the counts. It keeps counting
+while asked (the app polls every 2 s while the Map tab is on screen) and
+stops a minute after the last request, after which the gRPC connection
+closes too. One map per context is shared by every viewer.
+
+- Nodes are namespaces, or reserved ids for endpoints outside any:
+  `reserved:world` (Cilium's world identities and CIDR identities),
+  `reserved:ingress` (Cilium Ingress / Gateway, which is where traffic from
+  the world usually shows up, as Envoy's connections to pods),
+  `reserved:host`, `reserved:remote-node`, `reserved:kube-apiserver`,
+  `reserved:health`, `reserved:init`, `reserved:unmanaged`, and
+  `reserved:unknown` (an identity with no namespace in the flow). An edge
+  with `from == to` is traffic within a namespace.
+- Each flow is counted once. The relay is asked only for to-endpoint
+  traces, traces leaving a node for a reserved identity or the world, and
+  drops, without replies (event-type, reply, identity and label filters,
+  and a field mask of ~20 fields): about a quarter of all flows on a busy
+  cluster. Pod-to-pod traffic counts where it reaches the destination pod
+  (not again where it left the source node); socket-LB traces, L7 records
+  and policy-verdict events aren't counted. The same rule is applied again
+  as flows are added.
+- `flows` are forwarded (and audited), `drops` dropped; `rate` is flows a
+  second over the last 20-40 s (0 for a pair that went quiet). `ports` are
+  destination ports as `PROTO/port`; `peers` the world side of world edges
+  (a DNS name when Hubble knows one, from `destination_names`, else the IP);
+  `fromWorkloads`/`toWorkloads` as `Kind/name`; `reasons` drop reasons.
+  Each list has the top 5 by count, `{name, n}`, with the rest summed under
+  `name: ""`.
+- `since` is where the counts really start: later than `now - window` while
+  the map is younger than the window. `lost` is what the relay reported it
+  couldn't deliver: the counts are then a lower bound. A stream whose
+  readers keep losing more than they deliver (a node's buffer overtook its
+  reader) is restarted from the head. `state` is `error` while the stream is
+  reconnecting (with backoff); counts so far are kept.
+- Bounded: 20-second buckets for 15 minutes (46), at most 512 pairs per
+  bucket (more are counted in `uncounted`), and per pair and bucket at most
+  5 ports, 5 world peers, 3 workloads each side and 3 drop reasons, with
+  strings shared. Worst case about 15 MB; measured about 3 MB of heap with
+  30 namespaces and ~180 pairs, and 3-6% of one core at ~1,200 counted
+  flows a second.
 
 The Health overview adds `hubbleRelayUnreachable` (warning, on the relay
 Service) and `hubbleDrops` (warning, per namespace with at least 5 drops in
