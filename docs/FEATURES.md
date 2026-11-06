@@ -165,3 +165,7 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - Your login-shell environment is passed to the backend, so kubeconfig exec
   credential plugins are found.
 - Automatic, EdDSA-signed updates with Sparkle.
+- Integrations you don't use (Argo CD, Argo Workflows, Helm, GPUs,
+  Prometheus, Gateway API, Metrics, Add-ons) can be turned off in
+  **Customise Sidebar → Integrations…**: their pages, panels, palette
+  entries and overview checks go away.

@@ -138,7 +138,55 @@ packaging/ Homebrew cask template
     context per kubeconfig, and `remoteIcons`.
   - `columns.json`: custom columns.
   - `portforwards.json`: saved forwards.
+- **Integrations** (Argo CD, Argo Workflows, Helm, GPUs, Prometheus,
+  Gateway API, Metrics, Add-ons) are compile-time modules; see
+  [Adding an integration](#adding-an-integration).
 - **CRD icons** come from Helm chart metadata, icons bundled with the app, or
   the group's website favicon (fetched directly, never through a third-party
   favicon service). See [API.md](../API.md#crd-group-icons).
+
+## Adding an integration
+
+Integrations with other tools (Argo CD, Helm, GPUs, …) are modules: one
+interface on each side, compiled in, listed in one place. Core features
+(tables, logs, terminals, port-forwards, nodes, security, access, the
+editor) are not modules. Each module can be turned off in **Customise
+Sidebar → Integrations…** (or the palette's **Integrations…**), saved as
+`disabledModules` in `settings.json`. Use the same id on both sides.
+
+**Backend** (`backend/internal/server/module.go`):
+
+1. Write a type that implements `Module`: `Name()` returns the id, and
+   `Routes(r httpx.Router, d Deps)` mounts its endpoints on `r`. `Deps`
+   carries the cluster manager, settings and the read-only guard
+   (`d.RefuseReadOnly(w)` before anything that changes the cluster). Auth
+   and the Host/Origin checks run before any route, so modules don't
+   repeat them. Larger integrations keep their logic in their own package
+   (`internal/argoapi`, `internal/helm`, …) with a
+   `Register(mux httpx.Router, …)`.
+2. Optionally implement `OverviewSource` (list objects into
+   `overview.Input` for the health overview, with `l.Go`) and
+   `ActionSource` (actions for `POST /api/actions/{action}`; decode your
+   body fields from `ActionCall.Body`).
+3. Add it to `builtinModules()`. While it is turned off its routes answer
+   404 (`reason: "ModuleDisabled"`) and it adds no overview inputs or
+   actions.
+4. Document the endpoints in API.md.
+
+**Frontend** (`frontend/lib/modules/`):
+
+1. Add `<id>_module.dart` with a `const` class extending `AppModule`.
+   Override what you have: `pages` (`AppPage`: id `MainView('<id>')`,
+   icon, label, builder, `:` commands, `after` for its default sidebar
+   position, `underMore`, an optional `navGate`), `panels` (inspector
+   panels, see [PANELS.md](PANELS.md)), `navGroups` (a section of the kinds
+   list, placed `after` a core one), `kindIcons`, `requires` (other module
+   ids it needs) and `isAvailable(app)` (e.g. its CRD is served; shown in
+   the Integrations dialog).
+2. Add it to `builtInModules` in `modules.dart`, after any module whose
+   page it is placed `after`.
+
+That's all: `shell.dart`, `app_state.dart`, `resource_nav.dart`, the
+palette and `server.go` don't change. Saved sidebar layouts store page ids,
+so keep a page's id once it has shipped.
 

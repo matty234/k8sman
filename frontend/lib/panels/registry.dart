@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/models.dart';
 import '../modules/modules.dart';
+import '../state/app_state.dart';
 import '../ui/widgets/common.dart';
 import 'batch/index.dart';
 import 'cluster/index.dart';
@@ -28,16 +29,22 @@ final List<ResourcePanel> corePanels = [
   ...customPanels,
 ];
 
-final Map<String, ResourcePanel> _byKind = {
+/// Kind → its panel, and the module it comes from (null = core).
+final Map<String, (ResourcePanel, String?)> _byKind = {
   for (final p in corePanels)
-    for (final k in p.kinds) k: p,
+    for (final k in p.kinds) k: (p, null),
   for (final m in builtInModules)
     for (final p in m.panels)
-      for (final k in p.kinds) k: p,
+      for (final k in p.kinds) k: (p, m.id),
 };
 
-/// The panel for a resource type: a dedicated one, else the fallback.
-ResourcePanel panelFor(ResourceType t) => _byKind[t.gk] ?? customFallbackPanel ?? const BasicFallbackPanel();
+/// The panel for a resource type: a dedicated one, else the fallback. With
+/// [app], panels of modules the user turned off are skipped.
+ResourcePanel panelFor(ResourceType t, [AppState? app]) {
+  final e = _byKind[t.gk];
+  final on = e != null && (e.$2 == null || app == null || moduleEnabled(e.$2!, app.disabledModules));
+  return (on ? e.$1 : null) ?? customFallbackPanel ?? const BasicFallbackPanel();
+}
 
 /// Minimal fallback: spec + status trees and conditions.
 class BasicFallbackPanel extends ResourcePanel {

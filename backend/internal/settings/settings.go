@@ -1,6 +1,7 @@
 // Package settings persists small app preferences (the chosen kubeconfig,
 // recently used kubeconfigs, the last context per kubeconfig, the sidebar
-// layout, read-only contexts and table preferences) in
+// layout, read-only contexts, table preferences and turned-off
+// integrations) in
 // ~/.config/k8sman/settings.json.
 package settings
 
@@ -47,6 +48,9 @@ type Settings struct {
 	// Tables maps a resource kind ("group/Kind", "" group for core) to its
 	// table preferences.
 	Tables map[string]TablePrefs `json:"tables,omitempty"`
+	// DisabledModules lists the integrations the user turned off (module
+	// ids such as "helm" or "argocd"). Absent = all on.
+	DisabledModules []string `json:"disabledModules,omitempty"`
 }
 
 // TablePrefs is how a resource kind's table was last left.
@@ -170,6 +174,7 @@ func (st *Store) Get() Settings {
 	out.Sidebar = cloneSidebar(st.s.Sidebar)
 	out.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
 	out.Tables = cloneTables(st.s.Tables)
+	out.DisabledModules = slices.Clone(st.s.DisabledModules)
 	return out
 }
 
@@ -188,6 +193,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	next.Sidebar = cloneSidebar(st.s.Sidebar)
 	next.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
 	next.Tables = cloneTables(st.s.Tables)
+	next.DisabledModules = slices.Clone(st.s.DisabledModules)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -252,6 +258,35 @@ func (st *Store) SetTablePrefs(kind string, p *TablePrefs) error {
 			return
 		}
 		s.Tables[kind] = TablePrefs{SortColumn: p.SortColumn, SortDescending: p.SortDescending, Widths: maps.Clone(p.Widths), Filter: p.Filter}
+	})
+}
+
+// ModuleDisabled reports whether the user turned the integration off.
+func (st *Store) ModuleDisabled(id string) bool {
+	if st == nil {
+		return false
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return slices.Contains(st.s.DisabledModules, id)
+}
+
+var moduleID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+
+// SetDisabledModules replaces the list of turned-off integrations (kept
+// sorted, without duplicates). Ids are lowercase words such as "argocd".
+func (st *Store) SetDisabledModules(ids []string) error {
+	for _, id := range ids {
+		if !moduleID.MatchString(id) {
+			return fmt.Errorf("invalid module id %q", id)
+		}
+	}
+	ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+	return st.Update(func(s *Settings) {
+		s.DisabledModules = nil
+		if len(ids) > 0 {
+			s.DisabledModules = ids
+		}
 	})
 }
 

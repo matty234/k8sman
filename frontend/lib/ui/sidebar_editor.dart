@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/models.dart';
-import '../modules/modules.dart' show pageFor;
+import '../modules/modules.dart' show pageEnabled, pageFor;
+import 'integrations_dialog.dart';
 import '../state/app_state.dart';
 import 'resource_nav.dart' show kindIconWidget;
 import 'theme.dart';
@@ -100,6 +101,15 @@ class _SidebarEditorDialogState extends State<SidebarEditorDialog> {
                   label: const Text('Pin a Kind…'),
                 ),
               ),
+              TextButton.icon(
+                key: const ValueKey('sidebar-integrations'),
+                onPressed: () async {
+                  await showIntegrationsDialog(context);
+                  if (mounted) setState(() {});
+                },
+                icon: const Icon(Icons.extension_outlined, size: 15),
+                label: const Text('Integrations…'),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('or right-click a kind',
@@ -144,7 +154,7 @@ class _SidebarEditorDialogState extends State<SidebarEditorDialog> {
       final page = pageFor(e.view!)!;
       label = page.label;
       glyph = Icon(page.icon, size: 15, color: theme.hintColor);
-      note = page.navNote;
+      note = pageEnabled(app, e.view!) ? page.navNote : 'Integration turned off';
       lead = Checkbox(
         key: ValueKey('sidebar-show-${e.view!.name}'),
         value: !e.hidden,

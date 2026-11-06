@@ -35,7 +35,7 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
   if (!context.mounted) return;
 
   final ctx = object == null ? null : PanelContext(object: object, type: type, api: api, app: app);
-  final actions = ctx == null ? const <ResourceAction>[] : resourceActionsFor(app, target, panelFor(type), ctx);
+  final actions = ctx == null ? const <ResourceAction>[] : resourceActionsFor(app, target, panelFor(type, app), ctx);
   final safe = actions.where((a) => !a.destructive).toList();
   final destructive = actions.where((a) => a.destructive).toList();
   final qualified = ns == null ? row.name : '$ns/${row.name}';

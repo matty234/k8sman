@@ -439,7 +439,7 @@ class _TableBodyState extends State<_TableBody> {
       final object = await api.object(type.ref, namespace: ns, name: row.name);
       if (!mounted) return;
       final target = DetailTarget(type: type, name: row.name, namespace: ns);
-      final actions = resourceActionsFor(app, target, panelFor(type), PanelContext(object: object, type: type, api: api, app: app));
+      final actions = resourceActionsFor(app, target, panelFor(type, app), PanelContext(object: object, type: type, api: api, app: app));
       action = actions.where((a) => a.id == id && (label == null || a.label == label)).firstOrNull;
     } catch (_) {}
     if (!mounted) return;

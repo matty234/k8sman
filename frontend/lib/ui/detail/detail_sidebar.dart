@@ -119,7 +119,9 @@ class _LiveObjectState extends State<_LiveObject> {
     final app = context.read<AppState>();
     final t = widget.target;
     final obj = _object;
-    final panel = panelFor(t.type);
+    // Rebuilt when an integration is turned on or off.
+    context.select<AppState, Set<String>>((a) => a.disabledModules);
+    final panel = panelFor(t.type, app);
     final ctx = obj == null ? null : PanelContext(object: obj, type: t.type, api: context.read<ApiClient>(), app: app);
     final extraTabs = ctx == null ? const <PanelTab>[] : panel.tabs(ctx);
 

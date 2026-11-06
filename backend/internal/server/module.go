@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -23,7 +24,9 @@ import (
 // To add one: implement Module (plus OverviewSource / ActionSource if it
 // needs them) and add it to builtinModules. See docs/DEVELOPMENT.md.
 
-// Module is one built-in integration.
+// Module is one built-in integration. The user can turn it off
+// (settings.json's disabledModules, set by the UI): then its routes answer
+// 404 (reason ModuleDisabled) and it adds no overview inputs or actions.
 type Module interface {
 	// Name is the module's id: the same id as the UI's module
 	// (frontend/lib/modules), e.g. "argocd".
@@ -97,12 +100,62 @@ func builtinModules() []Module {
 	}
 }
 
-// mountModules registers every module's routes.
+// mountModules registers every module's routes, behind a check that
+// answers 404 while the user has the module turned off.
 func (s *Server) mountModules() {
 	d := Deps{Mgr: s.mgr, Settings: s.settings, ReadOnlyFlag: s.readOnly, RefuseReadOnly: s.readOnlyRefused}
 	for _, m := range s.modules {
-		m.Routes(s.mux, d)
+		m.Routes(moduleRouter{s: s, name: m.Name()}, d)
 	}
+	s.mux.HandleFunc("GET /api/settings/modules", s.handleGetModules)
+	s.mux.HandleFunc("PUT /api/settings/modules", s.handlePutModules)
+}
+
+// moduleRouter mounts a module's handlers on the server's mux.
+type moduleRouter struct {
+	s    *Server
+	name string
+}
+
+func (mr moduleRouter) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
+	mr.s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		if mr.s.settings.ModuleDisabled(mr.name) {
+			httpx.WriteJSON(w, http.StatusNotFound, apiError{
+				Error:  fmt.Sprintf("the %s integration is turned off in k8sman's settings", mr.name),
+				Code:   http.StatusNotFound,
+				Reason: "ModuleDisabled",
+			})
+			return
+		}
+		h(w, r)
+	})
+}
+
+// handleGetModules returns {disabled: [ids]}: the integrations the user
+// turned off. Works without a cluster connection.
+func (s *Server) handleGetModules(w http.ResponseWriter, r *http.Request) {
+	disabled := s.settings.Get().DisabledModules
+	if disabled == nil {
+		disabled = []string{}
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"disabled": disabled})
+}
+
+// handlePutModules saves {disabled: [ids]}. Ids may name UI-only modules
+// (e.g. "addons") too.
+func (s *Server) handlePutModules(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Disabled []string `json:"disabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, httpx.BadRequest("body must be {\"disabled\": [...]}: %v", err))
+		return
+	}
+	if err := s.settings.SetDisabledModules(body.Disabled); err != nil {
+		writeErr(w, httpx.BadRequest("%v", err))
+		return
+	}
+	s.handleGetModules(w, r)
 }
 
 // readOnlyRefused writes 403 when the current context is read-only.
@@ -114,9 +167,16 @@ func (s *Server) readOnlyRefused(w http.ResponseWriter) bool {
 	return false
 }
 
-// enabledModules are the modules currently switched on.
+// enabledModules are the modules the user hasn't turned off: only they
+// feed the overview and offer actions.
 func (s *Server) enabledModules() []Module {
-	return s.modules
+	out := make([]Module, 0, len(s.modules))
+	for _, m := range s.modules {
+		if !s.settings.ModuleDisabled(m.Name()) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // OverviewLists runs the health overview's lists in parallel and collects

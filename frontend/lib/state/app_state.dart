@@ -487,6 +487,31 @@ class AppState extends ChangeNotifier {
     _sidebarSaves = _sidebarSaves.then((_) => api.putSidebar(json)).catchError((Object e) => debugPrint('save sidebar layout: $e'));
   }
 
+  // ---- integrations ----
+
+  /// Ids of the integration modules the user turned off (lib/modules):
+  /// their pages, panels, palette entries and sidebar sections are hidden,
+  /// and the backend turns off their routes and overview checks.
+  Set<String> disabledModules = const {};
+  Future<void> _moduleSaves = Future.value();
+
+  /// Loads [disabledModules] (an app setting, like the sidebar layout).
+  Future<void> loadDisabledModules() async {
+    try {
+      disabledModules = await api.getDisabledModules();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('integrations: $e');
+    }
+  }
+
+  /// Applies [ids] now and saves them in the background.
+  void setDisabledModules(Set<String> ids) {
+    disabledModules = Set.unmodifiable(ids);
+    notifyListeners();
+    _moduleSaves = _moduleSaves.then((_) => api.putDisabledModules(ids)).catchError((Object e) => debugPrint('save integrations: $e'));
+  }
+
   /// The discovered type a pin points at (null: not on this cluster).
   ResourceType? typeForPin(SidebarPin p) => typeFor(p.group, p.kind);
 
@@ -626,6 +651,7 @@ class AppState extends ChangeNotifier {
     await init();
     if (again) columnsChanged();
     await loadSidebar();
+    await loadDisabledModules();
     await loadKubeconfigs();
   }
 

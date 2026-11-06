@@ -33,8 +33,19 @@ const List<AppModule> builtInModules = [
   GatewayModule(),
 ];
 
-/// The modules that are on.
-List<AppModule> enabledModules(AppState app) => builtInModules;
+/// Whether module [id] is on: not turned off in [disabled], nor any module
+/// it requires.
+bool moduleEnabled(String id, Set<String> disabled) {
+  if (disabled.contains(id)) return false;
+  final m = builtInModules.where((m) => m.id == id).firstOrNull;
+  return m == null || m.requires.every((r) => moduleEnabled(r, disabled));
+}
+
+/// The modules that are on (see [AppState.disabledModules]).
+List<AppModule> enabledModules(AppState app) => [
+      for (final m in builtInModules)
+        if (moduleEnabled(m.id, app.disabledModules)) m,
+    ];
 
 /// [base] with each of [extra] inserted after the item [after] names (or
 /// appended when it names nothing that's there).

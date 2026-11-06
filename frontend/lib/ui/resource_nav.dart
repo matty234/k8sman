@@ -159,9 +159,11 @@ class _ResourceNavState extends State<ResourceNav> {
 
     // Top section: the user's layout (pages and pins); hidden pages fold
     // under "More", which opens by itself while one of them is active.
+    // Pages of integrations that are turned off don't show at all.
     final layout = app.sidebar;
-    final shown = [for (final e in layout.entries) if (!e.hidden && (e.pin == null || app.typeForPin(e.pin!) != null)) e];
-    final folded = [for (final e in layout.entries) if (e.hidden) e];
+    final entries = [for (final e in layout.entries) if (e.view == null || pageEnabled(app, e.view!)) e];
+    final shown = [for (final e in entries) if (!e.hidden && (e.pin == null || app.typeForPin(e.pin!) != null)) e];
+    final folded = [for (final e in entries) if (e.hidden) e];
     final foldedActive = folded.any((e) => e.view == app.view);
     final moreOpen = _navMoreOpen || foldedActive;
     final selectedPin = app.selectedPin;

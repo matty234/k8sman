@@ -224,6 +224,16 @@ class ApiClient {
   Future<void> putSidebar(Json? layout) =>
       layout == null ? _send('DELETE', 'settings/sidebar', const {}, null) : _send('PUT', 'settings/sidebar', const {}, layout);
 
+  // ---- integrations (settings.json) ----
+
+  /// Ids of the integration modules the user turned off.
+  Future<Set<String>> getDisabledModules() async {
+    final j = await _get('settings/modules') as Json;
+    return {for (final id in (j['disabled'] as List? ?? const [])) '$id'};
+  }
+
+  Future<void> putDisabledModules(Set<String> ids) => _send('PUT', 'settings/modules', const {}, {'disabled': [...ids]..sort()});
+
   // ---- columns ----
 
   Future<ColumnsConfig> getColumns(ResourceRef r) async => ColumnsConfig.fromJson(await _get('columns', r.toQuery()));

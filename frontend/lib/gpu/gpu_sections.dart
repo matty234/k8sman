@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../modules/gpus_module.dart';
+import '../modules/modules.dart' show moduleEnabled;
 import '../panels/cluster/widgets.dart';
 import '../panels/panel.dart';
 import '../prometheus/metric_history_chart.dart';
@@ -59,16 +61,19 @@ Widget gpuHistory(ApiClient api, String key, String selector) => MetricHistorySe
       charts: gpuChartSpecs(selector),
     );
 
+/// The GPUs integration is on (these sections read its /api/gpu).
+bool _gpusOn(PanelContext ctx) => moduleEnabled(const GpusModule().id, ctx.app.disabledModules);
+
 /// Node panel: GPU inventory, devices and history.
 Widget gpuNodeSection(PanelContext ctx) {
-  if (!_hasGpuCapacity(ctx.status)) return const SizedBox.shrink();
+  if (!_hasGpuCapacity(ctx.status) || !_gpusOn(ctx)) return const SizedBox.shrink();
   return _GpuNodeSection(key: ValueKey('gpu-node-${ctx.uid}'), ctx: ctx);
 }
 
 /// Pod panel: GPUs held, and per-device stats when DCGM attributes them.
 Widget gpuPodSection(PanelContext ctx) {
   final req = podGpuRequests(ctx.spec);
-  if (req.isEmpty) return const SizedBox.shrink();
+  if (req.isEmpty || !_gpusOn(ctx)) return const SizedBox.shrink();
   return _GpuPodSection(key: ValueKey('gpu-pod-${ctx.uid}'), ctx: ctx, requests: req);
 }
 

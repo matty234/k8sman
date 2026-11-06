@@ -11,6 +11,7 @@ import '../../modules/modules.dart';
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../../state/table_controller.dart';
+import '../integrations_dialog.dart';
 import '../keys.dart';
 import '../editor/resource_editor_screen.dart';
 import '../resource_nav.dart';
@@ -132,6 +133,14 @@ List<PaletteItem> paletteItems(BuildContext context) {
       typeLabel: 'Action',
       icon: _icon(Icons.tune),
       run: () => showSidebarEditor(context),
+    ),
+    PaletteItem(
+      group: PaletteGroup.actions,
+      title: 'Integrations…',
+      typeLabel: 'Action',
+      icon: _icon(Icons.extension_outlined),
+      aliases: const ['modules', 'plugins', 'settings'],
+      run: () => showIntegrationsDialog(context),
     ),
     PaletteItem(
       group: PaletteGroup.actions,
