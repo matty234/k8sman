@@ -149,7 +149,16 @@ class _SuggestionList extends StatelessWidget {
                       final on = i == highlighted;
                       if (on) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (context.mounted) Scrollable.ensureVisible(context, alignment: 0.5);
+                          if (!context.mounted) return;
+                          // Scroll only as far as needed (centring could
+                          // push the first row under the top edge).
+                          final pos = Scrollable.maybeOf(context)?.position;
+                          if (i == 0) {
+                            pos?.jumpTo(pos.minScrollExtent);
+                          } else {
+                            Scrollable.ensureVisible(context, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+                            Scrollable.ensureVisible(context, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+                          }
                         });
                       }
                       return InkWell(

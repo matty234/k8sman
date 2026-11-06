@@ -326,7 +326,10 @@ class _Footer extends StatelessWidget {
           key('esc', 'close'),
           const Spacer(),
           if (command) Flexible(child: Text(':ns <name>  :ctx <name>  :pf  :alerts', maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
-          if (loading) Text('Looking up objects…', style: style),
+          if (loading)
+            Text('Looking up objects…', style: style)
+          else if (!command)
+            key(':', 'commands'),
         ]),
       ),
     );

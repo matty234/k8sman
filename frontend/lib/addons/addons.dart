@@ -9,11 +9,15 @@
 /// upgrades and uninstalls them through the Helm endpoints.
 library;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../modules/helm_module.dart';
 import '../modules/metrics_module.dart';
+import '../modules/modules.dart' show moduleEnabled;
 import '../state/app_state.dart';
 import '../ui/addons/addon_install_dialog.dart';
+import '../ui/integrations_dialog.dart';
 
 abstract final class AddonIds {
   static const metricsServer = 'metrics-server';
@@ -216,4 +220,24 @@ Addon addonById(String id) => addonCatalog.firstWhere((a) => a.id == id);
 /// Hook for features to offer installing a missing add-on: opens the
 /// Add-ons install dialog for [id] on the current context (or explains why
 /// it can't, in read-only mode).
-Future<void> requestAddon(BuildContext context, String id) => showAddonInstallDialog(context, addonById(id));
+///
+/// Add-ons install through Helm: with the Helm integration off, explains that
+/// and offers the Integrations settings instead.
+Future<void> requestAddon(BuildContext context, String id) async {
+  if (moduleEnabled(const HelmModule().id, context.read<AppState>().disabledModules)) {
+    await showAddonInstallDialog(context, addonById(id));
+    return;
+  }
+  final open = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Install ${addonById(id).name}?'),
+      content: const SizedBox(width: 420, child: Text('Add-ons install through Helm, and the Helm integration is turned off.')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Integrations…')),
+      ],
+    ),
+  );
+  if (open == true && context.mounted) await showIntegrationsDialog(context);
+}
