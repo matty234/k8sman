@@ -43,8 +43,10 @@ class GatewayModule extends AppModule {
         if (classes.isEmpty) return const ModuleStatus(ModuleState.connected, 'CRDs served · no GatewayClass (no controller installed)');
         final n = classes.length;
         final controllers = {for (final c in classes) if ('${c['controller']}'.isNotEmpty) '${c['controller']}'}.toList()..sort();
-        final shown = controllers.take(2).join(', ') + (controllers.length > 2 ? ' +${controllers.length - 2}' : '');
+        final shown = controllers.take(1).join() + (controllers.length > 1 ? ' +${controllers.length - 1}' : '');
         final msg = 'GatewayClasses: $n · controllers: ${shown.isEmpty ? 'none' : shown}';
-        return classes.any((c) => c['accepted'] == true) ? ModuleStatus(ModuleState.connected, msg) : ModuleStatus(ModuleState.error, '$msg · none accepted');
+        return classes.any((c) => c['accepted'] == true)
+            ? ModuleStatus(ModuleState.connected, msg)
+            : ModuleStatus(ModuleState.error, 'GatewayClasses: $n · none accepted by a controller');
       };
 }
