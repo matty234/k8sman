@@ -1121,7 +1121,12 @@ class _Row extends StatelessWidget {
                   width: widths[i],
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: TableCellView(value: i < row.cells.length ? row.cells[i] : null, column: columns[i], emphasise: i == 0),
+                    child: TableCellView(
+                      value: i < row.cells.length ? row.cells[i] : null,
+                      column: columns[i],
+                      emphasise: i == 0,
+                      notReady: columns[i].type == 'status' ? _notReady(columns, row) : null,
+                    ),
                   ),
                 ),
             ],
@@ -1300,11 +1305,26 @@ class _SelectionBar extends StatelessWidget {
 }
 
 /// Renders one cell according to its column's type hint.
+/// "x/y" from the row's Ready column when fewer than all are ready (pods:
+/// containers), else null. Lets a Running status show amber, like k9s.
+(int, int)? _notReady(List<ColumnDef> columns, TableRowData row) {
+  final i = columns.indexWhere((c) => c.name == 'Ready');
+  if (i < 0 || i >= row.cells.length) return null;
+  final m = RegExp(r'^(\d+)/(\d+)$').firstMatch('${row.cells[i]}');
+  if (m == null) return null;
+  final ready = int.parse(m[1]!), total = int.parse(m[2]!);
+  return ready < total ? (ready, total) : null;
+}
+
 class TableCellView extends StatelessWidget {
   final dynamic value;
   final ColumnDef column;
   final bool emphasise;
-  const TableCellView({super.key, required this.value, required this.column, this.emphasise = false});
+
+  /// For a status cell: (ready, total) when not everything in the row is
+  /// ready. A Running status then shows amber with a tooltip.
+  final (int, int)? notReady;
+  const TableCellView({super.key, required this.value, required this.column, this.emphasise = false, this.notReady});
 
   @override
   Widget build(BuildContext context) {
@@ -1327,6 +1347,16 @@ class TableCellView extends StatelessWidget {
       case 'status':
         final s = _text(v);
         if (s.isEmpty) return const SizedBox.shrink();
+        final nr = notReady;
+        if (nr != null && s == 'Running') {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Tooltip(
+              message: 'Running, but ${nr.$1} of ${nr.$2} ready',
+              child: const StatusBadge('Running', severity: Severity.warn, dense: true),
+            ),
+          );
+        }
         return Align(alignment: Alignment.centerLeft, child: StatusBadge(s, dense: true));
       case 'bool':
         final b = v == true || '$v'.toLowerCase() == 'true';
