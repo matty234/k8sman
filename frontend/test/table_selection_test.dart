@@ -145,6 +145,18 @@ void main() {
     await tapRow(tester, 'db', modifier: LogicalKeyboardKey.shiftLeft);
     expect(find.text('3 selected'), findsOneWidget);
     expect(find.byKey(const ValueKey('bulk-Delete')), findsNothing);
+
+    // Argo CD Applications: refresh runs straight away, for each selected app.
+    const appType = ResourceType(group: 'argoproj.io', version: 'v1alpha1', resource: 'applications', kind: 'Application', verbs: ['get', 'list', 'watch', 'patch']);
+    final argo = apiWith(names, type: appType);
+    await pumpTable(tester, argo, appType);
+    await tapRow(tester, 'api');
+    await tapRow(tester, 'db', modifier: LogicalKeyboardKey.shiftLeft);
+    expect(find.byKey(const ValueKey('bulk-Sync')), findsOneWidget);
+    expect(find.byKey(const ValueKey('bulk-Hard refresh')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('bulk-Refresh')));
+    await tester.pumpAndSettle();
+    expect(argo.actions.where((a) => a.contains('argocd-refresh')), hasLength(3));
   });
 
   testWidgets('pods with controllers get Restart pods and Delete pods', (tester) async {

@@ -45,6 +45,12 @@ class BulkAction {
 
   /// Shown in the confirmation under the title.
   final String? message;
+
+  /// The action's request body (same for every object).
+  final Json body;
+
+  /// Ask first. Off for actions that change nothing (Argo CD refresh).
+  final bool confirm;
   const BulkAction({
     required this.action,
     required this.label,
@@ -54,6 +60,8 @@ class BulkAction {
     required this.done,
     this.destructive = false,
     this.message,
+    this.body = const {},
+    this.confirm = true,
   });
 }
 
@@ -108,6 +116,31 @@ List<BulkAction> bulkActionsFor(AppState app, ResourceType type, List<TableRowDa
           : 'Their controllers will create replacements.',
     ));
   }
+  if (type.gk == 'argoproj.io/Application') {
+    out.addAll(const [
+      BulkAction(
+        action: 'argocd-sync',
+        label: 'Sync',
+        verb: 'Sync',
+        icon: Icons.sync,
+        doing: 'Syncing',
+        done: 'Synced',
+        message: 'Each application syncs to its target revision with its own sync options. Nothing is pruned. '
+            'For prune, dry run or a specific revision, sync one application from its inspector.',
+      ),
+      BulkAction(action: 'argocd-refresh', label: 'Refresh', verb: 'Refresh', icon: Icons.refresh, doing: 'Refreshing', done: 'Refreshed', confirm: false),
+      BulkAction(
+        action: 'argocd-refresh',
+        label: 'Hard refresh',
+        verb: 'Hard refresh',
+        icon: Icons.cached,
+        doing: 'Hard refreshing',
+        done: 'Hard refreshed',
+        body: {'hard': true},
+        confirm: false,
+      ),
+    ]);
+  }
   return out;
 }
 
@@ -145,7 +178,7 @@ Future<BulkResult?> runBulkAction(
   final n = targets.length;
   final kind = targets.first.type.kind;
   final what = n == 1 ? kind : _plural(kind);
-  final ok = await confirmAction(
+  final ok = !action.confirm || await confirmAction(
     context,
     title: '${action.verb} $n $what?',
     message: action.message,
@@ -154,8 +187,8 @@ Future<BulkResult?> runBulkAction(
     destructive: action.destructive,
     confirmLabel: '${action.verb} $n',
     extra: Padding(padding: const EdgeInsets.only(bottom: 12), child: BulkTargetList(targets)),
-  );
-  if (ok != true || !context.mounted) return null;
+  ) == true;
+  if (!ok || !context.mounted) return null;
 
   final messenger = ScaffoldMessenger.maybeOf(context);
   final notifier = progress ?? ValueNotifier<BulkProgress?>(null);
@@ -186,7 +219,7 @@ Future<BulkResult?> runBulkAction(
     while (next < n) {
       final t = targets[next++];
       try {
-        await api.runAction(t.type.ref, namespace: t.namespace, name: t.name, action: action.action);
+        await api.runAction(t.type.ref, namespace: t.namespace, name: t.name, action: action.action, body: action.body);
         succeeded.add(t);
       } on ApiException catch (e) {
         failed.add((t, e.message));
