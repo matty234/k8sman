@@ -8,11 +8,8 @@ import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../metrics/quantity.dart';
-import '../modules/gpus_module.dart';
 import '../prometheus/prom_api.dart';
-import '../state/app_state.dart';
 import '../state/poller.dart';
-import '../state/startup_gate.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
@@ -252,35 +249,4 @@ class _Pending extends StatelessWidget {
       ]),
     );
   }
-}
-
-/// Shows [child] (the nav's GPUs item) only when the current cluster has
-/// NVIDIA GPU nodes, or while the GPUs page is open.
-class GpuNavGate extends StatelessWidget {
-  final Widget child;
-  const GpuNavGate({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    if (app.view == GpusModule.page) return child;
-    final ApiClient api;
-    try {
-      api = context.read<ApiClient>();
-    } catch (_) {
-      return const SizedBox.shrink(); // no backend in this tree (tests)
-    }
-    return FutureBuilder<bool>(
-      key: ValueKey(app.currentContext),
-      future: _check(api, app.currentContext),
-      builder: (context, snap) => snap.data == true ? child : const SizedBox.shrink(),
-    );
-  }
-
-  static final Map<(ApiClient, String), Future<bool>> _checks = {};
-
-  /// Asked once the first table has painted (see StartupGate), so the
-  /// check doesn't compete with startup.
-  static Future<bool> _check(ApiClient api, String contextName) =>
-      _checks[(api, contextName)] ??= StartupGate.ready.then((_) => GpuApi.of(api).hasGpus(contextName));
 }

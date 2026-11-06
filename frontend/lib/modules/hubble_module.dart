@@ -7,6 +7,7 @@ import '../hubble/hubble_settings.dart';
 import '../hubble/hubble_view.dart';
 import '../state/app_state.dart';
 import 'module.dart';
+import 'module_nav_gate.dart';
 import 'modules.dart' show moduleStatuses;
 
 /// Cilium Hubble: network flows from Hubble Relay. The Hubble page (live
@@ -33,7 +34,7 @@ class HubbleModule extends AppModule {
           label: 'Hubble',
           commands: const ['hubble', 'flows', 'drops'],
           after: MainView.security,
-          navGate: (item) => HubbleNavGate(module: this, child: item),
+          navGate: (item) => ModuleNavGate(module: this, child: item),
           navNote: 'Only on clusters with Cilium Hubble',
           builder: (_) => const HubbleView(),
         ),

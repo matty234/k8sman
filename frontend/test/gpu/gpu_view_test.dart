@@ -9,6 +9,8 @@ import 'package:k8sman/gpu/gpu_api.dart';
 import 'package:k8sman/gpu/gpu_view.dart';
 import 'package:k8sman/prometheus/prom_api.dart';
 import 'package:k8sman/modules/gpus_module.dart';
+import 'package:k8sman/modules/module_nav_gate.dart';
+import 'package:k8sman/modules/modules.dart' show ModuleState, ModuleStatus, moduleStatuses;
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
@@ -102,6 +104,23 @@ void main() {
     expect(b.devices[0].memTotal, greaterThan(b.devices[0].memUsed!));
     expect(inv.pod('ml', 'trainer-0')!.selector, contains('exported_pod="trainer-0"'));
     expect(inv.node('gpu-node-a')!.monitored, isFalse);
+  });
+
+  testWidgets('the GPUs nav entry follows the module\'s detection', (tester) async {
+    const gpus = GpusModule();
+    final api = FakeApiClient();
+    final app = AppState(api)..currentContext = 'gpu-cluster';
+    await tester.pumpWidget(MultiProvider(
+      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+      child: const MaterialApp(home: ModuleNavGate(module: gpus, child: Text('GPUs'))),
+    ));
+    expect(find.text('GPUs'), findsNothing, reason: 'hidden while checking');
+    moduleStatuses.debugSet(gpus, api, 'gpu-cluster', const ModuleStatus(ModuleState.notInstalled, 'no GPU nodes'));
+    await tester.pump();
+    expect(find.text('GPUs'), findsNothing);
+    moduleStatuses.debugSet(gpus, api, 'gpu-cluster', const ModuleStatus(ModuleState.connected, '2 GPU nodes · DCGM metrics'));
+    await tester.pump();
+    expect(find.text('GPUs'), findsOneWidget);
   });
 
   testWidgets('GPUs page renders nodes, devices and callouts without overflow', (tester) async {

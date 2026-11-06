@@ -324,16 +324,6 @@ class GpuApi {
   Future<GpuInventory> inventory({bool live = true, bool refresh = false}) async =>
       GpuInventory.fromJson(jsonObjectBody(await _http.get('gpu', {'live': live ? null : 'false', 'refresh': refresh ? 'true' : null})));
 
-  final Map<String, Future<bool>> _has = {};
-
-  /// Whether the cluster (kube context [contextName]) has GPU nodes, asked
-  /// once per context. False on errors.
-  Future<bool> hasGpus(String contextName) =>
-      _has[contextName] ??= inventory(live: false).then((i) => i.hasGpus, onError: (_) {
-        _has.remove(contextName);
-        return false;
-      });
-
   final Map<String, (DateTime, Future<GpuInventory>)> _recent = {};
 
   /// [inventory] shared by panels opened in quick succession (5s).

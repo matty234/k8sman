@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
-import '../modules/modules.dart';
 import '../state/app_state.dart';
 import '../state/frame_stream.dart';
 import '../ui/theme.dart';
@@ -608,33 +607,6 @@ class _ReachSummary extends StatelessWidget {
           if (r.oldest != null) ('Looked back to', '${_hms(r.oldest!)} (the relay\'s history)'),
         ]),
       ]),
-    );
-  }
-}
-
-/// The Hubble module's sidebar row is shown only where Hubble is installed
-/// (its detection says so), and always while its page is open.
-class HubbleNavGate extends StatelessWidget {
-  final Widget child;
-  final AppModule module;
-  const HubbleNavGate({super.key, required this.module, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final ApiClient api;
-    try {
-      api = context.read<ApiClient>();
-    } catch (_) {
-      return const SizedBox.shrink(); // no backend in this tree (tests)
-    }
-    return ListenableBuilder(
-      listenable: moduleStatuses,
-      builder: (context, _) {
-        final s = moduleStatuses.of(module, api, app.currentContext);
-        final show = app.view == module.pages.first.view || (s != null && s.state != ModuleState.notInstalled && s.state != ModuleState.checking);
-        return show ? child : const SizedBox.shrink();
-      },
     );
   }
 }
