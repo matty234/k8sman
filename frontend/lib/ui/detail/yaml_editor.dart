@@ -71,6 +71,10 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
     _controller.dispose();
     _scroll.dispose();
     _editorFocus.dispose();
+    // re_editor's CodeScrollController.dispose() leaves the two
+    // ScrollControllers it created undisposed.
+    _scroll.verticalScroller.dispose();
+    _scroll.horizontalScroller.dispose();
     super.dispose();
   }
 

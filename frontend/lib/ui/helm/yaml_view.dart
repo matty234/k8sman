@@ -34,6 +34,10 @@ class _HelmYamlViewState extends State<HelmYamlView> {
   void dispose() {
     _own?.dispose();
     _scroll.dispose();
+    // re_editor's CodeScrollController.dispose() leaves the two
+    // ScrollControllers it created undisposed.
+    _scroll.verticalScroller.dispose();
+    _scroll.horizontalScroller.dispose();
     super.dispose();
   }
 
