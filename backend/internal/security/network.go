@@ -622,9 +622,7 @@ func (a *analyzer) namespaceNames() []string {
 		for _, u := range a.units {
 			names = append(names, u.ref.Namespace)
 		}
-		if a.in.Namespace != "" {
-			names = append(names, a.in.Namespace)
-		}
+		names = append(names, a.scope()...)
 	}
 	return uniqSorted(names)
 }

@@ -9,23 +9,31 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../metrics/quantity.dart';
 import 'cluster_error.dart';
+import 'namespace_scope.dart';
 import 'startup_gate.dart';
 import 'table_prefs.dart';
 import 'table_query.dart';
 
-/// Keeps a live table for one resource type + namespace via /api/watch,
-/// reconnecting with backoff. Also owns client-side filter and sort state.
+/// Keeps a live table for one resource type + namespace scope via
+/// /api/watch, reconnecting with backoff. Also owns client-side filter and
+/// sort state.
 class TableController extends ChangeNotifier {
   final ApiClient api;
   final ResourceType type;
-  final String? namespace;
+
+  /// The namespaces shown (ignored for cluster-scoped kinds).
+  final NamespaceScope scope;
+
+  /// The namespace when the scope is exactly one.
+  String? get namespace => scope.single;
 
   /// Where this kind's sort and filter are remembered (usually
   /// AppState.tablePrefs), so they survive navigating away and back,
   /// switching namespace and relaunching.
   final TablePrefsStore? prefs;
 
-  TableController({required this.api, required this.type, this.namespace, this.prefs}) {
+  TableController({required this.api, required this.type, String? namespace, NamespaceScope? scope, this.prefs})
+      : scope = scope ?? NamespaceScope.single(namespace) {
     final p = prefs?.of(type.gk);
     if (p != null) {
       _pendingSort = p.sortColumn;
@@ -70,6 +78,10 @@ class TableController extends ChangeNotifier {
   int? sortColumn;
   bool sortAscending = true;
 
+  /// Namespaces of a set that can't be read (PARTIAL_ERROR, e.g. RBAC
+  /// forbids them) while the others show their rows.
+  final Map<String, ClusterError> partialErrors = {};
+
   StreamSubscription<WatchMessage>? _sub;
   Timer? _retry;
   Timer? _failureTimer;
@@ -78,7 +90,11 @@ class TableController extends ChangeNotifier {
 
   void _connect() {
     _sub?.cancel();
-    _sub = api.watch(type.ref, namespace: type.namespaced ? namespace : null).listen(
+    partialErrors.clear();
+    // One namespace (or all) goes as `namespace`, as it always did; only a
+    // set needs `namespaces`.
+    final multi = type.namespaced && scope.isMulti;
+    _sub = api.watch(type.ref, namespace: type.namespaced ? scope.single : null, scope: multi ? scope : null).listen(
       _onMessage,
       onError: (Object e) => _onDisconnect(ClusterError.fromException(e)),
       onDone: () => _onDisconnect(null),
@@ -151,6 +167,9 @@ class TableController extends ChangeNotifier {
         return true;
       case 'ERROR':
         _setFailure(ClusterError.fromWatch(m));
+      case 'PARTIAL_ERROR':
+        final ns = m.namespace;
+        if (ns != null) partialErrors[ns] = ClusterError.fromWatch(m);
     }
     return false;
   }

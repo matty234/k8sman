@@ -63,7 +63,7 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
   /// The page's own scope (independent of the table's namespace), defaulting
   /// to all namespaces and remembered for the session. Alerts are fetched
   /// cluster-wide and filtered here.
-  String? _ns = PageScope.of('alerts');
+  NamespaceScope _ns = PageScope.of('alerts');
   final Set<String> _expanded = {};
 
   @override
@@ -124,8 +124,8 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
 
   List<PromAlert> _inNamespace(Iterable<PromAlert> alerts) {
     final ns = _ns;
-    if (ns == null) return alerts.toList();
-    return alerts.where((a) => a.namespace == ns).toList();
+    if (ns.isAll) return alerts.toList();
+    return alerts.where((a) => a.namespace != null && ns.namespaces.contains(a.namespace)).toList();
   }
 
   List<(AlertGroup, List<PromAlert>)> _visibleGroups(AlertsData data) => [
@@ -135,7 +135,7 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
 
   // ---- actions ----
 
-  void _setScope(String? ns) {
+  void _setScope(NamespaceScope ns) {
     if (ns == _ns) return;
     PageScope.set('alerts', ns);
     setState(() => _ns = ns);
@@ -299,10 +299,10 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
       children.add(_filters(context, scoped));
       children.add(const SizedBox(height: 6));
       final groups = _visibleGroups(data);
-      final hiddenElsewhere = _ns != null ? allAlerts.where((a) => a.namespace != _ns && a.state == AlertState.firing).length : 0;
+      final hiddenElsewhere = !_ns.isAll ? allAlerts.where((a) => !_ns.namespaces.contains(a.namespace) && a.state == AlertState.firing).length : 0;
       if (groups.isEmpty) {
         children.add(_Empty(
-          text: scoped.isEmpty ? 'No alerts${_ns != null ? ' in $_ns' : ''}.' : 'No alerts match the filters.',
+          text: scoped.isEmpty ? 'No alerts${!_ns.isAll ? ' in ${_ns.namespaces.join(', ')}' : ''}.' : 'No alerts match the filters.',
         ));
       } else {
         for (final (i, (g, alerts)) in groups.indexed) {
@@ -328,7 +328,7 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
               child: Text('$hiddenElsewhere firing alert${hiddenElsewhere == 1 ? '' : 's'} in other namespaces or cluster-wide.',
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
             ),
-            TextButton(onPressed: () => _setScope(null), child: const Text('Show all')),
+            TextButton(onPressed: () => _setScope(NamespaceScope.all), child: const Text('Show all')),
           ]),
         ));
       }

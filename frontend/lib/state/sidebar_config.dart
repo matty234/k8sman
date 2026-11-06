@@ -10,17 +10,32 @@ class SidebarPin {
   final String group;
   final String kind;
 
-  /// Optional: clicking the pin also switches to this namespace.
-  final String? namespace;
-  const SidebarPin({required this.group, required this.kind, this.namespace});
+  // Optional: clicking the pin also switches to these namespaces. Pins
+  // saved before namespace sets have one `namespace`.
+  final String? _namespace;
+  final List<String> _namespaces;
+  const SidebarPin({required this.group, required this.kind, String? namespace, List<String> namespaces = const []})
+      // ignore: prefer_initializing_formals
+      : _namespace = namespace,
+        // ignore: prefer_initializing_formals
+        _namespaces = namespaces;
+
+  /// The pin's namespace scope (all = not scoped).
+  NamespaceScope get scope => NamespaceScope.of([..._namespaces, ?_namespace]);
+
+  /// The namespaces the pin switches to, sorted (empty = not scoped).
+  List<String> get namespaces => scope.namespaces;
+
+  /// The pin's namespace when it has exactly one.
+  String? get namespace => scope.single;
 
   /// `group/Kind`, as [ResourceType.gk].
   String get gk => '$group/$kind';
 
   @override
-  bool operator ==(Object other) => other is SidebarPin && other.group == group && other.kind == kind && other.namespace == namespace;
+  bool operator ==(Object other) => other is SidebarPin && other.group == group && other.kind == kind && listEquals(other.namespaces, namespaces);
   @override
-  int get hashCode => Object.hash(group, kind, namespace);
+  int get hashCode => Object.hash(group, kind, Object.hashAll(namespaces));
 }
 
 /// One entry of the sidebar's top section: a page ([view]) or a [pin].
@@ -41,7 +56,13 @@ class SidebarEntry {
 
   Map<String, dynamic> toJson() => view != null
       ? {'view': view!.name, if (hidden) 'hidden': true}
-      : {if (pin!.group.isNotEmpty) 'group': pin!.group, 'kind': pin!.kind, if (pin!.namespace != null) 'namespace': pin!.namespace};
+      : {
+          if (pin!.group.isNotEmpty) 'group': pin!.group,
+          'kind': pin!.kind,
+          // One namespace keeps the old key, so older builds still read it.
+          if (pin!.namespaces.length == 1) 'namespace': pin!.namespaces.first,
+          if (pin!.namespaces.length > 1) 'namespaces': pin!.namespaces,
+        };
 
   static SidebarEntry? fromJson(Map<String, dynamic> j) {
     final v = j['view'] as String?;
@@ -53,7 +74,8 @@ class SidebarEntry {
     final kind = j['kind'] as String?;
     if (kind == null || kind.isEmpty) return null;
     final ns = j['namespace'] as String?;
-    return SidebarEntry.pin(SidebarPin(group: (j['group'] as String?) ?? '', kind: kind, namespace: ns?.isNotEmpty == true ? ns : null));
+    final set = [for (final n in (j['namespaces'] as List? ?? const [])) '$n'];
+    return SidebarEntry.pin(SidebarPin(group: (j['group'] as String?) ?? '', kind: kind, namespaces: set, namespace: ns?.isNotEmpty == true ? ns : null));
   }
 
   @override

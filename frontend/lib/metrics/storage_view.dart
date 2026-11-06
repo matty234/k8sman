@@ -45,8 +45,8 @@ List<StorageRow> joinStorage(List<Json> pvcs, Map<String, PvcUsage> usage) => [
 
 /// Every PVC in scope with its usage, fullest first.
 class StorageView extends StatefulWidget {
-  final String? namespace;
-  const StorageView({super.key, required this.namespace});
+  final NamespaceScope scope;
+  const StorageView({super.key, required this.scope});
 
   @override
   State<StorageView> createState() => _StorageViewState();
@@ -74,8 +74,8 @@ class _StorageViewState extends State<StorageView> with AutomaticKeepAliveClient
 
   Future<void> _load() async {
     try {
-      final pvcsF = _api.items(const ResourceRef(resource: 'persistentvolumeclaims'), namespace: widget.namespace);
-      final usage = await VolumesUsage.load(_api, namespace: widget.namespace);
+      final pvcsF = _api.items(const ResourceRef(resource: 'persistentvolumeclaims'), scope: widget.scope);
+      final usage = await VolumesUsage.load(_api, namespace: widget.scope.param);
       final pvcs = await pvcsF;
       if (!mounted) return;
       setState(() {
@@ -152,7 +152,7 @@ class _StorageViewState extends State<StorageView> with AutomaticKeepAliveClient
                 sortKey: (r) => '${r.namespace}/${r.name}',
                 cell: (c, r) => Text.rich(
                   TextSpan(children: [
-                    if (widget.namespace == null) TextSpan(text: '${r.namespace}/', style: TextStyle(color: theme.hintColor)),
+                    if (widget.scope.single == null) TextSpan(text: '${r.namespace}/', style: TextStyle(color: theme.hintColor)),
                     TextSpan(text: r.name),
                   ]),
                   maxLines: 1,

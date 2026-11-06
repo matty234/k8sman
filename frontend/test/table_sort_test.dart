@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/state/namespace_scope.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/table_controller.dart';
@@ -11,7 +12,7 @@ class _Api extends ApiClient {
   final List<dynamic> capacities;
   _Api(this.capacities) : super(base: Uri.parse('http://fake'));
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
       Stream.value(WatchMessage(
         type: 'SNAPSHOT',
         table: TableData(

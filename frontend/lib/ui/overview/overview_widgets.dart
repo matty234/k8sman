@@ -37,8 +37,8 @@ String _kindPlural(String kind) {
 // ---------------------------------------------------------------------------
 
 class OverviewHeader extends StatelessWidget {
-  final String? namespace;
-  final ValueChanged<String?>? onNamespaceChanged;
+  final NamespaceScope namespace;
+  final ValueChanged<NamespaceScope>? onNamespaceChanged;
   final DateTime? updatedAt;
   final bool loading;
   final bool paused;
@@ -65,7 +65,7 @@ class OverviewHeader extends StatelessWidget {
     return PageHeader(
       title: 'Overview',
       subtitle: onNamespaceChanged == null
-          ? Text(namespace ?? 'All namespaces')
+          ? Text(namespace.label)
           : PageScopePicker(value: namespace, onChanged: onNamespaceChanged!),
       actions: [
         if (loading) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
@@ -151,7 +151,7 @@ class InventoryStrip extends StatelessWidget {
 
 class SummaryTiles extends StatelessWidget {
   final OverviewData data;
-  final String? namespace;
+  final NamespaceScope namespace;
   final String? selected;
   final ValueChanged<String> onSelect;
   const SummaryTiles({super.key, required this.data, required this.namespace, required this.selected, required this.onSelect});
@@ -291,7 +291,7 @@ class _InfoChip extends StatelessWidget {
 
 class _HealthyTile extends StatelessWidget {
   final OverviewData data;
-  final String? namespace;
+  final NamespaceScope namespace;
   const _HealthyTile({required this.data, required this.namespace});
 
   @override
@@ -313,7 +313,7 @@ class _HealthyTile extends StatelessWidget {
             Text('All healthy', style: theme.textTheme.titleMedium?.copyWith(color: ok, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(
-              'Nothing is crashlooping, stuck or failing ${namespace == null ? 'in the cluster' : 'in $namespace'}.',
+              'Nothing is crashlooping, stuck or failing ${namespace.isAll ? 'in the cluster' : 'in ${namespace.namespaces.join(', ')}'}.',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),

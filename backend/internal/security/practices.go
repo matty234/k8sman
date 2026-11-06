@@ -259,7 +259,7 @@ func (a *analyzer) deprecatedAPIs() {
 	if len(refs) == 0 {
 		return
 	}
-	a.add(Finding{ID: "practices.deprecated-api", Check: "practices.deprecated-api", Severity: Low, Category: CatPractices, Namespace: a.in.Namespace,
+	a.add(Finding{ID: "practices.deprecated-api", Check: "practices.deprecated-api", Severity: Low, Category: CatPractices, Namespace: a.scope().Single(),
 		Title:       fmt.Sprintf("%s %s last applied with removed API versions", kube.Plural(len(refs), "object", "objects"), verb(len(refs), "was", "were")),
 		Detail:      fmt.Sprintf("Their `kubectl apply` manifests use API versions that newer Kubernetes releases no longer serve, so re-applying them will fail after an upgrade: %s. (Detected from the last-applied-configuration annotation only.)", joinLimit(notes, 6)),
 		Remediation: "Update the source manifests or charts to the current API versions (e.g. with `kubectl convert` or `pluto`).",

@@ -1,6 +1,7 @@
 /// Client and models for `GET /api/overview` (cluster health summary).
 library;
 
+import '../../state/namespace_scope.dart';
 import 'package:http/http.dart' as http;
 
 import '../../api/backend_http.dart';
@@ -15,9 +16,9 @@ class OverviewApi {
   final BackendHttp _http;
   OverviewApi(this.api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/', httpClient: httpClient);
 
-  /// [namespace] null or empty = all namespaces.
-  Future<OverviewData> fetch({String? namespace}) async =>
-      OverviewData.fromJson(jsonObjectBody(await _http.get('overview', {'namespace': namespace})));
+  /// [scope]: all namespaces, one, or a set.
+  Future<OverviewData> fetch({NamespaceScope scope = NamespaceScope.all}) async =>
+      OverviewData.fromJson(jsonObjectBody(await _http.get('overview', scope.query)));
 }
 
 enum IssueSeverity {

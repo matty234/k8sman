@@ -124,8 +124,9 @@ Future<void> showSidebarMenu(BuildContext context, Offset globalPosition, List<(
 Future<void> showKindMenu(BuildContext context, Offset globalPosition, ResourceType type) {
   final app = context.read<AppState>();
   final pin = SidebarPin(group: type.group, kind: type.kind);
-  final ns = type.namespaced ? app.namespace : null;
-  final nsPin = ns == null ? null : SidebarPin(group: type.group, kind: type.kind, namespace: ns);
+  final scope = type.namespaced ? app.namespaceScope : NamespaceScope.all;
+  final ns = scope.namespaces.join(', ');
+  final nsPin = scope.isAll ? null : SidebarPin(group: type.group, kind: type.kind, namespaces: scope.namespaces);
   void toggle(SidebarPin p) => app.setSidebar(app.sidebar.isPinned(p) ? app.sidebar.unpin(p) : app.sidebar.pin(p));
   return showSidebarMenu(context, globalPosition, [
     (app.sidebar.isPinned(pin) ? 'Unpin from Sidebar' : 'Pin to Sidebar', () => toggle(pin)),

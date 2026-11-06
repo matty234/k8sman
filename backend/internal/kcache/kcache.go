@@ -120,6 +120,7 @@ type filter struct {
 	labels labels.Selector // nil = everything
 	name   string
 	ns     string
+	nsSet  map[string]bool // a namespace set (SubscribeSet); nil = any
 }
 
 func (f *filter) match(u *unstructured.Unstructured) bool {
@@ -127,6 +128,9 @@ func (f *filter) match(u *unstructured.Unstructured) bool {
 		return true
 	}
 	if f.ns != "" && u.GetNamespace() != f.ns {
+		return false
+	}
+	if f.nsSet != nil && !f.nsSet[u.GetNamespace()] {
 		return false
 	}
 	if f.name != "" && u.GetName() != f.name {

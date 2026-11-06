@@ -101,7 +101,7 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
   void initState() {
     super.initState();
     final app = context.read<AppState>();
-    _namespace = widget.namespace ?? app.namespace ?? (app.namespaces.contains('default') || app.namespaces.isEmpty ? 'default' : app.namespaces.first);
+    _namespace = widget.namespace ?? app.namespace ?? app.namespaceScope.namespaces.firstOrNull ?? (app.namespaces.contains('default') || app.namespaces.isEmpty ? 'default' : app.namespaces.first);
     if (_creating) {
       _setTemplate(templateFor(widget.kind));
     } else {

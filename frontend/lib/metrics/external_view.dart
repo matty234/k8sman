@@ -13,9 +13,11 @@ import 'metrics_page.dart' show ApiMissing;
 /// by an HPA, since adapters like KEDA only advertise a placeholder), with an
 /// optional label selector, and see its values.
 class ExternalMetricsView extends StatefulWidget {
-  final String? namespace;
+  /// The page's scope. External metrics are read in one namespace: the
+  /// first of a set.
+  final NamespaceScope scope;
   final MetricsApiStatus? status;
-  const ExternalMetricsView({super.key, required this.namespace, this.status});
+  const ExternalMetricsView({super.key, required this.scope, this.status});
 
   @override
   State<ExternalMetricsView> createState() => _ExternalMetricsViewState();
@@ -51,7 +53,7 @@ class _ExternalMetricsViewState extends State<ExternalMetricsView> with Automati
 
   Future<void> _discover() async {
     try {
-      final k = await _api.externalMetricNames(namespace: widget.namespace);
+      final k = await _api.externalMetricNames(namespace: widget.scope.single);
       if (!mounted) return;
       setState(() {
         _known = k;
@@ -70,7 +72,7 @@ class _ExternalMetricsViewState extends State<ExternalMetricsView> with Automati
     _query();
   }
 
-  String get _namespace => _queryNamespace ?? widget.namespace ?? 'default';
+  String get _namespace => _queryNamespace ?? widget.scope.namespaces.firstOrNull ?? 'default';
 
   Future<void> _query() async {
     final metric = _metric.text.trim();

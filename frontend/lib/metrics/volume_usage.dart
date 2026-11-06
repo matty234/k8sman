@@ -13,6 +13,7 @@ import '../ui/theme.dart';
 import '../util/k8s.dart';
 import 'cache.dart';
 import 'quantity.dart';
+import '../state/namespace_scope.dart';
 
 enum UsageSource { prometheus, kubelet }
 
@@ -105,7 +106,7 @@ class VolumesUsage {
   const VolumesUsage({this.byClaim = const {}, this.prometheus = false, this.kubelet = false, this.kubeletMessage});
 
   static Future<VolumesUsage> load(ApiClient api, {String? namespace}) async {
-    final j = await api.metrics('volumes', {'namespace': namespace});
+    final j = await api.metrics('volumes', namespaceQuery(namespace));
     double? n(dynamic v) => (v as num?)?.toDouble();
     return VolumesUsage(
       byClaim: {

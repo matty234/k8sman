@@ -38,7 +38,7 @@ class _SecurityViewState extends State<SecurityView> {
   String? _filter;
   DateTime? _updatedAt;
   int _seq = 0;
-  String? _ns;
+  NamespaceScope _ns = NamespaceScope.all;
   bool _started = false;
   Timer? _poll;
 
@@ -60,7 +60,7 @@ class _SecurityViewState extends State<SecurityView> {
     setState(() => _loading = true);
     try {
       final results = await Future.wait([
-        source.fetch(namespace: ns, includeSystem: _includeSystem),
+        source.fetch(scope: ns, includeSystem: _includeSystem),
         source.scanner().then<ScannerStatus?>((s) => s, onError: (_) => null),
       ]);
       if (!mounted || seq != _seq) return;
@@ -94,7 +94,7 @@ class _SecurityViewState extends State<SecurityView> {
     }
   }
 
-  void _setScope(String? ns) {
+  void _setScope(NamespaceScope ns) {
     if (ns == _ns) return;
     PageScope.set('security', ns);
     setState(() {
@@ -258,7 +258,7 @@ class _SecurityViewState extends State<SecurityView> {
       DetailSection(
         title: 'Findings',
         trailing: _findingsTrailing(context, data, findings.length),
-        child: FindingList(key: ValueKey('findings-$filter'), findings: findings, categories: data.categories, grouped: filter == null, hideNamespace: _ns != null),
+        child: FindingList(key: ValueKey('findings-$filter'), findings: findings, categories: data.categories, grouped: filter == null, hideNamespace: _ns.single != null),
       ),
       if (show('network'))
         DetailSection(

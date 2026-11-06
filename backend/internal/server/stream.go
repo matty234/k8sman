@@ -104,6 +104,16 @@ type WatchMessage struct {
 	Code int `json:"code,omitempty"`
 	// On ERROR: the cluster API server URL, for "can't reach <host>".
 	Host string `json:"host,omitempty"`
+	// On PARTIAL_ERROR: the namespace of a namespace set that can't be
+	// watched (the others carry on and the socket stays open).
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// partialFrame reports one namespace of a set that ended for good.
+func partialFrame(p kcache.NamespaceError) WatchMessage {
+	m := errorFrame(nil, p.Err)
+	m.Type, m.Namespace = "PARTIAL_ERROR", p.Namespace
+	return m
 }
 
 // errorFrame builds an ERROR frame with the error classified for the UI.
@@ -154,7 +164,8 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 
 	cols, isDefault := s.columnsFor(ctx, c, rq.Type)
 	includeObject := r.URL.Query().Get("includeObject") == "true"
-	sub := kcache.For(c).Subscribe(rq.cacheKey())
+	sub := s.subscribe(c, rq) // one stream, or a namespace set merged
+
 	defer sub.Close()
 	live := s.newLiveUsage(c, rq) // periodic usage refresh for pods/nodes
 	defer live.stop()
@@ -181,6 +192,11 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 			}
 		case <-sub.C():
 			u := sub.Next()
+			for _, p := range u.Partial {
+				if ws.send(partialFrame(p)) != nil {
+					return
+				}
+			}
 			switch {
 			case u.Err != nil:
 				if out.flush() != nil || ws.send(errorFrame(c, u.Err)) != nil || u.Terminal {

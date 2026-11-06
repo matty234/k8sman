@@ -252,7 +252,7 @@ func (a *analyzer) indexServiceAccounts() {
 }
 
 // podsListed: whether pods (and SAs) in ns were listed, so usage is known.
-func (a *analyzer) podsListed(ns string) bool { return a.in.Namespace == "" || a.in.Namespace == ns }
+func (a *analyzer) podsListed(ns string) bool { return a.in.Namespace == "" || a.scope().Contains(ns) }
 
 func (a *analyzer) saKnown(ns string) bool { return a.in.ServiceAccounts != nil && a.podsListed(ns) }
 
@@ -342,11 +342,12 @@ func (a *analyzer) bindingInScope(b bindingView) bool {
 	if a.in.Namespace == "" {
 		return true
 	}
+	scope := a.scope()
 	if !b.cluster {
-		return b.meta.Namespace == a.in.Namespace
+		return slices.Contains(scope, b.meta.Namespace)
 	}
 	for _, s := range b.subjects {
-		if s.Kind == rbacv1.ServiceAccountKind && s.Namespace == a.in.Namespace {
+		if s.Kind == rbacv1.ServiceAccountKind && s.Namespace != "" && slices.Contains(scope, s.Namespace) {
 			return true
 		}
 	}

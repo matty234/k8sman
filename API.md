@@ -57,6 +57,8 @@ the UI can let the user pick a file.
 Resource targets use query params `group` (`""` = core), `version` (optional:
 the server's preferred version is used if omitted) and `resource` (the plural, e.g. `deployments`).
 `namespace` is optional; omit it for all namespaces or cluster-scoped types.
+`namespaces=a,b,c` selects a set of namespaces instead (see
+[Namespace sets](#namespace-sets)); sending both is a 400.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -67,9 +69,9 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | POST | `/api/kubeconfigs/current` | body `{path}` (absolute or `~/…`): validate the file, make it active and connect to its last used context (else its current-context). Returns the same shape as GET |
 | GET | `/api/probe?step=reach\|auth` | connection check for the current context, run before discovery: `reach` = unauthenticated `GET /version`, fails in 10 s with `reason: "Unreachable"`; `auth` = the same with credentials (runs exec plugins; 30 s, 5 min for exec) |
 | GET | `/api/resources[?refresh=true]` | discovered listable types `[{group,version,resource,kind,namespaced,verbs,shortNames,categories,custom}]` |
-| GET | `/api/namespaces` | `{namespaces:[...], default}` |
-| GET | `/api/table` | list rendered through the jq columns: `{resource, columns, isDefaultColumns, resourceVersion, rows:[{uid,name,namespace,resourceVersion,cells,object?}], columnErrors:{idx:msg}}`. Accepts `labelSelector`, `fieldSelector`, `includeObject=true` |
-| GET | `/api/items` | raw objects `{items:[...]}`. Accepts `labelSelector` and `fieldSelector`. Use this for related resources |
+| GET | `/api/namespaces` | `{namespaces:[...], default, listed}`. `listed` is false when the user can't list namespaces and `namespaces` holds only the context's default |
+| GET | `/api/table` | list rendered through the jq columns: `{resource, columns, isDefaultColumns, resourceVersion, rows:[{uid,name,namespace,resourceVersion,cells,object?}], columnErrors:{idx:msg}, partialErrors?}`. Accepts `labelSelector`, `fieldSelector`, `includeObject=true` and `namespaces` (`partialErrors: [{namespace, error, reason, code}]` lists namespaces of the set that couldn't be read) |
+| GET | `/api/items` | raw objects `{items:[...], partialErrors?}`. Accepts `labelSelector`, `fieldSelector` and `namespaces`. Use this for related resources |
 | GET | `/api/object?name=` | one object as JSON, or YAML with `format=yaml` (managedFields stripped unless `managedFields=true`) |
 | GET | `/api/events` | core/v1 Events for an object, newest first. Filter by `uid` (preferred) or `kind`+`name`, plus `namespace` |
 | GET/PUT/DELETE | `/api/columns` | read `{columns, isDefault, defaults}`, save `{columns}`, or reset the user's column override |
@@ -78,7 +80,7 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | GET/PUT | `/api/settings/tables` | per-kind table preferences in settings.json: read `{tables: {"group/Kind": {sortColumn?, sortDescending?, widths?, filter?}}}`, save one with `{kind, prefs}` (prefs null forgets it) |
 | GET/PUT | `/api/settings/modules` | integrations the user turned off, in settings.json: read or save `{disabled: [ids]}`. Ids: `argocd`, `argoworkflows`, `helm`, `gpus`, `prometheus`, `gateway` (backend modules) and UI-only ones (`metrics`, `addons`). A turned-off module's endpoints (`/api/argocd/*`, `/api/argowf/*`, `/api/helm/*`, `/api/gpu`, `/api/prom/*`) answer 404 with `reason: "ModuleDisabled"`, its actions are not offered, and the overview skips its checks. Works without a cluster connection |
 | POST | `/api/columns/preview[?limit=]` | body `{columns}`: evaluates unsaved columns against live objects and returns a table |
-| WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true`. With `batch=true` the server may also send `{type:"BATCH",events:[{type,row},…]}`: deltas from a ~75ms window, in order (apply all, then redraw once). See [Shared watches](#shared-watches) |
+| WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. With `namespaces`, `{type:"PARTIAL_ERROR", namespace, error, reason, code}` reports a namespace of the set that can't be watched (e.g. Forbidden) while the socket stays open for the others. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true`. With `batch=true` the server may also send `{type:"BATCH",events:[{type,row},…]}`: deltas from a ~75ms window, in order (apply all, then redraw once). See [Shared watches](#shared-watches) |
 | WS | `/api/logs` | `namespace`, `pod`, `container`, `tailLines` (default 500, `-1` = all), `previous`, `timestamps`, `sinceSeconds`, `follow` (default true). Sends frames `{line}`, ending with `{eof:true}` or `{error}` |
 | WS | `/api/logs/aggregate` | merged logs of many pods. `namespace` plus one of `selector` (label selector; the pod set follows the shared pod watch) or `pods` (comma-separated names, fixed). `container`: a name, `*` for every container, or omitted for each pod's default (`kubectl.kubernetes.io/default-container`, else `main` if the pod has it, else the first). `tailLines` (per stream, default 200, `-1` = all), `sinceSeconds`, `previous` (each container's previous instance; containers without one are skipped, and a `selector` pod set is read once, not followed), `follow` (default true). Streams run concurrently with timestamps and are merged by timestamp through a 250ms reorder window. Frames: a JSON **array** `[{pod,container,ts,line},…]` per ~75ms flush (`ts` is RFC3339Nano, `line` has no timestamp prefix); `{event:"added"\|"removed",pod,container}` when a stream starts or its pod goes away (pods that appear later are read from their start); `{error,pod?,container?}` for one failing stream (the session continues); `{warning}` when more than 50 pods match (the first 50 by name are streamed). Streams start once a container is running or has terminated. Closing the socket closes every stream. Allowed in read-only mode |
 
@@ -99,6 +101,31 @@ errors are retried with backoff. A watch that ends normally resumes from
 its last resourceVersion; an expired one (410) re-lists and sends a fresh
 SNAPSHOT. A client that falls more than 4,096 events behind gets a fresh
 SNAPSHOT instead of the backlog. See docs/PERFORMANCE.md.
+
+## Namespace sets
+
+`/api/watch`, `/api/table`, `/api/items`, `/api/overview`, `/api/security`,
+`/api/metrics/pods`, `/api/metrics/summary` and `/api/metrics/volumes` take
+`namespaces=a,b,c` (comma-separated, or the parameter repeated) for a set of
+namespaces. One namespace in the set behaves exactly like `namespace=`.
+
+- **Watch.** When a warm all-namespaces watch of the resource exists, the
+  set is a filtered subscriber on it (no extra API requests). Otherwise
+  each namespace gets its own shared watch (the same one a one-namespace
+  table uses) and the server merges them: the first SNAPSHOT waits until
+  every namespace has listed or failed for good, a namespace that re-lists
+  produces a fresh merged SNAPSHOT, and a namespace that fails for good
+  (Forbidden, NotFound) is a `PARTIAL_ERROR` frame. Only when every
+  namespace fails does the watch send ERROR and close. This works for users
+  whose RoleBindings cover only those namespaces.
+- **Snapshots** (`/api/table`, `/api/items`) read every namespace in
+  parallel (or the warm all-namespaces watch) and concatenate the rows;
+  unreadable namespaces are listed in `partialErrors` unless all of them
+  fail.
+- **Overview, Security, Metrics** list each namespace of the set and
+  analyse the union. Namespaces that can't be read are left out (unless
+  none can). `/api/overview` and `/api/security` report the set as
+  `namespace: "a,b"`. Custom and external metrics stay per namespace.
 
 ## Columns
 

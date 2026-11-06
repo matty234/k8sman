@@ -24,8 +24,11 @@ CommandResults rankCommand(String text, AppState app) {
   final cmd = space < 0 ? lower : lower.substring(0, space);
   final arg = space < 0 ? '' : lower.substring(space).trim();
 
-  // "ns" alone is the Namespace kind (k9s); "ns <name>" picks a namespace.
+  // "ns" alone is the Namespace kind (k9s); "ns <name>" picks a namespace,
+  // "ns a,b" a set, "ns +a" / "ns -a" adds to or removes from the set.
   if (space >= 0 && (cmd == 'ns' || cmd == 'namespace' || cmd == 'namespaces')) {
+    final set = _namespaceSetCommand(arg, app);
+    if (set != null) return set;
     final items = [
       PaletteItem(
         group: PaletteGroup.namespaces,
@@ -113,6 +116,39 @@ CommandResults rankCommand(String text, AppState app) {
     if (kinds.isNotEmpty) PaletteSection(PaletteGroup.kinds, kinds),
     if (!pageFirst && pageItems.isNotEmpty) PaletteSection(PaletteGroup.pages, pageItems),
   ], cmd);
+}
+
+/// `:ns a,b` (a set) and `:ns +a` / `:ns -a` (change the set), or null for
+/// a plain `:ns <name>`.
+CommandResults? _namespaceSetCommand(String arg, AppState app) {
+  PaletteItem scopeItem(NamespaceScope s, {String? title}) => PaletteItem(
+        group: PaletteGroup.namespaces,
+        title: title ?? s.namespaces.join(', '),
+        detail: [for (final n in s.namespaces) if (app.namespacesListed && !app.namespaces.contains(n)) n].isEmpty ? null : 'not found: ${[
+          for (final n in s.namespaces)
+            if (app.namespacesListed && !app.namespaces.contains(n)) n,
+        ].join(', ')}',
+        typeLabel: s.isMulti ? 'Namespaces' : 'Namespace',
+        icon: _icon(s.isMulti ? Icons.folder_copy_outlined : Icons.folder_outlined),
+        current: app.namespaceScope == s,
+        run: () => app.setNamespaceScope(s),
+      );
+  if (arg.contains(',')) {
+    final s = NamespaceScope.parse(arg);
+    if (s.isAll) return null;
+    return CommandResults([PaletteSection(PaletteGroup.namespaces, [scopeItem(s)])], '');
+  }
+  if (arg.startsWith('+') || arg.startsWith('-')) {
+    final add = arg.startsWith('+');
+    final q = arg.substring(1).trim();
+    final candidates = add ? app.namespaces.where((n) => !app.namespaceScope.namespaces.contains(n)) : app.namespaceScope.namespaces;
+    final items = [
+      for (final n in candidates)
+        scopeItem(add ? app.namespaceScope.add(n) : app.namespaceScope.remove(n), title: '${add ? 'Add' : 'Remove'} $n'),
+    ];
+    return CommandResults([PaletteSection(PaletteGroup.namespaces, _filter(q, items))], q);
+  }
+  return null;
 }
 
 /// [items] fuzzy-matching [q] best first (all of them for an empty [q]),

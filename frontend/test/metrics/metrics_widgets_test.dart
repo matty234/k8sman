@@ -23,7 +23,7 @@ Json _fixture(String path) => Map<String, dynamic>.from(jsonDecode(File(path).re
 Future<AppState> _pumpPage(WidgetTester tester, Widget page, ApiClient api, {Size size = const Size(1200, 760), String? namespace = 'demo', String? scope = 'demo'}) async {
   // The Metrics page's own scope (session-wide), independent of app.namespace.
   PageScope.reset();
-  PageScope.set('metrics', scope);
+  PageScope.set('metrics', NamespaceScope.single(scope));
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -168,7 +168,7 @@ void main() {
       PageScope.reset();
       final api = MetricsFakeApi();
       final app = await _pumpPage(tester, const MetricsPage(), api, namespace: 'kube-system', scope: null);
-      expect(PageScope.of('metrics'), isNull);
+      expect(PageScope.of('metrics').single, isNull);
       expect(api.podNamespaces, [null]);
       expect(find.text('All namespaces'), findsOneWidget);
 
@@ -185,7 +185,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
       expect(api.podNamespaces.last, 'demo');
-      expect(PageScope.of('metrics'), 'demo');
+      expect(PageScope.of('metrics').single, 'demo');
       PageScope.reset();
     });
 

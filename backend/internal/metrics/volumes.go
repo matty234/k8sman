@@ -2,9 +2,13 @@ package metrics
 
 import (
 	"context"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
+
+	"github.com/matty234/k8sman/backend/internal/kube"
 )
 
 // Usage sources of a ClaimUsage.
@@ -61,8 +65,16 @@ func (s *Service) Volumes(ctx context.Context, namespace string, query PromQuery
 	go func() { defer wg.Done(); summary = s.Summary(ctx, namespace, nil) }()
 	if query != nil {
 		sel := ""
-		if namespace != "" {
-			sel = "namespace=" + strconv.Quote(namespace)
+		switch set := kube.SplitNamespaces(namespace); len(set) {
+		case 0:
+		case 1:
+			sel = "namespace=" + strconv.Quote(set[0])
+		default:
+			alt := make([]string, len(set))
+			for i, ns := range set {
+				alt[i] = regexp.QuoteMeta(ns)
+			}
+			sel = "namespace=~" + strconv.Quote(strings.Join(alt, "|"))
 		}
 		for _, m := range volumeStats {
 			wg.Add(1)

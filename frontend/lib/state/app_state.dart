@@ -6,9 +6,11 @@ import 'package:flutter/foundation.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import 'cluster_error.dart';
+import 'namespace_scope.dart';
 import 'sidebar_config.dart';
 import 'table_prefs.dart';
 
+export 'namespace_scope.dart';
 export 'sidebar_config.dart';
 
 /// What the main area shows: a page, by id. The core pages are the
@@ -96,7 +98,7 @@ class _Previous {
   final List<ContextInfo> contexts;
   final List<ResourceType> types;
   final List<String> namespaces;
-  final String? namespace;
+  final NamespaceScope namespaceScope;
   final ResourceType? selectedType;
   final MainView view;
   final List<DetailTarget> detail;
@@ -108,7 +110,7 @@ class _Previous {
     required this.contexts,
     required this.types,
     required this.namespaces,
-    required this.namespace,
+    required this.namespaceScope,
     required this.selectedType,
     required this.view,
     required this.detail,
@@ -154,8 +156,22 @@ class AppState extends ChangeNotifier {
   List<ResourceType> types = const [];
   List<String> namespaces = const [];
 
-  /// null = all namespaces.
-  String? namespace;
+  /// False when the cluster's namespaces couldn't be listed (no
+  /// cluster-wide `list namespaces`): [namespaces] is then only the
+  /// context's default, and a missing namespace may simply be unlisted.
+  bool namespacesListed = true;
+
+  /// The namespaces tables show: all, one, or a set. Overview, Security,
+  /// Alerts and Metrics keep their own scope (see PageScope).
+  NamespaceScope namespaceScope = NamespaceScope.all;
+
+  /// The selected namespace when exactly one is selected; null for all
+  /// namespaces *and* for a set of several. For call sites that need one
+  /// namespace (create dialogs, defaults); tables use [namespaceScope].
+  String? get namespace => namespaceScope.single;
+
+  /// Selects one namespace (null = all) without notifying (tests, setup).
+  set namespace(String? ns) => namespaceScope = NamespaceScope.single(ns);
 
   ResourceType? selectedType;
 
@@ -291,7 +307,8 @@ class AppState extends ChangeNotifier {
       final ns = await api.namespaces();
       if (stale()) return;
       namespaces = ns.namespaces;
-      namespace ??= ns.defaultNamespace?.isNotEmpty == true ? ns.defaultNamespace : null;
+      namespacesListed = ns.listed;
+      if (namespaceScope.isAll && ns.defaultNamespace?.isNotEmpty == true) namespaceScope = NamespaceScope.single(ns.defaultNamespace);
       selectedType ??= typeFor('', 'Pod');
       _previous = null;
     } catch (e) {
@@ -328,7 +345,7 @@ class AppState extends ChangeNotifier {
       contexts: contexts,
       types: types,
       namespaces: namespaces,
-      namespace: namespace,
+      namespaceScope: namespaceScope,
       selectedType: selectedType,
       view: view,
       detail: List.of(_detailStack),
@@ -358,7 +375,7 @@ class AppState extends ChangeNotifier {
     connecting = ConnectProgress(context: name, server: info?.server, auth: info?.auth, started: clock.now());
     _detailStack.clear();
     recentDetails.clear();
-    namespace = null;
+    namespaceScope = NamespaceScope.all;
     selectedType = null;
     // Drop the old cluster's kinds so a failure shows the error screen.
     types = const [];
@@ -425,7 +442,7 @@ class AppState extends ChangeNotifier {
     contexts = p.contexts;
     types = p.types;
     namespaces = p.namespaces;
-    namespace = p.namespace;
+    namespaceScope = p.namespaceScope;
     selectedType = p.selectedType;
     view = p.view;
     _detailStack
@@ -524,40 +541,45 @@ class AppState extends ChangeNotifier {
   ResourceType? typeForPin(SidebarPin p) => typeFor(p.group, p.kind);
 
   /// Selects a pinned kind exactly as the kinds list does, switching to
-  /// the pin's namespace if it has one.
+  /// the pin's namespaces if it has some.
   void openPin(SidebarPin p) {
     final t = typeForPin(p);
     if (t == null) return;
-    if (p.namespace != null && t.namespaced && namespace != p.namespace) setNamespace(p.namespace);
+    if (!p.scope.isAll && t.namespaced && namespaceScope != p.scope) setNamespaceScope(p.scope);
     selectType(t);
   }
 
   /// The pin showing the current selection: one scoped to the current
-  /// namespace wins over an unscoped pin of the same kind.
+  /// namespaces wins over an unscoped pin of the same kind.
   SidebarPin? get selectedPin {
     final t = selectedType;
     if (view != MainView.resources || t == null) return null;
     SidebarPin? any;
     for (final p in sidebar.pins) {
       if (p.gk != t.gk) continue;
-      if (p.namespace == null) {
+      if (p.scope.isAll) {
         any ??= p;
-      } else if (p.namespace == namespace) {
+      } else if (p.scope == namespaceScope) {
         return p;
       }
     }
     return any;
   }
 
-  /// Namespaces chosen this session, most recent first (for the picker).
-  final List<String> recentNamespaces = [];
+  /// Namespace scopes chosen this session, most recent first (for the
+  /// picker): single namespaces and sets.
+  final List<NamespaceScope> recentNamespaces = [];
 
-  void setNamespace(String? ns) {
-    namespace = ns;
-    if (ns != null) {
+  /// Selects one namespace (null = all namespaces).
+  void setNamespace(String? ns) => setNamespaceScope(NamespaceScope.single(ns));
+
+  /// Selects a namespace scope for tables.
+  void setNamespaceScope(NamespaceScope scope) {
+    namespaceScope = scope;
+    if (!scope.isAll) {
       recentNamespaces
-        ..remove(ns)
-        ..insert(0, ns);
+        ..remove(scope)
+        ..insert(0, scope);
       if (recentNamespaces.length > 5) recentNamespaces.removeLast();
     }
     notifyListeners();
@@ -601,7 +623,7 @@ class AppState extends ChangeNotifier {
   /// namespace if the table is scoped to another one, with the inspector
   /// collapsed so the table gets the width (its row stays selected).
   void showInList(DetailTarget t) {
-    if (t.namespace != null && namespace != null && namespace != t.namespace) setNamespace(t.namespace);
+    if (t.namespace != null && !namespaceScope.contains(t.namespace)) setNamespace(t.namespace);
     selectedType = t.type;
     view = MainView.resources;
     if (detail != null) inspectorCollapsed = true;
@@ -696,7 +718,7 @@ class AppState extends ChangeNotifier {
     }
     _detailStack.clear();
     recentDetails.clear();
-    namespace = null;
+    namespaceScope = NamespaceScope.all;
     selectedType = null;
     types = const [];
     await init();

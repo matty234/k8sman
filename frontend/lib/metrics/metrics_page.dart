@@ -17,6 +17,7 @@ import 'top_view.dart';
 import 'widgets.dart';
 import '../ui/widgets/namespace_picker.dart';
 import '../state/poller.dart';
+import '../state/namespace_scope.dart';
 
 /// The Metrics page (MetricsModule, lib/modules): which metrics APIs are served, top
 /// nodes/pods by usage, PVC storage usage, network throughput, and browsers
@@ -37,7 +38,7 @@ class _MetricsPageState extends State<MetricsPage> with PollingState {
 
   /// The page's own scope (independent of the table's namespace), defaulting
   /// to all namespaces and remembered for the session.
-  String? _ns = PageScope.of('metrics');
+  NamespaceScope _ns = PageScope.of('metrics');
 
   ApiClient get _api => context.read<ApiClient>();
 
@@ -71,7 +72,7 @@ class _MetricsPageState extends State<MetricsPage> with PollingState {
     setState(() => _reload++);
   }
 
-  void _setScope(String? ns) {
+  void _setScope(NamespaceScope ns) {
     if (ns == _ns) return;
     PageScope.set('metrics', ns);
     // The tabs are keyed by scope, so they drop the old data and refetch.
@@ -113,11 +114,11 @@ class _MetricsPageState extends State<MetricsPage> with PollingState {
           Expanded(
             child: TabBarView(
               children: [
-                TopView(key: ValueKey('top-$ns-$_reload'), namespace: ns, status: _status?.resource),
-                StorageView(key: ValueKey('storage-$ns-$_reload'), namespace: ns),
-                NetworkView(key: ValueKey('network-$ns-$_reload'), namespace: ns),
-                CustomMetricsView(key: ValueKey('custom-$ns-$_reload'), namespace: ns, status: _status?.custom),
-                ExternalMetricsView(key: ValueKey('external-$ns-$_reload'), namespace: ns, status: _status?.external),
+                TopView(key: ValueKey('top-$ns-$_reload'), scope: ns, status: _status?.resource),
+                StorageView(key: ValueKey('storage-$ns-$_reload'), scope: ns),
+                NetworkView(key: ValueKey('network-$ns-$_reload'), scope: ns),
+                CustomMetricsView(key: ValueKey('custom-$ns-$_reload'), scope: ns, status: _status?.custom),
+                ExternalMetricsView(key: ValueKey('external-$ns-$_reload'), scope: ns, status: _status?.external),
               ],
             ),
           ),

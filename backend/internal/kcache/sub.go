@@ -21,6 +21,24 @@ type Update struct {
 	Terminal bool
 	Snapshot *Snapshot
 	Events   []Event
+	// Partial lists namespaces of a namespace set that ended for good
+	// (Forbidden, NotFound) while the others carry on (SubscribeSet only).
+	Partial []NamespaceError
+}
+
+// NamespaceError is a terminal LIST error of one namespace in a set.
+type NamespaceError struct {
+	Namespace string
+	Err       error
+}
+
+// Subscription is what a table watcher reads: a single stream (Sub) or a
+// namespace set merged from several (MultiSub).
+type Subscription interface {
+	C() <-chan struct{}
+	Next() Update
+	Memo(u *unstructured.Unstructured, tag any, extra string, compute func() any) any
+	Close()
 }
 
 // Sub is one subscriber of a stream. Its queue is bounded: a subscriber that
@@ -46,6 +64,11 @@ type Sub struct {
 // on the table's watch of the same type. Call Close when done.
 func (c *Cache) Subscribe(key Key) *Sub {
 	s, f := c.acquire(key)
+	return c.subscribeOn(s, f)
+}
+
+// subscribeOn joins stream s (one reference already held) through filter f.
+func (c *Cache) subscribeOn(s *stream, f *filter) *Sub {
 	sub := &Sub{c: c, s: s, filter: f, notify: make(chan struct{}, 1)}
 	if f != nil {
 		sub.seen = map[string]bool{}

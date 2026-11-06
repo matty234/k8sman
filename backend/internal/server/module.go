@@ -184,7 +184,8 @@ func (s *Server) enabledModules() []Module {
 type OverviewLists struct {
 	Ctx     context.Context
 	Clients *cluster.Clients
-	// Namespace is the overview's namespace ("" = all).
+	// Namespace is the overview's namespace ("" = all), or a namespace set
+	// "a,b": listCached and listTyped accept either.
 	Namespace string
 
 	in   overview.Input

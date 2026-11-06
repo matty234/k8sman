@@ -28,7 +28,7 @@ class FakeApiClient extends ApiClient {
   }) : super(base: Uri.parse('http://fake'));
 
   @override
-  Future<List<Json>> items(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector}) async {
+  Future<List<Json>> items(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async {
     final all = itemsByResource[r.key] ?? const [];
     return [
       for (final i in all)

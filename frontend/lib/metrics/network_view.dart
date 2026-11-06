@@ -17,8 +17,8 @@ import 'sortable_table.dart';
 /// Network throughput by node and the busiest pods ("top talkers"), from
 /// Prometheus when available, else live from the kubelets.
 class NetworkView extends StatefulWidget {
-  final String? namespace;
-  const NetworkView({super.key, required this.namespace});
+  final NamespaceScope scope;
+  const NetworkView({super.key, required this.scope});
 
   @override
   State<NetworkView> createState() => _NetworkViewState();
@@ -29,7 +29,12 @@ class NetworkView extends StatefulWidget {
 Future<(List<NetThroughput>, List<NetThroughput>)?> promNetwork(ApiClient api, String? namespace) async {
   final prom = PromApi.of(api);
   if (!await prom.hasPrometheus()) return null;
-  final ns = namespace == null ? '' : 'namespace="${promQuote(namespace)}",';
+  final set = namespace?.split(',') ?? const <String>[];
+  final ns = switch (set.length) {
+    0 => '',
+    1 => 'namespace="${promQuote(set.first)}",',
+    _ => 'namespace=~"${promQuote(set.map(RegExp.escape).join('|'))}",',
+  };
   // hostNetwork pods see the node's traffic: drop them (needs kube-state-metrics;
   // without it `unless` matches nothing and the caller's spec filter applies).
   String pods(String dir) =>
@@ -87,7 +92,7 @@ class _NetworkViewState extends State<NetworkView> with AutomaticKeepAliveClient
   Future<Set<String>> _hostNetworkPods() async {
     try {
       return {
-        for (final p in await _api.items(const ResourceRef(resource: 'pods'), namespace: widget.namespace))
+        for (final p in await _api.items(const ResourceRef(resource: 'pods'), scope: widget.scope))
           if (dig(p, ['spec', 'hostNetwork']) == true) '${dig(p, ['metadata', 'namespace'])}/${dig(p, ['metadata', 'name'])}',
       };
     } catch (_) {
@@ -97,7 +102,7 @@ class _NetworkViewState extends State<NetworkView> with AutomaticKeepAliveClient
 
   Future<void> _load() async {
     final hostF = _hostNetworkPods();
-    final p = await promNetwork(_api, widget.namespace);
+    final p = await promNetwork(_api, widget.scope.param);
     final host = await hostF;
     List<NetThroughput> own(List<NetThroughput> pods) => [for (final x in pods) if (!host.contains(x.key)) x];
     if (p != null) {
@@ -111,7 +116,7 @@ class _NetworkViewState extends State<NetworkView> with AutomaticKeepAliveClient
       }
       return;
     }
-    final s = await MetricsCache.of(_api).summary(widget.namespace);
+    final s = await MetricsCache.of(_api).summary(widget.scope.param);
     if (!mounted) return;
     setState(() {
       _prom = false;
@@ -205,7 +210,7 @@ class _NetworkViewState extends State<NetworkView> with AutomaticKeepAliveClient
                 sortKey: (r) => r.key,
                 cell: (c, r) => Text.rich(
                   TextSpan(children: [
-                    if (widget.namespace == null) TextSpan(text: '${r.namespace}/', style: TextStyle(color: theme.hintColor)),
+                    if (widget.scope.single == null) TextSpan(text: '${r.namespace}/', style: TextStyle(color: theme.hintColor)),
                     TextSpan(text: r.name),
                   ]),
                   maxLines: 1,

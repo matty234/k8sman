@@ -9,6 +9,7 @@ import '../widgets/common.dart';
 import 'overview_api.dart';
 import 'overview_widgets.dart';
 import '../widgets/namespace_picker.dart';
+import '../../state/namespace_scope.dart';
 
 /// Cluster health overview: what is crashlooping, stuck, failing or
 /// unhealthy, grouped by owning workload, with quick fixes.
@@ -36,7 +37,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
   int _seq = 0;
 
   /// Namespace the current data (or in-flight request) is for.
-  String? _ns;
+  NamespaceScope _ns = NamespaceScope.all;
 
   bool _started = false;
 
@@ -56,7 +57,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
     final ns = _ns;
     setState(() => _loading = true);
     try {
-      final data = await source.fetch(namespace: ns);
+      final data = await source.fetch(scope: ns);
       if (!mounted || seq != _seq) return;
       setState(() {
         _data = data;

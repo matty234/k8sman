@@ -7,6 +7,7 @@ library;
 import '../api/client.dart';
 import '../api/models.dart';
 import '../util/k8s.dart';
+import '../state/namespace_scope.dart';
 
 double? _num(dynamic v) => (v as num?)?.toDouble();
 
@@ -119,7 +120,7 @@ extension KubeletSummaryApi on ApiClient {
   /// [namespace]. Any failure becomes an unavailable summary.
   Future<KubeletSummary> kubeletSummary({String? namespace, Iterable<String> nodes = const []}) async {
     try {
-      return KubeletSummary.fromJson(await metrics('summary', {'namespace': namespace, 'node': nodes.isEmpty ? null : nodes.join(',')}));
+      return KubeletSummary.fromJson(await metrics('summary', {...namespaceQuery(namespace), 'node': nodes.isEmpty ? null : nodes.join(',')}));
     } catch (e) {
       return KubeletSummary(available: false, message: '$e');
     }

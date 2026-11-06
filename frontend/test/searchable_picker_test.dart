@@ -42,8 +42,9 @@ void main() {
     await tester.pump();
     final shown = visibleOptions(tester).toList();
     expect(shown, ['All namespaces', 'kube-system', 'kube-public', 'Kubeflow']);
-    // The match is highlighted (its own bold span).
-    final rich = tester.widget<RichText>(find.descendant(of: find.byKey(const ValueKey('picker-option-1')), matching: find.byType(RichText)));
+    // The match is highlighted (its own bold span; the checkbox icon is the
+    // row's first RichText).
+    final rich = tester.widget<RichText>(find.descendant(of: find.byKey(const ValueKey('picker-option-1')), matching: find.byType(RichText)).last);
     final spans = (rich.text as TextSpan).children!.first as TextSpan;
     final hl = spans.children!.whereType<TextSpan>().firstWhere((s) => s.style?.fontWeight == FontWeight.w700);
     expect(hl.text, 'kube');
@@ -92,7 +93,7 @@ void main() {
     for (final n in ['ns-3', 'ns-7', 'ns-12', 'ns-1', 'ns-9', 'ns-4']) {
       app.setNamespace(n);
     }
-    expect(app.recentNamespaces, ['ns-4', 'ns-9', 'ns-1', 'ns-12', 'ns-7'], reason: 'last 5, most recent first');
+    expect(app.recentNamespaces.map((s) => s.single), ['ns-4', 'ns-9', 'ns-1', 'ns-12', 'ns-7'], reason: 'last 5, most recent first');
     app.setNamespace(null);
     await tester.pump();
     await tester.pump();

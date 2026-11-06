@@ -23,6 +23,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/kcache"
+	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/security"
 )
 
@@ -43,7 +44,12 @@ func (s *Server) securityRoutes() {
 // reported in `errors`, unless pods cannot be listed.
 func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
 	q := r.URL.Query()
-	ns := q.Get("namespace")
+	scope, err := kube.ParseNamespaces(q)
+	if err != nil {
+		writeErr(w, httpx.BadRequest("%v", err))
+		return
+	}
+	ns := scope.String() // "" = all, "a" or a set "a,b" (see listScope)
 	c := s.mgr.Clients()
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()

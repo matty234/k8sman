@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/state/namespace_scope.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/ui/column_editor.dart';
@@ -17,7 +18,7 @@ class _ColumnsApi extends FixtureApi {
   }
 
   @override
-  Future<List<Json>> items(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector}) async => [fixture('pod-web.json')];
+  Future<List<Json>> items(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async => [fixture('pod-web.json')];
 
   @override
   Future<TableData> previewColumns(ResourceRef r, List<ColumnDef> cols, {String? namespace, int limit = 25}) async =>

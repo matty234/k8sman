@@ -174,7 +174,7 @@ class _SidebarApi extends FakeApiClient {
   StreamController<WatchMessage>? controller;
   int watches = 0;
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
     watches++;
     return (controller = StreamController<WatchMessage>()).stream;
   }

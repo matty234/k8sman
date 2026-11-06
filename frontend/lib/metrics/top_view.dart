@@ -78,9 +78,9 @@ List<TopNode> joinTopNodes(List<NodeUsage> usage, List<Json> nodes) {
 /// Top nodes and pods by usage, following the namespace filter, refreshed
 /// every 15s.
 class TopView extends StatefulWidget {
-  final String? namespace;
+  final NamespaceScope scope;
   final MetricsApiStatus? status;
-  const TopView({super.key, required this.namespace, this.status});
+  const TopView({super.key, required this.scope, this.status});
 
   @override
   State<TopView> createState() => _TopViewState();
@@ -112,9 +112,9 @@ class _TopViewState extends State<TopView> with AutomaticKeepAliveClientMixin, P
     try {
       final r = await Future.wait<Object>([
         cache.nodes(),
-        cache.pods(widget.namespace),
+        cache.pods(widget.scope.param),
         _api.items(const ResourceRef(resource: 'nodes')),
-        _api.items(const ResourceRef(resource: 'pods'), namespace: widget.namespace),
+        _api.items(const ResourceRef(resource: 'pods'), scope: widget.scope),
       ]);
       if (!mounted) return;
       setState(() {
@@ -212,7 +212,7 @@ class _TopViewState extends State<TopView> with AutomaticKeepAliveClientMixin, P
           ],
         ),
         const SizedBox(height: 18),
-        _SectionTitle('Pods', '${pods.length}${app.namespace == null ? '' : ' in ${app.namespace}'}'),
+        _SectionTitle('Pods', '${pods.length}${widget.scope.isAll ? '' : ' in ${widget.scope.label}'}'),
         if (pods.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -233,7 +233,7 @@ class _TopViewState extends State<TopView> with AutomaticKeepAliveClientMixin, P
                 cell: (c, r) => Text.rich(
                   TextSpan(
                     children: [
-                      if (widget.namespace == null)
+                      if (widget.scope.single == null)
                         TextSpan(
                           text: '${r.namespace}/',
                           style: TextStyle(color: theme.hintColor),

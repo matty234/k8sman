@@ -439,7 +439,7 @@ class _CountingPfApi extends ApiClient {
 class _CountingNodesApi extends FakeApiClient {
   int calls = 0;
   @override
-  Future<List<Json>> items(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector}) async {
+  Future<List<Json>> items(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async {
     if (r.resource == 'nodes') calls++;
     return const [];
   }

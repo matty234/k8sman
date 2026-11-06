@@ -52,6 +52,9 @@ machine.
 - **⌘K** (Ctrl+K on Windows and Linux) opens the command palette from any
   page: pages, resource kinds (short names like `svc` work), namespaces,
   contexts, actions, and objects by name.
+- Pick **several namespaces** at once in the namespace picker (or `:ns a,b`):
+  tables, Overview, Security, Alerts and Metrics show just those, even when
+  your access covers only those namespaces.
 
 <picture><source srcset="docs/images/demo-filter.avif" type="image/avif"><img src="docs/images/demo-filter.gif" alt="The filter box suggests columns, then the values in that column, and combines terms" width="100%"></picture>
 

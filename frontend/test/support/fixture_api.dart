@@ -68,13 +68,13 @@ class FixtureApi extends ApiClient {
   Future<void> putSidebar(Json? layout) async => sidebarLayout = layout;
 
   @override
-  Future<({List<String> namespaces, String? defaultNamespace})> namespaces() async =>
-      (namespaces: List<String>.from(fixture('api-namespaces.json')['namespaces']), defaultNamespace: 'demo');
+  Future<({List<String> namespaces, String? defaultNamespace, bool listed})> namespaces() async =>
+      (namespaces: List<String>.from(fixture('api-namespaces.json')['namespaces']), defaultNamespace: 'demo', listed: true);
 
   ResourceType _type(ResourceRef r) => types.firstWhere((t) => t.group == r.group && t.resource == r.resource);
 
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
     if (fieldSelector != null) {
       final name = fieldSelector.split('=').last;
       final o = objectFor(r.key, name);
@@ -101,7 +101,7 @@ class FixtureApi extends ApiClient {
   Future<Json> object(ResourceRef r, {String? namespace, required String name}) async => objectFor(r.key, name);
 
   @override
-  Future<List<Json>> items(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector}) async {
+  Future<List<Json>> items(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async {
     if (r.key != 'pods') return [];
     if (labelSelector == 'app=web') return [objectFor('pods', 'web-6fd47b8fcb-4v4m9'), objectFor('pods', 'web-6fd47b8fcb-z7wpf')];
     return [];

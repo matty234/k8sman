@@ -45,8 +45,8 @@ class ResourceTableView extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     return ChangeNotifierProvider<TableController>(
-      key: ValueKey('${type.gk}|${app.namespace}|${app.columnsVersion}|${app.currentContext}'),
-      create: (_) => TableController(api: context.read<ApiClient>(), type: type, namespace: app.namespace, prefs: app.tablePrefs),
+      key: ValueKey('${type.gk}|${app.namespaceScope}|${app.columnsVersion}|${app.currentContext}'),
+      create: (_) => TableController(api: context.read<ApiClient>(), type: type, scope: app.namespaceScope, prefs: app.tablePrefs),
       child: const _TableBody(),
     );
   }
@@ -100,6 +100,7 @@ class _TableBodyState extends State<_TableBody> {
       children: [
         _toolbar(tc, rows.length),
         if (tc.error != null && !failedEmpty) _StaleBanner(controller: tc),
+        if (tc.partialErrors.isNotEmpty) _PartialBanner(controller: tc),
         const Divider(),
         if (multi) ...[
           _SelectionBar(
@@ -118,7 +119,7 @@ class _TableBodyState extends State<_TableBody> {
               ? ClusterErrorView(
                   error: tc.failure!,
                   resource: tc.type.resource,
-                  namespace: tc.type.namespaced ? tc.namespace : null,
+                  namespace: tc.type.namespaced && !tc.scope.isAll ? tc.scope.label : null,
                   namespaced: tc.type.namespaced,
                   onRetry: tc.retry,
                   onRediscover: app.refreshTypes,
@@ -1057,6 +1058,43 @@ class _Row extends StatelessWidget {
   }
 }
 
+/// Over the rows of a namespace set when some of its namespaces can't be
+/// read (PARTIAL_ERROR): "No access to team-5 (forbidden)".
+class _PartialBanner extends StatelessWidget {
+  final TableController controller;
+  const _PartialBanner({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final byWhy = <String, List<String>>{};
+    for (final e in controller.partialErrors.entries) {
+      final why = switch (e.value.kind) {
+        ClusterErrorKind.forbidden => 'forbidden',
+        ClusterErrorKind.notFound => 'not found',
+        _ => 'unavailable',
+      };
+      (byWhy[why] ??= []).add(e.key);
+    }
+    final text = [for (final e in byWhy.entries) '${(e.value..sort()).join(', ')} (${e.key})'].join('; ');
+    return Container(
+      key: const ValueKey('partial-banner'),
+      color: severityColor(context, Severity.warn).withValues(alpha: 0.12),
+      padding: const EdgeInsets.fromLTRB(14, 5, 8, 5),
+      child: Row(children: [
+        Icon(Icons.lock_outline, size: 14, color: severityColor(context, Severity.warn)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Tooltip(
+            message: [for (final e in controller.partialErrors.entries) '${e.key}: ${e.value.message}'].join('\n'),
+            child: Text('No access to $text. Showing the other namespaces.', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
 /// Over rows that are still shown after a refresh failed.
 class _StaleBanner extends StatelessWidget {
   final TableController controller;
@@ -1261,13 +1299,13 @@ class _EmptyTable extends StatelessWidget {
     final tc = controller;
     final hint = TextStyle(color: theme.hintColor);
     if (tc.filter.isNotEmpty) return Center(child: Text('No matches', style: hint));
-    final ns = app.namespace;
-    final scoped = tc.type.namespaced && ns != null;
+    final scope = app.namespaceScope;
+    final scoped = tc.type.namespaced && !scope.isAll;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(scoped ? 'No ${tc.type.resource} in $ns' : 'No ${tc.type.resource}', style: hint),
+          Text(scoped ? 'No ${tc.type.resource} in ${scope.namespaces.join(', ')}' : 'No ${tc.type.resource}', style: hint),
           if (scoped) ...[
             const SizedBox(height: 10),
             FilledButton.tonalIcon(icon: const Icon(Icons.public, size: 15), label: const Text('Show all namespaces'), onPressed: () => app.setNamespace(null)),

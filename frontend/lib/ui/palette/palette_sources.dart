@@ -57,11 +57,24 @@ List<PaletteItem> paletteItems(BuildContext context) {
       title: 'All namespaces',
       typeLabel: 'Namespace',
       icon: _icon(Icons.folder_copy_outlined),
-      current: app.namespace == null,
+      current: app.namespaceScope.isAll,
       run: () => app.setNamespace(null),
     ),
-    // Recently used first (they lead the list before you type).
-    for (final ns in [...app.recentNamespaces.where(app.namespaces.contains), ...app.namespaces.where((n) => !app.recentNamespaces.contains(n))])
+    // Recently used sets of several namespaces, then namespaces (recent
+    // ones first: they lead the list before you type).
+    for (final s in app.recentNamespaces.where((s) => s.isMulti))
+      PaletteItem(
+        group: PaletteGroup.namespaces,
+        title: s.namespaces.join(', '),
+        typeLabel: 'Namespaces',
+        icon: _icon(Icons.folder_copy_outlined),
+        current: app.namespaceScope == s,
+        run: () => app.setNamespaceScope(s),
+      ),
+    for (final ns in [
+      ...app.recentNamespaces.map((s) => s.single).whereType<String>().where(app.namespaces.contains),
+      ...app.namespaces.where((n) => !app.recentNamespaces.contains(NamespaceScope.single(n))),
+    ])
       PaletteItem(
         group: PaletteGroup.namespaces,
         title: ns,
@@ -246,8 +259,8 @@ class PaletteObjectCache {
       final i = gk.indexOf('/');
       final t = app.typeFor(gk.substring(0, i), gk.substring(i + 1));
       if (t == null || t == skip || (t.verbs.isNotEmpty && !t.verbs.contains('list'))) continue;
-      final ns = t.namespaced ? app.namespace : null;
-      final key = '${app.currentContext}|${ns ?? ''}|$gk';
+      final scope = t.namespaced ? app.namespaceScope : NamespaceScope.all;
+      final key = '${app.currentContext}|$scope|$gk';
       final hit = _cache[key];
       if (hit != null && now.difference(hit.$1) < ttl) {
         onRows(t, hit.$2);
@@ -255,7 +268,8 @@ class PaletteObjectCache {
       }
       pending.add(() async {
         try {
-          final table = await api.table(t.ref, namespace: ns).timeout(const Duration(seconds: 8));
+          final table = await (scope.isMulti ? api.table(t.ref, scope: scope) : api.table(t.ref, namespace: scope.single))
+              .timeout(const Duration(seconds: 8));
           _cache[key] = (DateTime.now(), table.rows);
           onRows(t, table.rows);
         } catch (_) {

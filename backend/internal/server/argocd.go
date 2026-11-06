@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/matty234/k8sman/backend/internal/argoapi"
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/kcache"
+	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/overview"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,7 +39,7 @@ func (m *argoCDModule) OverviewInputs(l *OverviewLists) {
 	if err != nil {
 		return
 	}
-	ns := l.Namespace
+	scope := kube.SplitNamespaces(l.Namespace)
 	l.Go("applications.argoproj.io", func() (func(*overview.Input), error) {
 		items, err := listCached(l.Ctx, kcache.For(l.Clients), rt.GVR(), "")
 		if err != nil {
@@ -46,7 +48,7 @@ func (m *argoCDModule) OverviewInputs(l *OverviewLists) {
 		apps := []map[string]any{}
 		for _, it := range items {
 			dest, _, _ := unstructured.NestedString(it.Object, "spec", "destination", "namespace")
-			if ns == "" || it.GetNamespace() == ns || dest == ns {
+			if scope.All() || slices.Contains(scope, it.GetNamespace()) || slices.Contains(scope, dest) {
 				apps = append(apps, it.Object)
 			}
 		}

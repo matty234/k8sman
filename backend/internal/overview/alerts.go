@@ -1,6 +1,7 @@
 package overview
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -85,15 +86,17 @@ func firstAnnotation(m map[string]string, keys ...string) string {
 	return ""
 }
 
-// FilterAlertsByNamespace keeps alerts whose namespace label is ns (for a
-// namespaced overview). Cluster-scoped alerts (no namespace) are dropped.
+// FilterAlertsByNamespace keeps alerts whose namespace label is ns, or one
+// of a comma-separated set "a,b" (for a namespaced overview).
+// Cluster-scoped alerts (no namespace) are dropped.
 func FilterAlertsByNamespace(alerts []prom.Alert, ns string) []prom.Alert {
 	if ns == "" {
 		return alerts
 	}
+	set := kube.SplitNamespaces(ns)
 	out := make([]prom.Alert, 0, len(alerts))
 	for _, a := range alerts {
-		if a.Labels["namespace"] == ns {
+		if n := a.Labels["namespace"]; n != "" && slices.Contains(set, n) {
 			out = append(out, a)
 		}
 	}

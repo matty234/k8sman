@@ -12,6 +12,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/kcache"
+	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/overview"
 )
 
@@ -23,7 +24,12 @@ func (s *Server) overviewRoutes() {
 // health analysis. Lists that fail (e.g. RBAC forbids nodes) are reported in
 // `errors` instead of failing the whole request, unless pods cannot be listed.
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
-	ns := r.URL.Query().Get("namespace")
+	scope, err := kube.ParseNamespaces(r.URL.Query())
+	if err != nil {
+		writeErr(w, httpx.BadRequest("%v", err))
+		return
+	}
+	ns := scope.String() // "" = all, "a" or a set "a,b" (see listScope)
 	c := s.mgr.Clients()
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()

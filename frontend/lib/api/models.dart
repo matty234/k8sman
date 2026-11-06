@@ -165,8 +165,12 @@ class TableData {
 
 /// A frame from /api/watch.
 class WatchMessage {
-  /// SNAPSHOT | ADDED | MODIFIED | DELETED | ERROR | BATCH
+  /// SNAPSHOT | ADDED | MODIFIED | DELETED | ERROR | BATCH | PARTIAL_ERROR
   final String type;
+
+  /// On PARTIAL_ERROR: the namespace of a namespace set that can't be read
+  /// (the others carry on; the socket stays open).
+  final String? namespace;
   final TableData? table;
   final TableRowData? row;
   final String? error;
@@ -184,7 +188,7 @@ class WatchMessage {
   /// On BATCH (only with `batch=true`): ADDED/MODIFIED/DELETED frames to
   /// apply in order, with one UI update for the lot.
   final List<WatchMessage> events;
-  const WatchMessage({required this.type, this.table, this.row, this.error, this.reason, this.code, this.host, this.events = const []});
+  const WatchMessage({required this.type, this.table, this.row, this.error, this.reason, this.code, this.host, this.namespace, this.events = const []});
 
   factory WatchMessage.fromJson(Json j) => WatchMessage(
         type: j['type'] ?? 'ERROR',
@@ -194,6 +198,7 @@ class WatchMessage {
         reason: j['reason'],
         code: j['code'],
         host: j['host'],
+        namespace: j['namespace'],
         events: [for (final e in (j['events'] as List? ?? const [])) WatchMessage.fromJson(Map<String, dynamic>.from(e))],
       );
 }

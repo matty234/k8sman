@@ -17,7 +17,7 @@ class _Api extends FixtureApi {
   final List<String> tables = [];
 
   @override
-  Future<TableData> table(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) async {
+  Future<TableData> table(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) async {
     tables.add(r.key);
     final file = switch (r.key) { 'pods' => 'api-table-pods.json', 'deployments.apps' => 'api-table-deployments.json', _ => null };
     if (file == null) throw ApiException(403, 'forbidden');

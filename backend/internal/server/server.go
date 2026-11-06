@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -25,6 +26,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/icons"
 	"github.com/matty234/k8sman/backend/internal/kcache"
+	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/metrics"
 	"github.com/matty234/k8sman/backend/internal/portforward"
 	"github.com/matty234/k8sman/backend/internal/settings"
@@ -190,8 +192,11 @@ func writeErr(w http.ResponseWriter, err error) {
 
 // resourceQuery is the common ?group=&version=&resource=&namespace= target.
 type resourceQuery struct {
-	Type          cluster.ResourceType
-	Namespace     string
+	Type      cluster.ResourceType
+	Namespace string
+	// Namespaces is a set of two or more namespaces (?namespaces=a,b); then
+	// Namespace is "". One namespace is always in Namespace.
+	Namespaces    kube.Namespaces
 	LabelSelector string
 	FieldSelector string
 }
@@ -214,12 +219,35 @@ func (s *Server) parseResource(ctx context.Context, r *http.Request) (*cluster.C
 		}
 		return c, resourceQuery{}, httpx.BadRequest("%v", err)
 	}
-	return c, resourceQuery{
+	scope, err := kube.ParseNamespaces(q)
+	if err != nil {
+		return c, resourceQuery{}, httpx.BadRequest("%v", err)
+	}
+	rq := resourceQuery{
 		Type:          rt,
-		Namespace:     q.Get("namespace"),
+		Namespace:     scope.Single(),
 		LabelSelector: q.Get("labelSelector"),
 		FieldSelector: q.Get("fieldSelector"),
-	}, nil
+	}
+	if len(scope) > 1 && rt.Namespaced {
+		rq.Namespaces = scope
+	}
+	return c, rq, nil
+}
+
+// subscribe joins the shared watch for the query: one stream, or for a
+// namespace set one per namespace, merged (see kcache.SubscribeSet).
+func (s *Server) subscribe(c *cluster.Clients, rq resourceQuery) kcache.Subscription {
+	if len(rq.Namespaces) > 1 {
+		return kcache.For(c).SubscribeSet(rq.cacheKey(), rq.Namespaces)
+	}
+	return kcache.For(c).Subscribe(rq.cacheKey())
+}
+
+// inNamespace is the query narrowed to one namespace of its set.
+func (rq resourceQuery) inNamespace(ns string) resourceQuery {
+	rq.Namespace, rq.Namespaces = ns, nil
+	return rq
 }
 
 func (rq resourceQuery) client(c *cluster.Clients) dynamic.ResourceInterface {
@@ -240,11 +268,36 @@ type listing struct {
 	items []*unstructured.Unstructured // shared with the cache: read only
 	rv    string
 	memo  memoFunc // nil for a direct LIST
+	// partial lists namespaces of a set that could not be read (the
+	// others are in items).
+	partial []PartialError
+}
+
+// PartialError is a namespace of a namespace set that could not be read
+// (e.g. RBAC forbids it) while the others could. It is the payload of the
+// PARTIAL_ERROR watch frame and of `partialErrors` in /api/table and
+// /api/items.
+type PartialError struct {
+	Namespace string `json:"namespace"`
+	Error     string `json:"error"`
+	Reason    string `json:"reason,omitempty"`
+	Code      int    `json:"code,omitempty"`
+}
+
+func partialError(ns string, err error) PartialError {
+	f := errorFrame(nil, err)
+	return PartialError{Namespace: ns, Error: f.Error, Reason: f.Reason, Code: f.Code}
 }
 
 // snapshot answers from a warm shared watch, else with a direct LIST (a
-// one-off read shouldn't start a watch).
+// one-off read shouldn't start a watch). A namespace set is answered from
+// a warm all-namespaces watch when there is one, else by reading every
+// namespace in parallel; namespaces that fail are reported in partial,
+// unless all of them fail.
 func (s *Server) snapshot(ctx context.Context, c *cluster.Clients, rq resourceQuery) (listing, error) {
+	if len(rq.Namespaces) > 1 {
+		return s.snapshotSet(ctx, c, rq)
+	}
 	if snap, ok := kcache.For(c).Cached(rq.cacheKey()); ok {
 		return listing{items: snap.Items, rv: snap.ResourceVersion, memo: snap.Memo}, nil
 	}
@@ -257,6 +310,49 @@ func (s *Server) snapshot(ctx context.Context, c *cluster.Clients, rq resourceQu
 		items[i] = &list.Items[i]
 	}
 	return listing{items: items, rv: list.GetResourceVersion()}, nil
+}
+
+func (s *Server) snapshotSet(ctx context.Context, c *cluster.Clients, rq resourceQuery) (listing, error) {
+	if snap, ok := kcache.For(c).CachedSet(rq.cacheKey(), rq.Namespaces); ok {
+		return listing{items: snap.Items, rv: snap.ResourceVersion, memo: snap.Memo}, nil
+	}
+	parts := make([]listing, len(rq.Namespaces))
+	errs := make([]error, len(rq.Namespaces))
+	var wg sync.WaitGroup
+	for i, ns := range rq.Namespaces {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			parts[i], errs[i] = s.snapshot(ctx, c, rq.inNamespace(ns))
+		}()
+	}
+	wg.Wait()
+	var out listing
+	memos := map[string]memoFunc{}
+	failed := 0
+	for i, ns := range rq.Namespaces {
+		if errs[i] != nil {
+			failed++
+			out.partial = append(out.partial, partialError(ns, errs[i]))
+			continue
+		}
+		out.items = append(out.items, parts[i].items...)
+		if parts[i].memo != nil {
+			memos[ns] = parts[i].memo
+		}
+	}
+	if failed == len(rq.Namespaces) {
+		return listing{}, errs[0]
+	}
+	if len(memos) > 0 {
+		out.memo = func(u *unstructured.Unstructured, tag any, extra string, compute func() any) any {
+			if m := memos[u.GetNamespace()]; m != nil {
+				return m(u, tag, extra, compute)
+			}
+			return compute()
+		}
+	}
+	return out, nil
 }
 
 func (rq resourceQuery) listOptions() metav1.ListOptions {
@@ -295,6 +391,9 @@ type Table struct {
 	Rows            []Row                `json:"rows"`
 	// ColumnErrors maps column index → first evaluation error seen.
 	ColumnErrors map[int]string `json:"columnErrors,omitempty"`
+	// PartialErrors lists namespaces of a namespace set that could not be
+	// read (/api/table only; the watch sends PARTIAL_ERROR frames).
+	PartialErrors []PartialError `json:"partialErrors,omitempty"`
 }
 
 type tableBuilder struct {
@@ -514,7 +613,7 @@ func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Users without cluster-wide namespace list still get their default.
 		if apierrors.IsForbidden(err) && c.Namespace != "" {
-			httpx.WriteJSON(w, 200, map[string]any{"namespaces": []string{c.Namespace}, "default": c.Namespace})
+			httpx.WriteJSON(w, 200, map[string]any{"namespaces": []string{c.Namespace}, "default": c.Namespace, "listed": false})
 			return
 		}
 		writeErr(w, err)
@@ -525,7 +624,7 @@ func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 		names = append(names, n.Name)
 	}
 	sort.Strings(names)
-	httpx.WriteJSON(w, 200, map[string]any{"namespaces": names, "default": c.Namespace})
+	httpx.WriteJSON(w, 200, map[string]any{"namespaces": names, "default": c.Namespace, "listed": true})
 }
 
 func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
@@ -546,6 +645,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 	b.decorate = s.usageDecorator(r.Context(), c, rq)
 	b.memo = snap.memo
 	t, _ := b.tableOf(rq.Type, isDefault, snap.items, snap.rv)
+	t.PartialErrors = snap.partial
 	httpx.WriteJSON(w, 200, t)
 }
 
@@ -566,7 +666,11 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 	for _, it := range snap.items {
 		items = append(items, it.Object)
 	}
-	httpx.WriteJSON(w, 200, map[string]any{"resource": rq.Type, "resourceVersion": snap.rv, "items": items})
+	out := map[string]any{"resource": rq.Type, "resourceVersion": snap.rv, "items": items}
+	if len(snap.partial) > 0 {
+		out["partialErrors"] = snap.partial
+	}
+	httpx.WriteJSON(w, 200, out)
 }
 
 func (s *Server) handleObject(w http.ResponseWriter, r *http.Request) {

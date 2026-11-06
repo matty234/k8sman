@@ -84,11 +84,15 @@ class TableFakeApi extends ApiClient {
 
   List<String> namespaceList = const ['default', 'demo', 'kube-system'];
 
+  /// The namespace scope of the last [watch].
+  NamespaceScope? lastWatchScope;
+
   TableFakeApi() : super(base: Uri.parse('http://fake'));
 
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
     watches++;
+    lastWatchScope = scope ?? NamespaceScope.single(namespace);
     final c = StreamController<WatchMessage>();
     watchController = c;
     if (watchError != null) {

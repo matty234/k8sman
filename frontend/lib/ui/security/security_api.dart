@@ -2,6 +2,7 @@
 /// `GET /api/security`, `GET /api/security/scanner`, `POST /api/security/scan`.
 library;
 
+import '../../state/namespace_scope.dart';
 import 'package:http/http.dart' as http;
 
 import '../../api/backend_http.dart';
@@ -16,10 +17,10 @@ class SecurityApi {
   final BackendHttp _http;
   SecurityApi(this.api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/security', httpClient: httpClient);
 
-  /// [namespace] null or empty = all namespaces.
-  Future<SecurityData> fetch({String? namespace, bool includeSystem = false}) async {
+  /// [scope]: all namespaces, one, or a set.
+  Future<SecurityData> fetch({NamespaceScope scope = NamespaceScope.all, bool includeSystem = false}) async {
     final q = <String, String>{
-      if (namespace != null && namespace.isNotEmpty) 'namespace': namespace,
+      for (final e in scope.query.entries) e.key: e.value!,
       if (includeSystem) 'includeSystem': 'true',
     };
     return SecurityData.fromJson(jsonObjectBody(await _http.get('', q)));

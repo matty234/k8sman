@@ -28,8 +28,8 @@ class FakeSecurityApi extends SecurityApi {
   FakeSecurityApi(this.response, this.scannerResponse, ApiClient api) : super(api);
 
   @override
-  Future<SecurityData> fetch({String? namespace, bool includeSystem = false}) async {
-    calls.add((namespace, includeSystem));
+  Future<SecurityData> fetch({NamespaceScope scope = NamespaceScope.all, bool includeSystem = false}) async {
+    calls.add((scope.single, includeSystem));
     return SecurityData.fromJson(response);
   }
 
@@ -70,7 +70,7 @@ Future<(AppState, FakeSecurityApi)> pumpSecurity(
 }) async {
   // The page's own scope (session-wide), independent of app.namespace.
   PageScope.reset();
-  if (scope != null) PageScope.set('security', scope);
+  if (scope != null) PageScope.set('security', NamespaceScope.single(scope));
   final client = FakeApiClient();
   final app = AppState(client)
     ..types = [...testTypes, ...extraTypes]
@@ -168,7 +168,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(source.calls.last, ('security-demo', false));
-    expect(PageScope.of('security'), 'security-demo');
+    expect(PageScope.of('security').single, 'security-demo');
     PageScope.reset();
   });
 
@@ -275,7 +275,7 @@ void main() {
 class _FailingApi extends SecurityApi {
   _FailingApi(super.api);
   @override
-  Future<SecurityData> fetch({String? namespace, bool includeSystem = false}) async => throw ApiException(403, 'pods is forbidden');
+  Future<SecurityData> fetch({NamespaceScope scope = NamespaceScope.all, bool includeSystem = false}) async => throw ApiException(403, 'pods is forbidden');
   @override
   Future<ScannerStatus> scanner() async => const ScannerStatus();
 }

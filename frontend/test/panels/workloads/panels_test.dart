@@ -235,7 +235,7 @@ class CountingApi extends FakeApiClient {
   CountingApi(this.inner, this.onItems);
 
   @override
-  Future<List<Json>> items(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector}) {
+  Future<List<Json>> items(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) {
     if (r.resource == 'pods') onItems();
     return inner.items(r, namespace: namespace, labelSelector: labelSelector, fieldSelector: fieldSelector);
   }

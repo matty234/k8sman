@@ -72,6 +72,8 @@ class _HelmViewState extends State<HelmView> with PollingState {
   }
 
   bool _matches(HelmRelease r) {
+    // A namespace set is listed across all namespaces and narrowed here.
+    if (!context.read<AppState>().namespaceScope.contains(r.namespace)) return false;
     final q = _filter.toLowerCase();
     return q.isEmpty ||
         r.name.toLowerCase().contains(q) ||
@@ -87,7 +89,7 @@ class _HelmViewState extends State<HelmView> with PollingState {
     // Follow the global namespace filter.
     if (!_loadedOnce || _loadedNs != app.namespace) {
       _loadedOnce = true;
-      _loadedNs = app.namespace;
+      _loadedNs = app.namespace; // null for all namespaces and for a set
       scheduleMicrotask(_refresh);
     }
     // A release to focus (from Add-ons → View release).

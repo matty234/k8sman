@@ -25,6 +25,27 @@ func (s *Server) usageDecorator(ctx context.Context, c *cluster.Clients, rq reso
 	if !usageResource(rq.Type) {
 		return nil
 	}
+	if len(rq.Namespaces) > 1 {
+		// A namespace set: one decorator per namespace (each fetches only
+		// its namespace, which RBAC-limited users can read).
+		by := map[string]metrics.Decorator{}
+		for _, ns := range rq.Namespaces {
+			if d := s.usageDecorator(ctx, c, rq.inNamespace(ns)); d != nil {
+				by[ns] = d
+			}
+		}
+		if len(by) == 0 {
+			return nil
+		}
+		return func(obj map[string]any) map[string]any {
+			md, _ := obj["metadata"].(map[string]any)
+			ns, _ := md["namespace"].(string)
+			if d := by[ns]; d != nil {
+				return d(obj)
+			}
+			return obj
+		}
+	}
 	if rq.Type.Resource == "persistentvolumeclaims" {
 		return metrics.For(c).ClaimUsageDecorator(ctx, namespaceFor(rq), metrics.PromQueryFor(c))
 	}

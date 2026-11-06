@@ -13,9 +13,11 @@ import 'sortable_table.dart';
 /// Browse custom.metrics.k8s.io: pick a resource type and metric, optionally
 /// a label selector, and see the value per object.
 class CustomMetricsView extends StatefulWidget {
-  final String? namespace;
+  /// The page's scope. The custom metrics API reads one namespace or
+  /// all, so a set is read across all namespaces.
+  final NamespaceScope scope;
   final MetricsApiStatus? status;
-  const CustomMetricsView({super.key, required this.namespace, this.status});
+  const CustomMetricsView({super.key, required this.scope, this.status});
 
   @override
   State<CustomMetricsView> createState() => _CustomMetricsViewState();
@@ -51,7 +53,7 @@ class _CustomMetricsViewState extends State<CustomMetricsView> with AutomaticKee
   @override
   void didUpdateWidget(CustomMetricsView old) {
     super.didUpdateWidget(old);
-    if (old.namespace != widget.namespace && _metric != null) _query();
+    if (old.scope != widget.scope && _metric != null) _query();
   }
 
   Future<void> _discover() async {
@@ -79,13 +81,14 @@ class _CustomMetricsViewState extends State<CustomMetricsView> with AutomaticKee
       final v = await _api.customMetric(
         group: res.group,
         resource: res.resource,
-        namespace: res.namespaced ? widget.namespace : null,
+        namespace: res.namespaced ? widget.scope.single : null,
         selector: _selector.text.trim().isEmpty ? null : _selector.text.trim(),
         metric: metric,
       );
       if (!mounted) return;
       setState(() {
-        _values = v;
+        // A namespace set was read across all namespaces: keep the set.
+        _values = [for (final x in v) if (widget.scope.contains(x.object?.namespace)) x];
         _valuesError = null;
         _loading = false;
       });
@@ -176,7 +179,7 @@ class _CustomMetricsViewState extends State<CustomMetricsView> with AutomaticKee
         Text(
           res == null
               ? ''
-              : '${res.namespaced ? (widget.namespace == null ? 'All namespaces' : 'Namespace ${widget.namespace}') : 'Cluster-scoped'} · ${res.metrics.length} metric${res.metrics.length == 1 ? '' : 's'} on ${res.key}',
+              : '${res.namespaced ? (widget.scope.isAll ? 'All namespaces' : widget.scope.isMulti ? 'Namespaces ${widget.scope.label}' : 'Namespace ${widget.scope.single}') : 'Cluster-scoped'} · ${res.metrics.length} metric${res.metrics.length == 1 ? '' : 's'} on ${res.key}',
           style: hint,
         ),
         const SizedBox(height: 10),

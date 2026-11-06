@@ -119,7 +119,7 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MultiProvider(
       providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
-      child: MaterialApp(theme: buildTheme(Brightness.dark), home: const Scaffold(body: StorageView(namespace: null))),
+      child: MaterialApp(theme: buildTheme(Brightness.dark), home: const Scaffold(body: StorageView(scope: NamespaceScope.all))),
     ));
     await tester.pump(const Duration(milliseconds: 50));
 

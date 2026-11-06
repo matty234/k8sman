@@ -60,7 +60,8 @@ var categoryTitles = []struct{ id, title string }{
 // user cannot list it, or the CRD is not installed).
 type Input struct {
 	Now time.Time
-	// Namespace scopes the analysis; "" means all namespaces. Cluster-scoped
+	// Namespace scopes the analysis; "" means all namespaces, "a,b" a
+	// namespace set. Cluster-scoped
 	// RBAC is listed cluster-wide but only bindings that touch the namespace
 	// are reported when it is set.
 	Namespace string
@@ -208,9 +209,12 @@ func Analyze(in Input) *Result {
 	return a.res
 }
 
+// scope is the parsed Input.Namespace.
+func (a *analyzer) scope() kube.Namespaces { return kube.SplitNamespaces(a.in.Namespace) }
+
 // inScope reports whether objects in ns are analysed.
 func (a *analyzer) inScope(ns string) bool {
-	if a.in.Namespace != "" && ns != a.in.Namespace {
+	if a.in.Namespace != "" && !a.scope().Contains(ns) {
 		return false
 	}
 	return a.in.IncludeSystem || !IsSystemNamespace(ns)

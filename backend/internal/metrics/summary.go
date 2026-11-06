@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/matty234/k8sman/backend/internal/kube"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -398,8 +400,10 @@ func (n *kubeletNode) pair(key string) *netPair {
 }
 
 // Summary returns PVC usage and network rates from the kubelets of nodes
-// (all Ready nodes when empty), filtered to namespace ("" = all).
+// (all Ready nodes when empty), filtered to namespace ("" = all, "a,b" =
+// a namespace set).
 func (s *Service) Summary(ctx context.Context, namespace string, nodes []string) KubeletSummary {
+	scope := kube.SplitNamespaces(namespace)
 	out := KubeletSummary{State: SummaryAvailable, Volumes: []VolumeUsage{}, Pods: []NetRate{}, NodeNet: []NetRate{}}
 	if len(nodes) == 0 {
 		var err error
@@ -447,7 +451,7 @@ func (s *Service) Summary(ctx context.Context, namespace string, nodes []string)
 		}
 		out.Reporting++
 		for _, v := range n.volumes {
-			if namespace == "" || v.Namespace == namespace {
+			if scope.Contains(v.Namespace) {
 				out.Volumes = append(out.Volumes, v)
 			}
 		}
@@ -460,7 +464,7 @@ func (s *Service) Summary(ctx context.Context, namespace string, nodes []string)
 				continue
 			}
 			ns, pod, _ := strings.Cut(strings.TrimPrefix(key, "pod:"), "/")
-			if namespace != "" && ns != namespace {
+			if !scope.Contains(ns) {
 				continue
 			}
 			r.Namespace, r.Name = ns, pod

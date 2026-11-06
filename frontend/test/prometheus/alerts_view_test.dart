@@ -25,7 +25,7 @@ Future<AppState> pumpAlerts(
 }) async {
   // The Alerts page's own scope (session-wide), independent of app.namespace.
   PageScope.reset();
-  PageScope.set('alerts', scope);
+  PageScope.set('alerts', NamespaceScope.single(scope));
   final prom = api ?? FixturePromApi();
   final client = FakeApiClient();
   final app = AppState(client)
@@ -121,7 +121,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(api.alertFetches, fetches + 1);
-    expect(PageScope.of('alerts'), 'demo');
+    expect(PageScope.of('alerts').single, 'demo');
     expect(find.text('K8smanDemoPodCrashLooping'), findsOneWidget);
     expect(find.text('NodeClockNotSynchronising'), findsNothing);
 
@@ -130,7 +130,7 @@ void main() {
     await tester.tap(find.text('Show all'));
     await tester.pump();
     expect(find.text('NodeClockNotSynchronising'), findsOneWidget);
-    expect(PageScope.of('alerts'), isNull);
+    expect(PageScope.of('alerts').single, isNull);
     await disposeView(tester);
   });
 

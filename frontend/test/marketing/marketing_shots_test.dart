@@ -143,15 +143,16 @@ class MarketingApi extends ApiClient {
   Future<List<ResourceType>> resources({bool refresh = false}) async => types;
 
   @override
-  Future<({List<String> namespaces, String? defaultNamespace})> namespaces() async => (
+  Future<({List<String> namespaces, String? defaultNamespace, bool listed})> namespaces() async => (
         namespaces: const ['argocd', 'checkout', 'default', 'kube-system', 'monitoring', 'payments', 'platform', 'storefront'],
         defaultNamespace: 'storefront',
+        listed: true,
       );
 
   ResourceType _type(ResourceRef r) => types.firstWhere((t) => t.group == r.group && t.resource == r.resource);
 
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
     final t = _type(r);
     if (fieldSelector != null) {
       final name = fieldSelector.split('=').last;
@@ -179,7 +180,7 @@ class MarketingApi extends ApiClient {
   }
 
   @override
-  Future<List<Json>> items(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector}) async => switch (r.key) {
+  Future<List<Json>> items(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async => switch (r.key) {
         'nodes' => Demo.nodes(),
         _ when namespace == 'helm-guestbook' => Demo.helmGuestbookLive(r.key),
         'pods' when namespace == 'guestbook' || namespace == 'guestbook-degraded' => Demo.argoLive('pods', namespace, labelSelector),

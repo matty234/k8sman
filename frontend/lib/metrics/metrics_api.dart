@@ -6,6 +6,7 @@ library;
 import '../api/client.dart';
 import '../api/models.dart';
 import '../util/k8s.dart';
+import '../state/namespace_scope.dart';
 
 /// Availability of one metrics API group.
 enum MetricsState { available, notReady, notInstalled, unknown }
@@ -310,7 +311,7 @@ extension MetricsApi on ApiClient {
 
   Future<List<PodUsage>> podMetrics({String? namespace, String? labelSelector}) => _call(
     () async => [
-      for (final i in asMapList((await metrics('pods', {'namespace': namespace, 'labelSelector': labelSelector}))['items'])) PodUsage.fromJson(i),
+      for (final i in asMapList((await metrics('pods', {...namespaceQuery(namespace), 'labelSelector': labelSelector}))['items'])) PodUsage.fromJson(i),
     ],
   );
 

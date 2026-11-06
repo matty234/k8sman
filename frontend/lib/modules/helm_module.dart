@@ -34,6 +34,6 @@ class HelmModule extends AppModule {
 /// Opens the Helm page on release [namespace]/[name], widening the
 /// namespace filter if it hides the release.
 void showHelmRelease(AppState app, String namespace, String name) {
-  if (app.namespace != null && app.namespace != namespace) app.namespace = null;
+  if (!app.namespaceScope.contains(namespace)) app.namespace = null;
   app.showView(HelmModule.page, focus: '$namespace/$name');
 }

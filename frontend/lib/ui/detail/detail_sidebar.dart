@@ -316,7 +316,7 @@ class _Header extends StatelessWidget {
                 _Crumb(
                   key: const ValueKey('crumb-kind'),
                   text: target.type.kind,
-                  tooltip: 'Show all ${target.type.kind}s${target.namespace != null && app.namespace != null && app.namespace != target.namespace ? ' in ${target.namespace}' : ''}',
+                  tooltip: 'Show all ${target.type.kind}s${target.namespace != null && !app.namespaceScope.contains(target.namespace) ? ' in ${target.namespace}' : ''}',
                   style: meta?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
                   onTap: () => app.showInList(target),
                 ),

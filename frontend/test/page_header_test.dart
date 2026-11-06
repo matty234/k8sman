@@ -33,7 +33,7 @@ class _Api extends FakeApiClient {
   @override
   Future<Json> metrics(String path, [Map<String, String?> query = const {}]) async => throw ApiException(404, 'metrics.k8s.io is not installed');
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
       Stream.value(WatchMessage(type: 'SNAPSHOT', table: TableData.fromJson(jsonDecode(File('../dev/fixtures/api-table-pods.json').readAsStringSync()))));
 }
 
@@ -73,7 +73,7 @@ void main() {
 class _SecurityApi extends SecurityApi {
   _SecurityApi() : super(_Api());
   @override
-  Future<SecurityData> fetch({String? namespace, bool includeSystem = false}) async =>
+  Future<SecurityData> fetch({NamespaceScope scope = NamespaceScope.all, bool includeSystem = false}) async =>
       SecurityData.fromJson(jsonDecode(File('test/security/fixtures/security-demo.json').readAsStringSync()));
   @override
   Future<ScannerStatus> scanner() async => const ScannerStatus();

@@ -16,9 +16,18 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - A calm sidebar: Overview, Nodes and Security up top, the rest under
   **More**, collapsible sections and a **Custom Resources** group, plus **Search or jump to… ⌘K**
   (the command palette).
-- A searchable namespace picker with recents.
+- A searchable namespace picker with recents. Tick several namespaces to see
+  them together (`team-1, team-2 +2`): clicking a name shows only that one,
+  its checkbox (or ⇧Return) adds it to the set. `:ns a,b` picks a set from
+  the palette, `:ns +a` / `:ns -a` changes it.
+- Namespace sets work for users whose access covers only those namespaces:
+  each namespace is watched on its own and merged. A namespace you can't
+  read shows a banner ("No access to team-5 (forbidden)") while the others
+  load.
 - Per-page namespace scope: Overview, Alerts, Metrics and Security default to
-  all namespaces, independent of the table's namespace.
+  all namespaces, independent of the table's namespace, and accept a set
+  too.
+- Pins can be scoped to a namespace or a set of namespaces.
 
 ## Tables
 

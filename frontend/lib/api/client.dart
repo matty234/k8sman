@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../state/namespace_scope.dart';
 import 'backend_http.dart';
 import 'kubeconfig.dart';
 import 'models.dart';
@@ -171,18 +172,22 @@ class ApiClient {
     return [for (final r in j) ResourceType.fromJson(r)];
   }
 
-  Future<({List<String> namespaces, String? defaultNamespace})> namespaces() async {
+  /// The cluster's namespaces. [listed] is false when the user can't list
+  /// them and the backend returned only the context's default.
+  Future<({List<String> namespaces, String? defaultNamespace, bool listed})> namespaces() async {
     final j = await _get('namespaces') as Json;
-    return (namespaces: List<String>.from(j['namespaces'] ?? const []), defaultNamespace: j['default'] as String?);
+    return (namespaces: List<String>.from(j['namespaces'] ?? const []), defaultNamespace: j['default'] as String?, listed: j['listed'] != false);
   }
 
   // ---- objects ----
 
   /// List rendered through the column set.
-  Future<TableData> table(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) async {
+  /// [scope] (a namespace set) replaces [namespace] when given.
+  Future<TableData> table(ResourceRef r,
+      {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) async {
     final j = await _get('table', {
       ...r.toQuery(),
-      'namespace': namespace,
+      ...scope?.query ?? {'namespace': namespace},
       'labelSelector': labelSelector,
       'fieldSelector': fieldSelector,
       'includeObject': includeObject ? 'true' : null,
@@ -192,10 +197,11 @@ class ApiClient {
 
   /// Raw objects. Use for related resources, e.g.
   /// `items(ResourceRef(resource: 'pods'), namespace: ns, labelSelector: 'app=web')`.
-  Future<List<Json>> items(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector}) async {
+  /// [scope] (a namespace set) replaces [namespace] when given.
+  Future<List<Json>> items(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector}) async {
     final j = await _get('items', {
       ...r.toQuery(),
-      'namespace': namespace,
+      ...scope?.query ?? {'namespace': namespace},
       'labelSelector': labelSelector,
       'fieldSelector': fieldSelector,
     }) as Json;
@@ -396,11 +402,14 @@ class ApiClient {
   /// Asks for `batch=true`: newer backends may coalesce bursts into BATCH
   /// frames ([WatchMessage.events]); older ones ignore it and send single
   /// rows, so consumers must handle both.
+  ///
+  /// [scope] (a namespace set) replaces [namespace] when given; a set's
+  /// forbidden namespaces arrive as PARTIAL_ERROR frames.
   Stream<WatchMessage> watch(ResourceRef r,
-          {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
+          {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
       _wsStream(_ws('watch', {
         ...r.toQuery(),
-        'namespace': namespace,
+        ...scope?.query ?? {'namespace': namespace},
         'labelSelector': labelSelector,
         'fieldSelector': fieldSelector,
         'includeObject': includeObject ? 'true' : null,

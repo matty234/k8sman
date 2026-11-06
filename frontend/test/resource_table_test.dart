@@ -17,7 +17,7 @@ class _TableApi extends ApiClient {
   final String fixture;
   _TableApi(this.fixture) : super(base: Uri.parse('http://fake'));
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
       Stream.value(WatchMessage(type: 'SNAPSHOT', table: TableData.fromJson(jsonDecode(File('../dev/fixtures/$fixture').readAsStringSync()))));
 }
 

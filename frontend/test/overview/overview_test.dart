@@ -29,8 +29,8 @@ class FakeOverviewApi extends OverviewApi {
   FakeOverviewApi(this.response, ApiClient api) : super(api);
 
   @override
-  Future<OverviewData> fetch({String? namespace}) async {
-    calls.add(namespace);
+  Future<OverviewData> fetch({NamespaceScope scope = NamespaceScope.all}) async {
+    calls.add(scope.single);
     return OverviewData.fromJson(response);
   }
 }
