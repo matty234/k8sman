@@ -9,6 +9,7 @@ import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../keys.dart';
 import '../theme.dart';
+import 'palette_commands.dart';
 import 'palette_items.dart';
 import 'palette_sources.dart';
 
@@ -21,7 +22,8 @@ final commandPaletteShortcuts = [primaryShortcut(LogicalKeyboardKey.keyK), prima
 
 /// Opens the command palette over [context] (the shell's), or closes it if
 /// it is already open. Picking a result closes the palette, then runs it.
-Future<void> showCommandPalette(BuildContext context) async {
+/// With [command] it opens in `:` command mode (`:po`, `:ns kube-system`).
+Future<void> showCommandPalette(BuildContext context, {bool command = false}) async {
   final open = _open;
   if (open != null) {
     open._close();
@@ -41,7 +43,7 @@ Future<void> showCommandPalette(BuildContext context) async {
     barrierColor: Colors.black.withValues(alpha: 0.08),
     // Native: appears instantly.
     transitionDuration: Duration.zero,
-    pageBuilder: (_, _, _) => CommandPalette(items: items, api: context.read<ApiClient>(), app: app, skip: table?.type),
+    pageBuilder: (_, _, _) => CommandPalette(items: items, api: context.read<ApiClient>(), app: app, skip: table?.type, command: command),
   );
   picked?.run();
 }
@@ -56,7 +58,10 @@ class CommandPalette extends StatefulWidget {
 
   /// Kind whose objects [items] already has (the visible table's).
   final ResourceType? skip;
-  const CommandPalette({super.key, required this.items, required this.app, this.api, this.skip});
+
+  /// Start in command mode (the query is `:`).
+  final bool command;
+  const CommandPalette({super.key, required this.items, required this.app, this.api, this.skip, this.command = false});
 
   @override
   State<CommandPalette> createState() => _CommandPaletteState();
@@ -79,10 +84,15 @@ class _CommandPaletteState extends State<CommandPalette> {
 
   String get _q => _query.text.trim().toLowerCase();
 
+  /// `:` commands rather than the normal palette.
+  bool get _command => _query.text.startsWith(':');
+  String _highlight = '';
+
   @override
   void initState() {
     super.initState();
     _open = this;
+    if (widget.command) _query.value = const TextEditingValue(text: ':', selection: TextSelection.collapsed(offset: 1));
     _rank();
     final api = widget.api;
     if (api != null) {
@@ -108,12 +118,19 @@ class _CommandPaletteState extends State<CommandPalette> {
 
   void _rank() {
     final active = _flat.elementAtOrNull(_active);
-    _sections = rankPalette(_q, _items);
+    if (_command) {
+      final r = rankCommand(_query.text.substring(1), widget.app);
+      _sections = r.sections;
+      _highlight = r.highlight;
+    } else {
+      _sections = rankPalette(_q, _items);
+      _highlight = _q;
+    }
     _flat = [for (final s in _sections) ...s.items];
     // Keep the highlighted result if it is still there (objects arriving
     // mustn't move the selection under the user).
     final keep = active == null ? -1 : _flat.indexOf(active);
-    _active = keep >= 0 && _q.isNotEmpty ? keep : 0;
+    _active = keep >= 0 && _q.isNotEmpty && !_command ? keep : 0;
   }
 
   void _onChanged(String _) {
@@ -192,7 +209,7 @@ class _CommandPaletteState extends State<CommandPalette> {
     final width = math.min(640.0, size.width - 48);
     final top = math.max(titlebarHeight + 24, size.height * 0.14);
     final maxList = math.max(120.0, math.min(420.0, size.height - top - 140));
-    final q = _q;
+    final q = _highlight;
 
     final children = <Widget>[];
     var index = 0;
@@ -249,7 +266,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                   contentPadding: const EdgeInsets.symmetric(vertical: 13),
                   prefixIcon: const Icon(Icons.search, size: 18),
                   prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 44),
-                  hintText: 'Go to page, kind, namespace, context or object…',
+                  hintText: _command ? ':po  :deploy  :ns kube-system  :ctx prod' : 'Go to page, kind, namespace, context or object…  (: for commands)',
                   hintStyle: theme.textTheme.bodyLarge?.copyWith(fontSize: 16, color: colors.faint),
                 ),
               ),
@@ -258,7 +275,7 @@ class _CommandPaletteState extends State<CommandPalette> {
             if (_flat.isEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                child: Text(_loadingObjects ? 'Searching…' : 'No matches',
+                child: Text(_loadingObjects && !_command ? 'Searching…' : 'No matches',
                     key: const ValueKey('palette-empty'), style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor)),
               )
             else
@@ -274,7 +291,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                 ),
               ),
             Container(height: 1, color: colors.separator),
-            _Footer(loading: _loadingObjects),
+            _Footer(loading: _loadingObjects && !_command, command: _command),
           ]),
         ),
       ),
@@ -284,7 +301,8 @@ class _CommandPaletteState extends State<CommandPalette> {
 
 class _Footer extends StatelessWidget {
   final bool loading;
-  const _Footer({required this.loading});
+  final bool command;
+  const _Footer({required this.loading, required this.command});
 
   @override
   Widget build(BuildContext context) {
@@ -307,6 +325,7 @@ class _Footer extends StatelessWidget {
           key('↩', 'open'),
           key('esc', 'close'),
           const Spacer(),
+          if (command) Flexible(child: Text(':ns <name>  :ctx <name>  :pf  :alerts', maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
           if (loading) Text('Looking up objects…', style: style),
         ]),
       ),

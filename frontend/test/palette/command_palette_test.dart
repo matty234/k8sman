@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/ui/keys.dart';
 import 'package:k8sman/ui/palette/command_palette.dart';
 import 'package:k8sman/ui/palette/palette_sources.dart';
 import 'package:k8sman/ui/terminal/exec_protocol.dart';
@@ -108,6 +109,34 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await _pump(tester);
     expect(app.view, MainView.nodes);
+  });
+
+  testWidgets(': opens command mode: kinds by short name, :ns <name>; not while typing in a field', (tester) async {
+    final (app, _) = await pumpShell(tester, _Api());
+    await _pump(tester);
+
+    Future<void> command(String text) async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.semicolon, character: ':');
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.semicolon);
+      await _pump(tester);
+      expect(_search, findsOneWidget);
+      await tester.enterText(_search, text);
+      await _pump(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await _pump(tester);
+      expect(_search, findsNothing);
+    }
+
+    await command(':deploy');
+    expect(app.selectedType?.kind, 'Deployment');
+    final ns = app.namespaces.first;
+    await command(':ns $ns');
+    expect(app.namespace, ns);
+
+    // With a text field focused the shell's ':' shortcut stands down.
+    await tester.pumpWidget(const MaterialApp(home: Material(child: TextField(autofocus: true))));
+    await tester.pump();
+    expect(textEntryFocused, isTrue);
   });
 
   testWidgets('⌘K in a focused terminal clears it instead of opening the palette', (tester) async {

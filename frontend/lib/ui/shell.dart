@@ -41,6 +41,11 @@ class _ShellState extends State<Shell> {
   double _sidebarWidth = 560;
 
   void _palette() => showCommandPalette(context);
+
+  /// `:` (k9s-style), unless the user is typing somewhere.
+  void _commandMode() {
+    if (!textEntryFocused) showCommandPalette(context, command: true);
+  }
   late final AppState _app;
   bool _showInDock(MainView v) {
     final pane = switch (v) {
@@ -98,6 +103,7 @@ class _ShellState extends State<Shell> {
         primaryShortcut(LogicalKeyboardKey.keyJ): dock.toggle,
         primaryShortcut(LogicalKeyboardKey.keyI): app.toggleInspector,
         for (final a in commandPaletteShortcuts) a: _palette,
+        const CharacterActivator(':'): _commandMode,
       },
       child: Focus(
         autofocus: true,
