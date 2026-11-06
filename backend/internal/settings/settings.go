@@ -31,14 +31,13 @@ type Settings struct {
 	// (chart icon URLs and website favicons). nil = automatic: on for local
 	// clusters (kind, k3d, minikube, Docker Desktop, …), off otherwise.
 	RemoteIcons *bool `json:"remoteIcons,omitempty"`
-	// ArgoCDTokens maps kube context → an Argo CD API token the user entered
-	// (for per-resource diffs). The file is written 0600; tokens are never
-	// returned by the API or logged.
+	// ArgoCDTokens and ArgoCDUseCLI are where releases before the module
+	// settings kept Argo CD auth (kube context → API token, and kube
+	// context → "use the argocd CLI's login"). They are only read, to move
+	// their values into ModuleSettings["argocd"] when the file is opened
+	// (see migrateArgoCD); the file is written without them afterwards.
 	ArgoCDTokens map[string]string `json:"argocdTokens,omitempty"`
-	// ArgoCDUseCLI marks kube contexts whose Argo CD auth comes from the
-	// argocd CLI's own login (~/.config/argocd/config). Only the choice is
-	// stored here; the token is read from the CLI config on use.
-	ArgoCDUseCLI map[string]bool `json:"argocdUseCli,omitempty"`
+	ArgoCDUseCLI map[string]bool   `json:"argocdUseCli,omitempty"`
 	// Sidebar is the user's layout of the sidebar's top section (pages and
 	// pinned kinds). nil = the app's default layout.
 	Sidebar *Sidebar `json:"sidebar,omitempty"`
@@ -245,7 +244,60 @@ func Open(path string) (*Store, error) {
 		st.s = Settings{}
 		return st, fmt.Errorf("parse %s: %w", path, err)
 	}
+	if st.s.migrateArgoCD() {
+		// A failed write is fine: the migrated settings are in memory and
+		// the next save writes them.
+		_ = st.write(st.s)
+	}
 	return st, nil
+}
+
+// migrateArgoCD moves the legacy ArgoCDTokens / ArgoCDUseCLI values into
+// ModuleSettings["argocd"][context] ({"token": …, "useCli": true}) and
+// drops the old fields. A context that already has module settings keeps
+// them: the new fields win, the old ones are read only where the new are
+// absent. Reports whether anything changed. Never logs: the values are
+// secrets.
+func (s *Settings) migrateArgoCD() bool {
+	if len(s.ArgoCDTokens) == 0 && len(s.ArgoCDUseCLI) == 0 {
+		s.ArgoCDTokens, s.ArgoCDUseCLI = nil, nil
+		return false
+	}
+	contexts := map[string]bool{}
+	for c := range s.ArgoCDTokens {
+		contexts[c] = true
+	}
+	for c := range s.ArgoCDUseCLI {
+		contexts[c] = true
+	}
+	for c := range contexts {
+		if s.ModuleSettings["argocd"][c] != nil {
+			continue
+		}
+		obj := map[string]any{}
+		if t := s.ArgoCDTokens[c]; t != "" {
+			obj["token"] = t
+		}
+		if s.ArgoCDUseCLI[c] {
+			obj["useCli"] = true
+		}
+		if len(obj) == 0 {
+			continue
+		}
+		raw, err := json.Marshal(obj)
+		if err != nil {
+			continue
+		}
+		if s.ModuleSettings == nil {
+			s.ModuleSettings = map[string]map[string]json.RawMessage{}
+		}
+		if s.ModuleSettings["argocd"] == nil {
+			s.ModuleSettings["argocd"] = map[string]json.RawMessage{}
+		}
+		s.ModuleSettings["argocd"][c] = raw
+	}
+	s.ArgoCDTokens, s.ArgoCDUseCLI = nil, nil
+	return true
 }
 
 // Get returns a copy of the current settings.
@@ -508,25 +560,54 @@ func (st *Store) SetModuleSettings(id, context string, raw json.RawMessage) erro
 			return fmt.Errorf("module settings must be a JSON object")
 		}
 	}
-	return st.Update(func(s *Settings) {
-		if len(obj) == 0 {
-			delete(s.ModuleSettings[id], context)
-			if len(s.ModuleSettings[id]) == 0 {
-				delete(s.ModuleSettings, id)
-			}
-			if len(s.ModuleSettings) == 0 {
-				s.ModuleSettings = nil
-			}
+	return st.Update(func(s *Settings) { applyModuleSettings(s, id, context, raw, len(obj) == 0) })
+}
+
+// UpdateModuleSettings changes module id's settings for a kube context
+// atomically: fn gets what is saved (nil = none) and returns what to save
+// (nil or {} removes). Nothing changes when fn fails.
+func (st *Store) UpdateModuleSettings(id, context string, fn func(saved json.RawMessage) (json.RawMessage, error)) error {
+	if !moduleID.MatchString(id) {
+		return fmt.Errorf("invalid module id %q", id)
+	}
+	var ferr error
+	err := st.Update(func(s *Settings) {
+		raw, e := fn(slices.Clone(s.ModuleSettings[id][context]))
+		if e != nil {
+			ferr = e
 			return
 		}
-		if s.ModuleSettings == nil {
-			s.ModuleSettings = map[string]map[string]json.RawMessage{}
+		var obj map[string]any
+		if raw != nil && (json.Unmarshal(raw, &obj) != nil || obj == nil) {
+			ferr = fmt.Errorf("module settings must be a JSON object")
+			return
 		}
-		if s.ModuleSettings[id] == nil {
-			s.ModuleSettings[id] = map[string]json.RawMessage{}
-		}
-		s.ModuleSettings[id][context] = slices.Clone(raw)
+		applyModuleSettings(s, id, context, raw, len(obj) == 0)
 	})
+	if ferr != nil {
+		return ferr
+	}
+	return err
+}
+
+func applyModuleSettings(s *Settings, id, context string, raw json.RawMessage, remove bool) {
+	if remove {
+		delete(s.ModuleSettings[id], context)
+		if len(s.ModuleSettings[id]) == 0 {
+			delete(s.ModuleSettings, id)
+		}
+		if len(s.ModuleSettings) == 0 {
+			s.ModuleSettings = nil
+		}
+		return
+	}
+	if s.ModuleSettings == nil {
+		s.ModuleSettings = map[string]map[string]json.RawMessage{}
+	}
+	if s.ModuleSettings[id] == nil {
+		s.ModuleSettings[id] = map[string]json.RawMessage{}
+	}
+	s.ModuleSettings[id][context] = slices.Clone(raw)
 }
 
 func cloneModuleSettings(m map[string]map[string]json.RawMessage) map[string]map[string]json.RawMessage {
@@ -543,55 +624,6 @@ func cloneModuleSettings(m map[string]map[string]json.RawMessage) map[string]map
 // SetLastContext remembers the selected context for a kubeconfig path.
 func (st *Store) SetLastContext(kubeconfig, context string) error {
 	return st.Update(func(s *Settings) { s.LastContext[kubeconfig] = context })
-}
-
-// ArgoCDToken returns the Argo CD token saved for a kube context ("" = none).
-func (st *Store) ArgoCDToken(context string) string {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	return st.s.ArgoCDTokens[context]
-}
-
-// SetArgoCDToken saves (or, with an empty token, removes) the Argo CD token
-// for a kube context.
-func (st *Store) SetArgoCDToken(context, token string) error {
-	return st.Update(func(s *Settings) {
-		if token == "" {
-			delete(s.ArgoCDTokens, context)
-			if len(s.ArgoCDTokens) == 0 {
-				s.ArgoCDTokens = nil
-			}
-			return
-		}
-		if s.ArgoCDTokens == nil {
-			s.ArgoCDTokens = map[string]string{}
-		}
-		s.ArgoCDTokens[context] = token
-	})
-}
-
-// ArgoCDUseCLI reports whether a kube context uses the argocd CLI's login.
-func (st *Store) ArgoCDUseCLI(context string) bool {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	return st.s.ArgoCDUseCLI[context]
-}
-
-// SetArgoCDUseCLI turns CLI-login auth on or off for a kube context.
-func (st *Store) SetArgoCDUseCLI(context string, on bool) error {
-	return st.Update(func(s *Settings) {
-		if !on {
-			delete(s.ArgoCDUseCLI, context)
-			if len(s.ArgoCDUseCLI) == 0 {
-				s.ArgoCDUseCLI = nil
-			}
-			return
-		}
-		if s.ArgoCDUseCLI == nil {
-			s.ArgoCDUseCLI = map[string]bool{}
-		}
-		s.ArgoCDUseCLI[context] = true
-	})
 }
 
 // SetSidebar saves the sidebar layout; nil restores the default.

@@ -22,13 +22,29 @@ import (
 
 // argoCDModule is the Argo CD integration: the Argo CD API endpoints
 // (/api/argocd/*: auth and per-resource diffs), the argocd-* actions and
-// Application health in the overview.
+// Application health in the overview. Its settings (an API token, or the
+// argocd CLI login, per kube context) are Configurable and secret.
 type argoCDModule struct{}
 
 func (m *argoCDModule) Name() string { return "argocd" }
 
 func (m *argoCDModule) Routes(r httpx.Router, d Deps) {
 	argoapi.Register(r, d.Mgr, d.Settings)
+}
+
+// ValidateSettings implements Configurable.
+func (m *argoCDModule) ValidateSettings(raw json.RawMessage) error {
+	return argoapi.ValidateSettings(raw)
+}
+
+// RedactSettings implements SecretSettings.
+func (m *argoCDModule) RedactSettings(saved json.RawMessage) json.RawMessage {
+	return argoapi.RedactSettings(saved)
+}
+
+// MergeSettings implements SecretSettings.
+func (m *argoCDModule) MergeSettings(saved, body json.RawMessage) (json.RawMessage, error) {
+	return argoapi.MergeSettings(saved, body)
 }
 
 // OverviewInputs lists Applications, only when the CRD is served. They are

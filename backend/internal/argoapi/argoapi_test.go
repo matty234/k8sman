@@ -145,7 +145,7 @@ func newRig(t *testing.T, argo *fakeArgo, objs ...runtime.Object) *testRig {
 			return env{context: "kind-dev", typed: typed, req: restRequester{rc: cs.CoreV1().RESTClient()}}
 		},
 		disc:     newDiscoverer(),
-		tokens:   st,
+		tokens:   moduleTokens{st},
 		sessions: map[string]string{},
 	}
 	mux := http.NewServeMux()
@@ -305,7 +305,7 @@ func TestStatusAndDiffWithConfiguredToken(t *testing.T) {
 
 	// A rejected token isn't saved.
 	code, body = rig.call(t, "POST", "/api/argocd/auth", map[string]string{"token": "nope"})
-	if code != 401 || body["reason"] != ReasonUnauthorized || rig.store.ArgoCDToken("kind-dev") != "" {
+	if code != 401 || body["reason"] != ReasonUnauthorized || rig.h.tokens.ArgoCDToken("kind-dev") != "" {
 		t.Fatalf("bad token: %d %v", code, body)
 	}
 
@@ -313,7 +313,7 @@ func TestStatusAndDiffWithConfiguredToken(t *testing.T) {
 	if code != 200 || body["auth"] != AuthConfigured || body["authValid"] != true || body["username"] != "admin" {
 		t.Fatalf("set token: %d %v", code, body)
 	}
-	if rig.store.ArgoCDToken("kind-dev") != goodToken {
+	if rig.h.tokens.ArgoCDToken("kind-dev") != goodToken {
 		t.Fatal("token not saved")
 	}
 	if fi, _ := os.Stat(rig.path); fi.Mode().Perm() != 0o600 {
@@ -353,7 +353,7 @@ func TestStatusAndDiffWithConfiguredToken(t *testing.T) {
 	argo.forbidden = false
 
 	code, body = rig.call(t, "DELETE", "/api/argocd/auth", nil)
-	if code != 200 || body["auth"] != AuthNone || rig.store.ArgoCDToken("kind-dev") != "" {
+	if code != 200 || body["auth"] != AuthNone || rig.h.tokens.ArgoCDToken("kind-dev") != "" {
 		t.Fatalf("clear: %d %v", code, body)
 	}
 }
@@ -361,7 +361,7 @@ func TestStatusAndDiffWithConfiguredToken(t *testing.T) {
 func TestRevokedTokenGives401(t *testing.T) {
 	argo := &fakeArgo{resources: sampleResources}
 	rig := newRig(t, argo, argoService("argocd"))
-	_ = rig.store.SetArgoCDToken("kind-dev", "tok-XYZZY")
+	_ = rig.h.tokens.SetArgoCDToken("kind-dev", "tok-XYZZY")
 	code, body := rig.call(t, "GET", "/api/argocd/diff?namespace=argocd&name=guestbook", nil)
 	if code != 401 || body["reason"] != ReasonUnauthorized || strings.Contains(body["error"].(string), "XYZZY") {
 		t.Fatalf("revoked: %d %v", code, body)
@@ -418,7 +418,7 @@ func TestDiscoveryInsecureAndRootPath(t *testing.T) {
 	argo := &fakeArgo{insecure: true}
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: "gitops", Name: paramsConfigMap}, Data: map[string]string{"server.insecure": "true", "server.rootpath": "/argo/"}}
 	rig := newRig(t, argo, argoService("gitops"), cm)
-	_ = rig.store.SetArgoCDToken("kind-dev", goodToken)
+	_ = rig.h.tokens.SetArgoCDToken("kind-dev", goodToken)
 	// The app lives in another namespace: found cluster-wide.
 	_, st := rig.call(t, "GET", "/api/argocd/status?namespace=apps", nil)
 	srv, _ := st["server"].(map[string]any)

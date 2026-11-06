@@ -80,6 +80,18 @@ type Configurable interface {
 	ValidateSettings(raw json.RawMessage) error
 }
 
+// SecretSettings is implemented by Configurable modules whose settings
+// hold a secret (Argo CD's token). GET shows RedactSettings instead of
+// what is saved, and a PUT body goes through MergeSettings before it is
+// validated and saved, so the UI can change one field without ever
+// having the secret.
+type SecretSettings interface {
+	// RedactSettings is the saved settings as the UI may see them.
+	RedactSettings(saved json.RawMessage) json.RawMessage
+	// MergeSettings combines the saved settings with a PUT body.
+	MergeSettings(saved, body json.RawMessage) (json.RawMessage, error)
+}
+
 // ActionCall is one action request, already checked to be available for
 // the target's type.
 type ActionCall struct {
@@ -162,6 +174,11 @@ func (s *Server) handleGetModuleSettings(w http.ResponseWriter, r *http.Request)
 	if raw == nil {
 		raw = json.RawMessage("{}")
 	}
+	if m, _ := s.configurable(id); m != nil {
+		if ss, ok := m.(SecretSettings); ok {
+			raw = ss.RedactSettings(raw)
+		}
+	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"context": ctx, "settings": raw})
 }
 
@@ -179,6 +196,12 @@ func (s *Server) handlePutModuleSettings(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		writeErr(w, httpx.BadRequest("%v", err))
 		return
+	}
+	if ss, ok := m.(SecretSettings); ok {
+		if raw, err = ss.MergeSettings(s.settings.RawModuleSettings(id, s.settingsContext(r)), raw); err != nil {
+			writeErr(w, httpx.BadRequest("%v", err))
+			return
+		}
 	}
 	if err := m.ValidateSettings(raw); err != nil {
 		writeErr(w, httpx.BadRequest("%v", err))

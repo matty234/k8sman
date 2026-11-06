@@ -25,8 +25,8 @@ const (
 	AuthSession    = "session"    // an in-memory session from the initial admin password
 )
 
-// tokenStore is where the per-context token is persisted. *settings.Store
-// implements it.
+// tokenStore is where the per-context token is persisted (moduleTokens,
+// over the settings store's module settings).
 type tokenStore interface {
 	ArgoCDToken(context string) string
 	SetArgoCDToken(context, token string) error
@@ -39,6 +39,8 @@ type Handler struct {
 	env    func() env
 	disc   *discoverer
 	tokens tokenStore
+	// crd reports whether the Application CRD is served (nil = assume so).
+	crd func(ctx context.Context) bool
 	// cliPath locates the argocd CLI config (overridable in tests).
 	cliPath func() string
 
@@ -57,8 +59,12 @@ func Register(mux httpx.Router, mgr *cluster.Manager, st *settings.Store) *Handl
 			c := mgr.Clients()
 			return env{context: c.Context, typed: c.Typed, req: restRequester{rc: c.Typed.CoreV1().RESTClient()}}
 		},
+		crd: func(ctx context.Context) bool {
+			_, err := mgr.Clients().Find(ctx, "argoproj.io", "", "applications")
+			return err == nil
+		},
 		disc:     newDiscoverer(),
-		tokens:   st,
+		tokens:   moduleTokens{st},
 		cliPath:  cliConfigPath,
 		sessions: map[string]string{},
 	}
@@ -112,6 +118,9 @@ func (h *Handler) setSession(contextName, tok string) {
 // Status is the GET /api/argocd/status payload.
 type Status struct {
 	Context string `json:"context"`
+	// CRD: the Application CRD is served, so Argo CD is on this cluster.
+	// When it isn't, nothing else is looked up.
+	CRD bool `json:"crd"`
 	// Found: an argocd-server Service exists.
 	Found     bool    `json:"found"`
 	Reachable bool    `json:"reachable"`
@@ -149,10 +158,13 @@ func userInfo(ctx context.Context, e env, s *Server, tok string) (bool, string, 
 }
 
 func (h *Handler) status(ctx context.Context, e env, appNs string, refresh bool) Status {
+	if h.crd != nil && !h.crd(ctx) {
+		return Status{Context: e.context, Auth: AuthNone}
+	}
 	d := h.disc.get(ctx, e, appNs, refresh)
 	tok, auth := h.token(ctx, e, d.server)
 	st := Status{
-		Context: e.context, Found: d.server != nil, Reachable: d.reachable, Server: d.server,
+		Context: e.context, CRD: true, Found: d.server != nil, Reachable: d.reachable, Server: d.server,
 		Auth: auth, InitialAdminAvailable: d.initialAdmin, Error: d.err,
 	}
 	if d.server != nil {

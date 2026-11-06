@@ -5,7 +5,8 @@
 /// - [ArgoDiffApi]: the backend endpoints.
 /// - [ArgoDiffCache]: diffs per app, refetched only when the app's sync
 ///   revision or `reconciledAt` changes (not on every watch tick).
-/// - [ArgoConnectStrip]: connect (token or initial admin) / connected state.
+/// - [ArgoConnectStrip]: "Connect…" (opens the sign-in form,
+///   argocd_settings.dart) / connected state.
 /// - [ResourceDiffBlock]: one resource's diff (shared [DiffView]).
 library;
 
@@ -13,7 +14,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
-import '../../actions/actions.dart';
 import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
@@ -24,6 +24,7 @@ import '../../util/diff.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'argo_common.dart';
+import 'argocd_settings.dart';
 
 // ---------------------------------------------------------------------------
 // Models
@@ -31,6 +32,8 @@ import 'argo_common.dart';
 
 /// GET /api/argocd/status.
 class ArgoApiStatus {
+  /// The Application CRD is served (Argo CD is on this cluster).
+  final bool crd;
   final bool found;
   final bool reachable;
 
@@ -53,6 +56,7 @@ class ArgoApiStatus {
   final String? cliLogin;
 
   const ArgoApiStatus({
+    this.crd = true,
     this.found = false,
     this.reachable = false,
     this.auth = 'none',
@@ -68,6 +72,7 @@ class ArgoApiStatus {
   });
 
   factory ArgoApiStatus.fromJson(Json j) => ArgoApiStatus(
+        crd: j['crd'] != false,
         found: j['found'] == true,
         reachable: j['reachable'] == true,
         auth: '${j['auth'] ?? 'none'}',
@@ -310,24 +315,12 @@ class _ArgoConnectStripState extends State<ArgoConnectStrip> {
     }
   }
 
-  Future<void> _useInitialAdmin(ArgoApiStatus st) async {
-    final ok = await confirmAction(
-      context,
-      title: 'Use the initial admin password?',
-      message: 'Use the initial admin password from ${st.secretRef}? k8sman logs in to Argo CD as admin and keeps the '
-          'session in memory until the app quits. The password is never stored.',
-      kubeContext: widget.ctx.app.currentContext,
-      objectName: widget.ctx.name,
-      confirmLabel: 'Use it',
-    );
-    if (ok != true || !mounted) return;
-    await _run(() => _api.useInitialAdmin(namespace: widget.ctx.namespace));
-  }
-
-  Future<void> _pasteToken() async {
-    final token = await showArgoTokenDialog(context, kubeContext: widget.ctx.app.currentContext);
-    if (token == null || !mounted) return;
-    await _run(() => _api.setToken(token, context: widget.ctx.app.currentContext, namespace: widget.ctx.namespace));
+  /// Opens the shared sign-in form (also in Integrations → Argo CD).
+  Future<void> _connect() async {
+    final changed = await showArgoCdSettings(context, namespace: widget.ctx.namespace);
+    if (!changed || !mounted) return;
+    ArgoDiffCache.invalidateAll();
+    widget.onChanged();
   }
 
   @override
@@ -377,7 +370,6 @@ class _ArgoConnectStripState extends State<ArgoConnectStrip> {
       return Padding(padding: const EdgeInsets.only(bottom: 4), child: InlineMessage(msg, icon: Icons.difference_outlined));
     }
 
-    final st = r.status;
     final rejected = e.reason == 'Unauthorized';
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -388,7 +380,7 @@ class _ArgoConnectStripState extends State<ArgoConnectStrip> {
         border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           Padding(padding: const EdgeInsets.only(top: 1), child: Icon(Icons.difference_outlined, size: 14, color: hint)),
           const SizedBox(width: 6),
           Expanded(
@@ -397,52 +389,22 @@ class _ArgoConnectStripState extends State<ArgoConnectStrip> {
               style: small?.copyWith(fontWeight: FontWeight.w600, color: rejected ? severityColor(context, Severity.warn) : null),
             ),
           ),
+          const SizedBox(width: 8),
+          ArgoActionButton(label: 'Connect…', icon: Icons.link, onTap: _connect),
         ]),
-        const SizedBox(height: 6),
-        // SSO setups: reuse the argocd CLI's login (token never leaves its config).
-        if (st?.cliLogin == null && st?.cliLoginCommand != null) ...[
-          Text('Log in with the argocd CLI (opens your browser for SSO), then connect:', style: small?.copyWith(color: hint)),
-          const SizedBox(height: 4),
-          CodeBlock(st!.cliLoginCommand!),
-          const SizedBox(height: 6),
-        ],
-        Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          if (st?.cliLogin != null || st?.cliLoginCommand != null)
-            _StripButton(
-              label: st?.cliLogin != null ? 'Use argocd CLI login' : 'I\'ve logged in',
-              icon: Icons.terminal,
-              tooltip: st?.cliLogin != null
-                  ? 'Use the argocd CLI login for ${st!.argoUrl} (CLI context "${st.cliLogin}"). The token stays in the CLI config.'
-                  : 'Connect using the argocd CLI login once you have run the command above',
-              onTap: _busy ? null : () => _run(() => _api.useCli(namespace: widget.ctx.namespace)),
-            ),
-          if (st?.initialAdminAvailable == true)
-            _StripButton(
-              label: 'Use initial admin password',
-              icon: Icons.admin_panel_settings_outlined,
-              tooltip: 'Log in with ${st!.secretRef} (asks first)',
-              onTap: _busy ? null : () => _useInitialAdmin(st),
-            ),
-          _StripButton(label: 'Paste a token…', icon: Icons.key_outlined, onTap: _busy ? null : _pasteToken),
-          if (rejected && r.status?.auth == 'configured')
-            _LinkText('Forget token', onTap: _busy ? null : () => _run(() => _api.clearToken(namespace: widget.ctx.namespace))),
-          if (_busy) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
-        ]),
-        if (_error != null) ...[
-          const SizedBox(height: 6),
-          InlineMessage(_error!, isError: true),
-        ],
+        if (_error != null) Padding(padding: const EdgeInsets.only(top: 6), child: InlineMessage(_error!, isError: true)),
       ]),
     );
   }
 }
 
-class _StripButton extends StatelessWidget {
+/// A compact outlined button with an icon (the sign-in options).
+class ArgoActionButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final String? tooltip;
   final VoidCallback? onTap;
-  const _StripButton({required this.label, required this.icon, this.onTap, this.tooltip});
+  const ArgoActionButton({super.key, required this.label, required this.icon, this.onTap, this.tooltip});
 
   @override
   Widget build(BuildContext context) {
@@ -480,77 +442,6 @@ class _LinkText extends StatelessWidget {
           )),
     );
     return tooltip == null ? w : Tooltip(message: tooltip!, child: w);
-  }
-}
-
-/// Asks for an Argo CD API token, with how to create one. Null = cancelled.
-Future<String?> showArgoTokenDialog(BuildContext context, {required String kubeContext}) =>
-    showDialog<String>(context: context, builder: (context) => _TokenDialog(kubeContext: kubeContext));
-
-class _TokenDialog extends StatefulWidget {
-  final String kubeContext;
-  const _TokenDialog({required this.kubeContext});
-
-  @override
-  State<_TokenDialog> createState() => _TokenDialogState();
-}
-
-class _TokenDialogState extends State<_TokenDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final t = _controller.text.trim();
-    if (t.isNotEmpty) Navigator.of(context).pop(t);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    Widget cmd(String c) => Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Align(alignment: Alignment.centerLeft, child: Chipish(text: c, copyValue: c)),
-        );
-    return AlertDialog(
-      title: const Text('Argo CD API token'),
-      content: SizedBox(
-        width: 460,
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Saved for the context ${widget.kubeContext} in ~/.config/k8sman/settings.json (readable only by you). '
-              'It is sent only to argocd-server, through the Kubernetes API.', style: hint),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            obscureText: true,
-            enableSuggestions: false,
-            autocorrect: false,
-            decoration: const InputDecoration(isDense: true, labelText: 'Token', border: OutlineInputBorder()),
-            style: monoStyle(context),
-            onSubmitted: (_) => _submit(),
-          ),
-          const SizedBox(height: 12),
-          Text('To create one, log in with the argocd CLI and run:', style: hint),
-          cmd('argocd account generate-token'),
-          const SizedBox(height: 6),
-          Text('Or for a dedicated local account, give it the apiKey capability in argocd-cm and run:', style: hint),
-          cmd('accounts.k8sman: apiKey'),
-          cmd('argocd account generate-token --account k8sman'),
-          const SizedBox(height: 6),
-          Text('It needs Argo RBAC to get applications (e.g. role:readonly).', style: hint),
-        ]),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(onPressed: _submit, child: const Text('Save')),
-      ],
-    );
   }
 }
 

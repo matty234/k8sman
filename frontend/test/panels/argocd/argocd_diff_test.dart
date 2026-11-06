@@ -36,6 +36,8 @@ void main() {
   testWidgets('SSO cluster: shows the argocd CLI login command, then connects via the CLI login', (tester) async {
     await pumpArgo(tester, fx('app-kustomize-guestbook.json'),
         diffApi: fake(auth: 'none', initialAdmin: false, argoUrl: 'argocd.example.internal'));
+    await tester.tap(find.text('Connect…'));
+    await tester.pumpAndSettle();
     expect(find.text('argocd login argocd.example.internal --sso --grpc-web'), findsOneWidget);
     // Not logged in yet: connecting explains what to run.
     await tester.tap(find.text("I've logged in"));
@@ -46,14 +48,20 @@ void main() {
     await tester.tap(find.text("I've logged in"));
     await tester.pumpAndSettle();
     expect(argo.calls.where((c) => c == 'useCli').length, 2);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     expect(find.text('Diffs via argocd-server · argocd CLI login'), findsOneWidget);
   });
 
   testWidgets('existing CLI login: one click, no command shown', (tester) async {
     await pumpArgo(tester, fx('app-kustomize-guestbook.json'),
         diffApi: fake(auth: 'none', initialAdmin: false, argoUrl: 'argocd.example.internal', cliLogin: 'lon'));
+    await tester.tap(find.text('Connect…'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('argocd login '), findsNothing);
     await tester.tap(find.text('Use argocd CLI login'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     expect(find.text('Diffs via argocd-server · argocd CLI login'), findsOneWidget);
   });
@@ -102,10 +110,12 @@ void main() {
     await loadRealFonts();
     await pumpArgo(tester, fx('app-helm-guestbook-drift.json'), diffApi: fake(auth: 'none'));
     expect(find.text('Connect to the Argo CD API to see diffs'), findsOneWidget);
-    expect(find.text('Use initial admin password'), findsOneWidget);
-    expect(find.text('Paste a token…'), findsOneWidget);
     expect(toggle(depKey), findsNothing);
     await saveScreenshot(tester, 'argocd-app-diff-connect');
+    await tester.tap(find.text('Connect…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Use initial admin password'), findsOneWidget);
+    expect(find.byKey(const ValueKey('argocd-token')), findsOneWidget);
 
     await tester.tap(find.text('Use initial admin password'));
     await tester.pumpAndSettle();
@@ -114,25 +124,28 @@ void main() {
     await tester.tap(find.text('Use it'));
     await tester.pumpAndSettle();
     expect(argo.calls, contains('initialAdmin'));
-    expect(find.text('Diffs via argocd-server · session'), findsOneWidget);
-    expect(toggle(depKey), findsOneWidget);
-
+    // Signed in: the form says so and offers Disconnect.
+    expect(find.text('Signed in via the initial admin session as admin'), findsOneWidget);
     await tester.tap(find.text('Disconnect'));
     await tester.pumpAndSettle();
     expect(argo.calls, contains('clearToken'));
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     expect(find.text('Connect to the Argo CD API to see diffs'), findsOneWidget);
   });
 
   testWidgets('not connected without the initial admin secret: paste a token', (tester) async {
     await pumpArgo(tester, fx('app-kustomize-guestbook.json'), diffApi: fake(auth: 'none', initialAdmin: false));
-    expect(find.text('Use initial admin password'), findsNothing);
-    await tester.tap(find.text('Paste a token…'));
+    await tester.tap(find.text('Connect…'));
     await tester.pumpAndSettle();
+    expect(find.text('Use initial admin password'), findsNothing);
     expect(find.text('argocd account generate-token'), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'eyJhbGciOi.token');
+    await tester.enterText(find.byKey(const ValueKey('argocd-token')), 'eyJhbGciOi.token');
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(argo.calls, contains('setToken'));
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
     expect(find.text('Diffs via argocd-server · token'), findsOneWidget);
   });
 
