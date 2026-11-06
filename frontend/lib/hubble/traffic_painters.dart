@@ -167,10 +167,11 @@ class RadialLayout {
   /// proxy's connections to pods, not the clients').
   MapEdge? gateEdge;
 
-  /// The most lanes that fit the circle.
+  /// The most lanes that fit the circle (and stay readable: past 40 the
+  /// chords become a mass; the search and focus are for the rest).
   static int capacity(Size size) {
     final rc = _radii(size).$1;
-    return math.max(8, (2 * math.pi * rc / 15).floor());
+    return (2 * math.pi * rc / 18).floor().clamp(8, 40);
   }
 
   static (double, double, bool) _radii(Size size) {

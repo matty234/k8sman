@@ -172,7 +172,7 @@ class MapNode {
   final List<String> members = [];
   MapNode(this.id);
 
-  String get label => id == otherNamespacesId ? '${members.length} more namespace${members.length == 1 ? '' : 's'}' : nodeLabel(id);
+  String get label => id == otherNamespacesId ? '+${members.length} more' : nodeLabel(id);
   bool get isNamespace => !isReserved(id);
   int get total => out + inn + internal;
 }
@@ -292,15 +292,26 @@ class MapGraph {
       edges = [for (final e in edges) if (keepIds.contains(e.from) && keepIds.contains(e.to) && (matches.contains(e.from) || matches.contains(e.to))) e];
     }
 
-    // Top N namespaces by volume; the rest share one node.
-    final volume = <String, int>{};
+    // Top N namespaces: those dropping traffic, then those the world
+    // reaches or that reach it (the edges of the cluster), then the
+    // busiest. The rest share one node.
+    final volume = <String, int>{}, dropped = <String, int>{}, world = <String, int>{};
     for (final e in edges) {
       for (final id in {e.from, e.to}) {
-        if (!isReserved(id)) volume[id] = (volume[id] ?? 0) + e.total;
+        if (isReserved(id)) continue;
+        volume[id] = (volume[id] ?? 0) + e.total;
+        if (e.drops > 0) dropped[id] = (dropped[id] ?? 0) + e.drops;
+        if (e.from == worldId || e.to == worldId || e.from == ingressId) world[id] = (world[id] ?? 0) + e.total;
       }
     }
-    final ranked = volume.keys.toList()..sort((a, b) => volume[b] != volume[a] ? volume[b]!.compareTo(volume[a]!) : a.compareTo(b));
+    List<String> byCount(Map<String, int> m) => m.keys.toList()..sort((a, b) => m[b] != m[a] ? m[b]!.compareTo(m[a]!) : a.compareTo(b));
+    final ranked = byCount(volume);
     final kept = <String>{...keep.where(volume.containsKey), ...matches};
+    final priority = maxNamespaces * 2 ~/ 3;
+    for (final id in [...byCount(dropped), ...byCount(world)]) {
+      if (kept.length >= priority) break;
+      kept.add(id);
+    }
     for (final id in ranked) {
       if (kept.length >= maxNamespaces) break;
       kept.add(id);
