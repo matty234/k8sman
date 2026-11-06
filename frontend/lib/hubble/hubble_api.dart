@@ -7,6 +7,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../state/frame_stream.dart';
 import '../util/k8s.dart';
+import 'traffic_model.dart';
 
 /// One side of a flow.
 class FlowEndpoint {
@@ -411,6 +412,11 @@ class HubbleApi {
 
   Future<Connectivity> connectivity(String from, String to, {String since = '15m'}) async =>
       Connectivity.fromJson(jsonObjectBody(await _http.get('connectivity', {'from': from, 'to': to, 'since': since})));
+
+  /// GET /api/hubble/map: traffic between namespaces and the world over
+  /// [window]. Asking keeps the backend counting (it stops a minute after
+  /// the last request).
+  Future<TrafficMap> trafficMap({String window = '5m'}) async => TrafficMap.fromJson(jsonObjectBody(await _http.get('map', {'window': window})));
 
   /// WS /api/hubble/flows: batched frames `{flows, lost, end, error}`.
   Stream<Json> flowFrames(FlowQuery q, {bool follow = true}) => api.jsonStream('hubble/flows', {...q.toParams(), 'follow': follow ? 'true' : 'false'});

@@ -11,10 +11,12 @@ import '../util/k8s.dart';
 import 'flow_list.dart';
 import 'hubble_api.dart';
 import 'hubble_settings.dart';
+import 'traffic_map.dart';
 
-/// The Hubble page: live flows for the cluster or a namespace, recent drops
-/// grouped by source, destination and reason, and "Can A reach B?". The
-/// streams run only while their tab is showing.
+/// The Hubble page: the traffic map (namespaces and the world), live flows
+/// for the cluster or a namespace, recent drops grouped by source,
+/// destination and reason, and "Can A reach B?". The streams run only
+/// while their tab is showing.
 class HubbleView extends StatefulWidget {
   const HubbleView({super.key});
 
@@ -22,15 +24,19 @@ class HubbleView extends StatefulWidget {
   State<HubbleView> createState() => _HubbleViewState();
 }
 
-enum _Tab { flows, drops, reach }
+enum _Tab { map, flows, drops, reach }
 
 class _HubbleViewState extends State<HubbleView> {
   HubbleStatus? _status;
   String? _error;
-  _Tab _tab = _Tab.flows;
+  _Tab _tab = _Tab.map;
   final _from = TextEditingController();
   final _to = TextEditingController();
   int _reachRequest = 0;
+
+  /// The Flows tab's namespace when the map sent the user there.
+  String? _flowsNamespace;
+  int _flowsRequest = 0;
 
   HubbleApi get _api => HubbleApi.of(context.read<ApiClient>());
 
@@ -62,12 +68,24 @@ class _HubbleViewState extends State<HubbleView> {
   }
 
   /// From the Drops view: check a group's endpoints.
-  void _checkReach(FlowEndpoint from, FlowEndpoint to) {
+  void _checkReach(FlowEndpoint from, FlowEndpoint to) => _checkSpecs(from.spec ?? '', to.spec ?? '');
+
+  /// From the map: check endpoint specs.
+  void _checkSpecs(String from, String to) {
     setState(() {
-      _from.text = from.spec ?? '';
-      _to.text = to.spec ?? '';
+      _from.text = from;
+      _to.text = to;
       _tab = _Tab.reach;
       _reachRequest++;
+    });
+  }
+
+  /// From the map: a namespace's flows.
+  void _showFlows(String namespace) {
+    setState(() {
+      _flowsNamespace = namespace;
+      _flowsRequest++;
+      _tab = _Tab.flows;
     });
   }
 
@@ -102,7 +120,8 @@ class _HubbleViewState extends State<HubbleView> {
                     Container(height: 1, color: AppColors.of(context).separator),
                     Expanded(
                       child: switch (_tab) {
-                        _Tab.flows => _ClusterFlows(api: _api),
+                        _Tab.map => TrafficMapView(api: _api, onCheck: _checkSpecs, onShowFlows: _showFlows),
+                        _Tab.flows => _ClusterFlows(key: ValueKey(_flowsRequest), api: _api, namespace: _flowsNamespace),
                         _Tab.drops => _DropsView(api: _api, onCheck: _checkReach),
                         _Tab.reach => _ReachView(api: _api, from: _from, to: _to, request: _reachRequest),
                       },
@@ -146,6 +165,7 @@ class _Tabs extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(children: [
+        tab(_Tab.map, 'Map', Icons.radar),
         tab(_Tab.flows, 'Flows', Icons.swap_horiz),
         tab(_Tab.drops, 'Drops', Icons.block),
         tab(_Tab.reach, 'Can A reach B?', Icons.alt_route),
@@ -227,14 +247,17 @@ class _NamespaceSelect extends StatelessWidget {
 
 class _ClusterFlows extends StatefulWidget {
   final HubbleApi api;
-  const _ClusterFlows({required this.api});
+
+  /// The namespace to start with (else the app's current one).
+  final String? namespace;
+  const _ClusterFlows({super.key, required this.api, this.namespace});
 
   @override
   State<_ClusterFlows> createState() => _ClusterFlowsState();
 }
 
 class _ClusterFlowsState extends State<_ClusterFlows> {
-  late String? _ns = context.read<AppState>().namespace;
+  late String? _ns = widget.namespace ?? context.read<AppState>().namespace;
   String? _protocol;
   String? _direction;
   final _port = TextEditingController();

@@ -10,8 +10,9 @@ import 'module.dart';
 import 'module_nav_gate.dart';
 import 'modules.dart' show moduleStatuses;
 
-/// Cilium Hubble: network flows from Hubble Relay. The Hubble page (live
-/// flows, grouped drops, "Can A reach B?"), a Flows tab in the inspector
+/// Cilium Hubble: network flows from Hubble Relay. The Hubble page (the
+/// traffic map of namespaces and the world, live flows, grouped drops,
+/// "Can A reach B?"), a Flows tab in the inspector
 /// of pods, services, namespaces and workloads, and per-context relay
 /// settings. The backend's /api/hubble and its overview findings belong to
 /// the same module. Shown only on clusters where Hubble is found.
