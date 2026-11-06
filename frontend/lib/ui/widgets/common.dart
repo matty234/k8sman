@@ -630,7 +630,10 @@ class _CodeBlockState extends State<CodeBlock> {
 class ResourceLink extends StatelessWidget {
   final ObjectRef ref;
   final String? label;
-  const ResourceLink(this.ref, {super.key, this.label});
+
+  /// One line, ellipsised (for table cells).
+  final bool singleLine;
+  const ResourceLink(this.ref, {super.key, this.label, this.singleLine = false});
 
   @override
   Widget build(BuildContext context) {
@@ -642,6 +645,8 @@ class ResourceLink extends StatelessWidget {
     return Hoverable(
       onTap: () => app.openRef(ref),
       builder: (h) => Text(text,
+          maxLines: singleLine ? 1 : null,
+          overflow: singleLine ? TextOverflow.ellipsis : null,
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.primary,
             decoration: h ? TextDecoration.underline : TextDecoration.none,

@@ -309,7 +309,7 @@ class GpuNodeRow extends StatelessWidget {
                   : Tooltip(
                       message: podsText,
                       child: Row(children: [
-                        Flexible(child: GpuPodLink(namespace: n.pods.first.namespace, name: n.pods.first.name)),
+                        Flexible(child: GpuPodLink(namespace: n.pods.first.namespace, name: n.pods.first.name, compact: true)),
                         if (n.pods.length > 1) Text(' +${n.pods.length - 1}', style: info),
                       ]),
                     ),
@@ -398,7 +398,7 @@ class GpuDeviceRow extends StatelessWidget {
             d.pods.isEmpty
                 ? Text('–', style: info)
                 : Row(children: [
-                    Flexible(child: GpuPodLink(namespace: d.pods.first.namespace, name: d.pods.first.name)),
+                    Flexible(child: GpuPodLink(namespace: d.pods.first.namespace, name: d.pods.first.name, compact: true)),
                     if (d.pods.length > 1) Text(' +${d.pods.length - 1}', style: info),
                   ]),
           ),

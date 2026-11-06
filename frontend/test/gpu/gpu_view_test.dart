@@ -116,7 +116,7 @@ void main() {
     expect(find.text('No exporter'), findsOneWidget);
     expect(find.text('Waiting for GPUs'), findsOneWidget);
     expect(find.byTooltip('1 allocated GPU idle for the last hour'), findsOneWidget);
-    expect(find.text('ml/trainer-0'), findsWidgets);
+    expect(find.text('trainer-0'), findsWidgets);
     // One range query feeds every sparkline.
     expect(prom.queries.where((q) => q.contains('by (UUID)')), isNotEmpty);
     await tester.pumpWidget(const SizedBox()); // dispose the poll timer

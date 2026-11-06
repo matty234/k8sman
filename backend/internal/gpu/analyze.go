@@ -89,10 +89,10 @@ func analyze(res *Result) {
 	switch {
 	case monitoredAny:
 		for _, n := range res.Nodes {
+			// Counted and badged on the node's row, not listed as an issue:
+			// nodes without an exporter are often deliberate.
 			if !n.Monitored && n.Capacity > 0 {
 				s.Unmonitored++
-				res.Issues = append(res.Issues, Issue{Severity: Warning, Reason: ReasonNoExporter, Node: n.Name,
-					Message: fmt.Sprintf("%s has %d GPUs but no DCGM exporter metrics", n.Name, n.Capacity)})
 			}
 		}
 	case res.Monitoring == MonitoringNoExporter && len(res.Nodes) > 0:

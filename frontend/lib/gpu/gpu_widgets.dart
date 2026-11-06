@@ -133,13 +133,17 @@ class GpuPodLink extends StatelessWidget {
   final String namespace;
   final String name;
   final String? suffix;
-  const GpuPodLink({super.key, required this.namespace, required this.name, this.suffix});
+
+  /// Table cells: just the name on one line, namespace/name in a tooltip.
+  final bool compact;
+  const GpuPodLink({super.key, required this.namespace, required this.name, this.suffix, this.compact = false});
 
   @override
-  Widget build(BuildContext context) => ResourceLink(
-        ObjectRef(kind: 'Pod', name: name, namespace: namespace),
-        label: '$namespace/$name${suffix == null ? '' : ' $suffix'}',
-      );
+  Widget build(BuildContext context) {
+    final ref = ObjectRef(kind: 'Pod', name: name, namespace: namespace);
+    if (compact) return Tooltip(message: '$namespace/$name', child: ResourceLink(ref, label: name, singleLine: true));
+    return ResourceLink(ref, label: '$namespace/$name${suffix == null ? '' : ' $suffix'}');
+  }
 }
 
 /// A minimal line of 0..1 values (no axes).

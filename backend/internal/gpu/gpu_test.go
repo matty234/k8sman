@@ -120,7 +120,7 @@ func TestBuildUnattributed(t *testing.T) {
 	}
 
 	got := reasons(r)
-	for reason, n := range map[string]int{ReasonNoExporter: 1, ReasonPending: 1, ReasonIdle: 1, ReasonHot: 1, ReasonRemappedRows: 1} {
+	for reason, n := range map[string]int{ReasonPending: 1, ReasonIdle: 1, ReasonHot: 1, ReasonRemappedRows: 1} {
 		if got[reason] != n {
 			t.Errorf("issues[%s] = %d, want %d (all: %v)", reason, got[reason], n, got)
 		}
