@@ -17,7 +17,7 @@ class _TableApi extends ApiClient {
   final String fixture;
   _TableApi(this.fixture) : super(base: Uri.parse('http://fake'));
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false, List<ColumnDef>? columns}) =>
       Stream.value(WatchMessage(type: 'SNAPSHOT', table: TableData.fromJson(jsonDecode(File('../dev/fixtures/$fixture').readAsStringSync()))));
 }
 
@@ -40,7 +40,8 @@ void main() {
         expect(tester.takeException(), isNull, reason: 'overflow at width $w');
         // Controls stay pinned to the right edge (not floating mid-toolbar).
         final filterRight = tester.getTopRight(find.byType(TextField).first).dx;
-        expect(filterRight, greaterThan(w - 80), reason: 'filter not right-aligned at width $w');
+        // (Right of it: New, Columns and Save View.)
+        expect(filterRight, greaterThan(w - 116), reason: 'filter not right-aligned at width $w');
       }
     });
   }

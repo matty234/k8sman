@@ -76,6 +76,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.overviewRoutes()
 	s.kubeconfigRoutes()
 	s.sidebarRoutes()
+	s.viewRoutes()
 	s.readOnlyRoutes()
 	s.tablePrefsRoutes()
 	s.execRoutes()
@@ -196,7 +197,10 @@ type resourceQuery struct {
 	Namespace string
 	// Namespaces is a set of two or more namespaces (?namespaces=a,b); then
 	// Namespace is "". One namespace is always in Namespace.
-	Namespaces    kube.Namespaces
+	Namespaces kube.Namespaces
+	// Columns, when set (?columns=<JSON array>), replace the kind's column
+	// configuration for this request: a saved view's own columns.
+	Columns       []columns.Column
 	LabelSelector string
 	FieldSelector string
 }
@@ -231,6 +235,14 @@ func (s *Server) parseResource(ctx context.Context, r *http.Request) (*cluster.C
 	}
 	if len(scope) > 1 && rt.Namespaced {
 		rq.Namespaces = scope
+	}
+	if raw := q.Get("columns"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &rq.Columns); err != nil {
+			return c, resourceQuery{}, httpx.BadRequest("columns must be a JSON array of columns: %v", err)
+		}
+		if err := columns.Validate(rq.Columns); err != nil {
+			return c, resourceQuery{}, httpx.BadRequest("%v", err)
+		}
 	}
 	return c, rq, nil
 }
@@ -357,6 +369,15 @@ func (s *Server) snapshotSet(ctx context.Context, c *cluster.Clients, rq resourc
 
 func (rq resourceQuery) listOptions() metav1.ListOptions {
 	return metav1.ListOptions{LabelSelector: rq.LabelSelector, FieldSelector: rq.FieldSelector}
+}
+
+// tableColumns is the query's own columns (a saved view's), else
+// columnsFor.
+func (s *Server) tableColumns(ctx context.Context, c *cluster.Clients, rq resourceQuery) (cols []columns.Column, isDefault bool) {
+	if rq.Columns != nil {
+		return rq.Columns, false
+	}
+	return s.columnsFor(ctx, c, rq.Type)
 }
 
 // columnsFor resolves user override → built-in → CRD printer columns → generic.
@@ -640,7 +661,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	cols, isDefault := s.columnsFor(r.Context(), c, rq.Type)
+	cols, isDefault := s.tableColumns(r.Context(), c, rq)
 	b := newTableBuilder(cols, r.URL.Query().Get("includeObject") == "true")
 	b.decorate = s.usageDecorator(r.Context(), c, rq)
 	b.memo = snap.memo

@@ -66,10 +66,10 @@ class CrdFixtureApi extends FixtureApi {
       };
 
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false, List<ColumnDef>? columns}) {
     final t = _extra(r);
     if (t == null) {
-      return super.watch(r, namespace: namespace, scope: scope, labelSelector: labelSelector, fieldSelector: fieldSelector, includeObject: includeObject);
+      return super.watch(r, namespace: namespace, scope: scope, labelSelector: labelSelector, fieldSelector: fieldSelector, includeObject: includeObject, columns: columns);
     }
     final o = _object(t);
     return Stream.value(WatchMessage(

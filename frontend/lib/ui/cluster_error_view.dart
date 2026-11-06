@@ -9,6 +9,7 @@ import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/namespace_picker.dart';
 import 'widgets/searchable_picker.dart';
+import 'views/saved_views_ui.dart';
 
 /// Explains why the cluster (or backend) couldn't be reached, with what to
 /// try and buttons for it. Used for empty tables that failed to load and
@@ -184,6 +185,11 @@ class ClusterErrorView extends StatelessWidget {
                   Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: buttons),
                   const SizedBox(height: 14),
                   _Details(e.message),
+                  // The app-level error screen: a dead context isn't a dead end.
+                  if (resource == null && clusterSide) ...[
+                    const SizedBox(height: 18),
+                    SavedViewsList(except: ctx),
+                  ],
                 ]),
               ),
             ],

@@ -15,6 +15,7 @@ import 'sidebar_editor.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/group_icon.dart';
+import 'views/saved_views_ui.dart';
 
 /// Curated sections for built-in kinds, in display order. Modules add
 /// theirs (Gateway API, Monitoring, Argo CD, …). Anything not listed lands
@@ -93,7 +94,7 @@ class ResourceNav extends StatefulWidget {
 
 /// Groups shown expanded by default; everything else starts collapsed to
 /// keep the sidebar calm. User toggles are remembered for the session.
-const _expandedByDefault = {'Workloads', 'Network', 'Config'};
+const _expandedByDefault = {'Views', 'Workloads', 'Network', 'Config'};
 
 /// Below this height the sidebar scrolls as a whole (plus a row's height
 /// per top-section row beyond the default seven, e.g. pins).
@@ -233,6 +234,20 @@ class _ResourceNavState extends State<ResourceNav> {
           child: ListView(
             padding: const EdgeInsets.only(bottom: 12),
             children: [
+              // Saved views: those for any context and this context's.
+              if (app.viewsHere.isNotEmpty || app.viewNotice != null) ...() {
+                final collapsed = _isCollapsed('Views', holdsSelection: app.activeView != null);
+                return [
+                  GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onSecondaryTapUp: (d) => showSidebarMenu(context, d.globalPosition, _viewsSectionMenu(context)),
+                    child: _GroupHeader(title: 'Views', collapsed: collapsed, onTap: () => _toggle('Views', currentlyCollapsed: collapsed)),
+                  ),
+                  if (app.viewNotice != null) _ViewNotice(text: app.viewNotice!, onDismiss: app.dismissViewNotice),
+                  if (!collapsed)
+                    for (final v in app.viewsHere) _ViewItem(view: v),
+                ];
+              }(),
               for (final (i, g) in groups.entries.indexed) ...() {
                 // Curated sections (incl. CRD-based ones like Argo CD) stand on
                 // their own; only uncurated API groups nest under "Custom Resources".
@@ -460,18 +475,18 @@ class _TopEntry extends StatelessWidget {
     final theme = Theme.of(context);
     return Tooltip(
       waitDuration: const Duration(milliseconds: 900),
-      message: '${type.kind} · ${type.apiVersion}${pin.namespace != null ? ' · in ${pin.namespace}' : ''}',
+      message: '${type.kind} · ${type.apiVersion}${pin.scope.isAll ? '' : ' · in ${pin.namespaces.join(', ')}'}',
       child: _SourceListItem(
-        key: ValueKey('nav-pin-${pin.gk}${pin.namespace != null ? '@${pin.namespace}' : ''}'),
+        key: ValueKey('nav-pin-${pin.gk}${pin.scope.isAll ? '' : '@${pin.scope.asString}'}'),
         leading: (color) => kindIconWidget(type, color: color),
         label: type.kind,
         selected: selectedPin == pin,
-        trailing: pin.namespace == null
+        trailing: pin.scope.isAll
             ? null
             : Flexible(
                 child: Padding(
                   padding: const EdgeInsets.only(left: 6),
-                  child: Text(pin.namespace!,
+                  child: Text(pin.scope.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).faint)),
@@ -484,6 +499,74 @@ class _TopEntry extends StatelessWidget {
           ('Customise Sidebar…', () => showSidebarEditor(context)),
         ]),
       ),
+    );
+  }
+}
+
+/// The Views section's menu (right-click on its header).
+List<(String, VoidCallback)?> _viewsSectionMenu(BuildContext context) => [
+      ('Import Views…', () => showImportViewsDialog(context)),
+      if (context.read<AppState>().savedViews.isNotEmpty) ('Copy All Views as YAML', () => exportAllViews(context)),
+    ];
+
+/// A saved view in the sidebar. The open one is highlighted, with a dot
+/// when it has unsaved changes.
+class _ViewItem extends StatelessWidget {
+  final SavedView view;
+  const _ViewItem({required this.view});
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final theme = Theme.of(context);
+    final open = app.activeView?.id == view.id && app.view == MainView.resources;
+    final modified = open && app.viewSession!.modified;
+    return Tooltip(
+      waitDuration: const Duration(milliseconds: 900),
+      message: [
+        view.kind,
+        if (view.namespaces.isNotEmpty) view.namespaces.join(', '),
+        if (view.filter.isNotEmpty) view.filter,
+        view.context == null ? 'any context' : 'only ${view.context!.name}',
+        if (app.launchViewId == view.id) 'opens at launch',
+      ].join(' · '),
+      child: _SourceListItem(
+        key: ValueKey('nav-view-item-${view.id}'),
+        icon: open ? Icons.bookmark : Icons.bookmark_outline,
+        label: view.name,
+        selected: open,
+        trailing: modified
+            ? Container(
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.only(left: 6),
+                decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
+              )
+            : (view.context != null ? Icon(Icons.link, size: 12, color: AppColors.of(context).faint) : null),
+        onTap: () => openSavedView(context, view),
+        onSecondaryTap: (pos) => showSidebarMenu(context, pos, [...viewMenuItems(context, view), null, ..._viewsSectionMenu(context)]),
+      ),
+    );
+  }
+}
+
+/// A one-off problem with a view (e.g. the launch view couldn't open).
+class _ViewNotice extends StatelessWidget {
+  final String text;
+  final VoidCallback onDismiss;
+  const _ViewNotice({required this.text, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 8, 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.only(top: 2), child: Icon(Icons.info_outline, size: 13, color: severityColor(context, Severity.warn))),
+        const SizedBox(width: 6),
+        Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
+        InkWell(onTap: onDismiss, child: Icon(Icons.close, size: 13, color: theme.hintColor)),
+      ]),
     );
   }
 }

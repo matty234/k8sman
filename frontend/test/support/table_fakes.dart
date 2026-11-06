@@ -59,6 +59,21 @@ class TableFakeApi extends ApiClient {
   @override
   Future<void> resetColumns(ResourceRef r) async => columnResets++;
 
+  /// Saved views (settings.json stand-in).
+  final List<Json> views = [];
+
+  @override
+  Future<({List<Json> views, String launchView})> getViews() async => (views: List.of(views), launchView: '');
+
+  @override
+  Future<void> putView(Json view) async {
+    final i = views.indexWhere((v) => v['id'] == view['id']);
+    i < 0 ? views.add(view) : views[i] = view;
+  }
+
+  @override
+  Future<void> deleteView(String id) async => views.removeWhere((v) => v['id'] == id);
+
   /// Saved table preferences (GET/PUT /api/settings/tables).
   Map<String, Json> tablePrefs = {};
   final List<(String, Json?)> tablePrefsPuts = [];
@@ -87,12 +102,16 @@ class TableFakeApi extends ApiClient {
   /// The namespace scope of the last [watch].
   NamespaceScope? lastWatchScope;
 
+  /// The columns the last [watch] asked for (a saved view's), if any.
+  List<ColumnDef>? lastWatchColumns;
+
   TableFakeApi() : super(base: Uri.parse('http://fake'));
 
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false, List<ColumnDef>? columns}) {
     watches++;
     lastWatchScope = scope ?? NamespaceScope.single(namespace);
+    lastWatchColumns = columns;
     final c = StreamController<WatchMessage>();
     watchController = c;
     if (watchError != null) {

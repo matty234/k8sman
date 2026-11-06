@@ -12,7 +12,7 @@ class _Api extends ApiClient {
   final List<dynamic> capacities;
   _Api(this.capacities) : super(base: Uri.parse('http://fake'));
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false, List<ColumnDef>? columns}) =>
       Stream.value(WatchMessage(
         type: 'SNAPSHOT',
         table: TableData(

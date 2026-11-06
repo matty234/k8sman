@@ -29,6 +29,35 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   too.
 - Pins can be scoped to a namespace or a set of namespaces.
 
+## Saved views
+
+- **Save view…** (the bookmark in the table toolbar, or ⌘K → Save Current
+  Table as View): the kind, namespaces, filter, sort and the table's columns,
+  under a name. New views apply to **any context**; **Only <context>** binds
+  one to the current context.
+- A **Views** section in the sidebar lists views for any context and those
+  bound to the current one. ⌘K and `:view <name>` list every view; one bound
+  to another context shows its context and ⇄, and opening it switches there
+  through the usual connect.
+- While a view is open its filter, sort and columns are its own: changes
+  don't touch the kind's remembered settings. The title shows the view's
+  name, a dot when it has changed, and **Update View** / **Revert**.
+  Choosing another kind, namespace or context closes the view.
+- Right-click a view: Rename, Duplicate, Only on <context> / Apply to Any
+  Context, Copy as YAML, Open at Launch, Delete (with Undo). Right-click the
+  section header: Import Views… (paste YAML) and Copy All Views as YAML.
+- A view bound to a context that isn't in the kubeconfig never opens on
+  another one by itself: k8sman offers to **re-point** it (contexts with the
+  same API server URL first) or make it apply to any context. Importing does
+  the same, re-pointing automatically when exactly one context has the
+  view's API server URL.
+- Namespaces of a view that the cluster doesn't have show struck through in
+  the picker; namespaces you can't read show a banner while the rest load.
+- The connecting and cluster error screens list views bound to other
+  contexts, so a dead context isn't a dead end. **Open at Launch** opens a
+  view instead of reconnecting to the last context (straight to its context
+  when it is bound to one).
+
 ## Tables
 
 - Live tables over watches for every kind.

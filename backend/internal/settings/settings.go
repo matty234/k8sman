@@ -1,8 +1,7 @@
 // Package settings persists small app preferences (the chosen kubeconfig,
 // recently used kubeconfigs, the last context per kubeconfig, the sidebar
-// layout, read-only contexts, table preferences and turned-off
-// integrations) in
-// ~/.config/k8sman/settings.json.
+// layout, read-only contexts, table preferences, turned-off integrations
+// and saved views) in ~/.config/k8sman/settings.json.
 package settings
 
 import (
@@ -51,6 +50,93 @@ type Settings struct {
 	// DisabledModules lists the integrations the user turned off (module
 	// ids such as "helm" or "argocd"). Absent = all on.
 	DisabledModules []string `json:"disabledModules,omitempty"`
+	// Views are the saved views (see View), in the user's order. Records
+	// are kept as stored, so entries written by a newer version of the app
+	// (a higher "version") survive a downgrade untouched.
+	Views []json.RawMessage `json:"views,omitempty"`
+	// LaunchView is the id of a view to open at launch instead of
+	// reconnecting to the last context ("" = reconnect).
+	LaunchView string `json:"launchView,omitempty"`
+}
+
+// ViewVersion is the view record version this build writes.
+const ViewVersion = 1
+
+// MaxViews caps how many saved views are kept.
+const MaxViews = 500
+
+// View is a saved table: a kind, a namespace scope, a filter, a sort and
+// columns, on one context or on any context. See docs/VIEWS.md.
+type View struct {
+	Version int    `json:"version"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	// Context binds the view to one context; nil = any context.
+	Context *ViewContext `json:"context"`
+	Kind    ViewKind     `json:"kind"`
+	// Namespaces is the scope; empty = all namespaces.
+	Namespaces []string  `json:"namespaces"`
+	Filter     string    `json:"filter,omitempty"`
+	Sort       *ViewSort `json:"sort,omitempty"`
+	// Columns is the view's own column set and order (nil = the kind's).
+	Columns []ViewColumn `json:"columns,omitempty"`
+}
+
+// ViewContext is a context identity: (kubeconfig path, context name). The
+// API server URL is kept so a view can be re-pointed to a renamed context.
+type ViewContext struct {
+	Kubeconfig string `json:"kubeconfig"`
+	Name       string `json:"name"`
+	Server     string `json:"server,omitempty"`
+}
+
+// ViewKind is a kind by API group and Kind, like a sidebar pin.
+type ViewKind struct {
+	Group string `json:"group"`
+	Kind  string `json:"kind"`
+}
+
+// ViewSort is a sort by column name.
+type ViewSort struct {
+	Column     string `json:"column"`
+	Descending bool   `json:"descending,omitempty"`
+}
+
+// ViewColumn is a table column (see internal/columns).
+type ViewColumn struct {
+	Name  string `json:"name"`
+	Query string `json:"query"`
+	Type  string `json:"type,omitempty"`
+}
+
+var viewID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// Valid checks a view this build writes.
+func (v View) Valid() error {
+	switch {
+	case v.Version != ViewVersion:
+		return fmt.Errorf("version must be %d", ViewVersion)
+	case !viewID.MatchString(v.ID):
+		return fmt.Errorf("invalid view id %q", v.ID)
+	case v.Name == "" || len(v.Name) > 200:
+		return fmt.Errorf("a view needs a name (at most 200 characters)")
+	case v.Kind.Kind == "":
+		return fmt.Errorf("a view needs a kind")
+	case v.Context != nil && v.Context.Name == "":
+		return fmt.Errorf("a bound view needs a context name")
+	case len(v.Namespaces) > 1000 || len(v.Filter) > 1000 || len(v.Columns) > 100:
+		return fmt.Errorf("view too large")
+	}
+	return nil
+}
+
+// recordID reads the id of a stored view record of any version.
+func recordID(raw json.RawMessage) string {
+	var head struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(raw, &head)
+	return head.ID
 }
 
 // TablePrefs is how a resource kind's table was last left.
@@ -175,6 +261,7 @@ func (st *Store) Get() Settings {
 	out.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
 	out.Tables = cloneTables(st.s.Tables)
 	out.DisabledModules = slices.Clone(st.s.DisabledModules)
+	out.Views = slices.Clone(st.s.Views)
 	return out
 }
 
@@ -194,6 +281,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	next.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
 	next.Tables = cloneTables(st.s.Tables)
 	next.DisabledModules = slices.Clone(st.s.DisabledModules)
+	next.Views = slices.Clone(st.s.Views)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -288,6 +376,58 @@ func (st *Store) SetDisabledModules(ids []string) error {
 			s.DisabledModules = ids
 		}
 	})
+}
+
+// PutView adds a view, or replaces the one with the same id (keeping its
+// place in the order).
+func (st *Store) PutView(v View) error {
+	if err := v.Valid(); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	var full bool
+	err = st.Update(func(s *Settings) {
+		for i, r := range s.Views {
+			if recordID(r) == v.ID {
+				s.Views[i] = raw
+				return
+			}
+		}
+		if len(s.Views) >= MaxViews {
+			full = true
+			return
+		}
+		s.Views = append(s.Views, raw)
+	})
+	if err == nil && full {
+		err = fmt.Errorf("at most %d views can be saved", MaxViews)
+	}
+	return err
+}
+
+// DeleteView removes a view (and the launch setting if it pointed at it).
+func (st *Store) DeleteView(id string) error {
+	return st.Update(func(s *Settings) {
+		s.Views = slices.DeleteFunc(s.Views, func(r json.RawMessage) bool { return recordID(r) == id })
+		if len(s.Views) == 0 {
+			s.Views = nil
+		}
+		if s.LaunchView == id {
+			s.LaunchView = ""
+		}
+	})
+}
+
+// SetLaunchView sets the view to open at launch ("" = reconnect to the
+// last context).
+func (st *Store) SetLaunchView(id string) error {
+	if id != "" && !viewID.MatchString(id) {
+		return fmt.Errorf("invalid view id %q", id)
+	}
+	return st.Update(func(s *Settings) { s.LaunchView = id })
 }
 
 // SetLastContext remembers the selected context for a kubeconfig path.

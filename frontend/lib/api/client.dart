@@ -239,6 +239,35 @@ class ApiClient {
   Future<void> putSidebar(Json? layout) =>
       layout == null ? _send('DELETE', 'settings/sidebar', const {}, null) : _send('PUT', 'settings/sidebar', const {}, layout);
 
+  // ---- saved views (settings.json) ----
+
+  /// Saved view records as stored (records of a newer version included:
+  /// callers skip what they can't read) and the view opened at launch.
+  Future<({List<Json> views, String launchView})> getViews() async {
+    final j = await _get('settings/views') as Json;
+    return (
+      views: [for (final v in (j['views'] as List? ?? const [])) if (v is Map) Map<String, dynamic>.from(v)],
+      launchView: (j['launchView'] as String?) ?? '',
+    );
+  }
+
+  /// Adds or replaces a view (by its id).
+  Future<void> putView(Json view) => _send('PUT', 'settings/views/${Uri.encodeComponent('${view['id']}')}', const {}, view);
+
+  Future<void> deleteView(String id) => _send('DELETE', 'settings/views/${Uri.encodeComponent(id)}', const {}, null);
+
+  /// The view to open at launch ('' = reconnect to the last context).
+  Future<void> setLaunchView(String id) => _send('PUT', 'settings/views/launch', const {}, {'id': id});
+
+  /// Views as shareable YAML documents.
+  Future<String> exportViews(List<Json> views) async => '${await _send('POST', 'settings/views/export', const {}, {'views': views})}';
+
+  /// Parses YAML view documents into view records (fresh ids, not saved).
+  Future<List<Json>> parseViews(String yaml) async {
+    final j = await _send('POST', 'settings/views/parse', const {}, {'yaml': yaml}) as Json;
+    return [for (final v in (j['views'] as List? ?? const [])) Map<String, dynamic>.from(v as Map)];
+  }
+
   // ---- integrations (settings.json) ----
 
   /// Ids of the integration modules the user turned off.
@@ -405,11 +434,20 @@ class ApiClient {
   ///
   /// [scope] (a namespace set) replaces [namespace] when given; a set's
   /// forbidden namespaces arrive as PARTIAL_ERROR frames.
+  ///
+  /// [columns] replaces the kind's column configuration for this watch (a
+  /// saved view's own columns).
   Stream<WatchMessage> watch(ResourceRef r,
-          {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
+          {String? namespace,
+          NamespaceScope? scope,
+          String? labelSelector,
+          String? fieldSelector,
+          bool includeObject = false,
+          List<ColumnDef>? columns}) =>
       _wsStream(_ws('watch', {
         ...r.toQuery(),
         ...scope?.query ?? {'namespace': namespace},
+        'columns': columns == null ? null : jsonEncode([for (final c in columns) c.toJson()]),
         'labelSelector': labelSelector,
         'fieldSelector': fieldSelector,
         'includeObject': includeObject ? 'true' : null,

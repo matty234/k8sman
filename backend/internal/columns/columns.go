@@ -149,15 +149,23 @@ func (s *Store) Get(key string) ([]Column, bool) {
 
 // Set stores an override (after validating every query compiles).
 func (s *Store) Set(key string, cols []Column) error {
-	for _, c := range cols {
-		if _, err := compile(c.Query); err != nil {
-			return fmt.Errorf("column %q: %w", c.Name, err)
-		}
+	if err := Validate(cols); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data[key] = cols
 	return s.save()
+}
+
+// Validate checks that every column's query compiles.
+func Validate(cols []Column) error {
+	for _, c := range cols {
+		if _, err := compile(c.Query); err != nil {
+			return fmt.Errorf("column %q: %w", c.Name, err)
+		}
+	}
+	return nil
 }
 
 // Delete removes an override, restoring defaults.

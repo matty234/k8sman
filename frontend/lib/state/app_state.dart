@@ -7,10 +7,12 @@ import '../api/client.dart';
 import '../api/models.dart';
 import 'cluster_error.dart';
 import 'namespace_scope.dart';
+import 'saved_views.dart';
 import 'sidebar_config.dart';
 import 'table_prefs.dart';
 
 export 'namespace_scope.dart';
+export 'saved_views.dart';
 export 'sidebar_config.dart';
 
 /// What the main area shows: a page, by id. The core pages are the
@@ -86,6 +88,21 @@ class ConnectProgress {
   const ConnectProgress({required this.context, this.server, this.auth, required this.started, this.step = ConnectStep.reaching});
 
   ConnectProgress at(ConnectStep s) => ConnectProgress(context: context, server: server, auth: auth, started: started, step: s);
+}
+
+/// What [AppState.openView] did.
+enum ViewOpenResult {
+  opened,
+
+  /// The view's context isn't in the current kubeconfig (or its kubeconfig
+  /// can't be switched to): the UI offers to re-point it. Nothing changed.
+  missingContext,
+
+  /// The switch to the view's context failed (the error screen shows why).
+  failed,
+
+  /// The cluster doesn't serve the view's kind.
+  notServed,
 }
 
 /// The working context to go back to when a switch is cancelled or fails.
@@ -377,6 +394,7 @@ class AppState extends ChangeNotifier {
     recentDetails.clear();
     namespaceScope = NamespaceScope.all;
     selectedType = null;
+    _endViewSession();
     // Drop the old cluster's kinds so a failure shows the error screen.
     types = const [];
     error = null;
@@ -436,6 +454,7 @@ class AppState extends ChangeNotifier {
     }
     if (gen != _gen) return;
     _previous = null;
+    _endViewSession();
     currentContext = p.context;
     readOnly = p.readOnly;
     readOnlyReason = p.readOnly ? (readOnlyContexts[p.context] ?? 'context') : '';
@@ -479,7 +498,10 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  void selectType(ResourceType t) {
+  /// Shows [t]'s table. Ends an open view's session unless [keepSession]
+  /// (used by [openView]).
+  void selectType(ResourceType t, {bool keepSession = false}) {
+    if (!keepSession) _endViewSession();
     if (detail != null && (t != selectedType || view != MainView.resources)) inspectorCollapsed = true;
     selectedType = t;
     view = MainView.resources;
@@ -553,7 +575,7 @@ class AppState extends ChangeNotifier {
   /// namespaces wins over an unscoped pin of the same kind.
   SidebarPin? get selectedPin {
     final t = selectedType;
-    if (view != MainView.resources || t == null) return null;
+    if (view != MainView.resources || t == null || viewSession != null) return null;
     SidebarPin? any;
     for (final p in sidebar.pins) {
       if (p.gk != t.gk) continue;
@@ -573,7 +595,8 @@ class AppState extends ChangeNotifier {
   /// Selects one namespace (null = all namespaces).
   void setNamespace(String? ns) => setNamespaceScope(NamespaceScope.single(ns));
 
-  /// Selects a namespace scope for tables.
+  /// Selects a namespace scope for tables. Ends an open view's session
+  /// (the view keeps its own namespaces).
   void setNamespaceScope(NamespaceScope scope) {
     namespaceScope = scope;
     if (!scope.isAll) {
@@ -582,6 +605,7 @@ class AppState extends ChangeNotifier {
         ..insert(0, scope);
       if (recentNamespaces.length > 5) recentNamespaces.removeLast();
     }
+    _endViewSession();
     notifyListeners();
   }
 
@@ -662,6 +686,158 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- saved views ----
+
+  /// Saved views this build can read, in the user's order (records of a
+  /// newer app version stay in settings.json untouched and aren't listed).
+  List<SavedView> savedViews = const [];
+
+  /// The id of the view opened at launch ('' = reconnect to the last
+  /// context).
+  String launchViewId = '';
+
+  /// The open view's session, while a view is open (see [ViewSession]).
+  ViewSession? viewSession;
+
+  /// The open view, if any.
+  SavedView? get activeView => viewSession?.view;
+
+  /// Bumped when a view is opened or its session reset, so the table is
+  /// rebuilt with the view's state.
+  int viewRevision = 0;
+
+  /// A problem to show once (e.g. the launch view couldn't be opened).
+  String? viewNotice;
+
+  void dismissViewNotice() {
+    viewNotice = null;
+    notifyListeners();
+  }
+
+  Future<void> loadViews() async {
+    try {
+      final r = await api.getViews();
+      savedViews = [for (final j in r.views) ?SavedView.fromJson(j)];
+      launchViewId = r.launchView;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('saved views: $e');
+    }
+  }
+
+  /// Whether [c] is the context the app is on: same name, same kubeconfig.
+  bool isCurrentContext(ViewContext c) => c.name == currentContext && c.kubeconfig == kubeconfigs.current;
+
+  /// Views for the sidebar: those that apply to any context and those
+  /// bound to the current one. Views of other contexts are in the palette.
+  List<SavedView> get viewsHere => [for (final v in savedViews) if (v.context == null || isCurrentContext(v.context!)) v];
+
+  void _endViewSession() {
+    if (viewSession == null) return;
+    viewSession = null;
+    viewRevision++;
+  }
+
+  /// Closes the open view: the kind's own table state applies again.
+  void closeView() {
+    _endViewSession();
+    notifyListeners();
+  }
+
+  /// Opens [v]: switches to its context first when it is bound to another
+  /// one (through [switchContext], the normal path), then shows its kind
+  /// in its namespaces with its filter, sort and columns as a view session.
+  ///
+  /// Never falls back to another context: a bound context that isn't in
+  /// the kubeconfig returns [ViewOpenResult.missingContext] with nothing
+  /// changed.
+  Future<ViewOpenResult> openView(SavedView v) async {
+    final c = v.context;
+    if (c != null && !isCurrentContext(c)) {
+      if (c.kubeconfig != kubeconfigs.current) {
+        // '' (the default loading rules) can't be switched to explicitly.
+        if (c.kubeconfig.isEmpty) return ViewOpenResult.missingContext;
+        final err = await switchKubeconfig(c.kubeconfig);
+        if (err != null) return ViewOpenResult.missingContext;
+      }
+      if (!contexts.any((x) => x.name == c.name)) return ViewOpenResult.missingContext;
+      if (currentContext != c.name) await switchContext(c.name);
+      if (currentContext != c.name || error != null) return ViewOpenResult.failed;
+    }
+    final t = typeFor(v.group, v.kind);
+    if (t == null) return ViewOpenResult.notServed;
+    // Missing namespaces stay in the scope: they list nothing, and the
+    // picker shows them struck through. The view itself isn't changed.
+    if (t.namespaced) namespaceScope = v.scope;
+    viewSession = ViewSession(v, onChanged: notifyListeners);
+    viewRevision++;
+    selectType(t, keepSession: true);
+    return ViewOpenResult.opened;
+  }
+
+  /// Adds or replaces [v] and saves it.
+  Future<void> saveView(SavedView v) async {
+    await api.putView(v.toJson());
+    final i = savedViews.indexWhere((x) => x.id == v.id);
+    savedViews = i < 0 ? [...savedViews, v] : ([...savedViews]..[i] = v);
+    if (viewSession?.view.id == v.id) viewSession!.view = v;
+    notifyListeners();
+  }
+
+  /// Saves the open view's session as the view (Update view).
+  Future<void> updateActiveView() async {
+    final s = viewSession;
+    if (s == null) return;
+    await saveView(s.current);
+  }
+
+  /// Drops the open view's unsaved changes (Revert).
+  void revertActiveView() {
+    final s = viewSession;
+    if (s == null) return;
+    s.revert();
+    viewRevision++;
+    notifyListeners();
+  }
+
+  /// The open view's columns changed (column editor, header drag): the
+  /// table re-subscribes with them.
+  void viewColumnsChanged(List<ColumnDef>? columns) {
+    final s = viewSession;
+    if (s == null) return;
+    s.columns = columns;
+    viewRevision++;
+    notifyListeners();
+  }
+
+  /// Deletes a view; returns it and its position for undo.
+  Future<(SavedView, int)?> deleteView(String id) async {
+    final i = savedViews.indexWhere((v) => v.id == id);
+    if (i < 0) return null;
+    final v = savedViews[i];
+    await api.deleteView(id);
+    savedViews = [...savedViews]..removeAt(i);
+    if (launchViewId == id) launchViewId = '';
+    if (viewSession?.view.id == id) _endViewSession();
+    notifyListeners();
+    return (v, i);
+  }
+
+  /// Puts a deleted view back where it was (undo).
+  Future<void> restoreView(SavedView v, int index) async {
+    await api.putView(v.toJson());
+    // The backend appends; the list here keeps the old place until reload.
+    savedViews = [...savedViews]..insert(index.clamp(0, savedViews.length), v);
+    notifyListeners();
+  }
+
+  /// Opens [id] at launch ('' = reconnect to the last context).
+  Future<void> setLaunchView(String id) async {
+    await api.setLaunchView(id);
+    launchViewId = id;
+    notifyListeners();
+  }
+
   // ---- kubeconfig selection and backend (re)connects ----
 
   /// The active kubeconfig and the files the user can switch to.
@@ -678,11 +854,40 @@ class AppState extends ChangeNotifier {
   Future<void> backendConnected() async {
     final again = _connectedOnce;
     _connectedOnce = true;
+    // Views load without a connection (the error screen lists them).
+    await loadViews();
+    final launch = again ? null : savedViews.where((v) => v.id == launchViewId).firstOrNull;
+    if (launch?.context != null) await _preselectContext(launch!.context!);
     await init();
     if (again) columnsChanged();
     await loadSidebar();
     await loadDisabledModules();
     await loadKubeconfigs();
+    if (launch != null && error == null) {
+      final r = await openView(launch);
+      if (r != ViewOpenResult.opened) {
+        viewNotice = switch (r) {
+          ViewOpenResult.missingContext => 'View “${launch.name}” wasn\'t opened at launch: context ${launch.context?.name} was not found.',
+          ViewOpenResult.notServed => 'View “${launch.name}” wasn\'t opened at launch: ${currentContext.isEmpty ? 'the cluster' : currentContext} doesn\'t serve ${launch.kind}.',
+          _ => 'View “${launch.name}” wasn\'t opened at launch.',
+        };
+        notifyListeners();
+      }
+    }
+  }
+
+  /// At launch, a view bound to a context connects straight to it (instead
+  /// of first connecting to the last context). Only when the context exists;
+  /// otherwise [openView] reports it.
+  Future<void> _preselectContext(ViewContext c) async {
+    try {
+      final kc = await api.kubeconfigs();
+      if (c.kubeconfig.isNotEmpty && c.kubeconfig != kc.current) await api.switchKubeconfig(c.kubeconfig);
+      final ctx = await api.contexts();
+      if (ctx.current != c.name && ctx.contexts.any((x) => x.name == c.name)) await api.switchContext(c.name);
+    } catch (e) {
+      debugPrint('launch view: $e');
+    }
   }
 
   Future<void> loadKubeconfigs() async {
@@ -720,6 +925,7 @@ class AppState extends ChangeNotifier {
     recentDetails.clear();
     namespaceScope = NamespaceScope.all;
     selectedType = null;
+    _endViewSession();
     types = const [];
     await init();
     switchingKubeconfig = false;

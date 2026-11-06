@@ -70,17 +70,22 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | GET | `/api/probe?step=reach\|auth` | connection check for the current context, run before discovery: `reach` = unauthenticated `GET /version`, fails in 10 s with `reason: "Unreachable"`; `auth` = the same with credentials (runs exec plugins; 30 s, 5 min for exec) |
 | GET | `/api/resources[?refresh=true]` | discovered listable types `[{group,version,resource,kind,namespaced,verbs,shortNames,categories,custom}]` |
 | GET | `/api/namespaces` | `{namespaces:[...], default, listed}`. `listed` is false when the user can't list namespaces and `namespaces` holds only the context's default |
-| GET | `/api/table` | list rendered through the jq columns: `{resource, columns, isDefaultColumns, resourceVersion, rows:[{uid,name,namespace,resourceVersion,cells,object?}], columnErrors:{idx:msg}, partialErrors?}`. Accepts `labelSelector`, `fieldSelector`, `includeObject=true` and `namespaces` (`partialErrors: [{namespace, error, reason, code}]` lists namespaces of the set that couldn't be read) |
+| GET | `/api/table` | list rendered through the jq columns: `{resource, columns, isDefaultColumns, resourceVersion, rows:[{uid,name,namespace,resourceVersion,cells,object?}], columnErrors:{idx:msg}, partialErrors?}`. Accepts `labelSelector`, `fieldSelector`, `includeObject=true`, `columns` (a JSON array of columns that replaces the kind's for this request, as a saved view uses) and `namespaces` (`partialErrors: [{namespace, error, reason, code}]` lists namespaces of the set that couldn't be read) |
 | GET | `/api/items` | raw objects `{items:[...], partialErrors?}`. Accepts `labelSelector`, `fieldSelector` and `namespaces`. Use this for related resources |
 | GET | `/api/object?name=` | one object as JSON, or YAML with `format=yaml` (managedFields stripped unless `managedFields=true`) |
 | GET | `/api/events` | core/v1 Events for an object, newest first. Filter by `uid` (preferred) or `kind`+`name`, plus `namespace` |
 | GET/PUT/DELETE | `/api/columns` | read `{columns, isDefault, defaults}`, save `{columns}`, or reset the user's column override |
 | GET/PUT/DELETE | `/api/settings/sidebar` | the sidebar's top section, persisted in settings.json: read `{sidebar: {items} \| null}` (null = app default), save `{items}`, or reset. Each item is a page `{view, hidden?}` (hidden pages fold under "More") or a pinned kind `{group, kind, namespace?}` (keyed by group/kind, applies across clusters). Works without a cluster connection |
 | PUT | `/api/settings/readonly` | lock or unlock a kube context: `{context, readOnly: true \| false \| null}` (null = automatic: read-only when the name looks like production). Returns `{context, readOnly, readOnlyReason}`. `GET /api/health` reports the current context's `readOnly` and `readOnlyReason` (`flag`, `context` or `auto`); `GET /api/contexts` adds `readOnly: {context: reason}` |
+| GET | `/api/settings/views` | saved views (see [Saved views](#saved-views)): `{views: [View], launchView}`. Works without a cluster connection |
+| PUT/DELETE | `/api/settings/views/{id}` | add or replace a view (body: the View, its `id` matching the URL), or delete it |
+| PUT | `/api/settings/views/launch` | `{id}`: the view to open at launch (`""` = reconnect to the last context) |
+| POST | `/api/settings/views/export` | `{views: [View]}` → the views as YAML documents (`application/yaml`) |
+| POST | `/api/settings/views/parse` | `{yaml}` → `{views: [View]}`: YAML documents as exported, with fresh ids, validated but not saved |
 | GET/PUT | `/api/settings/tables` | per-kind table preferences in settings.json: read `{tables: {"group/Kind": {sortColumn?, sortDescending?, widths?, filter?}}}`, save one with `{kind, prefs}` (prefs null forgets it) |
 | GET/PUT | `/api/settings/modules` | integrations the user turned off, in settings.json: read or save `{disabled: [ids]}`. Ids: `argocd`, `argoworkflows`, `helm`, `gpus`, `prometheus`, `gateway` (backend modules) and UI-only ones (`metrics`, `addons`). A turned-off module's endpoints (`/api/argocd/*`, `/api/argowf/*`, `/api/helm/*`, `/api/gpu`, `/api/prom/*`) answer 404 with `reason: "ModuleDisabled"`, its actions are not offered, and the overview skips its checks. Works without a cluster connection |
 | POST | `/api/columns/preview[?limit=]` | body `{columns}`: evaluates unsaved columns against live objects and returns a table |
-| WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. With `namespaces`, `{type:"PARTIAL_ERROR", namespace, error, reason, code}` reports a namespace of the set that can't be watched (e.g. Forbidden) while the socket stays open for the others. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true`. With `batch=true` the server may also send `{type:"BATCH",events:[{type,row},…]}`: deltas from a ~75ms window, in order (apply all, then redraw once). See [Shared watches](#shared-watches) |
+| WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. With `namespaces`, `{type:"PARTIAL_ERROR", namespace, error, reason, code}` reports a namespace of the set that can't be watched (e.g. Forbidden) while the socket stays open for the others. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true`. `columns=<JSON array>` renders the rows through those columns instead of the kind's (a saved view's own columns; invalid queries are a 400). With `batch=true` the server may also send `{type:"BATCH",events:[{type,row},…]}`: deltas from a ~75ms window, in order (apply all, then redraw once). See [Shared watches](#shared-watches) |
 | WS | `/api/logs` | `namespace`, `pod`, `container`, `tailLines` (default 500, `-1` = all), `previous`, `timestamps`, `sinceSeconds`, `follow` (default true). Sends frames `{line}`, ending with `{eof:true}` or `{error}` |
 | WS | `/api/logs/aggregate` | merged logs of many pods. `namespace` plus one of `selector` (label selector; the pod set follows the shared pod watch) or `pods` (comma-separated names, fixed). `container`: a name, `*` for every container, or omitted for each pod's default (`kubectl.kubernetes.io/default-container`, else `main` if the pod has it, else the first). `tailLines` (per stream, default 200, `-1` = all), `sinceSeconds`, `previous` (each container's previous instance; containers without one are skipped, and a `selector` pod set is read once, not followed), `follow` (default true). Streams run concurrently with timestamps and are merged by timestamp through a 250ms reorder window. Frames: a JSON **array** `[{pod,container,ts,line},…]` per ~75ms flush (`ts` is RFC3339Nano, `line` has no timestamp prefix); `{event:"added"\|"removed",pod,container}` when a stream starts or its pod goes away (pods that appear later are read from their start); `{error,pod?,container?}` for one failing stream (the session continues); `{warning}` when more than 50 pods match (the first 50 by name are streamed). Streams start once a container is running or has terminated. Closing the socket closes every stream. Allowed in read-only mode |
 
@@ -101,6 +106,29 @@ errors are retried with backoff. A watch that ends normally resumes from
 its last resourceVersion; an expired one (410) re-lists and sends a fresh
 SNAPSHOT. A client that falls more than 4,096 events behind gets a fresh
 SNAPSHOT instead of the backlog. See docs/PERFORMANCE.md.
+
+## Saved views
+
+A view is a saved table: a kind, a namespace scope, a filter, a sort and its
+own columns, bound to one context or applying to any context. Views are
+stored in `settings.json` as versioned records; records with a `version`
+newer than this backend writes are kept and returned untouched.
+
+```jsonc
+{"version": 1, "id": "9f2c41d07a3b5e18", "name": "My back-end deployments",
+ "context": {"kubeconfig": "", "name": "us-east-a", "server": "https://…"},  // null = any context
+ "kind": {"group": "apps", "kind": "Deployment"},
+ "namespaces": ["team-1", "team-2"],          // [] = all namespaces
+ "filter": "back-end",
+ "sort": {"column": "Age", "descending": true},
+ "columns": [{"name": "Name", "query": ".metadata.name"}]}
+```
+
+`id` is 1–64 characters of `[A-Za-z0-9_-]`; at most 500 views are kept.
+`columns` are validated like `PUT /api/columns`. The YAML form
+(`apiVersion: k8sman.dev/v1`, `kind: View`, with `resource` for the kind)
+leaves out the kubeconfig path; a bound view keeps its context name and API
+server URL so an importer can re-point it.
 
 ## Namespace sets
 

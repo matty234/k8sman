@@ -19,6 +19,7 @@ import '../resource_table.dart';
 import '../sidebar_editor.dart';
 import '../terminal/open_terminal.dart';
 import 'palette_items.dart';
+import '../views/saved_views_ui.dart';
 
 Widget Function(Color) _icon(IconData i) => (c) => Icon(i, size: 15, color: c);
 
@@ -29,6 +30,9 @@ List<PaletteItem> paletteItems(BuildContext context) {
   final dock = context.read<LogDock?>();
   final updates = context.read<UpdateController?>();
   return [
+    // Every saved view; one bound to another context names it (⇄: opening
+    // it switches cluster).
+    for (final v in app.savedViews) viewPaletteItem(context, app, v),
     for (final p in enabledPages(app))
       PaletteItem(
         group: PaletteGroup.pages,
@@ -121,6 +125,23 @@ List<PaletteItem> paletteItems(BuildContext context) {
         shortcut: shortcutLabel('I'),
         run: app.toggleInspector,
       ),
+    if (app.view == MainView.resources && app.selectedType != null)
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'Save Current Table as View…',
+        typeLabel: 'Action',
+        icon: _icon(Icons.bookmark_add_outlined),
+        aliases: const ['view', 'bookmark'],
+        run: () => _saveTableAsView(context),
+      ),
+    PaletteItem(
+      group: PaletteGroup.actions,
+      title: 'Import Views…',
+      typeLabel: 'Action',
+      icon: _icon(Icons.download_outlined),
+      aliases: const ['view', 'yaml'],
+      run: () => showImportViewsDialog(context),
+    ),
     if (!app.readOnly)
       PaletteItem(
         group: PaletteGroup.actions,
@@ -237,6 +258,28 @@ const paletteLookupKinds = [
 /// Names of [paletteLookupKinds] objects in the selected namespace, from
 /// one table list per kind (served from the backend's warm watch when the
 /// kind's table is open). Kept briefly so reopening the palette is instant.
+/// A saved view as a palette item (also used by `:view`).
+PaletteItem viewPaletteItem(BuildContext context, AppState app, SavedView v) {
+  final elsewhere = v.context != null && !app.isCurrentContext(v.context!);
+  return PaletteItem(
+    group: PaletteGroup.views,
+    title: v.name,
+    detail: v.context == null ? 'any context' : (elsewhere ? '${v.context!.name} ⇄' : v.context!.name),
+    typeLabel: 'View',
+    icon: _icon(Icons.bookmark_outline),
+    aliases: [v.kind, ...v.namespaces],
+    current: app.activeView?.id == v.id,
+    run: () => openSavedView(context, v),
+  );
+}
+
+/// Save Current Table as View: the open table's controller holds what to
+/// save (filter, sort, columns).
+void _saveTableAsView(BuildContext context) {
+  final tc = visibleTable(context);
+  if (tc != null) showSaveViewDialog(context, tc);
+}
+
 class PaletteObjectCache {
   PaletteObjectCache._();
 

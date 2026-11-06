@@ -33,7 +33,7 @@ class _Api extends FakeApiClient {
   @override
   Future<Json> metrics(String path, [Map<String, String?> query = const {}]) async => throw ApiException(404, 'metrics.k8s.io is not installed');
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false, List<ColumnDef>? columns}) =>
       Stream.value(WatchMessage(type: 'SNAPSHOT', table: TableData.fromJson(jsonDecode(File('../dev/fixtures/api-table-pods.json').readAsStringSync()))));
 }
 

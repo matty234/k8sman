@@ -10,9 +10,18 @@ import 'theme.dart';
 import 'widgets/common.dart';
 
 /// Opens the column editor. Resolves true if columns were saved or reset.
-Future<bool?> showColumnEditor(BuildContext context, {required ResourceType type, String? namespace}) => showDialog<bool>(
+///
+/// By default it edits the kind's column configuration. An open saved view
+/// passes its own [columns] and an [onSave] that receives the edited list
+/// (null for Reset: the kind's columns) instead.
+Future<bool?> showColumnEditor(BuildContext context,
+        {required ResourceType type, String? namespace, List<ColumnDef>? columns, Future<void> Function(List<ColumnDef>? columns)? onSave}) =>
+    showDialog<bool>(
       context: context,
-      builder: (_) => Provider.value(value: context.read<ApiClient>(), child: ColumnEditorDialog(type: type, namespace: namespace)),
+      builder: (_) => Provider.value(
+        value: context.read<ApiClient>(),
+        child: ColumnEditorDialog(type: type, namespace: namespace, initial: columns, onSave: onSave),
+      ),
     );
 
 const _types = ['string', 'number', 'quantity', 'percent', 'age', 'status', 'bool', 'labels'];
@@ -36,7 +45,13 @@ class _EditableColumn {
 class ColumnEditorDialog extends StatefulWidget {
   final ResourceType type;
   final String? namespace;
-  const ColumnEditorDialog({super.key, required this.type, this.namespace});
+
+  /// Columns to start from instead of the kind's (a saved view's).
+  final List<ColumnDef>? initial;
+
+  /// Saves somewhere other than the kind's configuration (a saved view).
+  final Future<void> Function(List<ColumnDef>? columns)? onSave;
+  const ColumnEditorDialog({super.key, required this.type, this.namespace, this.initial, this.onSave});
 
   @override
   State<ColumnEditorDialog> createState() => _ColumnEditorDialogState();
@@ -68,7 +83,7 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
       final items = await _api.items(widget.type.ref, namespace: ns).catchError((_) => <Json>[]);
       setState(() {
         _defaults = cfg.defaults;
-        _cols = [for (final c in cfg.columns) _EditableColumn(c)];
+        _cols = [for (final c in widget.initial ?? cfg.columns) _EditableColumn(c)];
         _sample = items.isNotEmpty ? items.first : null;
         _loading = false;
       });
@@ -113,7 +128,9 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await _api.putColumns(widget.type.ref, [for (final c in _cols) c.toDef()]);
+      final defs = [for (final c in _cols) c.toDef()];
+      final onSave = widget.onSave;
+      await (onSave != null ? onSave(defs) : _api.putColumns(widget.type.ref, defs));
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       setState(() {
@@ -124,7 +141,8 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
   }
 
   Future<void> _reset() async {
-    await _api.resetColumns(widget.type.ref);
+    final onSave = widget.onSave;
+    await (onSave != null ? onSave(null) : _api.resetColumns(widget.type.ref));
     if (mounted) Navigator.of(context).pop(true);
   }
 

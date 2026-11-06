@@ -6,6 +6,7 @@ import 'fuzzy.dart';
 /// two groups' best matches score the same).
 enum PaletteGroup {
   pages('Pages'),
+  views('Views'),
   kinds('Resource Kinds'),
   objects('Objects'),
   namespaces('Namespaces'),
@@ -89,6 +90,7 @@ class PaletteSection {
 /// Most results each group shows while searching, and with no query.
 const _searchCaps = {
   PaletteGroup.pages: 5,
+  PaletteGroup.views: 6,
   PaletteGroup.kinds: 8,
   PaletteGroup.objects: 12,
   PaletteGroup.namespaces: 6,
@@ -97,6 +99,7 @@ const _searchCaps = {
 };
 const _browseCaps = {
   PaletteGroup.pages: 20,
+  PaletteGroup.views: 8,
   PaletteGroup.kinds: 0,
   PaletteGroup.objects: 0,
   PaletteGroup.namespaces: 6,
@@ -106,7 +109,7 @@ const _browseCaps = {
 
 /// Nudges the whole-group order towards places over objects when best
 /// matches are close (typing "dep" should lead with the Deployment kind).
-const _groupBias = {PaletteGroup.pages: 12, PaletteGroup.kinds: 10, PaletteGroup.actions: 4};
+const _groupBias = {PaletteGroup.pages: 12, PaletteGroup.views: 11, PaletteGroup.kinds: 10, PaletteGroup.actions: 4};
 
 /// Ranks [items] for [query]. With no query: the groups in default order,
 /// capped (objects and kinds only appear once you type). Otherwise each

@@ -162,7 +162,7 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	defer ws.close()
 
-	cols, isDefault := s.columnsFor(ctx, c, rq.Type)
+	cols, isDefault := s.tableColumns(ctx, c, rq)
 	includeObject := r.URL.Query().Get("includeObject") == "true"
 	sub := s.subscribe(c, rq) // one stream, or a namespace set merged
 

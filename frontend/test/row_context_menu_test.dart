@@ -18,7 +18,7 @@ dynamic _fx(String n) => jsonDecode(File('../dev/fixtures/$n').readAsStringSync(
 class _Api extends FakeApiClient {
   _Api() : super(objects: {'deployments.apps/demo/web': Map<String, dynamic>.from(_fx('deploy-web.json'))});
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) =>
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false, List<ColumnDef>? columns}) =>
       Stream.value(WatchMessage(type: 'SNAPSHOT', table: TableData.fromJson(_fx('api-table-deployments.json'))));
 }
 

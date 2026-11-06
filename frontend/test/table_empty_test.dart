@@ -12,7 +12,7 @@ import 'support/harness.dart';
 class _EmptyApi extends FakeApiClient {
   final List<String?> watched = [];
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false, List<ColumnDef>? columns}) {
     watched.add(namespace);
     return Stream.value(WatchMessage(
       type: 'SNAPSHOT',

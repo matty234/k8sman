@@ -10,6 +10,7 @@ import '../api/models.dart';
 import '../metrics/quantity.dart';
 import 'cluster_error.dart';
 import 'namespace_scope.dart';
+import 'saved_views.dart';
 import 'startup_gate.dart';
 import 'table_prefs.dart';
 import 'table_query.dart';
@@ -32,10 +33,20 @@ class TableController extends ChangeNotifier {
   /// switching namespace and relaunching.
   final TablePrefsStore? prefs;
 
-  TableController({required this.api, required this.type, String? namespace, NamespaceScope? scope, this.prefs})
+  /// An open saved view's session: when set, the table starts from the
+  /// view's filter, sort and columns, and changes go to the session instead
+  /// of [prefs] (so a view never overwrites the kind's remembered state).
+  final ViewSession? session;
+
+  TableController({required this.api, required this.type, String? namespace, NamespaceScope? scope, this.prefs, this.session})
       : scope = scope ?? NamespaceScope.single(namespace) {
+    final s = session;
     final p = prefs?.of(type.gk);
-    if (p != null) {
+    if (s != null) {
+      _pendingSort = s.sortColumn;
+      sortAscending = !s.sortDescending;
+      filter = s.filter;
+    } else if (p != null) {
       _pendingSort = p.sortColumn;
       sortAscending = !p.sortDescending;
       filter = p.filter;
@@ -94,7 +105,7 @@ class TableController extends ChangeNotifier {
     // One namespace (or all) goes as `namespace`, as it always did; only a
     // set needs `namespaces`.
     final multi = type.namespaced && scope.isMulti;
-    _sub = api.watch(type.ref, namespace: type.namespaced ? scope.single : null, scope: multi ? scope : null).listen(
+    _sub = api.watch(type.ref, namespace: type.namespaced ? scope.single : null, scope: multi ? scope : null, columns: session?.columns).listen(
       _onMessage,
       onError: (Object e) => _onDisconnect(ClusterError.fromException(e)),
       onDone: () => _onDisconnect(null),
@@ -292,7 +303,9 @@ class TableController extends ChangeNotifier {
   void setFilter(String f) {
     filter = f;
     final p = prefs;
-    if (p != null && p.of(type.gk).filter != f.trim()) {
+    if (session != null) {
+      session!.setFilter(f);
+    } else if (p != null && p.of(type.gk).filter != f.trim()) {
       p.of(type.gk).filter = f.trim();
       p.changed(type.gk);
     }
@@ -309,7 +322,9 @@ class TableController extends ChangeNotifier {
     }
     _pendingSort = null;
     final p = prefs;
-    if (p != null && col < columns.length) {
+    if (session != null && col < columns.length) {
+      session!.setSort(columns[col].name, !sortAscending);
+    } else if (p != null && col < columns.length) {
       p.of(type.gk)
         ..sortColumn = columns[col].name
         ..sortDescending = !sortAscending;

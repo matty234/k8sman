@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -25,7 +24,6 @@ import (
 	clienttesting "k8s.io/client-go/testing"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
-	"github.com/matty234/k8sman/backend/internal/columns"
 )
 
 // A namespace set is one table merged from a watch per namespace: the
@@ -54,16 +52,13 @@ func TestWatchNamespaceSetMergesAndReportsForbidden(t *testing.T) {
 		{Name: "configmaps", Kind: "ConfigMap", Namespaced: true, Verbs: []string{"get", "list", "watch"}},
 	}}}
 	c := &cluster.Clients{Context: "kind-dev", Typed: cs, Dynamic: dyn, Discovery: memory.NewMemCacheClient(cs.Discovery())}
-	store, err := columns.OpenStore(filepath.Join(t.TempDir(), "columns.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &Server{mgr: cluster.NewStatic(c), mux: http.NewServeMux(), store: store}
+	s := &Server{mgr: cluster.NewStatic(c), mux: http.NewServeMux()}
 	s.routes()
 	srv := httptest.NewServer(s.mux)
 	t.Cleanup(srv.Close)
 
-	q := url.Values{"version": {"v1"}, "resource": {"configmaps"}, "namespaces": {"team-c,team-b,team-a"}}
+	q := url.Values{"version": {"v1"}, "resource": {"configmaps"}, "namespaces": {"team-c,team-b,team-a"},
+		"columns": {`[{"name":"Name","query":".metadata.name"}]`}}
 	ws, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/api/watch?"+q.Encode(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -101,6 +96,9 @@ func TestWatchNamespaceSetMergesAndReportsForbidden(t *testing.T) {
 	sort.Strings(names)
 	if strings.Join(names, ",") != "team-a/web,team-b/api" {
 		t.Fatalf("snapshot rows %v", names)
+	}
+	if cols := snapshot["table"].(map[string]any)["columns"].([]any); len(cols) != 1 {
+		t.Fatalf("the request's own columns should be used, got %v", cols)
 	}
 
 	// The socket stays open: a change in a readable namespace arrives.

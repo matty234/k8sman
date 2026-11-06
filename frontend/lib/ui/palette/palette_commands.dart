@@ -18,7 +18,10 @@ class CommandResults {
 
 /// Resolves k9s-style commands: `:po`, `:deploy`, `:ns [name]`,
 /// `:ctx [name]`, `:pf`, `:alerts`, … ([text] is what follows the colon).
-CommandResults rankCommand(String text, AppState app) {
+///
+/// [viewItem] builds a saved view's item (it needs a BuildContext to open
+/// views; see palette_sources.dart).
+CommandResults rankCommand(String text, AppState app, {PaletteItem Function(SavedView v)? viewItem}) {
   final lower = text.trimLeft().toLowerCase();
   final space = lower.indexOf(RegExp(r'\s'));
   final cmd = space < 0 ? lower : lower.substring(0, space);
@@ -50,6 +53,11 @@ CommandResults rankCommand(String text, AppState app) {
     ];
     final all = arg == 'all' || arg == '-a';
     return CommandResults([PaletteSection(PaletteGroup.namespaces, _filter(all ? '' : arg, items, first: all ? items.first : null))], arg);
+  }
+  // `:view [name]`: saved views, fuzzy matched like :ctx.
+  if (cmd == 'view' || cmd == 'views') {
+    final items = [if (viewItem != null) for (final v in app.savedViews) viewItem(v)];
+    return CommandResults([PaletteSection(PaletteGroup.views, _filter(arg, items))], arg);
   }
   if (cmd == 'ctx' || cmd == 'context' || cmd == 'contexts') {
     final items = [

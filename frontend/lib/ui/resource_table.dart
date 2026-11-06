@@ -34,6 +34,7 @@ import 'editor/resource_editor_screen.dart';
 import 'table_filter_field.dart';
 import 'widgets/group_icon.dart';
 import 'widgets/namespace_picker.dart';
+import 'views/saved_views_ui.dart';
 
 /// Live table for the selected resource type. Re-created (via key) whenever
 /// the type, namespace or column config changes.
@@ -44,9 +45,11 @@ class ResourceTableView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    // An open saved view of this kind runs the table as a view session.
+    final session = app.viewSession?.view.gk == type.gk ? app.viewSession : null;
     return ChangeNotifierProvider<TableController>(
-      key: ValueKey('${type.gk}|${app.namespaceScope}|${app.columnsVersion}|${app.currentContext}'),
-      create: (_) => TableController(api: context.read<ApiClient>(), type: type, scope: app.namespaceScope, prefs: app.tablePrefs),
+      key: ValueKey('${type.gk}|${app.namespaceScope}|${app.columnsVersion}|${app.currentContext}|${session?.view.id}|${app.viewRevision}'),
+      create: (_) => TableController(api: context.read<ApiClient>(), type: type, scope: app.namespaceScope, prefs: app.tablePrefs, session: session),
       child: const _TableBody(),
     );
   }
@@ -237,6 +240,8 @@ class _TableBodyState extends State<_TableBody> {
     final api = context.read<ApiClient>();
     final cols = List.of(tc.columns);
     cols.insert(to, cols.removeAt(from));
+    // In a saved view the order is the view's (saved with Update view).
+    if (tc.session != null) return app.viewColumnsChanged(cols);
     try {
       final cfg = await api.getColumns(tc.type.ref);
       String sig(List<ColumnDef> l) => [for (final c in l) '${c.name}\u0000${c.query}\u0000${c.type}'].join('\u0001');
@@ -614,6 +619,13 @@ class _TableBodyState extends State<_TableBody> {
   }
 }
 
+/// Compact buttons for the table toolbar.
+const _toolbarButton = ButtonStyle(
+  visualDensity: VisualDensity.compact,
+  padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
+  minimumSize: WidgetStatePropertyAll(Size(0, 28)),
+);
+
 class _Toolbar extends StatelessWidget {
   final TableController controller;
   final int shown;
@@ -633,6 +645,7 @@ class _Toolbar extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     final t = controller.type;
+    final session = controller.session;
     final count = shown == controller.totalCount ? '$shown' : '$shown of ${controller.totalCount}';
     return WindowDragArea(
       child: SizedBox(
@@ -658,10 +671,34 @@ class _Toolbar extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
-                          if (t.custom) ...[GroupIcon(group: t.group, size: 18), const SizedBox(width: 8)],
+                          if (session != null) ...[
+                            Icon(Icons.bookmark, size: 16, color: theme.colorScheme.primary),
+                            const SizedBox(width: 6),
+                          ] else if (t.custom) ...[GroupIcon(group: t.group, size: 18), const SizedBox(width: 8)],
                           Flexible(
-                            child: Text(t.kind, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.titleLarge),
+                            child: Tooltip(
+                              message: session == null ? '' : 'Saved view · ${t.kind} · ${viewContextLabel(session.view)}',
+                              child: Text(session?.view.name ?? t.kind,
+                                  key: const ValueKey('table-title-text'), overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.titleLarge),
+                            ),
                           ),
+                          if (session != null && session.modified) ...[
+                            const SizedBox(width: 5),
+                            Tooltip(
+                              message: 'Changed since saved',
+                              // On the title's baseline row: sit at the text's middle.
+                              child: Baseline(
+                                baseline: 12,
+                                baselineType: TextBaseline.alphabetic,
+                                child: Container(
+                                  key: const ValueKey('view-modified-dot'),
+                                  width: 7,
+                                  height: 7,
+                                  decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
+                                ),
+                              ),
+                            ),
+                          ],
                           // No count until the first list arrives (not "0").
                           if (loaded) ...[
                             const SizedBox(width: 8),
@@ -672,6 +709,10 @@ class _Toolbar extends StatelessWidget {
                             ),
                           ],
                           const SizedBox(width: 8),
+                          if (session != null) ...[
+                            Text(t.kind, maxLines: 1, style: theme.textTheme.labelSmall?.copyWith(color: colors.faint, fontWeight: FontWeight.w400)),
+                            const SizedBox(width: 6),
+                          ],
                           Flexible(
                             child: Text(
                               t.apiVersion,
@@ -684,6 +725,23 @@ class _Toolbar extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (session != null && session.modified) ...[
+                    FilledButton.tonal(
+                      key: const ValueKey('view-update'),
+                      style: _toolbarButton,
+                      onPressed: () async {
+                        try {
+                          await app.updateActiveView();
+                        } catch (e) {
+                          if (context.mounted) showActionError(context, 'Could not update the view: $e');
+                        }
+                      },
+                      child: const Text('Update View'),
+                    ),
+                    const SizedBox(width: 6),
+                    TextButton(key: const ValueKey('view-revert'), style: _toolbarButton, onPressed: app.revertActiveView, child: const Text('Revert')),
+                    const SizedBox(width: 8),
+                  ],
                   if (t.namespaced) ...[SizedBox(width: nsWidth, child: const NamespacePicker()), const SizedBox(width: 8)],
                   SizedBox(
                     width: filterWidth,
@@ -699,13 +757,29 @@ class _Toolbar extends StatelessWidget {
                       onPressed: () => openCreateResource(context, kind: t, namespace: app.namespace),
                     ),
                   IconButton(
-                    tooltip: controller.isDefaultColumns ? 'Customise columns' : 'Customise columns (customised)',
+                    tooltip: session != null
+                        ? 'Customise this view\'s columns'
+                        : (controller.isDefaultColumns ? 'Customise columns' : 'Customise columns (customised)'),
                     icon: Badge(isLabelVisible: !controller.isDefaultColumns, smallSize: 6, child: const Icon(Icons.view_column_outlined)),
                     onPressed: () async {
+                      if (session != null) {
+                        // A view's columns are its own (saved with Update view).
+                        await showColumnEditor(context,
+                            type: t, namespace: app.namespace, columns: controller.columns, onSave: (cols) async => app.viewColumnsChanged(cols));
+                        return;
+                      }
                       final changed = await showColumnEditor(context, type: t, namespace: app.namespace);
                       if (changed == true) app.columnsChanged();
                     },
                   ),
+                  // Narrow toolbars drop it (⌘K → Save Current Table as View).
+                  if (box.maxWidth >= 480)
+                    IconButton(
+                      key: const ValueKey('table-save-view'),
+                      tooltip: session != null ? 'Save as new view…' : 'Save view…',
+                      icon: const Icon(Icons.bookmark_add_outlined),
+                      onPressed: () => showSaveViewDialog(context, controller),
+                    ),
                 ],
               );
             },

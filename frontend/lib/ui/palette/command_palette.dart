@@ -43,7 +43,14 @@ Future<void> showCommandPalette(BuildContext context, {bool command = false}) as
     barrierColor: Colors.black.withValues(alpha: 0.08),
     // Native: appears instantly.
     transitionDuration: Duration.zero,
-    pageBuilder: (_, _, _) => CommandPalette(items: items, api: context.read<ApiClient>(), app: app, skip: table?.type, command: command),
+    pageBuilder: (_, _, _) => CommandPalette(
+      items: items,
+      api: context.read<ApiClient>(),
+      app: app,
+      skip: table?.type,
+      command: command,
+      viewItem: (v) => viewPaletteItem(context, app, v),
+    ),
   );
   picked?.run();
 }
@@ -61,7 +68,10 @@ class CommandPalette extends StatefulWidget {
 
   /// Start in command mode (the query is `:`).
   final bool command;
-  const CommandPalette({super.key, required this.items, required this.app, this.api, this.skip, this.command = false});
+  /// Builds a saved view's item for `:view` (with the shell's context, so
+  /// opening it can still show dialogs once the palette has closed).
+  final PaletteItem Function(SavedView v)? viewItem;
+  const CommandPalette({super.key, required this.items, required this.app, this.api, this.skip, this.command = false, this.viewItem});
 
   @override
   State<CommandPalette> createState() => _CommandPaletteState();
@@ -119,7 +129,7 @@ class _CommandPaletteState extends State<CommandPalette> {
   void _rank() {
     final active = _flat.elementAtOrNull(_active);
     if (_command) {
-      final r = rankCommand(_query.text.substring(1), widget.app);
+      final r = rankCommand(_query.text.substring(1), widget.app, viewItem: widget.viewItem);
       _sections = r.sections;
       _highlight = r.highlight;
     } else {

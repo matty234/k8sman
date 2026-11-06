@@ -74,7 +74,7 @@ class FixtureApi extends ApiClient {
   ResourceType _type(ResourceRef r) => types.firstWhere((t) => t.group == r.group && t.resource == r.resource);
 
   @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false}) {
+  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false, List<ColumnDef>? columns}) {
     if (fieldSelector != null) {
       final name = fieldSelector.split('=').last;
       final o = objectFor(r.key, name);

@@ -1,6 +1,9 @@
 # Saved views and multi-namespace tables (design)
 
-Status: proposal, nothing implemented. This doc covers two related requests:
+Status: implemented (multi-namespace selection, then saved views). The
+owner's answers to the open questions changed parts of the design, and the
+build differs in places: see [As built](#as-built) at the end. This doc
+covers two related requests:
 
 - **Saved views:** save a table's state, for example "My back-end
   deployments" (Deployments, namespaces 1, 2, 3, 5, filter `back-end`), and
@@ -48,8 +51,8 @@ that show several clusters at once are out of scope (see "Future work").
   This is how pins already work, so it fits the app.
 - **Bound views** (`context` set) are for state that only makes sense on one
   cluster. Opening one switches to that context first.
-- **Not stored:** columns (the global per-resource override still applies),
-  the selected row and the inspector tab. Any of these can be added later
+- **Not stored:** the selected row and the inspector tab. (Columns *are*
+  stored: see [As built](#as-built).) Any of these can be added later
   under the `version` field. A loader keeps entries with a newer `version`
   untouched rather than dropping them, so a downgrade doesn't lose views.
 
@@ -281,7 +284,66 @@ view (it could become a list), and multi-namespace merging is the same
 fan-in that multiple clusters would need. A cheap first step would be a view
 listing several contexts, with a strip to switch between them one at a time.
 
-## Open questions for the owner
+## As built
+
+The owner's answers:
+
+1. A view keeps its filter, sort and columns in a **view session**; changes
+   don't overwrite the kind's remembered prefs. A dot after the title shows
+   **Update View** and **Revert**.
+2. **Overview, Security, Alerts and Metrics accept a namespace set** too.
+3. New views default to **any context**; **Only <context>** is the explicit
+   choice in the save dialog.
+4. The sidebar shows any-context views and views bound to the current
+   context; others are only in ⌘K and `:view`, marked with their context
+   and ⇄.
+5. No welcome screen: the connecting and cluster error screens list views,
+   plus **Open at Launch**.
+6. **A view saves its columns** (set and order), independent of the kind's
+   column configuration.
+7. Re-pointing and importing match contexts by API server URL.
+
+Where the build differs from the design above:
+
+- **Context record.** `context` is `{kubeconfig, name, server}`; `server`
+  (the API server URL at save time) is what re-pointing and import match on.
+- **Columns** travel with the request: `/api/watch` and `/api/table` take
+  `columns=<JSON array>`, which replaces the kind's columns for that
+  request. In a view session the column editor and header drags change the
+  session's columns; **Update View** saves them.
+- **Namespace sets on the server.** When a warm all-namespaces stream
+  exists, a set is one filtered subscriber on it (not one per namespace),
+  so cluster-wide users pay nothing extra. Otherwise one stream per
+  namespace, merged by `kcache.MultiSub`. `/api/table` and `/api/items`
+  report unreadable namespaces in `partialErrors`. Overview, Security and
+  Metrics list each namespace and leave out the unreadable ones (unless all
+  are), without a banner.
+- **Metrics.** Top, Storage and Network take the set. The custom metrics API
+  reads one namespace or all, so a set reads all and keeps the set's rows;
+  external metrics read the first namespace of the set.
+- **Picker.** Clicking a namespace (or Return) shows only it; its checkbox
+  (or ⇧Return) adds or removes it, and the popover stays open. Recent sets
+  are listed. There is no separate "Only this" hover button. `:ns a,b`,
+  `:ns +a` and `:ns -a` work in command mode.
+- **Pins** save one namespace under the old `namespace` key and a set under
+  `namespaces`.
+- **Missing namespaces** stay in the opened scope (listing a namespace that
+  doesn't exist returns nothing), so the picker can show them struck
+  through. `/api/namespaces` now says `listed: false` when the namespace
+  list is only the default, and nothing is struck through then.
+- **Sharing** goes through the backend (`POST /api/settings/views/export`
+  and `/parse`, so the app needs no YAML library): **Copy as YAML**, **Copy
+  All Views as YAML**, and **Import Views…** (paste). Import re-points a
+  bound view to the context with the same name, else to the only context
+  with the same API server URL, else asks.
+- **Launch.** A launch view bound to a context is connected to directly. If
+  it can't be opened, the sidebar's Views section says why.
+- **Not built:** ⌘S for Save View, `:view save <name>`, reordering views in
+  the sidebar editor, and **Locate file…** for a missing kubeconfig (a view
+  whose kubeconfig can't be switched to is treated as a missing context and
+  offered for re-pointing).
+
+## Open questions for the owner (answered above)
 
 1. Should a view keep its filter and sort separate from the kind's remembered
    prefs (the view session above), or simply write through to them?

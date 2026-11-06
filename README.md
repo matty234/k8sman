@@ -55,6 +55,10 @@ machine.
 - Pick **several namespaces** at once in the namespace picker (or `:ns a,b`):
   tables, Overview, Security, Alerts and Metrics show just those, even when
   your access covers only those namespaces.
+- **Save a table as a view** (the bookmark in the table toolbar): its kind,
+  namespaces, filter, sort and columns, for any context or only this one.
+  Views live in the sidebar, ⌘K and `:view`, can be shared as YAML, and one
+  can open at launch.
 
 <picture><source srcset="docs/images/demo-filter.avif" type="image/avif"><img src="docs/images/demo-filter.gif" alt="The filter box suggests columns, then the values in that column, and combines terms" width="100%"></picture>
 

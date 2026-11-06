@@ -10,6 +10,7 @@ import '../state/app_state.dart';
 import '../util/k8s.dart';
 import 'cluster_error_view.dart';
 import 'theme.dart';
+import 'views/saved_views_ui.dart';
 
 /// Shown while connecting to a context (startup, context or kubeconfig
 /// switch): which cluster, which step, how long, and after a few seconds
@@ -117,6 +118,8 @@ class _ConnectingViewState extends State<ConnectingView> {
                         const SizedBox(height: 6),
                         Text('Cancel goes back to $prev.', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
                       ],
+                      const SizedBox(height: 18),
+                      SavedViewsList(title: 'Open a view instead', except: c.context),
                     ]),
                   ),
                 ],
