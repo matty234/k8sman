@@ -55,7 +55,7 @@ class ContainerCard extends StatelessWidget {
             KindTag(c.kind),
             const SizedBox(width: 8),
             Flexible(
-              child: SelectableText(c.name, maxLines: 1, style: monoStyle(context, size: 13).copyWith(fontWeight: FontWeight.w700)),
+              child: Text(c.name, maxLines: 1, style: monoStyle(context, size: 13).copyWith(fontWeight: FontWeight.w700)),
             ),
             const Spacer(),
             if (c.restarts > 0) ...[
@@ -150,7 +150,7 @@ class ContainerCard extends StatelessWidget {
               style: small?.copyWith(color: severityColor(context, c.severity), fontWeight: FontWeight.w600)),
           if (flags.isNotEmpty) Text('· $flags', style: hint),
         ]),
-        if (msg != null) Padding(padding: const EdgeInsets.only(top: 2), child: SelectableText('$msg', style: hint)),
+        if (msg != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text('$msg', style: hint)),
       ]);
     }
     return _terminatedWidget(context, c.terminated, current: true);
@@ -303,7 +303,7 @@ class ContainerCard extends StatelessWidget {
               padding: const EdgeInsets.only(right: 10, bottom: 3),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 170),
-                child: SelectableText('${e['name']}', style: monoStyle(context, size: 11, color: theme.colorScheme.primary)),
+                child: Text('${e['name']}', style: monoStyle(context, size: 11, color: theme.colorScheme.primary)),
               ),
             ),
             Padding(padding: const EdgeInsets.only(bottom: 3), child: value(e)),

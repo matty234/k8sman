@@ -173,7 +173,7 @@ class _SecretBodyState extends State<SecretBody> {
           child: !revealed
               ? Text(_mask, maxLines: 1, overflow: TextOverflow.clip, style: monoStyle(context, size: 11.5, color: theme.hintColor))
               : revealed && d != null && !d.isBinary && !d.text!.contains('\n') && d.text!.length <= 60
-                  ? SelectableText(d.text!, style: monoStyle(context, size: 11.5))
+                  ? Text(d.text!, style: monoStyle(context, size: 11.5))
                   : body ?? const SizedBox.shrink(),
         ),
       ]),
@@ -226,9 +226,9 @@ class _SecretBodyState extends State<SecretBody> {
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Icon(Icons.cloud_outlined, size: 14, color: theme.hintColor),
                 const SizedBox(width: 6),
-                Expanded(flex: 5, child: SelectableText(r.registry, style: monoStyle(context, size: 11.5))),
+                Expanded(flex: 5, child: Text(r.registry, style: monoStyle(context, size: 11.5))),
                 const SizedBox(width: 8),
-                Expanded(flex: 3, child: SelectableText(r.username ?? '—', style: monoStyle(context, size: 11.5))),
+                Expanded(flex: 3, child: Text(r.username ?? '—', style: monoStyle(context, size: 11.5))),
                 const SizedBox(width: 8),
                 Expanded(
                   flex: 3,

@@ -145,7 +145,7 @@ class _EventBody extends StatelessWidget {
           border: Border(left: BorderSide(color: c, width: 3)),
           borderRadius: BorderRadius.circular(4),
         ),
-        child: SelectableText(ev.message.isEmpty ? '(no message)' : ev.message, style: theme.textTheme.bodyMedium),
+        child: Text(ev.message.isEmpty ? '(no message)' : ev.message, style: theme.textTheme.bodyMedium),
       ),
       const SizedBox(height: 8),
       KeyValueTable([

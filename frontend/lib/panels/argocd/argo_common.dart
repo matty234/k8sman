@@ -293,7 +293,7 @@ class ArgoCallout extends StatelessWidget {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (title != null) Text(title!, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: c)),
-            SelectableText(message, style: theme.textTheme.bodySmall),
+            Text(message, style: theme.textTheme.bodySmall),
           ]),
         ),
         if (trailing != null) ...[const SizedBox(width: 8), trailing!],

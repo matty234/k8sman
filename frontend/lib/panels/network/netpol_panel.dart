@@ -60,7 +60,7 @@ class _NetpolView extends StatelessWidget {
   Widget _explanation(BuildContext context, NetpolExplanation ex) {
     final theme = Theme.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SelectableText(ex.appliesTo, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+      Text(ex.appliesTo, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
       const SizedBox(height: 8),
       _direction(context, ex.ingress),
       const SizedBox(height: 8),
@@ -111,9 +111,9 @@ class _NetpolView extends StatelessWidget {
         ]),
         const SizedBox(height: 4),
         if (d.mode != PolicyMode.restricted)
-          SelectableText(body, style: theme.textTheme.bodySmall)
+          Text(body, style: theme.textTheme.bodySmall)
         else ...[
-          SelectableText(body, style: theme.textTheme.bodySmall),
+          Text(body, style: theme.textTheme.bodySmall),
           if (d.rules.length > 1 || d.rules.any((r) => r.peers.length > 1)) ...[
             const SizedBox(height: 4),
             for (var i = 0; i < d.rules.length; i++) _rule(context, d, i),

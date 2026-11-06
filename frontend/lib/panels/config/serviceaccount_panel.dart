@@ -50,7 +50,7 @@ class ServiceAccountPanel extends ResourcePanel {
           ),
           ('Secrets', secretLinks(secrets)),
           ('Image pull secrets', secretLinks(pullSecrets)),
-          ('Username', SelectableText('system:serviceaccount:${ctx.namespace}:${ctx.name}', style: monoStyle(context, size: 11.5))),
+          ('Username', Text('system:serviceaccount:${ctx.namespace}:${ctx.name}', style: monoStyle(context, size: 11.5))),
         ], keyWidth: 130),
       ),
       _SaUsedBy(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx),

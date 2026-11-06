@@ -282,7 +282,7 @@ class _RuleRow extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 4, top: 1),
                     child: Tooltip(message: dangers.join('\n'), child: Icon(Icons.warning_amber_rounded, size: 14, color: danger)),
                   ),
-                Expanded(child: SelectableText([...resources, ...urls].join(', '), style: mono)),
+                Expanded(child: Text([...resources, ...urls].join(', '), style: mono)),
               ]),
               if (names.isNotEmpty)
                 Padding(

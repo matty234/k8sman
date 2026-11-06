@@ -123,7 +123,7 @@ class DeclaredParams extends StatelessWidget {
                       Chipish(text: '$v', color: '$v' == '${p['value']}' ? theme.colorScheme.primary : null),
                   ])
                 else
-                  SelectableText(p['value'] == null ? (p['valueFrom'] != null ? 'from ${asMap(p['valueFrom']).keys.join(', ')}' : 'required') : ('${p['value']}'.isEmpty ? '"" (empty)' : '${p['value']}'),
+                  Text(p['value'] == null ? (p['valueFrom'] != null ? 'from ${asMap(p['valueFrom']).keys.join(', ')}' : 'required') : ('${p['value']}'.isEmpty ? '"" (empty)' : '${p['value']}'),
                       style: monoStyle(context, size: 11.5, color: p['value'] == null ? theme.hintColor : null)),
                 if (p['description'] != null) Text('${p['description']}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
               ]),

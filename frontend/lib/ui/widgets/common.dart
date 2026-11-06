@@ -326,7 +326,7 @@ class KeyValueTable extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: v is Widget ? DefaultTextStyle.merge(style: valueStyle, child: v) : SelectableText('$v', style: valueStyle),
+                child: v is Widget ? DefaultTextStyle.merge(style: valueStyle, child: v) : Text('$v', style: valueStyle),
               ),
             ]),
           ),
@@ -512,7 +512,7 @@ class ConditionsTable extends StatelessWidget {
               if ((c['message'] ?? '').toString().isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 1),
-                  child: SelectableText('${c['message']}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                  child: Text('${c['message']}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
                 ),
             ]),
           ),
@@ -590,7 +590,7 @@ class _CodeBlockState extends State<CodeBlock> {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     final dark = theme.brightness == Brightness.dark;
-    final content = SelectableText(widget.text, style: monoStyle(context, size: 11.5), maxLines: widget.maxLines);
+    final content = Text(widget.text, style: monoStyle(context, size: 11.5), maxLines: widget.maxLines);
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -641,7 +641,7 @@ class ResourceLink extends StatelessWidget {
     final theme = Theme.of(context);
     final text = label ?? '${ref.kind}/${ref.name}';
     final known = app.typeFor(ref.group, ref.kind) != null;
-    if (!known) return SelectableText(text, style: theme.textTheme.bodySmall);
+    if (!known) return Text(text, style: theme.textTheme.bodySmall);
     return Hoverable(
       onTap: () => app.openRef(ref),
       builder: (h) => Text(text,
@@ -691,7 +691,7 @@ class _JsonNodeState extends State<_JsonNode> {
         padding: const EdgeInsets.symmetric(vertical: 1),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (widget.name != null) Text('${widget.name}: ', style: keyStyle),
-          Expanded(child: SelectableText(_scalar(v), style: monoStyle(context, size: 11.5, color: _scalarColor(context, v)))),
+          Expanded(child: Text(_scalar(v), style: monoStyle(context, size: 11.5, color: _scalarColor(context, v)))),
         ]),
       );
     }
@@ -750,7 +750,7 @@ class InlineMessage extends StatelessWidget {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(padding: const EdgeInsets.only(top: 1), child: Icon(isError ? Icons.error_outline : icon, size: 14, color: c)),
       const SizedBox(width: 6),
-      Expanded(child: SelectableText(text, style: theme.textTheme.bodySmall?.copyWith(color: c))),
+      Expanded(child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: c))),
     ]);
   }
 }

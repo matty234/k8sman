@@ -62,7 +62,7 @@ class ReferenceGrantPanel extends ResourcePanel {
         title: 'Reference grant',
         icon: Icons.verified_user_outlined,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (final s in sentences) Padding(padding: const EdgeInsets.only(bottom: 4), child: SelectableText(s, style: Theme.of(context).textTheme.bodySmall)),
+          for (final s in sentences) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(s, style: Theme.of(context).textTheme.bodySmall)),
           const SizedBox(height: 4),
           NetTable(
             headers: const ['From kind', 'Namespace'],

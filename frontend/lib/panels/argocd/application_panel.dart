@@ -363,7 +363,7 @@ class OperationView extends StatelessWidget {
       if ((op['message'] ?? '').toString().isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: SelectableText('${op['message']}',
+          child: Text('${op['message']}',
               style: theme.textTheme.bodySmall?.copyWith(color: bad ? severityColor(context, Severity.error) : null)),
         ),
       KeyValueTable([
@@ -413,7 +413,7 @@ class OperationView extends StatelessWidget {
               if ((r['message'] ?? '').toString().isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(left: 19),
-                  child: SelectableText('${r['message']}', style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.error))),
+                  child: Text('${r['message']}', style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.error))),
                 ),
             ]),
           ),

@@ -83,7 +83,7 @@ class Callout extends StatelessWidget {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (title != null) Text(title!, style: theme.textTheme.bodySmall?.copyWith(color: c, fontWeight: FontWeight.w600)),
-            SelectableText(text, style: theme.textTheme.bodySmall),
+            Text(text, style: theme.textTheme.bodySmall),
             ?child,
           ]),
         ),
@@ -129,7 +129,7 @@ class MonoValue extends StatelessWidget {
   final Color? color;
   const MonoValue(this.text, {super.key, this.color});
   @override
-  Widget build(BuildContext context) => SelectableText(text, style: monoStyle(context, size: 11.5, color: color));
+  Widget build(BuildContext context) => Text(text, style: monoStyle(context, size: 11.5, color: color));
 }
 
 /// Inline row of a badge/chip with explanatory hint text.
@@ -172,7 +172,7 @@ class ParamsTable extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
-              child: SelectableText(_str(params[k]), style: monoStyle(context, size: 11.5)),
+              child: Text(_str(params[k]), style: monoStyle(context, size: 11.5)),
             ),
           ]),
       ],

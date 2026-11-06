@@ -77,7 +77,7 @@ class CopyText extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Flexible(child: SelectableText(text, style: monoStyle(context, size: size, color: color))),
+      Flexible(child: Text(text, style: monoStyle(context, size: size, color: color))),
       const SizedBox(width: 2),
       InkWell(
         borderRadius: BorderRadius.circular(4),
@@ -111,7 +111,7 @@ class CopyLine extends StatelessWidget {
         if (label != null) ...[
           SizedBox(width: 74, child: Text(label!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
         ],
-        Expanded(child: SelectableText(text, style: monoStyle(context, size: 11.5))),
+        Expanded(child: Text(text, style: monoStyle(context, size: 11.5))),
         IconButton(
           iconSize: 13,
           visualDensity: VisualDensity.compact,
@@ -205,11 +205,11 @@ class Callout extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SelectableText(title, style: theme.textTheme.bodySmall?.copyWith(color: c, fontWeight: FontWeight.w600)),
+            Text(title, style: theme.textTheme.bodySmall?.copyWith(color: c, fontWeight: FontWeight.w600)),
             if (detail != null && detail!.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: SelectableText(detail!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.8))),
+                child: Text(detail!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.8))),
               ),
           ]),
         ),

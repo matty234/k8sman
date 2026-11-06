@@ -183,7 +183,7 @@ class Callout extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: theme.textTheme.bodyMedium?.copyWith(color: c, fontWeight: FontWeight.w600)),
             if (body != null && body!.isNotEmpty)
-              Padding(padding: const EdgeInsets.only(top: 2), child: SelectableText(body!, style: theme.textTheme.bodySmall)),
+              Padding(padding: const EdgeInsets.only(top: 2), child: Text(body!, style: theme.textTheme.bodySmall)),
           ]),
         ),
         if (action != null) ...[const SizedBox(width: 8), action!],

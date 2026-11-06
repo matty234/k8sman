@@ -175,7 +175,7 @@ class RuleCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
           Icon(isAlert ? Icons.notifications_none : Icons.functions, size: 15, color: theme.hintColor),
-          SelectableText(name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+          Text(name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
           PHint(isAlert ? 'alert' : 'record'),
           if (isAlert && stateText != null) StatusBadge(stateText, dense: true, severity: ruleStateBadge(l?.state, '${labels['severity'] ?? ''}')),
           if (l != null && l.health == 'err') StatusBadge('Error', dense: true, severity: Severity.error),
@@ -198,7 +198,7 @@ class RuleCard extends StatelessWidget {
                 e.key,
                 e.key == 'runbook_url' && '${e.value}'.startsWith('http')
                     ? _UrlLink('${e.value}')
-                    : SelectableText('${e.value}', style: theme.textTheme.bodySmall),
+                    : Text('${e.value}', style: theme.textTheme.bodySmall),
               ),
           ], keyWidth: 110),
         ],

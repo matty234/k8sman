@@ -157,18 +157,22 @@ class _LiveObjectState extends State<_LiveObject> {
                     ],
                   ),
                   Expanded(
+                    // Inspector text is plain Text inside a SelectionArea
+                    // (selectable across lines and sections). SelectableText
+                    // each carry their own scroll view, which could draw a
+                    // frame or two scrolled and then slide into place.
                     child: InstantTabView(children: [
-                      ListView(
+                      SelectionArea(child: ListView(
                         key: PageStorageKey('overview-${ctx!.uid}'),
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                         children: [
                           MetadataSection(ctx: ctx),
                           ..._safeSections(context, panel, ctx),
                         ],
-                      ),
+                      )),
                       for (final x in extraTabs) Builder(builder: (c) => x.builder(c, ctx)),
                       YamlEditorTab(key: ValueKey('yaml-${ctx.uid}'), target: t, resourceVersion: dig<String>(obj, ['metadata', 'resourceVersion']) ?? '', editRequest: _editRequest),
-                      _EventsTab(namespace: t.namespace, uid: ctx.uid),
+                      SelectionArea(child: _EventsTab(namespace: t.namespace, uid: ctx.uid)),
                     ]),
                   ),
                 ])),
@@ -331,7 +335,7 @@ class _Header extends StatelessWidget {
                 if (deleted) ...[const SizedBox(width: 8), const StatusBadge('Deleted', severity: Severity.error, dense: true)],
               ]),
               const SizedBox(height: 2),
-              SelectableText(target.name, maxLines: 1, style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
+              SelectionArea(child: Text(target.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium?.copyWith(fontSize: 15))),
             ]),
           ),
         ),
@@ -466,7 +470,7 @@ class EventList extends StatelessWidget {
                   const Spacer(),
                   AgeText(e['lastTimestamp'] ?? e['eventTime'] ?? dig(e, ['metadata', 'creationTimestamp']), suffix: ' ago'),
                 ]),
-                SelectableText('${e['message'] ?? ''}', style: theme.textTheme.bodySmall),
+                Text('${e['message'] ?? ''}', style: theme.textTheme.bodySmall),
                 if (dig(e, ['source', 'component']) != null || e['reportingComponent'] != null)
                   Text('${dig(e, ['source', 'component']) ?? e['reportingComponent']}${dig(e, ['source', 'host']) != null ? ' on ${dig(e, ['source', 'host'])}' : ''}',
                       style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),

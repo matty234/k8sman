@@ -144,7 +144,7 @@ class ScrapeTargetRow extends StatelessWidget {
             if (t.lastError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: SelectableText(t.lastError!, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.error))),
+                child: Text(t.lastError!, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.error))),
               ),
           ]),
         ),

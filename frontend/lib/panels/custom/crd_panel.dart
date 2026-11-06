@@ -117,7 +117,7 @@ class CrdPanel extends ResourcePanel {
             ObjectRef(kind: 'Service', name: '${svc['name']}', namespace: svc['namespace'] as String?),
             label: 'Service/${svc['namespace']}/${svc['name']}${svc['port'] != null ? ':${svc['port']}' : ''}${svc['path'] ?? ''}',
           ),
-        if (cc['url'] != null) SelectableText('${cc['url']}', style: monoStyle(context, size: 11)),
+        if (cc['url'] != null) Text('${cc['url']}', style: monoStyle(context, size: 11)),
         if (reviewVersions != null) Text('review ${reviewVersions.join(', ')}', style: hintMono(context)),
         if (cc['caBundle'] == null && svc.isNotEmpty) Text('no caBundle', style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.warn))),
       ]);
@@ -135,10 +135,10 @@ class CrdPanel extends ResourcePanel {
       ]),
       const SizedBox(height: 8),
       KeyValueTable([
-        ('Group', SelectableText('${spec['group'] ?? ''}', style: monoStyle(context, size: 12))),
-        ('Kind', SelectableText('${names['kind'] ?? ''}', style: monoStyle(context, size: 12))),
-        ('Plural / singular', SelectableText('${names['plural'] ?? ''} / ${names['singular'] ?? ''}', style: monoStyle(context, size: 12))),
-        ('List kind', names['listKind'] == null ? null : SelectableText('${names['listKind']}', style: monoStyle(context, size: 12))),
+        ('Group', Text('${spec['group'] ?? ''}', style: monoStyle(context, size: 12))),
+        ('Kind', Text('${names['kind'] ?? ''}', style: monoStyle(context, size: 12))),
+        ('Plural / singular', Text('${names['plural'] ?? ''} / ${names['singular'] ?? ''}', style: monoStyle(context, size: 12))),
+        ('List kind', names['listKind'] == null ? null : Text('${names['listKind']}', style: monoStyle(context, size: 12))),
         ('Short names', (names['shortNames'] as List?)?.isNotEmpty == true ? _chips(names['shortNames'] as List) : null),
         ('Categories', (names['categories'] as List?)?.isNotEmpty == true ? _chips(names['categories'] as List) : null),
         ('Accepted names', acceptedW),
@@ -167,7 +167,7 @@ class CrdPanel extends ResourcePanel {
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Icon(Icons.warning_amber_rounded, size: 14, color: c),
         const SizedBox(width: 6),
-        Expanded(child: SelectableText(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: c))),
+        Expanded(child: Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: c))),
       ]),
     );
   }

@@ -762,7 +762,7 @@ class NodeDetails extends StatelessWidget {
         if (outputs.isNotEmpty) ...[_sub(context, 'Output parameters'), ParamTable(outputs)],
         if (dig(raw, ['outputs', 'result']) != null) ...[
           _sub(context, 'Result'),
-          SelectableText('${dig(raw, ['outputs', 'result'])}', maxLines: 6, style: monoStyle(context, size: 11.5)),
+          Text('${dig(raw, ['outputs', 'result'])}', maxLines: 6, style: monoStyle(context, size: 11.5)),
         ],
         if (artifacts.isNotEmpty) ...[
           _sub(context, 'Artifacts'),
@@ -772,7 +772,7 @@ class NodeDetails extends StatelessWidget {
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 SizedBox(width: 28, child: Text(dir, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor))),
                 SizedBox(width: 120, child: Text('${a['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall)),
-                Expanded(child: SelectableText(artifactLocation(a), maxLines: 2, style: monoStyle(context, size: 11, color: theme.hintColor))),
+                Expanded(child: Text(artifactLocation(a), maxLines: 2, style: monoStyle(context, size: 11, color: theme.hintColor))),
               ]),
             ),
         ],

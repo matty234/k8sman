@@ -78,7 +78,7 @@ class ProjectSummary extends StatelessWidget {
     final unrestricted = openSources && openDests && anyClusterKind;
     final desc = spec['description'] as String?;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (desc != null && desc.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 8), child: SelectableText(desc, style: Theme.of(context).textTheme.bodySmall)),
+      if (desc != null && desc.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(desc, style: Theme.of(context).textTheme.bodySmall)),
       Wrap(spacing: 8, runSpacing: 6, children: [
         unrestricted
             ? ArgoBadge(ArgoStyle(Icons.lock_open, severityColor(context, Severity.warn), Severity.warn), 'Unrestricted', large: true,

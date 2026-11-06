@@ -367,7 +367,7 @@ class ParamTable extends StatelessWidget {
         (
           '${p['name']}',
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Flexible(child: SelectableText(_paramValue(p), style: monoStyle(context, size: 11.5))),
+            Flexible(child: Text(_paramValue(p), style: monoStyle(context, size: 11.5))),
             if (defaulted.contains(p['name'])) ...[
               const SizedBox(width: 6),
               Text('default', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),

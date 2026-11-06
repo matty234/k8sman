@@ -84,7 +84,7 @@ class _NsStatus extends StatelessWidget {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('${c['type']}${c['reason'] != null ? ' · ${c['reason']}' : ''}',
                         style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
-                    if (c['message'] != null) SelectableText('${c['message']}', style: theme.textTheme.bodySmall),
+                    if (c['message'] != null) Text('${c['message']}', style: theme.textTheme.bodySmall),
                   ]),
                 ),
             ],

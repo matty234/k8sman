@@ -366,7 +366,7 @@ class JobPodRow extends StatelessWidget {
           if (start != null) hint(context, 'started ${formatLocal(start)}'),
           if (start != null && finish != null && done) hint(context, 'ran ${formatDuration(finish.difference(start).isNegative ? Duration.zero : finish.difference(start))}'),
         ]),
-        if (podMsg != null && podMsg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 3), child: SelectableText(podMsg, style: theme.textTheme.bodySmall?.copyWith(color: c))),
+        if (podMsg != null && podMsg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 3), child: Text(podMsg, style: theme.textTheme.bodySmall?.copyWith(color: c))),
         for (final (s, init) in statuses) _ContainerStateLine(s, init: init),
       ]),
     );

@@ -15,7 +15,7 @@ class MonoValue extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = SelectableText(text, style: monoStyle(context, size: size, color: color));
+    final t = Text(text, style: monoStyle(context, size: size, color: color));
     if (!copy) return t;
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Flexible(child: t),
@@ -94,11 +94,11 @@ class InsightList extends StatelessWidget {
             ),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                SelectableText(i.text, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+                Text(i.text, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
                 if (i.detail != null && i.detail!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: SelectableText(i.detail!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                    child: Text(i.detail!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
                   ),
               ]),
             ),

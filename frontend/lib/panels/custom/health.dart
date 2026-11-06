@@ -170,7 +170,7 @@ class HealthSummary extends StatelessWidget {
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 14, color: c)),
         const SizedBox(width: 6),
-        Expanded(child: SelectableText(text, style: theme.textTheme.bodySmall?.copyWith(color: boxed ? c : theme.hintColor))),
+        Expanded(child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: boxed ? c : theme.hintColor))),
         if (trailing != null) ...[const SizedBox(width: 6), trailing],
       ]),
     );

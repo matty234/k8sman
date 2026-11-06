@@ -105,7 +105,7 @@ class PodPanel extends ResourcePanel {
         for (final l in ls)
           Padding(
             padding: const EdgeInsets.only(bottom: 2),
-            child: SelectableText(l, style: mono),
+            child: Text(l, style: mono),
           ),
       ],
     );
@@ -145,7 +145,7 @@ class PodPanel extends ResourcePanel {
               for (final t in custom)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 2),
-                  child: SelectableText(tolerationText(t), style: mono),
+                  child: Text(tolerationText(t), style: mono),
                 ),
               if (defaults > 0)
                 Tooltip(
@@ -327,7 +327,7 @@ class _Volumes extends StatelessWidget {
         Row(
           children: [
             Flexible(
-              child: SelectableText(name, maxLines: 1, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
+              child: Text(name, maxLines: 1, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
             ),
             const SizedBox(width: 8),
             Chipish(text: type),

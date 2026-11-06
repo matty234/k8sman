@@ -369,7 +369,7 @@ class AppSetConditions extends StatelessWidget {
               AgeText(c['lastTransitionTime'], suffix: ' ago'),
             ]),
             if ((c['message'] ?? '').toString().isNotEmpty)
-              SelectableText('${c['message']}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+              Text('${c['message']}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
           ]),
         ),
     ]);

@@ -236,7 +236,7 @@ class SmartObjectView extends StatelessWidget {
     final theme = Theme.of(context);
     if (v == null) return _muted(context, 'null');
     if (v is bool) return _bool(context, v);
-    if (v is num) return SelectableText('$v', style: monoStyle(context, color: theme.colorScheme.tertiary));
+    if (v is num) return Text('$v', style: monoStyle(context, color: theme.colorScheme.tertiary));
     final s = '$v';
     if (looksLikeTimestamp(s)) {
       return Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [
@@ -245,7 +245,7 @@ class SmartObjectView extends StatelessWidget {
       ]);
     }
     if (_isLong(s)) return CodeBlock(s);
-    return SelectableText(s, style: theme.textTheme.bodySmall);
+    return Text(s, style: theme.textTheme.bodySmall);
   }
 
   static Widget _bool(BuildContext context, bool v) => Text(
