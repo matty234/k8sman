@@ -30,6 +30,7 @@ import 'row_context_menu.dart';
 import 'terminal/open_terminal.dart' show kTerminalActionId;
 import 'theme.dart';
 import 'widgets/common.dart';
+import 'editor/resource_editor_screen.dart';
 import 'table_filter_field.dart';
 import 'widgets/group_icon.dart';
 import 'widgets/namespace_picker.dart';
@@ -624,7 +625,7 @@ class _Toolbar extends StatelessWidget {
               // tight) and the title takes all remaining slack, so the
               // controls stay pinned right on wide windows.
               final nsWidth = (box.maxWidth * 0.2).clamp(110.0, 190.0);
-              final filterWidth = (box.maxWidth * 0.26).clamp(120.0, 240.0);
+              final filterWidth = (box.maxWidth * 0.26).clamp(104.0, 240.0);
               return Row(
                 children: [
                   Expanded(
@@ -667,6 +668,13 @@ class _Toolbar extends StatelessWidget {
                     child: TableFilterField(controller: controller),
                   ),
                   const SizedBox(width: 4),
+                  if (!app.readOnly && t.can('create'))
+                    IconButton(
+                      key: const ValueKey('table-create'),
+                      tooltip: 'New ${t.kind}…',
+                      icon: const Icon(Icons.add),
+                      onPressed: () => openCreateResource(context, kind: t, namespace: app.namespace),
+                    ),
                   IconButton(
                     tooltip: controller.isDefaultColumns ? 'Customise columns' : 'Customise columns (customised)',
                     icon: Badge(isLabelVisible: !controller.isDefaultColumns, smallSize: 6, child: const Icon(Icons.view_column_outlined)),

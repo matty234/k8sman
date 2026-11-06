@@ -11,6 +11,7 @@ import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../../state/table_controller.dart';
 import '../keys.dart';
+import '../editor/resource_editor_screen.dart';
 import '../resource_nav.dart';
 import '../resource_table.dart';
 import '../sidebar_editor.dart';
@@ -105,6 +106,25 @@ List<PaletteItem> paletteItems(BuildContext context) {
         icon: _icon(Icons.view_sidebar_outlined),
         shortcut: shortcutLabel('I'),
         run: app.toggleInspector,
+      ),
+    if (!app.readOnly)
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'New Resource…',
+        typeLabel: 'Action',
+        icon: _icon(Icons.add),
+        aliases: const ['create', 'apply', 'manifest', 'yaml'],
+        run: () => openCreateResource(context, kind: app.view == MainView.resources ? app.selectedType : null, namespace: app.namespace),
+      ),
+    if (app.detail case final d?)
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'Open in Editor',
+        detail: d.name,
+        typeLabel: 'Action',
+        icon: _icon(Icons.edit_note),
+        aliases: const ['edit', 'yaml'],
+        run: () => openResourceEditor(context, d),
       ),
     PaletteItem(
       group: PaletteGroup.actions,
