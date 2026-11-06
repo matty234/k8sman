@@ -13,6 +13,7 @@ import 'connecting_view.dart';
 import 'detail/detail_sidebar.dart';
 import 'logs/log_dock_view.dart';
 import 'palette/command_palette.dart';
+import 'palette/palette_sources.dart' show visibleTable;
 import 'resource_nav.dart';
 import 'resource_table.dart';
 import 'theme.dart';
@@ -105,6 +106,8 @@ class _ShellState extends State<Shell> {
       bindings: {
         primaryShortcut(LogicalKeyboardKey.keyJ): dock.toggle,
         primaryShortcut(LogicalKeyboardKey.keyI): app.toggleInspector,
+        // Editors and the log search handle ⌘F themselves when focused.
+        primaryShortcut(LogicalKeyboardKey.keyF): () => visibleTable(context)?.filterFocus.requestFocus(),
         for (final a in commandPaletteShortcuts) a: _palette,
       },
       child: Focus(
