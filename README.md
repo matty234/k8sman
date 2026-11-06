@@ -39,7 +39,7 @@ backend embedded, nothing to run in your cluster, and nothing that leaves your
 machine.
 
 <table>
-<tr><td><b>Every kind</b><br>Built-ins and CRDs, discovered live</td><td><b>30+ kind panels</b><br>Pods to Gateways to Argo CD apps</td><td><b>Cluster pages</b><br>Overview, Nodes, Security, Metrics, Helm, Add-ons, plus Alerts and Forwards in the dock</td></tr>
+<tr><td><b>Every kind</b><br>Built-ins and CRDs, discovered live</td><td><b>30+ kind panels</b><br>Pods to Gateways to Argo CD apps</td><td><b>Cluster pages</b><br>Overview, Nodes, Security, Metrics, Helm, Add-ons, Hubble, plus Alerts and Forwards in the dock</td></tr>
 <tr><td><b>Local only</b><br>Listens on 127.0.0.1, no telemetry</td><td><b>Native</b><br>Vibrancy, unified titlebar, dark and light</td><td><b>Self-updating</b><br>Signed Sparkle updates</td></tr>
 </table>
 
@@ -172,6 +172,18 @@ machine.
   PrometheusRule panels show live rule state, and ServiceMonitor/PodMonitor
   panels show scrape-target health. k8sman reaches Prometheus through the
   Kubernetes service proxy, so you don't need a port-forward.
+
+### Cilium Hubble
+
+- Live network flows from Hubble Relay: for the whole cluster or a
+  namespace on the Hubble page, and for one object in a **Flows** tab on
+  Pods, Services, Namespaces and workloads. Drops stand out with their
+  reason, and both ends link to their pods and services.
+- **Drops** groups recent drops by source, destination and reason.
+- **Can A reach B?** answers with the verdicts, drop reasons and the policy
+  that decided, then follows the traffic between the two live.
+- Filters run in the relay, and k8sman reaches it through its own
+  read-only port-forward, so there's nothing to set up.
 
 ### Gateway API
 
@@ -404,7 +416,8 @@ backend (client-go). The app starts the backend on `127.0.0.1`, supervises it
 Windows and Linux), and talks to it over HTTP and
 WebSockets: watches, logs, exec and port-forwards. The backend holds the
 kubeconfig and does the cluster work. Argo CD, Prometheus and Alertmanager are
-reached in-cluster through the Kubernetes API's service proxy.
+reached in-cluster through the Kubernetes API's service proxy; Hubble Relay,
+which speaks gRPC, through an in-process port-forward.
 
 ```mermaid
 flowchart LR
@@ -412,6 +425,7 @@ flowchart LR
   BE <--> K8S["Kubernetes API"]
   K8S -- "service proxy" --> ARGO["argocd-server"]
   K8S -- "service proxy" --> PROM["Prometheus / Alertmanager"]
+  K8S -- "port-forward (gRPC)" --> HUBBLE["Hubble Relay"]
   BE -. "local CLIs" .-> CLI["helm SDK · argocd login · trivy"]
 ```
 

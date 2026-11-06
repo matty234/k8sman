@@ -198,6 +198,18 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   **Copy for AI**.
 - **Add-ons**: one-click Helm installs of metrics-server, the Prometheus
   stack, Trivy Operator, Argo CD, Envoy Gateway and cert-manager.
+- **Hubble** (on clusters running Cilium with Hubble Relay): live network
+  flows for the cluster or a namespace, filtered by verdict, protocol, port
+  and direction at the relay; **Drops**, grouped live by source, destination
+  and reason (with the denying policy where Hubble knows it); and **Can A
+  reach B?**, which says whether traffic between two endpoints was forwarded
+  or dropped, why, and by which policy, then shows the flows between them
+  live. Pods, Services, Namespaces and workloads get a **Flows** tab in the
+  inspector: drops are highlighted with their reason, both ends link to their
+  objects, and HTTP and DNS details show when Cilium sees L7. The overview
+  flags an unreachable relay and namespaces dropping flows. k8sman reaches
+  the relay through a port-forward it manages itself, read-only; the relay
+  Service and TLS can be set per context under Integrations.
 
 ## Actions
 

@@ -84,7 +84,8 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | POST | `/api/settings/views/export` | `{views: [View]}` → the views as YAML documents (`application/yaml`) |
 | POST | `/api/settings/views/parse` | `{yaml}` → `{views: [View]}`: YAML documents as exported, with fresh ids, validated but not saved |
 | GET/PUT | `/api/settings/tables` | per-kind table preferences in settings.json: read `{tables: {"group/Kind": {sortColumn?, sortDescending?, widths?, filter?}}}`, save one with `{kind, prefs}` (prefs null forgets it) |
-| GET/PUT | `/api/settings/modules` | integrations the user turned off, in settings.json: read or save `{disabled: [ids]}`. Ids: `argocd`, `argoworkflows`, `helm`, `gpus`, `prometheus`, `gateway` (backend modules) and UI-only ones (`metrics`, `addons`). A turned-off module's endpoints (`/api/argocd/*`, `/api/argowf/*`, `/api/helm/*`, `/api/gpu`, `/api/prom/*`) answer 404 with `reason: "ModuleDisabled"`, its actions are not offered, and the overview skips its checks. Works without a cluster connection |
+| GET/PUT | `/api/settings/modules` | integrations the user turned off, in settings.json: read or save `{disabled: [ids]}`. Ids: `argocd`, `argoworkflows`, `helm`, `gpus`, `prometheus`, `gateway`, `hubble` (backend modules) and UI-only ones (`metrics`, `addons`). A turned-off module's endpoints (`/api/argocd/*`, `/api/argowf/*`, `/api/helm/*`, `/api/gpu`, `/api/prom/*`, `/api/hubble/*`) answer 404 with `reason: "ModuleDisabled"`, its actions are not offered, and the overview skips its checks. Works without a cluster connection |
+| GET/PUT | `/api/settings/modules/{id}[?context=]` | a module's own settings for a kube context (default: the current one), in settings.json's `moduleSettings`: read `{context, settings}` (`{}` when none are saved) or save a JSON object (`{}` clears). The module validates it (400 with the reason). Only modules with settings (today `hubble`); others answer 404. Allowed in read-only mode: it changes k8sman's settings, not the cluster |
 | POST | `/api/columns/preview[?limit=]` | body `{columns}`: evaluates unsaved columns against live objects and returns a table |
 | WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. With `namespaces`, `{type:"PARTIAL_ERROR", namespace, error, reason, code}` reports a namespace of the set that can't be watched (e.g. Forbidden) while the socket stays open for the others. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true`. `columns=<JSON array>` renders the rows through those columns instead of the kind's (a saved view's own columns; invalid queries are a 400). With `batch=true` the server may also send `{type:"BATCH",events:[{type,row},…]}`: deltas from a ~75ms window, in order (apply all, then redraw once). See [Shared watches](#shared-watches) |
 | WS | `/api/logs` | `namespace`, `pod`, `container`, `tailLines` (default 500, `-1` = all), `previous`, `timestamps`, `sinceSeconds`, `follow` (default true). Sends frames `{line}`, ending with `{eof:true}` or `{error}` |
@@ -533,6 +534,76 @@ those two actions are unavailable. Tokens are never returned or logged.
 The Health overview reports `workflowFailed` issues: Workflows that failed in
 the last 24h, one per CronWorkflow / WorkflowTemplate (the latest failure,
 with a count); critical unless a later run of the same origin succeeded.
+
+## Cilium Hubble
+
+Network flows from Cilium's Hubble Relay (`backend/internal/hubble`). The
+relay speaks gRPC (`observer.Observer/GetFlows` and `ServerStatus`), which
+the API server's service proxy can't carry, so the backend dials it through
+an in-process port-forward to a ready relay pod (the same `pods/portforward`
+subresource as port-forwards, but nothing listens on the machine; needs
+`create pods/portforward` in the relay's namespace). It works in read-only
+mode: nothing here changes the cluster.
+
+Discovery: the relay Service by its chart labels (`k8s-app=hubble-relay`,
+then `app.kubernetes.io/name=hubble-relay`) across namespaces, else
+`hubble-relay` in `kube-system` or `cilium`; its port named `grpc`, else the
+first. `cilium-config` says whether Cilium is there and Hubble on
+(`enable-hubble`). TLS comes from the relay's own `hubble-relay-config`
+(`disable-server-tls`); with TLS the CA is read from the
+`hubble-relay-server-certs` Secret and a client certificate from
+`hubble-ui-client-certs` (else `hubble-relay-client-certs`), in memory only.
+Per-context overrides (`GET/PUT /api/settings/modules/hubble`): `relay`
+(`namespace/name[:port]`), `tls` (`on`/`off`) and `tlsServerName` (default
+`ui.hubble-relay.cilium.io`).
+
+Flows are fetched with a field mask (only the fields below; endpoint and
+node labels make up most of a flow's ~3.5 KB), so a following stream fits
+through the API server tunnel. The relay keeps a fixed number of flows per
+node (4095 by default): on a busy cluster that is seconds of history, not
+minutes, so `since` can reach back less far than asked; responses say how
+far they got (`oldest`).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/hubble/status[?refresh=true]` | `{state, message?, cilium, hubbleEnabled?, relay?:{namespace, service, port, tls, fromSettings?}, server?:{version, numFlows, maxFlows, seenFlows, flowsRate, uptimeSeconds, connectedNodes?, unavailableNodes?}, errors?, checkedAt}`. `state`: `notInstalled` (no Cilium, or Hubble off), `noRelay`, `connected` or `unreachable` (with the reason in `message`). Cached per context for 30s (10s when not connected) |
+| WS | `/api/hubble/flows` | live flows, filtered by the relay. Frames `{flows?:[Flow], lost?, end?, error?}`, at most every 100 ms and 500 flows per frame. A following stream passes at most 1,000 flows a second; the rest, and flows the relay itself reports lost, are counted in `lost`. Query below; `follow` defaults to true, with recent history first (`since=5s`, or `5m` for a narrow query: some endpoints, or only non-FORWARDED verdicts). Without `follow`, the last 200 flows (or `last`/`since`) then a frame with `end`. Bad parameters are a 400 before the upgrade; an unreachable relay is an `error` frame |
+| GET | `/api/hubble/drops` | recent drops grouped: `{groups:[{source, destination, reason, protocol?, port?, count, first, last, deniedBy?}], flows, truncated?, lost?, since, oldest?, partial?}`, most frequent first. Takes `namespace` (comma-separated), `since` (default 15m), `last` (default 1000). `partial` when the relay was too slow (15 s) |
+| GET | `/api/hubble/connectivity?from=&to=` | "can A reach B": the flows from `from` to `to` (endpoint specs) as `{from, to, since, verdict: allowed\|dropped\|mixed\|unknown, verdicts:{VERDICT: n}, drops:[groups], allowedBy?:[policies], recent:[Flow] (last 50), reverse:{VERDICT: n} (the other way), lost?, oldest?}`. `since` defaults to 15m |
+
+Flow query (`/api/hubble/flows`, and `namespace` for drops), translated into
+Hubble `FlowFilter`s:
+
+- Scope, ANDed, matching flows where either side is in it: `namespace`
+  (comma-separated), `pod` (`namespace/name`, matched by Hubble as a prefix,
+  so `ns/web-` matches a workload's pods), `labels` (a label selector over
+  Cilium identity labels, e.g. `app=web,tier!=db`), `service`
+  (`namespace/name`).
+- Or `from` and/or `to` (not with the scope): endpoint specs
+  `namespace/pod` (prefix), `svc:namespace/name`, `ns:namespace`,
+  `fqdn:name` or an IP.
+- Narrowing either: `verdict` (`FORWARDED`, `DROPPED`, `ERROR`, `AUDIT`, …,
+  comma-separated), `protocol` (`tcp`, `udp`, `icmp`, `http`, `dns`, …),
+  `port` (destination ports), `direction` (`ingress`/`egress`).
+- History: `since` (a Go duration), `last` (at most 10000), `follow`.
+
+Flow: `{time, verdict, dropReason? (e.g. POLICY_DENIED), direction?
+(INGRESS/EGRESS), isReply?, type? (L3_L4/L7/SOCK), source, destination, l4?:
+{protocol, flags?}, l7?: {kind, latencyMs?, http?: {method, url, code},
+dns?: {query, rcode, ips}}, node?, event? (observation point), policies?:
+{allowedBy?, deniedBy?: [{kind, namespace, name}]}}`. An endpoint is
+`{namespace?, pod?, workloadKind?, workloadName?, service?, ip?, port?,
+identity?, names? (DNS names), reserved? (world, host, remote-node,
+kube-apiserver, … for non-pod endpoints)}`. Policies need Cilium's policy
+correlation (`hubble-network-policy-correlation-enabled`).
+
+The Health overview adds `hubbleRelayUnreachable` (warning, on the relay
+Service) and `hubbleDrops` (warning, per namespace with at least 5 drops in
+the last 5 minutes, or as far back as the relay holds; a drop counts for the
+destination pod's namespace, else the source's). Both come from cached
+results refreshed in the background (status 30s, drops 1 min), so an
+overview poll never waits on the relay and the first one after starting has
+none.
 
 ## CRD group icons
 

@@ -118,7 +118,8 @@ backend/   Go server (client-go)
   cmd/k8sman-server/   entry point and flags
   internal/cluster/    kubeconfig loading, context and kubeconfig switching, discovery
   internal/server/     HTTP and WebSocket API
-  internal/portforward supervised port-forwards
+  internal/portforward supervised port-forwards, and in-process pod dialing (DialPod)
+  internal/hubble/     Hubble Relay client: vendored protos (proto/, pb/), filters, streaming
   internal/settings/   ~/.config/k8sman/settings.json
   internal/icons/      CRD group icons: Helm chart icons, bundled icons, favicons
 tools/     build-backend.sh, app icon generator, release/update tooling, marketing-shots.sh
@@ -135,11 +136,12 @@ packaging/ Homebrew cask template
     backend also exits if its stdin closes, so it never outlives the app.
 - **Local state** lives in `~/.config/k8sman/`:
   - `settings.json`: the chosen kubeconfig, recent kubeconfigs, the last
-    context per kubeconfig, and `remoteIcons`.
+    context per kubeconfig, `remoteIcons`, turned-off integrations and
+    integrations' own settings (`moduleSettings`).
   - `columns.json`: custom columns.
   - `portforwards.json`: saved forwards.
 - **Integrations** (Argo CD, Argo Workflows, Helm, GPUs, Prometheus,
-  Gateway API, Metrics, Add-ons) are compile-time modules; see
+  Gateway API, Cilium Hubble, Metrics, Add-ons) are compile-time modules; see
   [Adding an integration](#adding-an-integration).
 - **CRD icons** come from Helm chart metadata, icons bundled with the app, or
   the group's website favicon (fetched directly, never through a third-party
@@ -164,27 +166,78 @@ Sidebar → Integrations…** (or the palette's **Integrations…**), saved as
    repeat them. Larger integrations keep their logic in their own package
    (`internal/argoapi`, `internal/helm`, …) with a
    `Register(mux httpx.Router, …)`.
-2. Optionally implement `OverviewSource` (list objects into
-   `overview.Input` for the health overview, with `l.Go`) and
-   `ActionSource` (actions for `POST /api/actions/{action}`; decode your
-   body fields from `ActionCall.Body`).
+2. Optionally implement:
+   - `OverviewSource`: feed the health overview with `l.Go`. Either list
+     objects into `overview.Input` for the overview package to analyse, or,
+     when your module works out its own problems, append
+     `overview.Finding`s to `in.Findings` (an issue plus the label and
+     section of its summary tile), as Hubble does. Overview polls run
+     every 10 s: never wait on a slow service there; serve a cached
+     result and refresh it in the background.
+   - `ActionSource`: actions for `POST /api/actions/{action}`; decode your
+     body fields from `ActionCall.Body`.
+   - `Configurable`: settings of your own (an address override, a TLS
+     choice), saved per kube context in settings.json's `moduleSettings`
+     and served by `GET/PUT /api/settings/modules/{id}`. You validate the
+     JSON in `ValidateSettings`; read it with
+     `d.Settings.ModuleSettings(id, context, &yourStruct)`.
 3. Add it to `builtinModules()`. While it is turned off its routes answer
    404 (`reason: "ModuleDisabled"`) and it adds no overview inputs or
    actions.
 4. Document the endpoints in API.md.
 
+Reaching an in-cluster service: HTTP goes through the API server's service
+proxy (`internal/svcproxy`, as Prometheus and Argo CD do). Anything else,
+such as gRPC, can't: dial a pod with `portforward.ResolveService` and
+`portforward.DialPod`, which return a `net.Conn` through the
+`pods/portforward` subresource without listening on the machine (Hubble
+hands that to gRPC's `WithContextDialer`). Streams to the UI are WebSockets
+(`upgrade` in `stream.go`); for high-volume ones, filter at the source and
+send batched frames with a rate cap, as `hubble.Stream` does, and keep
+generated protocol code lean (Hubble vendors three `.proto` files rather
+than importing Cilium).
+
 **Frontend** (`frontend/lib/modules/`):
 
 1. Add `<id>_module.dart` with a `const` class extending `AppModule`.
-   Override what you have: `pages` (`AppPage`: id `MainView('<id>')`,
-   icon, label, builder, `:` commands, `after` for its default sidebar
-   position, `underMore`, an optional `navGate`), `panels` (inspector
-   panels, see [PANELS.md](PANELS.md)), `navGroups` (a section of the kinds
-   list, placed `after` a core one), `kindIcons`, `requires` (other module
-   ids it needs) and `isAvailable(app)` (e.g. its CRD is served; shown in
-   the Integrations dialog).
+   Override what you have:
+   - `pages` (`AppPage`: id `MainView('<id>')`, icon, label, builder, `:`
+     commands, `after` for its default sidebar position, `underMore`, an
+     optional `navGate`);
+   - `panels` (inspector panels for your kinds, see [PANELS.md](PANELS.md))
+     and `inspectorTabs(ctx)` (tabs you add to objects of *any* kind, e.g.
+     Hubble's Flows tab on Pods and Deployments; return nothing for kinds
+     you don't handle, and return quickly: it runs on every inspector
+     rebuild);
+   - `navGroups` (a section of the kinds list, placed `after` a core one),
+     `kindIcons` and `requires` (other module ids it needs);
+   - `isAvailable(app)` when discovery alone tells whether the cluster has
+     what you need (e.g. your CRD is served), or `detect` when it takes a
+     backend call (finding and reaching a service). `detect` runs once per
+     kube context, after the first table has painted; read its cached
+     `ModuleStatus` (checking, notInstalled, connected, error, plus a
+     message) with `moduleStatuses.of(module, api, context)` and listen to
+     `moduleStatuses` to rebuild when it lands. The Integrations dialog
+     shows it, and it is the place to hide a page's sidebar row (`navGate`)
+     or a tab on clusters without the integration;
+   - `settingsBuilder`: a form for your `Configurable` settings, opened
+     from the Integrations dialog. Read and save them with
+     `ApiClient.getModuleSettings` / `putModuleSettings`.
 2. Add it to `builtInModules` in `modules.dart`, after any module whose
    page it is placed `after`.
+
+For a live, high-volume list fed by your own WebSocket, use
+`FrameStream<T>` (`lib/state/frame_stream.dart`) with
+`ApiClient.jsonStream`: it connects, keeps the newest rows in a ring
+buffer, counts what was lost, and pauses without losing rows while the
+reader scrolls. Render it with a fixed-height `ListView.builder`, as
+Hubble's `FlowList` does.
+
+Older modules predate some of these hooks and could use them: the GPU
+module's `GpuNavGate` keeps its own per-context check (`detect`), Argo CD
+keeps its token and CLI-login choice in dedicated settings fields
+(`Configurable` / `moduleSettings`), and Argo Workflows' status endpoint
+could back a `detect`.
 
 That's all: `shell.dart`, `app_state.dart`, `resource_nav.dart`, the
 palette and `server.go` don't change. Saved sidebar layouts store page ids,
