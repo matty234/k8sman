@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -39,6 +40,7 @@ func main() {
 		cacheDir     = flag.String("cache-dir", cluster.DefaultCacheDir(), "on-disk discovery cache for fast cold starts (\"\" = memory only)")
 	)
 	flag.Parse()
+	tuneGC()
 	token, err := authToken()
 	if err != nil {
 		log.Fatalf("auth token: %v", err)
@@ -96,6 +98,16 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
+}
+
+// tuneGC lets the heap grow to 1.5x the live data between collections
+// instead of Go's default 2x, unless $GOGC says otherwise. Most of the live
+// heap is the shared watch cache, which is long-lived, so the extra GC work
+// is small; it keeps ~15 MB less around with a few large tables open.
+func tuneGC() {
+	if _, ok := os.LookupEnv("GOGC"); !ok {
+		debug.SetGCPercent(50)
+	}
 }
 
 // authToken returns the bearer token clients must send. The desktop app
