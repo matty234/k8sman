@@ -174,6 +174,28 @@ class RadialLayout {
     return (2 * math.pi * rc / 18).floor().clamp(8, 40);
   }
 
+  /// What a hover card about [hit] shouldn't cover: the lanes (labels
+  /// included) at either end, and their world labels.
+  List<Rect> avoidFor(MapHit hit) {
+    final ids = hit.node != null ? [hit.node!] : [hit.edge!.from, hit.edge!.to];
+    final out = <Rect>[];
+    for (final id in ids) {
+      final lane = lanes[id];
+      if (lane == null) continue;
+      final d = lane.outer - lane.inner;
+      final steps = math.max(1, (d.distance / 8).ceil());
+      for (var i = 0; i <= steps; i++) {
+        out.add(Rect.fromCircle(center: lane.inner + d * (i / steps), radius: 9));
+      }
+      if (hit.node != null || hit.edge!.touchesWorld) {
+        for (final (lid, tp, at) in worldLabels) {
+          if (lid == id) out.add((at & tp.size).inflate(4));
+        }
+      }
+    }
+    return out;
+  }
+
   static (double, double, bool) _radii(Size size) {
     final rayLabels = size.width >= 720;
     const rayMax = 58.0;
