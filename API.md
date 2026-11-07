@@ -565,7 +565,9 @@ first. `cilium-config` says whether Cilium is there and Hubble on
 `hubble-ui-client-certs` (else `hubble-relay-client-certs`), in memory only.
 Per-context overrides (`GET/PUT /api/settings/modules/hubble`): `relay`
 (`namespace/name[:port]`), `tls` (`on`/`off`) and `tlsServerName` (default
-`ui.hubble-relay.cilium.io`).
+`ui.hubble-relay.cilium.io`) and `reverseDNS` (boolean, default true: look up
+PTR records for public world addresses on the map; cluster-object names
+still apply when off).
 
 Flows are fetched with a field mask (only the fields below; endpoint and
 node labels make up most of a flow's ~3.5 KB), so a following stream fits
@@ -580,7 +582,7 @@ far they got (`oldest`).
 | WS | `/api/hubble/flows` | live flows, filtered by the relay. Frames `{flows?:[Flow], lost?, end?, error?}`, at most every 100 ms and 500 flows per frame. A following stream passes at most 1,000 flows a second; the rest, and flows the relay itself reports lost, are counted in `lost`. Query below; `follow` defaults to true, with recent history first (`since=5s`, or `5m` for a narrow query: some endpoints, or only non-FORWARDED verdicts). Without `follow`, the last 200 flows (or `last`/`since`) then a frame with `end`. Bad parameters are a 400 before the upgrade; an unreachable relay is an `error` frame |
 | GET | `/api/hubble/drops` | recent drops grouped: `{groups:[{source, destination, reason, protocol?, port?, count, first, last, deniedBy?}], flows, truncated?, lost?, since, oldest?, partial?}`, most frequent first. Takes `namespace` (comma-separated), `since` (default 15m), `last` (default 1000). `partial` when the relay was too slow (15 s) |
 | GET | `/api/hubble/connectivity?from=&to=` | "can A reach B": the flows from `from` to `to` (endpoint specs) as `{from, to, since, verdict: allowed\|dropped\|mixed\|unknown, verdicts:{VERDICT: n}, drops:[groups], allowedBy?:[policies], recent:[Flow] (last 50), reverse:{VERDICT: n} (the other way), lost?, oldest?}`. `since` defaults to 15m |
-| GET | `/api/hubble/map[?window=5m]` | the traffic map: flows between namespaces, and between them and the world, counted over the last `window` (a Go duration, at most 15m; default 5m). `{window, since, now, startedAt, flows, drops, rate, lost?, uncounted?, state: starting\|live\|error, error?, edges:[{from, to, flows, drops, rate?, ports?, peers?, fromWorkloads?, toWorkloads?, reasons?}]}`, busiest first. See below |
+| GET | `/api/hubble/map[?window=5m]` | the traffic map: flows between namespaces, and between them and the world, counted over the last `window` (a Go duration, at most 15m; default 5m). `{window, since, now, startedAt, flows, drops, rate, lost?, uncounted?, state: starting\|live\|error, error?, edges:[{from, to, flows, drops, rate?, ports?, peers?, fromWorkloads?, toWorkloads?, reasons?}], names?:{"<ip>":{name, source: cluster\|rdns}}}`, busiest first. See below |
 
 Flow query (`/api/hubble/flows`, and `namespace` for drops), translated into
 Hubble `FlowFilter`s:
@@ -650,6 +652,16 @@ closes too. One map per context is shared by every viewer.
   strings shared. Worst case about 15 MB; measured about 3 MB of heap with
   30 namespaces and ~180 pairs, and 3-6% of one core at ~1,200 counted
   flows a second.
+
+- `names` labels the IP peers present in `edges` (not DNS-name peers).
+  `source: "cluster"`: a cluster object owns the address (`node/<name>` for
+  node addresses, `svc/<ns>/<name>` for LoadBalancer ingress IPs,
+  `externalIPs` and the clusterIP, `ingress/<ns>/<name>`,
+  `gateway/<ns>/<name>`), read from the shared watch cache. `source: "rdns"`:
+  a PTR record, for public addresses only (not private, loopback, link-local
+  or CGNAT), looked up in the background (at most 4 at once, 2 s each) and
+  cached for 1 hour (10 minutes for misses), so names appear on later polls;
+  a request never waits for DNS. Cluster objects win over PTR records.
 
 The Health overview adds `hubbleRelayUnreachable` (warning, on the relay
 Service) and `hubbleDrops` (warning, per namespace with at least 5 drops in

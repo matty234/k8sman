@@ -24,7 +24,13 @@ type Settings struct {
 	// (default ui.hubble-relay.cilium.io, which Cilium's relay certificates
 	// cover).
 	ServerName string `json:"tlsServerName,omitempty"`
+	// ReverseDNS looks up PTR records for public world addresses on the
+	// map (default on). Cluster objects name addresses regardless.
+	ReverseDNS *bool `json:"reverseDNS,omitempty"`
 }
+
+// RDNS is whether to look up reverse DNS (default true).
+func (s Settings) RDNS() bool { return s.ReverseDNS == nil || *s.ReverseDNS }
 
 // Validate checks settings before they are saved.
 func (s Settings) Validate() error {

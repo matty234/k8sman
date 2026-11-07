@@ -129,6 +129,9 @@ type TrafficMap struct {
 	State string        `json:"state"`
 	Error string        `json:"error,omitempty"`
 	Edges []TrafficEdge `json:"edges"`
+	// Names labels the IP peers on the edges: a cluster object owning the
+	// address, else its reverse DNS name once looked up. Only IPs in Edges.
+	Names map[string]Name `json:"names,omitempty"`
 }
 
 // TrafficEdge is the traffic from one node to another (From == To for

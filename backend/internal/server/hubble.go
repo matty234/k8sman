@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"sort"
 	"strings"
 	"sync"
@@ -33,6 +34,9 @@ type hubbleModule struct {
 	// stops after hubble.TrafficIdle without a request.
 	mapsMu sync.Mutex
 	maps   map[string]*hubble.Traffic
+
+	// Reverse DNS for world addresses, shared by every context.
+	namer *hubble.Namer
 }
 
 type hubbleDropsEntry struct {
@@ -58,6 +62,7 @@ func (m *hubbleModule) Routes(r httpx.Router, d Deps) {
 	m.hub = hubble.NewHub()
 	m.dropsCache = map[string]hubbleDropsEntry{}
 	m.maps = map[string]*hubble.Traffic{}
+	m.namer = hubble.NewNamer()
 	r.HandleFunc("GET /api/hubble/status", m.handleStatus)
 	r.HandleFunc("GET /api/hubble/flows", m.handleFlows)
 	r.HandleFunc("GET /api/hubble/drops", m.handleDrops)
@@ -265,12 +270,32 @@ func (m *hubbleModule) handleMap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := m.d.Mgr.Clients()
-	httpx.WriteJSON(w, http.StatusOK, m.traffic(c, m.settings(c)).Snapshot(window))
+	s := m.settings(c)
+	tm := m.traffic(c, s).Snapshot(window)
+	tm.Names = m.peerNames(r.Context(), c, s, tm.Edges)
+	httpx.WriteJSON(w, http.StatusOK, tm)
+}
+
+// peerNames labels the IP peers of edges. The cluster's own addresses come
+// from the watch cache (only read when there are IP peers).
+func (m *hubbleModule) peerNames(ctx context.Context, c *cluster.Clients, s hubble.Settings, edges []hubble.TrafficEdge) map[string]hubble.Name {
+	var ips []string
+	for _, e := range edges {
+		for _, p := range e.Peers {
+			if _, err := netip.ParseAddr(p.Name); err == nil {
+				ips = append(ips, p.Name)
+			}
+		}
+	}
+	if len(ips) == 0 {
+		return nil
+	}
+	return hubble.ResolveNames(ips, clusterAddrs(ctx, c), m.namer, s.RDNS())
 }
 
 // traffic returns the context's running map, starting one.
 func (m *hubbleModule) traffic(c *cluster.Clients, s hubble.Settings) *hubble.Traffic {
-	key := fmt.Sprintf("%p|%+v", c, s)
+	key := fmt.Sprintf("%p|%s|%s|%s", c, s.Relay, s.TLS, s.ServerName)
 	m.mapsMu.Lock()
 	defer m.mapsMu.Unlock()
 	if t := m.maps[key]; t != nil {
