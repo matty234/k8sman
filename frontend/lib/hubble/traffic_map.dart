@@ -667,7 +667,7 @@ class _MapCanvasState extends State<_MapCanvas> with SingleTickerProviderStateMi
                 Positioned.fill(
                   child: IgnorePointer(
                     child: CustomSingleChildLayout(
-                      delegate: _CardPlacement(h.$2, widget.mode == MapMode.radial ? _radial?.avoidFor(h.$1) ?? const [] : const []),
+                      delegate: _CardPlacement(h.$2),
                       child: _HoverCard(hit: h.$1, graph: widget.graph, gate: _radial?.gateEdge, p: p),
                     ),
                   ),
@@ -680,59 +680,24 @@ class _MapCanvasState extends State<_MapCanvas> with SingleTickerProviderStateMi
   }
 }
 
-/// Puts the hover card beside the pointer, inside the canvas, on the side
-/// that covers least of what it describes ([avoid]: the hovered lanes).
+/// Puts the hover card beside the pointer, inside the canvas.
 class _CardPlacement extends SingleChildLayoutDelegate {
   final Offset at;
-  final List<Rect> avoid;
-  _CardPlacement(this.at, this.avoid);
+  _CardPlacement(this.at);
 
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints c) => BoxConstraints.loose(Size(math.min(300, c.maxWidth), c.maxHeight));
 
   @override
   Offset getPositionForChild(Size size, Size child) {
-    Offset clamp(double x, double y) => Offset(
-          x.clamp(6.0, math.max(6.0, size.width - 6 - child.width)),
-          y.clamp(6.0, math.max(6.0, size.height - 6 - child.height)),
-        );
-    double covered(Offset o) {
-      final r = o & child;
-      var area = 0.0;
-      for (final a in [Rect.fromCircle(center: at, radius: 10), ...avoid]) {
-        final i = r.intersect(a);
-        if (i.width > 0 && i.height > 0) area += i.width * i.height;
-      }
-      return area;
-    }
-
-    // Beside the pointer first (right/left, below/above), then further out.
-    final w = child.width, h = child.height;
-    final candidates = [
-      for (final gap in const [16.0, 56.0, 120.0]) ...[
-        clamp(at.dx + gap, at.dy + 16),
-        clamp(at.dx - gap - w, at.dy + 16),
-        clamp(at.dx + gap, at.dy - 16 - h),
-        clamp(at.dx - gap - w, at.dy - 16 - h),
-        clamp(at.dx - w / 2, at.dy + gap),
-        clamp(at.dx - w / 2, at.dy - gap - h),
-      ],
-    ];
-    var best = candidates.first;
-    var bestArea = covered(best);
-    for (final o in candidates.skip(1)) {
-      if (bestArea == 0) break;
-      final a = covered(o);
-      if (a < bestArea) {
-        best = o;
-        bestArea = a;
-      }
-    }
-    return best;
+    var x = at.dx + 16, y = at.dy + 16;
+    if (x + child.width > size.width - 6) x = at.dx - 16 - child.width;
+    if (y + child.height > size.height - 6) y = math.max(6, size.height - 6 - child.height);
+    return Offset(math.max(6, x), y);
   }
 
   @override
-  bool shouldRelayout(_CardPlacement old) => old.at != at || !identical(old.avoid, avoid);
+  bool shouldRelayout(_CardPlacement old) => old.at != at;
 }
 
 class _Legend extends StatelessWidget {
