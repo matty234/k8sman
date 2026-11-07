@@ -758,20 +758,23 @@ class _HoverCard extends StatelessWidget {
         TextSpan(text: ' · ${fmtRate(e.rate)} now', style: TextStyle(color: theme.hintColor)),
       ]), style: small));
       if (isGate) lines.add(Text('What Cilium Ingress passed on to pods (Hubble sees its connections, not the clients\')', style: hint));
-      void list(String label, Map<String, int> m) {
+      void list(String label, Map<String, int> m, {String Function(String)? text}) {
         final top = MapEdge.top(m, 4);
         if (top.isEmpty) return;
         lines.add(Padding(
           padding: const EdgeInsets.only(top: 3),
           child: Text.rich(TextSpan(children: [
             TextSpan(text: '$label  ', style: hint),
-            TextSpan(text: top.map((c) => c.name.isEmpty ? 'other ${fmtCount(c.n)}' : '${c.name} ${fmtCount(c.n)}').join(' · '), style: mono),
+            TextSpan(text: top.map((c) => c.name.isEmpty ? 'other ${fmtCount(c.n)}' : '${text?.call(c.name) ?? c.name} ${fmtCount(c.n)}').join(' · '), style: mono),
           ])),
         ));
       }
 
       list('Ports', e.ports);
-      if (e.touchesWorld) list(e.toWorld ? 'To' : 'From', e.peers);
+      if (e.touchesWorld) {
+        list(e.toWorld ? 'To' : 'From', e.peers, text: graph.peerText);
+        if (MapEdge.top(e.peers, 4).any((c) => graph.names[c.name]?.isCluster == false)) lines.add(Text(PeerName.rdnsNote, style: hint));
+      }
       list('From', e.fromWorkloads);
       list('To', e.toWorkloads);
       if (e.reasons.isNotEmpty) {
@@ -860,7 +863,7 @@ class _SidePanel extends StatelessWidget {
       final e = graph.edge(n.id, worldId);
       if (e == null) return '';
       final top = MapEdge.top(e.peers, 3);
-      final named = top.where((c) => c.name.isNotEmpty).map((c) => c.name).toList();
+      final named = top.where((c) => c.name.isNotEmpty).map((c) => graph.names[c.name]?.name ?? c.name).toList();
       final more = e.peers.keys.where((k) => k.isNotEmpty).length - named.length;
       return [named.join(', '), if (more > 0) '+$more'].join(' ');
     }
@@ -992,7 +995,7 @@ class _SidePanel extends StatelessWidget {
         countColor: e.drops > e.flows ? p.drop : null,
         subtitle: [
           if (e.drops > 0) '${fmtCount(e.drops)} dropped',
-          ...MapEdge.top(e.touchesWorld ? e.peers : e.ports, 3).where((c) => c.name.isNotEmpty).map((c) => c.name),
+          ...MapEdge.top(e.touchesWorld ? e.peers : e.ports, 3).where((c) => c.name.isNotEmpty).map((c) => e.touchesWorld ? (graph.names[c.name]?.name ?? c.name) : c.name),
         ].join(' · '),
         mono: true,
         onTap: () => onSelect(MapHit.edge(e)),
@@ -1011,6 +1014,7 @@ class _SidePanel extends StatelessWidget {
           for (final c in top)
             _Row(
               title: c.name.isEmpty ? 'other' : c.name,
+              titleWidget: peers && graph.names[c.name] != null ? _PeerTitle(c.name, graph.names[c.name]!) : null,
               count: c.n,
               mono: c.name.isNotEmpty,
               trailing: peers && c.name.isNotEmpty && ns != null
@@ -1080,7 +1084,7 @@ class _Section extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           if (icon != null) ...[Icon(icon, size: 13, color: color ?? theme.hintColor), const SizedBox(width: 5)],
-          Text(title.toUpperCase(), style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, letterSpacing: 0.4, fontWeight: FontWeight.w600)),
+          Flexible(child: Text(title.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, letterSpacing: 0.4, fontWeight: FontWeight.w600))),
         ]),
         const SizedBox(height: 4),
         if (rows.isEmpty && empty != null) Text(empty!, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).faint)) else ...rows,
@@ -1097,7 +1101,10 @@ class _Row extends StatelessWidget {
   final bool mono;
   final Widget? trailing;
   final VoidCallback? onTap;
-  const _Row({super.key, required this.title, required this.count, this.countColor, this.subtitle, this.mono = false, this.trailing, this.onTap});
+
+  /// Replaces the title text.
+  final Widget? titleWidget;
+  const _Row({super.key, required this.title, this.titleWidget, required this.count, this.countColor, this.subtitle, this.mono = false, this.trailing, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1112,7 +1119,7 @@ class _Row extends StatelessWidget {
         child: Row(children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono && subtitle == null ? monoStyle(context, size: 11.5) : small),
+              titleWidget ?? Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono && subtitle == null ? monoStyle(context, size: 11.5) : small),
               if (subtitle != null && subtitle!.isNotEmpty)
                 Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: (mono ? monoStyle(context, size: 10.5) : small)?.copyWith(color: theme.hintColor)),
             ]),
@@ -1123,5 +1130,32 @@ class _Row extends StatelessWidget {
         ]),
       ),
     );
+  }
+}
+
+/// A world address with its label: a cluster object's name opens it in the
+/// inspector; a PTR name is muted, with a note. The IP follows, dimmed.
+class _PeerTitle extends StatelessWidget {
+  final String ip;
+  final PeerName name;
+  const _PeerTitle(this.ip, this.name);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ref = name.ref;
+    final Widget label = ref != null
+        ? ResourceLink(ref, label: name.name, singleLine: true)
+        : name.isCluster
+            ? Text(name.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11.5))
+            : Tooltip(
+                message: PeerName.rdnsNote,
+                child: Text(name.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11.5, color: theme.hintColor)),
+              );
+    return Row(children: [
+      Flexible(child: label),
+      const SizedBox(width: 6),
+      Flexible(child: Text(ip, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 10.5, color: theme.hintColor.withValues(alpha: 0.7)))),
+    ]);
   }
 }

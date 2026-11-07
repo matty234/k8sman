@@ -36,6 +36,7 @@ class _HubbleSettingsFormState extends State<HubbleSettingsForm> {
   final _relay = TextEditingController();
   final _serverName = TextEditingController();
   String _tls = '';
+  bool _rdns = true;
   bool _loading = true;
   String? _error;
 
@@ -60,6 +61,7 @@ class _HubbleSettingsFormState extends State<HubbleSettingsForm> {
         _relay.text = '${j['relay'] ?? ''}';
         _serverName.text = '${j['tlsServerName'] ?? ''}';
         _tls = '${j['tls'] ?? ''}';
+        _rdns = j['reverseDNS'] != false;
         _loading = false;
       });
     } catch (e) {
@@ -79,6 +81,7 @@ class _HubbleSettingsFormState extends State<HubbleSettingsForm> {
       if (_relay.text.trim().isNotEmpty) 'relay': _relay.text.trim(),
       if (_tls.isNotEmpty) 'tls': _tls,
       if (_serverName.text.trim().isNotEmpty) 'tlsServerName': _serverName.text.trim(),
+      if (!_rdns) 'reverseDNS': false,
     };
     try {
       await api.putModuleSettings(_id, body);
@@ -130,6 +133,17 @@ class _HubbleSettingsFormState extends State<HubbleSettingsForm> {
             controller: _serverName,
             style: small,
             decoration: const InputDecoration(isDense: true, labelText: 'TLS server name', hintText: 'ui.hubble-relay.cilium.io'),
+          ),
+          const SizedBox(height: 8),
+          CheckboxListTile(
+            key: const ValueKey('hubble-rdns'),
+            value: _rdns,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: Text('Look up reverse DNS for world addresses', style: small),
+            subtitle: Text('Public addresses on the map get their PTR name. Cluster objects (nodes, Services, Ingresses) always name their own addresses.', style: small?.copyWith(color: theme.hintColor)),
+            onChanged: (v) => setState(() => _rdns = v ?? true),
           ),
         ],
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 10), child: InlineMessage(_error!, isError: true)),

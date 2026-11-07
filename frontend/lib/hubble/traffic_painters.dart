@@ -287,9 +287,13 @@ class RadialLayout {
         final top = MapEdge.top(m, 1);
         if (top.isEmpty || top.first.name.isEmpty) continue;
         final more = m.keys.where((k) => k.isNotEmpty).length - 1;
+        // A name found for the address replaces it (muted when it is a PTR
+        // record: the hover card says so).
+        final pn = identical(m, e.peers) ? graph.names[top.first.name] : null;
+        final base = (e.toWorld ? p.egress : p.ingress).withValues(alpha: pn != null && !pn.isCluster ? 0.6 : 0.9);
         lines.add(TextPainter(
           text: TextSpan(style: monoStyle, children: [
-            TextSpan(text: top.first.name, style: TextStyle(color: (e.toWorld ? p.egress : p.ingress).withValues(alpha: 0.9))),
+            TextSpan(text: pn?.name ?? top.first.name, style: TextStyle(color: base)),
             if (more > 0) TextSpan(text: ' +$more', style: TextStyle(color: p.faint)),
           ]),
           maxLines: 1,

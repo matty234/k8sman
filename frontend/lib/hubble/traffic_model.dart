@@ -17,6 +17,40 @@ class TrafficCount {
   static List<TrafficCount> list(dynamic l) => [for (final j in asMapList(l)) TrafficCount('${j['name'] ?? ''}', (j['n'] as num?)?.toInt() ?? 0)];
 }
 
+/// A label the backend found for a world address.
+class PeerName {
+  final String name;
+
+  /// cluster (an object owns the address) | rdns (a PTR record).
+  final String source;
+  const PeerName(this.name, this.source);
+
+  bool get isCluster => source == 'cluster';
+
+  /// What the muted reverse-DNS names are explained by.
+  static const rdnsNote = 'Reverse DNS (PTR record): not necessarily the name the pod connected to';
+
+  static Map<String, PeerName> parse(dynamic j) => {
+        if (j is Map)
+          for (final e in j.entries)
+            if (e.value is Map && '${e.value['name'] ?? ''}'.isNotEmpty) '${e.key}': PeerName('${e.value['name']}', '${e.value['source'] ?? ''}'),
+      };
+
+  /// The object of a cluster name (node/n, svc/ns/n, ingress/ns/n,
+  /// gateway/ns/n), for the inspector.
+  ObjectRef? get ref {
+    if (!isCluster) return null;
+    final p = name.split('/');
+    return switch (p) {
+      ['node', final n] => ObjectRef(kind: 'Node', name: n),
+      ['svc', final ns, final n] => ObjectRef(kind: 'Service', name: n, namespace: ns),
+      ['ingress', final ns, final n] => ObjectRef(group: 'networking.k8s.io', kind: 'Ingress', name: n, namespace: ns),
+      ['gateway', final ns, final n] => ObjectRef(group: 'gateway.networking.k8s.io', kind: 'Gateway', name: n, namespace: ns),
+      _ => null,
+    };
+  }
+}
+
 /// Traffic from one node to another over the window.
 class TrafficEdge {
   final String from;
@@ -78,6 +112,9 @@ class TrafficMap {
   final String? error;
   final List<TrafficEdge> edges;
 
+  /// Labels for the IP peers on [edges], by IP.
+  final Map<String, PeerName> names;
+
   const TrafficMap({
     this.window = '5m',
     this.since,
@@ -91,6 +128,7 @@ class TrafficMap {
     this.state = 'live',
     this.error,
     this.edges = const [],
+    this.names = const {},
   });
 
   factory TrafficMap.fromJson(Json j) => TrafficMap(
@@ -106,6 +144,7 @@ class TrafficMap {
         state: '${j['state'] ?? 'live'}',
         error: j['error'] as String?,
         edges: [for (final e in asMapList(j['edges'])) TrafficEdge.fromJson(e)],
+        names: PeerName.parse(j['names']),
       );
 
   /// How far back the counts go (shorter than the window while the map is
@@ -239,10 +278,19 @@ class MapGraph {
   final Set<String> matches;
   final int maxEdge;
 
-  MapGraph._(this.nodes, this.edges, this.hidden, this.matches)
+  /// Labels for world peers, by IP (from the map).
+  final Map<String, PeerName> names;
+
+  MapGraph._(this.nodes, this.edges, this.hidden, this.matches, [this.names = const {}])
       : maxEdge = edges.fold(0, (m, e) => math.max(m, e.total));
 
   static final empty = MapGraph._({}, [], {}, {});
+
+  /// A peer for text: "name  ip" when it has a label, else as is.
+  String peerText(String peer) {
+    final n = names[peer];
+    return n == null ? peer : '${n.name}  $peer';
+  }
 
   MapEdge? edge(String from, String to) {
     for (final e in edges) {
@@ -341,7 +389,7 @@ class MapGraph {
       (merged[(from, to)] ??= MapEdge(from, to)).add(e);
     }
     final list = merged.values.toList()..sort((a, b) => b.total.compareTo(a.total));
-    return MapGraph._(nodes, list, hidden, matches);
+    return MapGraph._(nodes, list, hidden, matches, m.names);
   }
 
   /// The order of the lanes around the circle, clockwise from the top:
