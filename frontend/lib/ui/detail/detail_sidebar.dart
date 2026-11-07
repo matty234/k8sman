@@ -51,6 +51,8 @@ class _LiveObjectState extends State<_LiveObject> {
   String? _error;
   StreamSubscription<WatchMessage>? _sub;
   Timer? _retry;
+  /// The tab last open, by kind and label (see build).
+  ({String gk, String label})? _openTab;
 
   /// Bumped for each "edit YAML" request, so the YAML tab starts editing.
   int _editRequest = 0;
@@ -133,6 +135,10 @@ class _LiveObjectState extends State<_LiveObject> {
     final panel = panelFor(t.type, app);
     final ctx = obj == null ? null : PanelContext(object: obj, type: t.type, api: context.read<ApiClient>(), app: app);
     final extraTabs = ctx == null ? const <PanelTab>[] : [...panel.tabs(ctx), ...moduleInspectorTabs(ctx)];
+    final tabLabels = ['Overview', for (final x in extraTabs) x.label, 'YAML', 'Events'];
+    // A tab appearing later (a module's detection finishing) recreates the
+    // controller; stay on the tab that was open rather than jump to Overview.
+    final keptTab = _openTab?.gk == t.type.gk ? tabLabels.indexOf(_openTab!.label) : -1;
 
     final actions = ctx == null || _deleted ? const <ResourceAction>[] : _actionsFor(app, t, panel, ctx);
     final primary = actions.where((a) => !a.destructive).take(3).toList();
@@ -151,10 +157,12 @@ class _LiveObjectState extends State<_LiveObject> {
                 // Tab count can change between kinds; key forces a fresh controller.
                 key: ValueKey('${t.type.gk}-${extraTabs.length}'),
                 length: 3 + extraTabs.length,
+                initialIndex: keptTab < 0 ? 0 : keptTab,
                 // Native-style: tabs switch instantly (no slide, no gliding indicator).
                 animationDuration: Duration.zero,
                 child: Builder(builder: (context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   _applyTabRequest(context, app, extraTabs.length),
+                  _TabWatch(onIndex: (i) => _openTab = (gk: t.type.gk, label: tabLabels[i])),
                   TabBar(
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
@@ -562,4 +570,40 @@ List<ResourceAction> resourceActionsFor(AppState app, DetailTarget t, ResourcePa
     ...standardActions(ctx),
     ...extra.where((a) => a.id != kLogsActionId && a.id != kTerminalActionId),
   ];
+}
+
+/// Reports the enclosing DefaultTabController's index as it changes.
+class _TabWatch extends StatefulWidget {
+  final ValueChanged<int> onIndex;
+  const _TabWatch({required this.onIndex});
+
+  @override
+  State<_TabWatch> createState() => _TabWatchState();
+}
+
+class _TabWatchState extends State<_TabWatch> {
+  TabController? _controller;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final c = DefaultTabController.of(context);
+    if (c != _controller) {
+      _controller?.removeListener(_changed);
+      _controller = c..addListener(_changed);
+    }
+  }
+
+  void _changed() {
+    widget.onIndex(_controller!.index);
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeListener(_changed);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
