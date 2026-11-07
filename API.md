@@ -587,7 +587,7 @@ Hubble `FlowFilter`s:
 
 - Scope, ANDed, matching flows where either side is in it: `namespace`
   (comma-separated), `pod` (`namespace/name`, matched by Hubble as a prefix,
-  so `ns/web-` matches a workload's pods), `labels` (a label selector over
+  so `ns/web-` matches a workload's pods; add `exact=true` for that pod only), `labels` (a label selector over
   Cilium identity labels, e.g. `app=web,tier!=db`), `service`
   (`namespace/name`).
 - Or `from` and/or `to` (not with the scope): endpoint specs

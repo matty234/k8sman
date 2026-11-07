@@ -26,6 +26,7 @@ import (
 type Query struct {
 	Namespaces []string // either side's namespace
 	Pod        string   // namespace/name (Hubble matches it as a prefix)
+	ExactPod   bool     // keep only flows where one side is exactly Pod (see Keep)
 	Labels     string   // a label selector, e.g. app=web,tier!=db
 	Service    string   // namespace/name
 
@@ -54,6 +55,7 @@ func ParseQuery(v url.Values) (Query, error) {
 	q := Query{
 		Namespaces: list(v.Get("namespace")),
 		Pod:        strings.TrimSpace(v.Get("pod")),
+		ExactPod:   v.Get("exact") == "true",
 		Labels:     strings.TrimSpace(v.Get("labels")),
 		Service:    strings.TrimSpace(v.Get("service")),
 		From:       strings.TrimSpace(v.Get("from")),
@@ -279,6 +281,21 @@ func list(s string) []string {
 	for _, p := range strings.Split(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// Keep drops what the relay's prefix match let through when ExactPod is
+// set (pod web-1 also matches web-10), filtering in place.
+func (q Query) Keep(flows []Flow) []Flow {
+	if !q.ExactPod || q.Pod == "" {
+		return flows
+	}
+	out := flows[:0]
+	for _, f := range flows {
+		if f.Source.Namespace+"/"+f.Source.Pod == q.Pod || f.Dest.Namespace+"/"+f.Dest.Pod == q.Pod {
+			out = append(out, f)
 		}
 	}
 	return out

@@ -87,6 +87,12 @@ func TestFiltersAndBatching(t *testing.T) {
 	if fs := q.Filters(); len(fs) != 1 || !equal(fs[0].SourcePod, "demo/web") || !equal(fs[0].DestinationService, "demo/api") {
 		t.Errorf("from/to: %v", fs)
 	}
+	v, _ = url.ParseQuery("pod=demo/web-1&exact=true")
+	q, _ = ParseQuery(v)
+	pod := func(p string) Flow { return Flow{Source: Endpoint{Namespace: "demo", Pod: p}} }
+	if kept := q.Keep([]Flow{pod("web-1"), pod("web-10")}); len(kept) != 1 || kept[0].Source.Pod != "web-1" {
+		t.Errorf("exact pod kept %v", kept)
+	}
 	for _, bad := range []string{"verdict=MAYBE", "port=http", "direction=up", "pod=web", "from=demo/web&namespace=demo", "to=nowhere"} {
 		v, _ = url.ParseQuery(bad)
 		if _, err := ParseQuery(v); err == nil {

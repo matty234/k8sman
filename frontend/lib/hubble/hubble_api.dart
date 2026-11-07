@@ -336,6 +336,9 @@ class Connectivity {
 class FlowQuery {
   final List<String> namespaces;
   final String? pod;
+
+  /// Match [pod] exactly rather than as a name prefix.
+  final bool exact;
   final String? labels;
   final String? service;
   final String? from;
@@ -348,6 +351,7 @@ class FlowQuery {
   const FlowQuery({
     this.namespaces = const [],
     this.pod,
+    this.exact = false,
     this.labels,
     this.service,
     this.from,
@@ -361,6 +365,7 @@ class FlowQuery {
   FlowQuery copyWith({Set<String>? verdicts, List<String>? namespaces, String? protocol, String? port, String? direction}) => FlowQuery(
         namespaces: namespaces ?? this.namespaces,
         pod: pod,
+        exact: exact,
         labels: labels,
         service: service,
         from: from,
@@ -374,6 +379,7 @@ class FlowQuery {
   Map<String, String?> toParams() => {
         'namespace': namespaces.isEmpty ? null : namespaces.join(','),
         'pod': pod,
+        'exact': exact ? 'true' : null,
         'labels': labels,
         'service': service,
         'from': from,

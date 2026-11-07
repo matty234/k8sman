@@ -132,7 +132,12 @@ func (m *hubbleModule) handleFlows(w http.ResponseWriter, r *http.Request) {
 		_ = ws.send(hubble.Frame{Error: hubble.ErrorMessage(err), End: true})
 		return
 	}
-	err = hubble.Stream(ctx, obs, q.Request(time.Now()), func(f hubble.Frame) error { return ws.send(f) })
+	err = hubble.Stream(ctx, obs, q.Request(time.Now()), func(f hubble.Frame) error {
+		if f.Flows = q.Keep(f.Flows); len(f.Flows) == 0 && f.Lost == 0 && !f.End {
+			return nil
+		}
+		return ws.send(f)
+	})
 	if err != nil && ctx.Err() == nil {
 		_ = ws.send(hubble.Frame{Error: hubble.ErrorMessage(err), End: true})
 	}
@@ -166,6 +171,7 @@ func (m *hubbleModule) handleDrops(w http.ResponseWriter, r *http.Request) {
 		writeHubbleErr(w, err)
 		return
 	}
+	res.Flows = q.Keep(res.Flows)
 	httpx.WriteJSON(w, http.StatusOK, hubble.Drops{
 		Groups: hubble.GroupDrops(res.Flows), Flows: len(res.Flows), Truncated: uint64(len(res.Flows)) >= q.Last,
 		Lost: res.Lost, Since: q.Since.String(), Oldest: timePtr(res.Oldest()), Partial: res.Partial,

@@ -29,7 +29,7 @@ FlowQuery? flowQueryFor(PanelContext ctx) {
   final name = ctx.name;
   switch (ctx.type.gk) {
     case '/Pod':
-      return FlowQuery(pod: '$ns/$name');
+      return FlowQuery(pod: '$ns/$name', exact: true);
     case '/Service':
       return FlowQuery(service: '$ns/$name');
     case '/Namespace':
