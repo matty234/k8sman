@@ -10,6 +10,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'rbac.dart';
+import 'usage.dart';
 import 'widgets.dart';
 
 class ServiceAccountPanel extends ResourcePanel {
@@ -53,78 +54,9 @@ class ServiceAccountPanel extends ResourcePanel {
           ('Username', Text('system:serviceaccount:${ctx.namespace}:${ctx.name}', style: monoStyle(context, size: 11.5))),
         ], keyWidth: 130),
       ),
-      _SaUsedBy(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx),
+      UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.serviceAccount, existingKeys: const {}),
       _Permissions(key: ValueKey('${ctx.uid}/rbac'), ctx: ctx),
     ];
-  }
-}
-
-/// Pods whose spec.serviceAccountName is this SA.
-List<Json> podsUsingServiceAccount(List<Json> pods, String name) => [
-      for (final p in pods)
-        if ((dig<String>(p, ['spec', 'serviceAccountName']) ?? dig<String>(p, ['spec', 'serviceAccount']) ?? 'default') == name) p,
-    ]..sort((a, b) => '${dig(a, ['metadata', 'name'])}'.compareTo('${dig(b, ['metadata', 'name'])}'));
-
-class _SaUsedBy extends StatefulWidget {
-  final PanelContext ctx;
-  const _SaUsedBy({super.key, required this.ctx});
-
-  @override
-  State<_SaUsedBy> createState() => _SaUsedByState();
-}
-
-class _SaUsedByState extends State<_SaUsedBy> {
-  late Future<List<Json>> _pods;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetch();
-  }
-
-  void _fetch() => _pods = widget.ctx.api.items(const ResourceRef(resource: 'pods'), namespace: widget.ctx.namespace);
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return FutureBuilder<List<Json>>(
-      future: _pods,
-      builder: (context, snap) {
-        final pods = snap.hasData ? podsUsingServiceAccount(snap.data!, widget.ctx.name) : null;
-        return DetailSection(
-          title: 'Used by',
-          icon: Icons.link,
-          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (pods != null) CountPill('${pods.length} pod${pods.length == 1 ? '' : 's'}'),
-            RefreshButton(() => setState(_fetch)),
-          ]),
-          child: () {
-            if (snap.hasError) return InlineMessage('Could not list pods: ${snap.error}', isError: true);
-            if (pods == null) return const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)));
-            if (pods.isEmpty) return const InlineMessage('No pods in this namespace run as this ServiceAccount.');
-            final saAutomount = widget.ctx.object['automountServiceAccountToken'] != false;
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              for (final p in pods)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(children: [
-                    Icon(Icons.view_in_ar, size: 14, color: theme.hintColor),
-                    const SizedBox(width: 6),
-                    Flexible(child: ResourceLink(ObjectRef(kind: 'Pod', name: '${dig(p, ['metadata', 'name'])}', namespace: widget.ctx.namespace), label: '${dig(p, ['metadata', 'name'])}')),
-                    const SizedBox(width: 6),
-                    if (dig<String>(p, ['status', 'phase']) case final phase?) StatusBadge(phase, dense: true),
-                    const Spacer(),
-                    Text(
-                      (dig<bool>(p, ['spec', 'automountServiceAccountToken']) ?? saAutomount) ? 'token mounted' : 'no token',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontSize: 11),
-                    ),
-                  ]),
-                ),
-            ]);
-          }(),
-        );
-      },
-    );
   }
 }
 

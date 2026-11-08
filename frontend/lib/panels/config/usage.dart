@@ -4,9 +4,9 @@ library;
 import '../../api/models.dart';
 import '../../util/k8s.dart';
 
-enum RefKind { configMap, secret }
+enum RefKind { configMap, secret, serviceAccount }
 
-enum UsageKind { volume, projected, env, envFrom, imagePullSecret }
+enum UsageKind { volume, projected, env, envFrom, imagePullSecret, serviceAccount }
 
 /// One reference from a pod to the config object.
 class ConfigUsage {
@@ -66,6 +66,8 @@ class ConfigUsage {
         ];
       case UsageKind.imagePullSecret:
         return [('imagePullSecrets', false)];
+      case UsageKind.serviceAccount:
+        return [('runs as this account', false), if (optional) (' (token not mounted)', false)];
     }
   }
 
@@ -109,6 +111,13 @@ List<PodUsage> findUsages(List<Json> pods, {required RefKind kind, required Stri
     final spec = asMap(pod['spec']);
     final containers = _containers(spec);
     final usages = <ConfigUsage>[];
+
+    if (kind == RefKind.serviceAccount) {
+      final sa = spec['serviceAccountName'] ?? spec['serviceAccount'] ?? 'default';
+      // `optional` is reused to flag that the API token is not mounted.
+      if (sa == name) out.add(PodUsage(pod, [ConfigUsage(kind: UsageKind.serviceAccount, optional: spec['automountServiceAccountToken'] == false)]));
+      continue;
+    }
 
     // Volumes (direct and projected) → their mounts.
     for (final v in asMapList(spec['volumes'])) {
@@ -220,4 +229,98 @@ List<List<PodUsage>> groupIdentical(List<PodUsage> usages) {
     (groups[u.signature] ??= []).add(u);
   }
   return groups.values.toList();
+}
+
+/// A workload that references the object, with the pods it currently owns.
+class WorkloadUsage {
+  final ObjectRef ref;
+
+  /// Usages found in the workload's pod template (empty if the template
+  /// no longer references the object but older pods still do).
+  final List<ConfigUsage> template;
+  final List<PodUsage> pods;
+  WorkloadUsage(this.ref, this.template, this.pods);
+
+  List<ConfigUsage> get usages => template.isNotEmpty ? template : pods.first.usages;
+}
+
+class UsageReport {
+  final List<WorkloadUsage> workloads;
+
+  /// Pods with no owning workload.
+  final List<PodUsage> standalone;
+
+  /// Every pod (not template) that references the object.
+  final List<PodUsage> pods;
+
+  /// Pods plus template-only entries, for key checks.
+  final List<PodUsage> all;
+  const UsageReport(this.workloads, this.standalone, this.pods, this.all);
+  bool get isEmpty => workloads.isEmpty && standalone.isEmpty;
+}
+
+/// Groups referencing pods under their owning workload (ReplicaSet resolved
+/// to its Deployment, Job to its CronJob) and also scans the pod templates of
+/// [templates] (kind → items: Deployment, StatefulSet, DaemonSet, Job,
+/// CronJob) so workloads scaled to zero are still reported.
+UsageReport buildUsageReport({
+  required List<Json> pods,
+  required List<Json> replicaSets,
+  required Map<String, List<Json>> templates,
+  required RefKind kind,
+  required String name,
+  String? namespace,
+}) {
+  final podUsages = findUsages(pods, kind: kind, name: name, namespace: namespace);
+  // Owner lookup for intermediate controllers.
+  final parents = <String, ObjectRef>{};
+  for (final (k, items) in [('ReplicaSet', replicaSets), ('Job', templates['Job'] ?? const <Json>[])]) {
+    for (final o in items) {
+      final owner = _controller(o);
+      if (owner != null) parents['$k/${dig<String>(o, ['metadata', 'name'])}'] = ObjectRef.fromOwnerRef(owner, namespace: namespace);
+    }
+  }
+  ObjectRef? ownerOf(Json pod) {
+    final o = _controller(pod);
+    if (o == null) return null;
+    final ref = ObjectRef.fromOwnerRef(o, namespace: namespace);
+    return parents['${ref.kind}/${ref.name}'] ?? ref;
+  }
+
+  final byKey = <String, WorkloadUsage>{};
+  final standalone = <PodUsage>[];
+  final all = [...podUsages];
+
+  // Template scan (skips Jobs that belong to a CronJob).
+  for (final MapEntry(key: wk, value: items) in templates.entries) {
+    for (final w in items) {
+      if (wk == 'Job' && _controller(w) != null) continue;
+      final spec = wk == 'CronJob' ? dig<Json>(w, ['spec', 'jobTemplate', 'spec', 'template', 'spec']) : dig<Json>(w, ['spec', 'template', 'spec']);
+      if (spec == null) continue;
+      final wname = dig<String>(w, ['metadata', 'name']) ?? '';
+      final fake = {'metadata': {'name': wname, 'namespace': namespace}, 'spec': spec};
+      final found = findUsages([fake], kind: kind, name: name);
+      if (found.isEmpty) continue;
+      final ref = ObjectRef(group: wk == 'Job' || wk == 'CronJob' ? 'batch' : 'apps', kind: wk, name: wname, namespace: namespace);
+      byKey['$wk/$wname'] = WorkloadUsage(ref, found.single.usages, []);
+      all.add(found.single);
+    }
+  }
+  for (final pu in podUsages) {
+    final o = ownerOf(pu.pod);
+    if (o == null) {
+      standalone.add(pu);
+    } else {
+      (byKey['${o.kind}/${o.name}'] ??= WorkloadUsage(o, const [], [])).pods.add(pu);
+    }
+  }
+  final workloads = byKey.values.toList()
+    ..sort((a, b) => a.ref.kind != b.ref.kind ? a.ref.kind.compareTo(b.ref.kind) : a.ref.name.compareTo(b.ref.name));
+  return UsageReport(workloads, standalone, podUsages, all);
+}
+
+Json? _controller(Json obj) {
+  final refs = asMapList(dig(obj, ['metadata', 'ownerReferences']));
+  if (refs.isEmpty) return null;
+  return refs.firstWhere((r) => r['controller'] == true, orElse: () => refs.first);
 }

@@ -141,6 +141,9 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     plain English.
   - **ConfigMap, Secret**: which workloads use them. Secret values stay masked
     until you reveal them.
+  - **ConfigMap, Secret, ServiceAccount**: a "Used by" section groups the
+    referencing pods under their Deployment, StatefulSet, DaemonSet or CronJob
+    (workloads scaled to zero included) and shows how each one references it.
   - **ServiceAccount**: effective permissions. **Role, ClusterRole and
     bindings**: dangerous grants are flagged.
   - **PersistentVolumeClaim, PersistentVolume, StorageClass**: diagnoses for

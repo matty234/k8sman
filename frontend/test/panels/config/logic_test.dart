@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/config/rbac.dart';
-import 'package:k8sman/panels/config/serviceaccount_panel.dart';
 import 'package:k8sman/panels/config/usage.dart';
 import 'package:k8sman/panels/config/values.dart';
 
@@ -167,10 +166,32 @@ void main() {
     expect(s.first.wildcard, isFalse);
   });
 
-  test('podsUsingServiceAccount', () {
-    final pod = fixture('pod-web');
-    expect(podsUsingServiceAccount([pod], 'web'), hasLength(1));
-    expect(podsUsingServiceAccount([pod], 'default'), isEmpty);
+  test('buildUsageReport groups by Deployment and counts 0-replica templates', () {
+    Json pod(Json spec) => {
+          'metadata': {'name': 'web-abc-1', 'namespace': 'ns', 'ownerReferences': [{'kind': 'ReplicaSet', 'name': 'web-abc', 'apiVersion': 'apps/v1', 'controller': true}]},
+          'spec': spec,
+        };
+    final rs = {'metadata': {'name': 'web-abc', 'ownerReferences': [{'kind': 'Deployment', 'name': 'web', 'apiVersion': 'apps/v1', 'controller': true}]}};
+    final cm = buildUsageReport(
+      pods: [pod({'containers': [{'name': 'c', 'envFrom': [{'configMapRef': {'name': 'cfg'}}], 'volumeMounts': [{'name': 'v', 'mountPath': '/etc/x'}]}], 'volumes': [{'name': 'v', 'projected': {'sources': [{'configMap': {'name': 'cfg'}}]}}]})],
+      replicaSets: [rs],
+      templates: {'StatefulSet': [{'metadata': {'name': 'idle'}, 'spec': {'replicas': 0, 'template': {'spec': {'containers': [{'name': 'c', 'envFrom': [{'configMapRef': {'name': 'cfg'}}]}]}}}}]},
+      kind: RefKind.configMap,
+      name: 'cfg',
+      namespace: 'ns',
+    );
+    expect(cm.workloads.map((w) => '${w.ref.kind}/${w.ref.name}:${w.pods.length}'), ['Deployment/web:1', 'StatefulSet/idle:0']);
+    expect(cm.standalone, isEmpty);
+    expect(cm.pods.single.usages.map((u) => u.kind), containsAll([UsageKind.envFrom, UsageKind.projected]));
+    final sec = buildUsageReport(
+      pods: [{'metadata': {'name': 'p', 'namespace': 'ns'}, 'spec': {'imagePullSecrets': [{'name': 'reg'}], 'containers': []}}],
+      replicaSets: [],
+      templates: {},
+      kind: RefKind.secret,
+      name: 'reg',
+      namespace: 'ns',
+    );
+    expect(sec.standalone.single.usages.single.kind, UsageKind.imagePullSecret);
   });
 
   group('values', () {

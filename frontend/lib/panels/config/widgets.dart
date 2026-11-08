@@ -59,6 +59,7 @@ class SegmentText extends StatelessWidget {
 }
 
 IconData usageIcon(UsageKind k) => switch (k) {
+      UsageKind.serviceAccount => Icons.badge_outlined,
       UsageKind.volume || UsageKind.projected => Icons.folder_outlined,
       UsageKind.env => Icons.code,
       UsageKind.envFrom => Icons.input,
@@ -81,7 +82,7 @@ class UsedBySection extends StatefulWidget {
 }
 
 class _UsedBySectionState extends State<UsedBySection> {
-  late Future<List<Json>> _pods;
+  late Future<UsageReport> _report;
 
   @override
   void initState() {
@@ -91,7 +92,29 @@ class _UsedBySectionState extends State<UsedBySection> {
 
   void _fetch() {
     final ns = widget.ctx.namespace;
-    _pods = widget.ctx.api.items(const ResourceRef(resource: 'pods'), namespace: ns);
+    final api = widget.ctx.api;
+    // Pods are required; the rest are best-effort (RBAC may forbid them).
+    Future<List<Json>> list(String group, String resource) =>
+        api.items(ResourceRef(group: group, resource: resource), namespace: ns).catchError((_) => <Json>[]);
+    _report = () async {
+      final r = await Future.wait([
+        api.items(const ResourceRef(resource: 'pods'), namespace: ns),
+        list('apps', 'replicasets'),
+        list('apps', 'deployments'),
+        list('apps', 'statefulsets'),
+        list('apps', 'daemonsets'),
+        list('batch', 'jobs'),
+        list('batch', 'cronjobs'),
+      ]);
+      return buildUsageReport(
+        pods: r[0],
+        replicaSets: r[1],
+        templates: {'Deployment': r[2], 'StatefulSet': r[3], 'DaemonSet': r[4], 'Job': r[5], 'CronJob': r[6]},
+        kind: widget.kind,
+        name: widget.ctx.name,
+        namespace: ns,
+      );
+    }();
   }
 
   @override
@@ -102,11 +125,11 @@ class _UsedBySectionState extends State<UsedBySection> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<Json>>(
-      future: _pods,
+    return FutureBuilder<UsageReport>(
+      future: _report,
       builder: (context, snap) {
-        final usages = snap.hasData ? findUsages(snap.data!, kind: widget.kind, name: widget.ctx.name, namespace: widget.ctx.namespace) : null;
-        final missing = usages == null ? const <MissingKey>[] : missingKeys(usages, widget.existingKeys);
+        final report = snap.data;
+        final missing = report == null ? const <MissingKey>[] : missingKeys(report.all, widget.existingKeys);
         return DetailSection(
           title: 'Used by',
           icon: Icons.link,
@@ -114,15 +137,19 @@ class _UsedBySectionState extends State<UsedBySection> {
             if (missing.isNotEmpty)
               CountPill('${missing.length} missing key${missing.length == 1 ? '' : 's'}',
                   severity: missing.every((m) => m.allOptional) ? Severity.warn : Severity.error),
-            if (usages != null) CountPill('${usages.length} pod${usages.length == 1 ? '' : 's'}'),
+            if (report != null) CountPill('${report.pods.length} pod${report.pods.length == 1 ? '' : 's'}'),
             RefreshButton(() => setState(_fetch)),
           ]),
           child: () {
             if (snap.hasError) return InlineMessage('Could not list pods: ${snap.error}', isError: true);
-            if (usages == null) {
-              return const SectionSpinner();
-            }
-            return _UsageList(usages: usages, missing: missing, existingKeys: widget.existingKeys, kindLabel: widget.kind == RefKind.configMap ? 'ConfigMap' : 'Secret');
+            if (report == null) return const SectionSpinner();
+            return _UsageList(
+              report: report,
+              missing: missing,
+              existingKeys: widget.existingKeys,
+              kindLabel: switch (widget.kind) { RefKind.configMap => 'ConfigMap', RefKind.secret => 'Secret', RefKind.serviceAccount => 'ServiceAccount' },
+              namespace: widget.ctx.namespace ?? '',
+            );
           }(),
         );
       },
@@ -131,19 +158,48 @@ class _UsedBySectionState extends State<UsedBySection> {
 }
 
 class _UsageList extends StatelessWidget {
-  final List<PodUsage> usages;
+  final UsageReport report;
   final List<MissingKey> missing;
   final Set<String> existingKeys;
   final String kindLabel;
-  const _UsageList({required this.usages, required this.missing, required this.existingKeys, required this.kindLabel});
+  final String namespace;
+  const _UsageList({required this.report, required this.missing, required this.existingKeys, required this.kindLabel, required this.namespace});
+
+  Widget _usageRow(BuildContext context, ConfigUsage u) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 18, top: 2),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.only(top: 1), child: Icon(usageIcon(u.kind), size: 13, color: theme.hintColor)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            SegmentText(u.segments),
+            if (u.optional && u.kind != UsageKind.serviceAccount) const StatusBadge('optional', dense: true, severity: Severity.info),
+            if (u.keys.any((k) => !existingKeys.contains(k)))
+              StatusBadge('missing key', dense: true, severity: u.optional ? Severity.warn : Severity.error),
+          ]),
+        ),
+      ]),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (usages.isEmpty) return InlineMessage('No pods in this namespace reference this $kindLabel.');
-    final groups = groupIdentical(usages);
+    if (report.isEmpty) {
+      return InlineMessage('Not used by any pod in $namespace (Deployment, StatefulSet, DaemonSet, Job and CronJob templates checked too).');
+    }
+    final groups = groupIdentical(report.standalone);
     final err = severityColor(context, Severity.error);
     final warn = severityColor(context, Severity.warn);
+    var first = missing.isEmpty;
+    Widget sep() {
+      final w = first ? const SizedBox.shrink() : const Divider(height: 12);
+      first = false;
+      return w;
+    }
+
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final m in missing)
         Padding(
@@ -162,29 +218,30 @@ class _UsageList extends StatelessWidget {
             ),
           ]),
         ),
-      for (var gi = 0; gi < groups.length; gi++) ...[
-        if (gi > 0 || missing.isNotEmpty) const Divider(height: 12),
-        Wrap(spacing: 10, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Icon(Icons.view_in_ar, size: 14, color: theme.hintColor),
-          for (final pu in groups[gi]) _PodLink(pu),
+      for (final w in report.workloads) ...[
+        sep(),
+        Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          Icon(Icons.account_tree_outlined, size: 14, color: theme.hintColor),
+          Text(w.ref.kind, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+          ResourceLink(w.ref, label: w.ref.name),
+          if (w.pods.isEmpty) Text('no pods running', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
         ]),
-        const SizedBox(height: 3),
-        for (final u in groups[gi].first.usages)
+        if (w.pods.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(left: 18, top: 2),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Padding(padding: const EdgeInsets.only(top: 1), child: Icon(usageIcon(u.kind), size: 13, color: theme.hintColor)),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                  SegmentText(u.segments),
-                  if (u.optional) const StatusBadge('optional', dense: true, severity: Severity.info),
-                  if (u.keys.any((k) => !existingKeys.contains(k)))
-                    StatusBadge('missing key', dense: true, severity: u.optional ? Severity.warn : Severity.error),
-                ]),
-              ),
-            ]),
+            child: Wrap(spacing: 10, runSpacing: 2, children: [for (final pu in w.pods) _PodLink(pu)]),
           ),
+        const SizedBox(height: 3),
+        for (final u in w.usages) _usageRow(context, u),
+      ],
+      for (final g in groups) ...[
+        sep(),
+        Wrap(spacing: 10, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          Icon(Icons.view_in_ar, size: 14, color: theme.hintColor),
+          for (final pu in g) _PodLink(pu),
+        ]),
+        const SizedBox(height: 3),
+        for (final u in g.first.usages) _usageRow(context, u),
       ],
     ]);
   }
