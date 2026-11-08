@@ -1,6 +1,16 @@
 package server
 
 import (
+	"net/http/httptest"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery/cached/memory"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
+
 	"encoding/json"
 	"net/http"
 	"path/filepath"
@@ -108,5 +118,39 @@ func TestRememberedNamespaces(t *testing.T) {
 	do(t, s, "PUT", "/api/settings/namespaces", `{"context":"dev","namespaces":[]}`)
 	if _, ok := st.Get().Namespaces["dev"]; ok {
 		t.Fatal("empty list should forget the context")
+	}
+}
+
+func TestUpdateStatusSubresource(t *testing.T) {
+	cs := fake.NewSimpleClientset()
+	cs.Resources = []*metav1.APIResourceList{{GroupVersion: "v1", APIResources: []metav1.APIResource{
+		{Name: "configmaps", Kind: "ConfigMap", Namespaced: true, Verbs: []string{"get", "list", "update"}},
+		{Name: "configmaps/status", Kind: "ConfigMap", Namespaced: true, Verbs: []string{"get", "update"}},
+	}}}
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
+		{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}: "CustomResourceDefinitionList",
+	})
+	var subs []string
+	dyn.PrependReactor("update", "configmaps", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		subs = append(subs, a.GetSubresource())
+		return true, a.(k8stesting.UpdateAction).GetObject(), nil
+	})
+	put := func(readOnly bool, q string) *httptest.ResponseRecorder {
+		c := &cluster.Clients{Context: "dev", Typed: cs, Dynamic: dyn, Discovery: memory.NewMemCacheClient(cs.Discovery())}
+		s := &Server{mgr: cluster.NewStatic(c), mux: http.NewServeMux(), readOnly: readOnly}
+		s.mutationRoutes()
+		body := "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: x, namespace: d, resourceVersion: '1'}\n"
+		w := httptest.NewRecorder()
+		s.mux.ServeHTTP(w, httptest.NewRequest("PUT", "/api/object?resource=configmaps&version=v1&namespace=d&name=x"+q, strings.NewReader(body)))
+		return w
+	}
+	if w := put(false, "&subresource=status"); w.Code != 200 || len(subs) != 1 || subs[0] != "status" {
+		t.Fatalf("status update: %d %s subs=%v", w.Code, w.Body, subs)
+	}
+	if w := put(false, "&subresource=scale"); w.Code != 400 {
+		t.Fatalf("scale on a type without it: %d", w.Code)
+	}
+	if w := put(true, "&subresource=status"); w.Code != http.StatusForbidden {
+		t.Fatalf("read-only: %d", w.Code)
 	}
 }

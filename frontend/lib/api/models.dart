@@ -41,6 +41,9 @@ class ResourceType {
   final List<String> categories;
   final bool custom;
 
+  /// Editable subresources the type serves (`status`, `scale`).
+  final List<String> subresources;
+
   const ResourceType({
     required this.group,
     required this.version,
@@ -51,6 +54,7 @@ class ResourceType {
     this.shortNames = const [],
     this.categories = const [],
     this.custom = false,
+    this.subresources = const [],
   });
 
   factory ResourceType.fromJson(Json j) => ResourceType(
@@ -63,6 +67,7 @@ class ResourceType {
         shortNames: List<String>.from(j['shortNames'] ?? const []),
         categories: List<String>.from(j['categories'] ?? const []),
         custom: j['custom'] ?? false,
+        subresources: List<String>.from(j['subresources'] ?? const []),
       );
 
   ResourceRef get ref => ResourceRef(group: group, version: version, resource: resource);
@@ -73,6 +78,8 @@ class ResourceType {
   String get apiVersion => group.isEmpty ? version : '$group/$version';
 
   bool can(String verb) => verbs.contains(verb);
+
+  bool hasSubresource(String sub) => subresources.contains(sub);
 
   @override
   bool operator ==(Object other) =>

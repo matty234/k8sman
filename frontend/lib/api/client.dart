@@ -244,6 +244,13 @@ class ApiClient {
         'managedFields': managedFields ? 'true' : null,
       })) as String;
 
+  /// A subresource (`status` or `scale`) of an object, as YAML or JSON.
+  Future<String> subresourceYaml(ResourceRef r, String subresource, {String? namespace, required String name}) async =>
+      (await _get('object', {...r.toQuery(), 'namespace': namespace, 'name': name, 'format': 'yaml', 'subresource': subresource})) as String;
+
+  Future<Json> subresource(ResourceRef r, String subresource, {String? namespace, required String name}) async =>
+      Map<String, dynamic>.from(await _get('object', {...r.toQuery(), 'namespace': namespace, 'name': name, 'subresource': subresource}));
+
   /// core/v1 Events for an object, newest first. Prefer [uid] when known.
   Future<List<Json>> events({String? namespace, String? uid, String? kind, String? name}) async {
     final j = await _get('events', {'namespace': namespace, 'uid': uid, 'kind': kind, 'name': name}) as Json;
@@ -365,8 +372,17 @@ class ApiClient {
 
   /// Replace an object from edited YAML (`kubectl edit` semantics). The YAML
   /// must keep metadata.resourceVersion; a concurrent change → 409.
-  Future<UpdateResult> updateObject(ResourceRef r, {String? namespace, required String name, required String yaml, bool dryRun = false}) async {
-    final req = http.Request('PUT', _uri('object', {...r.toQuery(), 'namespace': namespace, 'name': name, 'dryRun': dryRun ? 'true' : null}))
+  Future<UpdateResult> updateObject(ResourceRef r, {String? namespace, required String name, required String yaml, bool dryRun = false}) =>
+      _putObject(r, namespace: namespace, name: name, yaml: yaml, dryRun: dryRun);
+
+  /// Like [updateObject] but writes the `status` or `scale` subresource.
+  Future<UpdateResult> updateSubresource(ResourceRef r, String subresource,
+          {String? namespace, required String name, required String yaml, bool dryRun = false}) =>
+      _putObject(r, namespace: namespace, name: name, yaml: yaml, dryRun: dryRun, subresource: subresource);
+
+  Future<UpdateResult> _putObject(ResourceRef r, {String? namespace, required String name, required String yaml, bool dryRun = false, String? subresource}) async {
+    final req = http.Request(
+        'PUT', _uri('object', {...r.toQuery(), 'namespace': namespace, 'name': name, 'dryRun': dryRun ? 'true' : null, 'subresource': subresource}))
       ..headers.addAll(authHeaders)
       ..headers['Content-Type'] = 'application/yaml'
       ..body = yaml;

@@ -122,6 +122,7 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   that already list their children.
 - A YAML view and editor with dry-run validation, diff review before apply,
   conflict detection and ⌘S. Optionally show managedFields.
+- **Edit status…** (action bar, right-click menu, palette) opens the editor on the `status` subresource for kinds that have one, for hand-fixing `.status` while a controller is stopped; only `.status` is saved and the diff shows only it. **Scale…** does the same for the `scale` subresource on kinds without a replica stepper (CRDs such as Argo Rollouts).
 - **Open in Editor** (in the YAML tab) opens the object in a full-window
   split-screen editor: YAML on the left; on the right a resizable, collapsible
   pane with a debounced live diff against the server and a Validation tab.

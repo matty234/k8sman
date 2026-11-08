@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
+	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/portforward"
 )
@@ -40,6 +42,11 @@ func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, rq, err := s.parseResource(r.Context(), r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	sub, err := subresourceParam(r, rq.Type)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -79,7 +86,7 @@ func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
-	out, err := rq.client(c).Update(r.Context(), obj, opts)
+	out, err := rq.client(c).Update(r.Context(), obj, opts, sub...)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -92,6 +99,19 @@ func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
 		"yaml":            string(y),
 		"context":         c.Context,
 	})
+}
+
+// subresourceParam validates ?subresource= (status or scale, and only when the
+// type serves it) and returns the variadic argument for the dynamic client.
+func subresourceParam(r *http.Request, t cluster.ResourceType) ([]string, error) {
+	sub := r.URL.Query().Get("subresource")
+	if sub == "" {
+		return nil, nil
+	}
+	if !slices.Contains(t.Subresources, sub) {
+		return nil, httpx.BadRequest("%s has no editable %q subresource", t.Resource, sub)
+	}
+	return []string{sub}, nil
 }
 
 // ---- port-forwards ---------------------------------------------------------

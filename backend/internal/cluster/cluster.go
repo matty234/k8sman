@@ -34,6 +34,9 @@ type ResourceType struct {
 	Categories []string `json:"categories,omitempty"`
 	// Custom is true when the resource is served by a CustomResourceDefinition.
 	Custom bool `json:"custom"`
+	// Subresources lists the editable subresources the type serves
+	// ("status", "scale").
+	Subresources []string `json:"subresources,omitempty"`
 }
 
 // GVR returns the schema.GroupVersionResource for the type.
@@ -127,6 +130,12 @@ func (c *Clients) Resources(ctx context.Context, refresh bool) ([]ResourceType, 
 		if perr != nil {
 			continue
 		}
+		// The preferred list drops "<name>/<sub>" entries; the per-version
+		// lists behind it are served from the discovery cache.
+		var subs map[string][]string
+		if full, ferr := c.Discovery.ServerResourcesForGroupVersion(l.GroupVersion); ferr == nil {
+			subs = subresourcesOf(full.APIResources)
+		}
 		for _, r := range l.APIResources {
 			if strings.Contains(r.Name, "/") || !slices.Contains(r.Verbs, "list") {
 				continue
@@ -141,6 +150,8 @@ func (c *Clients) Resources(ctx context.Context, refresh bool) ([]ResourceType, 
 				ShortNames: r.ShortNames,
 				Categories: r.Categories,
 				Custom:     custom[schema.GroupResource{Group: gv.Group, Resource: r.Name}],
+
+				Subresources: subs[r.Name],
 			})
 		}
 	}
@@ -218,10 +229,11 @@ func (c *Clients) find(ctx context.Context, group, version, resource string) (Re
 	if version != "" {
 		gv := schema.GroupVersion{Group: group, Version: version}.String()
 		if l, err := c.Discovery.ServerResourcesForGroupVersion(gv); err == nil {
+			subs := subresourcesOf(l.APIResources)
 			for _, r := range l.APIResources {
 				if r.Name == resource {
 					return ResourceType{Group: group, Version: version, Resource: resource, Kind: r.Kind,
-						Namespaced: r.Namespaced, Verbs: r.Verbs, ShortNames: r.ShortNames}, nil
+						Namespaced: r.Namespaced, Verbs: r.Verbs, ShortNames: r.ShortNames, Subresources: subs[resource]}, nil
 				}
 			}
 		}
@@ -331,4 +343,16 @@ func (c *Clients) crdNames(ctx context.Context) ([]string, error) {
 		names = append(names, it.GetName())
 	}
 	return names, nil
+}
+
+// subresourcesOf maps each resource name to its editable subresources
+// ("status", "scale") found among the "<name>/<sub>" discovery entries.
+func subresourcesOf(rs []metav1.APIResource) map[string][]string {
+	subs := map[string][]string{}
+	for _, r := range rs {
+		if base, sub, ok := strings.Cut(r.Name, "/"); ok && (sub == "status" || sub == "scale") {
+			subs[base] = append(subs[base], sub)
+		}
+	}
+	return subs
 }

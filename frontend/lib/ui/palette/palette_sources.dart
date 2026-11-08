@@ -162,6 +162,16 @@ List<PaletteItem> paletteItems(BuildContext context) {
         aliases: const ['edit', 'yaml'],
         run: () => openResourceEditor(context, d),
       ),
+    if (app.detail case final d? when !app.readOnly && d.type.hasSubresource('status') && d.type.can('update'))
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'Edit Status…',
+        detail: d.name,
+        typeLabel: 'Action',
+        icon: _icon(Icons.edit_note),
+        aliases: const ['status', 'subresource'],
+        run: () => openResourceEditor(context, d, statusMode: true),
+      ),
     if (app.canNavBack)
       PaletteItem(
         group: PaletteGroup.actions,

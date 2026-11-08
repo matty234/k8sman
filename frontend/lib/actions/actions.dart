@@ -3,11 +3,15 @@
 /// and [runResourceAction] here rather than calling the API directly.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
 import '../panels/panel.dart';
+import '../state/app_state.dart';
+import '../ui/editor/resource_editor_screen.dart';
 import '../ui/nodes/drain_dialog.dart';
 import '../ui/theme.dart';
 import '../util/k8s.dart';
@@ -323,6 +327,8 @@ class _ActionButtonState extends State<ActionButton> {
 // Standard actions per kind (rendered in the sidebar header)
 // ---------------------------------------------------------------------------
 
+const _bespokeScale = {'apps/Deployment', 'apps/StatefulSet', 'apps/ReplicaSet'};
+
 /// Built-in header actions for an object, based on its kind and verbs.
 /// Panels can add more via [ResourcePanel.actions].
 List<ResourceAction> standardActions(PanelContext ctx) {
@@ -339,7 +345,7 @@ List<ResourceAction> standardActions(PanelContext ctx) {
         run: (c) => runResourceAction(c, ctx, id, title: title, message: message, destructive: destructive, body: body, confirmLabel: label),
       );
 
-  if (const {'apps/Deployment', 'apps/StatefulSet', 'apps/ReplicaSet'}.contains(gk)) {
+  if (_bespokeScale.contains(gk)) {
     out.add(ResourceAction(id: 'scale', label: 'Scale', icon: Icons.unfold_more, run: (c) => showScaleDialog(c, ctx)));
   }
   if (const {'apps/Deployment', 'apps/StatefulSet', 'apps/DaemonSet'}.contains(gk)) {
@@ -373,6 +379,19 @@ List<ResourceAction> standardActions(PanelContext ctx) {
   }
   if (gk == '/Pod' && ownerRefs(ctx.object).isNotEmpty) {
     out.add(simple('delete', 'Restart pod', Icons.refresh, 'Delete pod $name so its controller recreates it?', destructive: true));
+  }
+  if (ctx.type.hasSubresource('status') && ctx.type.can('update')) {
+    out.add(ResourceAction(
+      id: 'edit-status',
+      label: 'Edit status…',
+      icon: Icons.edit_note,
+      tooltip: 'Edit .status through the status subresource',
+      run: (c) => openResourceEditor(c, DetailTarget(type: ctx.type, name: name, namespace: ctx.namespace), statusMode: true),
+    ));
+  }
+  // Deployments, StatefulSets and ReplicaSets have the replica stepper above.
+  if (ctx.type.hasSubresource('scale') && !_bespokeScale.contains(gk)) {
+    out.add(ResourceAction(id: 'scale-sub', label: 'Scale…', icon: Icons.unfold_more, run: (c) => showSubresourceScaleDialog(c, ctx)));
   }
   if (ctx.type.can('delete')) {
     out.add(simple('delete', 'Delete', Icons.delete_outline, 'Delete $kind $name?',
@@ -411,4 +430,59 @@ Future<void> showScaleDialog(BuildContext context, PanelContext ctx) async {
       message: 'Replicas $current → $target.${target == 0 ? ' All pods will be terminated.' : ''}',
       destructive: target == 0,
       confirmLabel: 'Scale');
+}
+
+/// Scale dialog for kinds that only expose the generic `scale` subresource:
+/// reads the autoscaling/v1 Scale, then PUTs it back with the new replicas.
+Future<void> showSubresourceScaleDialog(BuildContext context, PanelContext ctx) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final ref = ctx.type.ref, ns = ctx.namespace, name = ctx.name;
+  final Json scale;
+  try {
+    scale = await ctx.api.subresource(ref, 'scale', namespace: ns, name: name);
+  } catch (e) {
+    if (context.mounted) showActionError(context, '$e');
+    return;
+  }
+  if (!context.mounted) return;
+  final current = (dig<num>(scale, ['spec', 'replicas']) ?? 0).toInt();
+  final controller = TextEditingController(text: '$current');
+  final target = await showDialog<int>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) {
+        final value = int.tryParse(controller.text);
+        return AlertDialog(
+          title: Text('Scale ${ctx.type.kind} $name'),
+          content: SizedBox(
+            width: 320,
+            child: TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: 'Replicas (currently $current)'),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (v) => Navigator.pop(context, int.tryParse(v)),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              style: value == 0 ? destructiveButtonStyle(context) : null,
+              onPressed: value == null || value < 0 ? null : () => Navigator.pop(context, value),
+              child: const Text('Apply'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  if (target == null || target == current) return;
+  scale['spec'] = {...asMap(scale['spec']), 'replicas': target};
+  try {
+    await ctx.api.updateSubresource(ref, 'scale', namespace: ns, name: name, yaml: jsonEncode(scale));
+    messenger?.showSnackBar(SnackBar(content: Text('Scaled $name to $target')));
+  } catch (e) {
+    if (context.mounted) showActionError(context, '$e');
+  }
 }

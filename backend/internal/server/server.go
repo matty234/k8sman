@@ -716,7 +716,12 @@ func (s *Server) handleObject(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, httpx.BadRequest("name is required"))
 		return
 	}
-	obj, err := rq.client(c).Get(r.Context(), name, metav1.GetOptions{})
+	sub, err := subresourceParam(r, rq.Type)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	obj, err := rq.client(c).Get(r.Context(), name, metav1.GetOptions{}, sub...)
 	if err != nil {
 		writeErr(w, err)
 		return

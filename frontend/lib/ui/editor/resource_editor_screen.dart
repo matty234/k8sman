@@ -21,8 +21,8 @@ import 'resource_templates.dart';
 import 'yaml_code_editor.dart';
 
 /// Opens [target] in the full-window YAML editor.
-Future<void> openResourceEditor(BuildContext context, DetailTarget target) =>
-    Navigator.of(context).push(_route(ResourceEditorScreen(target: target)));
+Future<void> openResourceEditor(BuildContext context, DetailTarget target, {bool statusMode = false}) =>
+    Navigator.of(context).push(_route(ResourceEditorScreen(target: target, statusMode: statusMode)));
 
 /// Opens the full-window editor to create resources, starting from [kind]'s
 /// template (or a Deployment) in [namespace] (else the app's namespace).
@@ -50,7 +50,9 @@ class ResourceEditorScreen extends StatefulWidget {
   /// Create mode: the kind whose template to start from, and the namespace.
   final ResourceType? kind;
   final String? namespace;
-  const ResourceEditorScreen({super.key, this.target, this.kind, this.namespace});
+  /// Edit the object's `status` subresource: only `.status` is saved.
+  final bool statusMode;
+  const ResourceEditorScreen({super.key, this.target, this.kind, this.namespace, this.statusMode = false});
 
   @override
   State<ResourceEditorScreen> createState() => _ResourceEditorScreenState();
@@ -65,6 +67,13 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
   ApiClient get _api => context.read<ApiClient>();
   DetailTarget? get _t => widget.target;
   bool get _creating => _t == null;
+  bool get _status => widget.statusMode && !_creating;
+
+  /// The diff the user cares about: whole text, or just `.status` in status mode.
+  List<DiffLine> _diffOf(String from, String to) => _status ? diffLines(_statusPart(from), _statusPart(to)) : diffLines(from, to);
+
+  /// Whether the text differs from the server copy outside `.status`.
+  bool get _editedOutsideStatus => _status && !_loading && _withoutStatus(_original) != _withoutStatus(_controller.text);
 
   // Edit mode: the server copy and its live state.
   String _original = '';
@@ -131,7 +140,7 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
     if (!_creating) {
       _debounce?.cancel();
       _debounce = Timer(const Duration(milliseconds: 250), () {
-        if (mounted) setState(() => _diff = diffLines(_original, _controller.text));
+        if (mounted) setState(() => _diff = _diffOf(_original, _controller.text));
       });
     }
     // Rebuild on dirty flips and to mark results out of date, not per key.
@@ -148,14 +157,16 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
     final t = _t!;
     setState(() => (_loading = true, _loadError = null));
     try {
-      final y = await _api.objectYaml(t.type.ref, namespace: t.namespace, name: t.name);
+      final y = _status
+          ? await _api.subresourceYaml(t.type.ref, 'status', namespace: t.namespace, name: t.name)
+          : await _api.objectYaml(t.type.ref, namespace: t.namespace, name: t.name);
       if (!mounted) return;
       setState(() {
         _original = y;
         _baseRv = RegExp(r'^\s*resourceVersion:\s*"?(\d+)"?', multiLine: true).firstMatch(y)?.group(1) ?? '';
         _liveRv = _baseRv;
         _controller.text = y;
-        _diff = diffLines(y, y);
+        _diff = _diffOf(y, y);
         _loading = false;
         _serverChanged = false;
         _deleted = false;
@@ -255,7 +266,9 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
     final t = _t!, text = _controller.text;
     setState(() => _busy = true);
     try {
-      final res = await _api.updateObject(t.type.ref, namespace: t.namespace, name: t.name, yaml: text, dryRun: dryRun);
+      final res = _status
+          ? await _api.updateSubresource(t.type.ref, 'status', namespace: t.namespace, name: t.name, yaml: text, dryRun: dryRun)
+          : await _api.updateObject(t.type.ref, namespace: t.namespace, name: t.name, yaml: text, dryRun: dryRun);
       if (!mounted) return false;
       setState(() {
         _busy = false;
@@ -357,12 +370,12 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
     if (!_dirty) return;
     if (review && !await _submitEdit(dryRun: true)) return;
     if (!mounted) return;
-    final lines = diffLines(_original, _controller.text);
+    final lines = _diffOf(_original, _controller.text);
     final stats = diffStats(lines);
     final ok = await confirmAction(
       context,
-      title: 'Apply changes to ${t.type.kind} ${t.name}?',
-      message: '+${stats.added} −${stats.removed} lines.${review ? ' Validated by a server-side dry run.' : ''}',
+      title: _status ? 'Apply status changes to ${t.type.kind} ${t.name}?' : 'Apply changes to ${t.type.kind} ${t.name}?',
+      message: '${_status ? 'Only .status is written. ' : ''}+${stats.added} −${stats.removed} lines.${review ? ' Validated by a server-side dry run.' : ''}',
       kubeContext: app.currentContext,
       objectName: t.name,
       destructive: true,
@@ -485,6 +498,11 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
               _titleBar(context, app, readOnly),
               const Divider(),
               if (readOnly) _readOnlyBanner(context, app),
+              if (_status)
+                EditorBanner(severityColor(context, Severity.info), Icons.info_outline,
+                    'Only changes under .status are saved (the status subresource). The controller may overwrite them unless it\'s stopped.'),
+              if (_editedOutsideStatus)
+                EditorBanner(severityColor(context, Severity.warn), Icons.warning_amber_rounded, 'These changes won\'t be saved: you edited outside .status.'),
               if (_deleted)
                 EditorBanner(severityColor(context, Severity.error), Icons.delete_outline, 'This object was deleted on the server. Applying will fail.')
               else if (_serverChanged)
@@ -526,7 +544,7 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
             Flexible(
               child: Text.rich(
                 TextSpan(children: [
-                  TextSpan(text: t == null ? 'New Resource' : 'Edit ${t.type.kind} '),
+                  TextSpan(text: t == null ? 'New Resource' : (_status ? 'Editing status of ${t.type.kind}/' : 'Edit ${t.type.kind} ')),
                   if (t != null) TextSpan(text: t.name, style: monoStyle(context, size: 15).copyWith(fontWeight: FontWeight.w600)),
                   if (_dirty) TextSpan(text: '  •', style: TextStyle(color: theme.hintColor)),
                 ]),
@@ -1011,4 +1029,24 @@ class _ResultRow extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// The top-level `status:` block of [yaml] (empty when there is none).
+String _statusPart(String yaml) => _splitStatus(yaml).inStatus.join('\n');
+
+/// [yaml] without its top-level `status:` block.
+String _withoutStatus(String yaml) => _splitStatus(yaml).rest.join('\n');
+
+({List<String> inStatus, List<String> rest}) _splitStatus(String yaml) {
+  final inStatus = <String>[], rest = <String>[];
+  var inside = false;
+  for (final line in yaml.split('\n')) {
+    if (line.startsWith('status:')) {
+      inside = true;
+    } else if (line.isNotEmpty && !line.startsWith(' ') && !line.startsWith('-') && !line.startsWith('#')) {
+      inside = false;
+    }
+    (inside ? inStatus : rest).add(line);
+  }
+  return (inStatus: inStatus, rest: rest);
 }
