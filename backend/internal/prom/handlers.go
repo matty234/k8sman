@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -122,6 +124,12 @@ func (h *Handler) alerts(ctx context.Context, e env, amID, promID string) *Alert
 	res.Prometheus = s.Default(KindPrometheus, promID)
 	if amID != "" && res.Alertmanager == nil {
 		res.Errors["alertmanager"] = fmt.Sprintf("alertmanager %q not found", amID)
+	}
+	// Found nothing because discovery itself failed (the cluster API was
+	// unreachable, a list was refused): say so, rather than letting the UI
+	// conclude the stack isn't installed and offer to install it.
+	if res.Alertmanager == nil && res.Prometheus == nil && len(s.Errors) > 0 {
+		res.Errors["discovery"] = discoveryError(s.Errors)
 	}
 
 	var (
@@ -386,4 +394,18 @@ func ActiveAlerts(ctx context.Context, c *cluster.Clients) ([]Alert, error) {
 		}
 	}
 	return out, nil
+}
+
+// discoveryError joins discovery's errors into one line, in a stable order.
+func discoveryError(errs map[string]string) string {
+	keys := make([]string, 0, len(errs))
+	for k := range errs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = k + ": " + errs[k]
+	}
+	return strings.Join(parts, "; ")
 }

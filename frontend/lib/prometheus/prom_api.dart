@@ -310,8 +310,13 @@ class AlertsData {
         errors: {for (final e in asMap(j['errors']).entries) e.key: '${e.value}'},
       );
 
-  /// Neither Alertmanager nor Prometheus was discovered.
-  bool get stackMissing => alertmanager == null && prometheus == null;
+  /// Neither Alertmanager nor Prometheus was found, and the search itself
+  /// worked (see [discoveryError]).
+  bool get stackMissing => alertmanager == null && prometheus == null && discoveryError == null;
+
+  /// Why the search for Prometheus and Alertmanager failed (e.g. the cluster
+  /// API was unreachable): they may well be installed.
+  String? get discoveryError => errors['discovery'];
 }
 
 class SilenceMatcher {

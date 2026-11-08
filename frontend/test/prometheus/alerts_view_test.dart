@@ -189,6 +189,14 @@ void main() {
     await disposeView(tester);
   });
 
+  testWidgets('a failed search shows the error and Retry, not an install offer', (tester) async {
+    await pumpAlerts(tester, api: FixturePromApi(missing: true, discoveryFailed: true), size: const Size(900, 600));
+    expect(find.textContaining("Couldn't check for Prometheus"), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Install Prometheus stack…'), findsNothing);
+    await disposeView(tester);
+  });
+
   testWidgets('no overflow from 360 to 1800px, expanded and on both tabs', (tester) async {
     for (final w in [360.0, 480.0, 700.0, 1000.0, 1400.0, 1800.0]) {
       for (final silences in [false, true]) {

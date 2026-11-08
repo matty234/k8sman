@@ -249,6 +249,18 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
       );
     } else if (data.stackMissing) {
       body = const _StackMissing();
+    } else if (data.alertmanager == null && data.prometheus == null) {
+      // The search failed: don't offer to install a stack that may exist.
+      body = Center(
+        child: SizedBox(
+          width: 460,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            InlineMessage("Couldn't check for Prometheus and Alertmanager: ${data.discoveryError}", isError: true),
+            const SizedBox(height: 12),
+            FilledButton.tonal(onPressed: () => _refresh(rediscover: true), child: const Text('Retry')),
+          ]),
+        ),
+      );
     } else {
       body = _content(context, app, data, scoped);
     }

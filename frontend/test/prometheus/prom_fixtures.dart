@@ -12,6 +12,9 @@ dynamic promFixture(String name) => jsonDecode(File('test/prometheus/fixtures/$n
 class FixturePromApi extends PromApi {
   /// No Prometheus/Alertmanager at all.
   final bool missing;
+
+  /// With [missing]: the search itself failed (the cluster API unreachable).
+  final bool discoveryFailed;
   final List<(String method, String path, Object? body)> sent = [];
 
   /// PromQL passed to query / query_range.
@@ -20,13 +23,15 @@ class FixturePromApi extends PromApi {
   /// Number of `alerts` fetches.
   int alertFetches = 0;
 
-  FixturePromApi({this.missing = false}) : super(ApiClient(base: Uri.parse('http://fake')));
+  FixturePromApi({this.missing = false, this.discoveryFailed = false}) : super(ApiClient(base: Uri.parse('http://fake')));
 
   @override
   Future<dynamic> getJson(String path, [Map<String, String?> query = const {}]) async {
     if (missing) {
       if (path == 'status') return {'prometheus': [], 'alertmanager': [], 'operatorCRDs': false};
-      if (path == 'alerts') return {'groups': [], 'summary': {}};
+      if (path == 'alerts') {
+        return {'groups': [], 'summary': {}, if (discoveryFailed) 'errors': {'discovery': 'services: connection refused'}};
+      }
       throw ApiException(404, 'no prometheus found in the cluster', reason: 'NotFound');
     }
     switch (path) {
