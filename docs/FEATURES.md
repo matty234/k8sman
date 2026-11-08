@@ -146,6 +146,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     generic panel that summarises status and conditions.
   - **Argo CD** Application, ApplicationSet and AppProject (see above).
   - **Gateway API** Gateway, GatewayClass, routes and ReferenceGrant (see above).
+  - **Dynamic Resource Allocation** (`resource.k8s.io`, v1 or the beta
+    shapes) ResourceClaim, ResourceClaimTemplate, DeviceClass and ResourceSlice
+    in a "Dynamic Resources" sidebar section (only where served), with state,
+    device and node columns; Pods list their claims and Nodes their devices.
   - **Prometheus Operator** Prometheus, Alertmanager, PrometheusRule (live rule
     state), ServiceMonitor and PodMonitor (live target health).
 

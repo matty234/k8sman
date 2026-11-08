@@ -13,6 +13,7 @@ import '../../ui/terminal/open_terminal.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../dra/dra_sections.dart';
 import '../panel.dart';
 import 'pod_containers.dart';
 import 'pod_logic.dart';
@@ -71,6 +72,7 @@ class PodPanel extends ResourcePanel {
       ),
       if (volumes.isNotEmpty)
         DetailSection(title: 'Volumes', icon: Icons.storage_outlined, trailing: Hint('${volumes.length}'), child: _Volumes(volumes, containers, ctx.namespace, ctx.name)),
+      draPodSection(ctx),
       if (scheduling.isNotEmpty) DetailSection(title: 'Scheduling', icon: Icons.account_tree_outlined, child: KeyValueTable(scheduling, keyWidth: 110)),
       DetailSection(title: 'Conditions', icon: Icons.fact_check_outlined, child: ConditionsTable(ctx.status['conditions'] as List?)),
     ];

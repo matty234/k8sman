@@ -9,6 +9,7 @@ import '../../metrics/node_usage.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../dra/dra_sections.dart';
 import '../panel.dart';
 import 'logic.dart';
 import 'widgets.dart';
@@ -34,6 +35,7 @@ class NodePanel extends ResourcePanel {
       DetailSection(title: 'Node status', icon: Icons.dns_outlined, child: _StatusBlock(ctx)),
       _NodePods(key: ValueKey(ctx.uid), api: ctx.api, nodeName: ctx.name, allocatable: asMap(status['allocatable'])),
       gpuNodeSection(ctx),
+      draNodeSection(ctx),
       DetailSection(
         title: 'Conditions',
         icon: Icons.fact_check_outlined,
