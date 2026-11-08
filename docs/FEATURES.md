@@ -37,6 +37,11 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   all namespaces, independent of the table's namespace, and accept a set
   too.
 - Pins can be scoped to a namespace or a set of namespaces.
+- No permission to list namespaces? The picker says so and lets you type a
+  namespace ("Use namespace ...") to add it. Typed namespaces are remembered
+  per context ("added by you", with a remove button) next to the kubeconfig
+  context's own namespace. The app opens in the kubeconfig namespace, else
+  the first remembered one, else `default`.
 
 ## Saved views
 

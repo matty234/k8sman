@@ -98,12 +98,18 @@ Future<void> showNamespacePopover(
       width: math.max(width, anchor.width),
       namespaces: app.namespaces,
       listed: app.namespacesListed,
+      remembered: app.rememberedNamespaces,
+      kubeNamespace: app.kubeconfigNamespace,
+      onRemember: app.rememberNamespace,
+      onForget: app.forgetNamespace,
       recents: [for (final r in app.recentNamespaces) if (r != value) r],
       value: value,
       onChanged: onChanged,
     ),
   );
 }
+
+final _dns1123 = RegExp(r'^[a-z0-9]([-a-z0-9]*[a-z0-9])?$');
 
 /// One row of the popover.
 sealed class _Row {
@@ -124,7 +130,13 @@ class _NsRow extends _Row {
 
   /// Selected but not in the cluster's list.
   final bool missing;
-  const _NsRow(this.name, {this.missing = false});
+
+  /// Added by the user (remembered), not in the cluster's list: can be removed.
+  final bool custom;
+
+  /// "Use namespace “name”": the typed text, not in the list yet.
+  final bool add;
+  const _NsRow(this.name, {this.missing = false, this.custom = false, this.add = false});
 }
 
 class _NamespacePopover extends StatefulWidget {
@@ -133,6 +145,10 @@ class _NamespacePopover extends StatefulWidget {
   final double width;
   final List<String> namespaces;
   final bool listed;
+  final List<String> remembered;
+  final String? kubeNamespace;
+  final Future<void> Function(String) onRemember;
+  final Future<void> Function(String) onForget;
   final List<NamespaceScope> recents;
   final NamespaceScope value;
   final ValueChanged<NamespaceScope> onChanged;
@@ -142,6 +158,10 @@ class _NamespacePopover extends StatefulWidget {
     required this.width,
     required this.namespaces,
     required this.listed,
+    required this.remembered,
+    required this.kubeNamespace,
+    required this.onRemember,
+    required this.onForget,
     required this.recents,
     required this.value,
     required this.onChanged,
@@ -156,19 +176,39 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
   final _query = TextEditingController();
   final _scroll = ScrollController();
   late NamespaceScope _value = widget.value;
+  late final Set<String> _remembered = {...widget.remembered};
+  late List<_NsRow> _allNamespaces = _buildAll();
   late List<_NsRow> _matches = _allNamespaces;
   int _active = 0;
   bool _done = false;
 
   String get _q => _query.text.trim().toLowerCase();
 
-  /// Selected namespaces the cluster doesn't list come first.
-  late final List<_NsRow> _allNamespaces = [
-    if (widget.listed)
-      for (final n in widget.value.namespaces)
-        if (!widget.namespaces.contains(n)) _NsRow(n, missing: true),
-    for (final n in widget.namespaces) _NsRow(n),
-  ];
+  /// Selected namespaces the cluster doesn't list come first, then the
+  /// listed, remembered and kubeconfig namespaces merged.
+  List<_NsRow> _buildAll() {
+    final kube = widget.kubeNamespace;
+    final known = {...widget.namespaces, ..._remembered, ?kube};
+    // The cluster's order, then the extras (remembered, kubeconfig) sorted.
+    final extras = [for (final n in known) if (!widget.namespaces.contains(n)) n]..sort();
+    // Without a list, a selected namespace is as good as any other.
+    final selected = widget.value.namespaces.where((s) => !known.contains(s));
+    return [
+      if (widget.listed) for (final s in selected) _NsRow(s, missing: true),
+      for (final n in [...widget.namespaces, ...extras, if (!widget.listed) ...selected])
+        _NsRow(n, custom: _remembered.contains(n) && !widget.namespaces.contains(n) && n != kube),
+    ];
+  }
+
+  /// The rows matching the search, plus "Use namespace" for a valid new name.
+  List<_NsRow> _filter() {
+    final q = _q;
+    if (q.isEmpty) return _allNamespaces;
+    final found = [for (final r in _allNamespaces) if (r.name.toLowerCase().contains(q)) r];
+    // Offered when namespaces can't be listed, or nothing else matches.
+    final offer = (!widget.listed || found.isEmpty) && _dns1123.hasMatch(q) && !_allNamespaces.any((r) => r.name == q);
+    return [...found, if (offer) _NsRow(q, add: true)];
+  }
 
   List<_Row> get _header => [const _AllRow(), if (_q.isEmpty) ...[for (final r in widget.recents) _RecentRow(r)]];
 
@@ -199,7 +239,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
   void _onChanged(String _) {
     final q = _q;
     setState(() {
-      _matches = q.isEmpty ? _allNamespaces : [for (final r in _allNamespaces) if (r.name.toLowerCase().contains(q)) r];
+      _matches = _filter();
       // While searching, Enter takes the first match.
       _active = q.isNotEmpty && _matches.isNotEmpty ? _header.length : 0;
     });
@@ -233,7 +273,10 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     final scope = switch (_at(idx)) {
       _AllRow() => NamespaceScope.all,
       _RecentRow(:final scope) => scope,
-      _NsRow(:final name) => NamespaceScope.single(name),
+      _NsRow(:final name, :final add) => () {
+          if (add) widget.onRemember(name);
+          return NamespaceScope.single(name);
+        }(),
     };
     Navigator.of(context).pop();
     if (scope != widget.value) widget.onChanged(scope);
@@ -245,11 +288,28 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     if (idx < 0 || idx >= _count) return;
     final row = _at(idx);
     if (row is! _NsRow) return _pick(idx);
+    if (row.add) {
+      // Remember it, and show it as an ordinary row from now on.
+      widget.onRemember(row.name);
+      _remembered.add(row.name);
+      _allNamespaces = _buildAll();
+      _matches = _filter();
+    }
     setState(() {
       _value = _value.toggle(row.name);
       _active = idx;
     });
     widget.onChanged(_value);
+  }
+
+  void _forget(String name) {
+    widget.onForget(name);
+    setState(() {
+      _remembered.remove(name);
+      _allNamespaces = _buildAll();
+      _matches = _filter();
+      _active = _active.clamp(0, math.max(0, _count - 1));
+    });
   }
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
@@ -298,6 +358,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
         onTap: () => _pick(i),
         onToggle: () => _toggle(i),
         onHover: () => setState(() => _active = i),
+        onRemove: r is _NsRow && r.custom ? () => _forget(r.name) : null,
       );
     }
 
@@ -336,6 +397,11 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
                   ),
                 ),
               ),
+              if (!widget.listed)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                  child: Text("You can't list namespaces here; type one to add it.", key: const ValueKey('picker-unlisted-hint'), style: small),
+                ),
               for (var i = 0; i < header.length; i++) ...[
                 if (i == 1) ...[sep, Padding(padding: const EdgeInsets.fromLTRB(14, 2, 12, 2), child: Text('Recent', style: small))],
                 Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: SizedBox(height: _rowHeight, child: row(i))),
@@ -388,6 +454,7 @@ class _PickerRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onToggle;
   final VoidCallback onHover;
+  final VoidCallback? onRemove;
   const _PickerRow({
     super.key,
     required this.row,
@@ -397,6 +464,7 @@ class _PickerRow extends StatelessWidget {
     required this.onTap,
     required this.onToggle,
     required this.onHover,
+    this.onRemove,
   });
 
   @override
@@ -407,7 +475,7 @@ class _PickerRow extends StatelessWidget {
     final (String label, bool selected, bool missing) = switch (row) {
       _AllRow() => ('All namespaces', value.isAll, false),
       _RecentRow(:final scope) => (scope.label, false, false),
-      _NsRow(:final name, :final missing) => (name, value.namespaces.contains(name), missing),
+      _NsRow(:final name, :final missing, :final add) => (add ? 'Use namespace “$name”' : name, value.namespaces.contains(name), missing),
     };
     final spans = <TextSpan>[];
     final i = query.isEmpty ? -1 : label.toLowerCase().indexOf(query);
@@ -422,6 +490,7 @@ class _PickerRow extends StatelessWidget {
     }
     final style = missing ? base.copyWith(decoration: TextDecoration.lineThrough, color: fg ?? theme.hintColor) : base;
     final Widget lead = switch (row) {
+      _NsRow(add: true) => SizedBox(width: 22, child: Icon(Icons.add, size: 14, color: active ? fg : theme.colorScheme.primary)),
       _NsRow() => GestureDetector(
           key: const ValueKey('picker-checkbox'),
           behavior: HitTestBehavior.opaque,
@@ -452,6 +521,20 @@ class _PickerRow extends StatelessWidget {
             if (missing) ...[
               const SizedBox(width: 8),
               Text('not found', style: theme.textTheme.bodySmall?.copyWith(color: active ? fg : theme.hintColor)),
+            ],
+            if (onRemove != null) ...[
+              const SizedBox(width: 8),
+              Text('added by you', style: theme.textTheme.bodySmall?.copyWith(color: active ? fg : theme.hintColor)),
+              const SizedBox(width: 2),
+              Tooltip(
+                message: 'Remove from remembered namespaces',
+                child: GestureDetector(
+                  key: const ValueKey('picker-remove'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onRemove,
+                  child: Padding(padding: const EdgeInsets.all(3), child: Icon(Icons.close, size: 13, color: active ? fg : theme.hintColor)),
+                ),
+              ),
             ],
           ]),
         ),

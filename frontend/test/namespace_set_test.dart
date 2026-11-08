@@ -41,4 +41,27 @@ void main() {
     expect(find.text('web'), findsNothing);
     expect(find.text('demo, kube-system'), findsOneWidget, reason: 'the picker button names the set');
   });
+
+  testWidgets('when namespaces cannot be listed, a typed namespace is used and remembered', (tester) async {
+    final api = TableFakeApi();
+    final app = await pumpTable(tester, api, podType);
+    app
+      ..namespaces = const []
+      ..namespacesListed = false;
+
+    await tester.tap(find.byKey(const ValueKey('namespace-picker')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('picker-unlisted-hint')), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('picker-search')), 'team-a');
+    await tester.pump();
+    expect(find.text('Use namespace “team-a”'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.pump();
+
+    expect(app.namespaceScope, NamespaceScope.single('team-a'));
+    expect(api.lastWatchScope, NamespaceScope.single('team-a'));
+    expect(api.lastWatchScope!.query, {'namespace': 'team-a'});
+    expect(api.remembered, ['team-a']);
+  });
 }

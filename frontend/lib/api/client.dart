@@ -148,6 +148,17 @@ class ApiClient {
     await _send('PUT', 'settings/tables', const {}, {'kind': kind, 'prefs': prefs});
   }
 
+  /// Namespaces the user added by hand for [context] (the current one if null).
+  Future<List<String>> getRememberedNamespaces({String? context}) async {
+    final j = await _get('settings/namespaces', {'context': context}) as Json;
+    return [for (final n in (j['namespaces'] as List? ?? const [])) '$n'];
+  }
+
+  /// Replaces the namespaces added by hand for [context].
+  Future<void> putRememberedNamespaces(List<String> namespaces, {String? context}) async {
+    await _send('PUT', 'settings/namespaces', const {}, {'context': ?context, 'namespaces': namespaces});
+  }
+
   /// One connection step for the current context: `reach` (does anything
   /// answer at the server address? fails in ~10 s) or `auth` (do the
   /// credentials work? runs the exec plugin, which may wait for a browser

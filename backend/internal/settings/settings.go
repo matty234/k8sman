@@ -61,6 +61,9 @@ type Settings struct {
 	// kube context → the module's JSON object. Opaque here; each module
 	// validates and decodes its own (see ModuleSettings).
 	ModuleSettings map[string]map[string]json.RawMessage `json:"moduleSettings,omitempty"`
+	// Namespaces maps kube context → namespaces the user added by hand
+	// (for clusters where Namespaces can't be listed), in the order added.
+	Namespaces map[string][]string `json:"namespaces,omitempty"`
 }
 
 // ViewVersion is the view record version this build writes.
@@ -320,6 +323,7 @@ func (st *Store) Get() Settings {
 	out.DisabledModules = slices.Clone(st.s.DisabledModules)
 	out.Views = slices.Clone(st.s.Views)
 	out.ModuleSettings = cloneModuleSettings(st.s.ModuleSettings)
+	out.Namespaces = cloneNamespaces(st.s.Namespaces)
 	return out
 }
 
@@ -341,6 +345,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	next.DisabledModules = slices.Clone(st.s.DisabledModules)
 	next.Views = slices.Clone(st.s.Views)
 	next.ModuleSettings = cloneModuleSettings(st.s.ModuleSettings)
+	next.Namespaces = cloneNamespaces(st.s.Namespaces)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -652,4 +657,33 @@ func (st *Store) write(s Settings) error {
 		return err
 	}
 	return os.Rename(tmp, st.path)
+}
+
+func cloneNamespaces(m map[string][]string) map[string][]string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string][]string, len(m))
+	for k, v := range m {
+		out[k] = slices.Clone(v)
+	}
+	return out
+}
+
+// SetNamespaces saves the namespaces added by hand for a kube context
+// (empty forgets them).
+func (st *Store) SetNamespaces(context string, namespaces []string) error {
+	return st.Update(func(s *Settings) {
+		if len(namespaces) == 0 {
+			delete(s.Namespaces, context)
+			if len(s.Namespaces) == 0 {
+				s.Namespaces = nil
+			}
+			return
+		}
+		if s.Namespaces == nil {
+			s.Namespaces = map[string][]string{}
+		}
+		s.Namespaces[context] = slices.Clone(namespaces)
+	})
 }

@@ -103,6 +103,15 @@ class TableFakeApi extends ApiClient {
     }
   }
 
+  /// Namespaces added by hand (GET/PUT /api/settings/namespaces).
+  List<String> remembered = [];
+
+  @override
+  Future<List<String>> getRememberedNamespaces({String? context}) async => remembered;
+
+  @override
+  Future<void> putRememberedNamespaces(List<String> namespaces, {String? context}) async => remembered = [...namespaces];
+
   /// Names whose action fails with this message.
   Map<String, String> failures = {};
 

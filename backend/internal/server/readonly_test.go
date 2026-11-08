@@ -87,3 +87,26 @@ func TestTablePrefs(t *testing.T) {
 		t.Fatal("null should forget the kind")
 	}
 }
+
+func TestRememberedNamespaces(t *testing.T) {
+	kc := writeKubeconfig(t, filepath.Join(t.TempDir(), "config"), "dev")
+	mgr, err := cluster.NewManager(kc, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, st, _ := newTestServer(t, mgr)
+	if rec, _ := do(t, s, "PUT", "/api/settings/namespaces", `{"context":"dev","namespaces":["team-a","b2"]}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("put: %d %s", rec.Code, rec.Body)
+	}
+	if rec, _ := do(t, s, "PUT", "/api/settings/namespaces", `{"context":"dev","namespaces":["Bad_Name"]}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid name: %d", rec.Code)
+	}
+	rec, _ := do(t, s, "GET", "/api/settings/namespaces?context=dev", "")
+	if !strings.Contains(rec.Body.String(), `"namespaces":["team-a","b2"]`) || len(st.Get().Namespaces["dev"]) != 2 {
+		t.Fatalf("get: %s", rec.Body)
+	}
+	do(t, s, "PUT", "/api/settings/namespaces", `{"context":"dev","namespaces":[]}`)
+	if _, ok := st.Get().Namespaces["dev"]; ok {
+		t.Fatal("empty list should forget the context")
+	}
+}

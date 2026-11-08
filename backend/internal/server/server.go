@@ -79,6 +79,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.viewRoutes()
 	s.readOnlyRoutes()
 	s.tablePrefsRoutes()
+	s.namespaceRoutes()
 	s.execRoutes()
 	s.localShellRoutes()
 	s.securityRoutes()
@@ -633,9 +634,14 @@ func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	list, err := c.Typed.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		// Users without cluster-wide namespace list still get their default.
-		if apierrors.IsForbidden(err) && c.Namespace != "" {
-			httpx.WriteJSON(w, 200, map[string]any{"namespaces": []string{c.Namespace}, "default": c.Namespace, "listed": false})
+		// Users without cluster-wide namespace list still get their
+		// default (if the kubeconfig has one); the UI lets them type more.
+		if apierrors.IsForbidden(err) {
+			names := []string{}
+			if c.Namespace != "" {
+				names = append(names, c.Namespace)
+			}
+			httpx.WriteJSON(w, 200, map[string]any{"namespaces": names, "default": c.Namespace, "listed": false})
 			return
 		}
 		writeErr(w, err)

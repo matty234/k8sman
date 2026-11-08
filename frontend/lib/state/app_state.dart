@@ -182,6 +182,37 @@ class AppState extends ChangeNotifier {
   /// context's default, and a missing namespace may simply be unlisted.
   bool namespacesListed = true;
 
+  /// Namespaces the user typed in the picker for this context (saved in
+  /// settings.json), in the order added. For users who can't list namespaces.
+  List<String> rememberedNamespaces = const [];
+
+  /// The kubeconfig context's own namespace, if it sets one.
+  String? kubeconfigNamespace;
+
+  /// Remembers [ns] for this context (no-op if already remembered).
+  Future<void> rememberNamespace(String ns) async {
+    if (rememberedNamespaces.contains(ns)) return;
+    rememberedNamespaces = [...rememberedNamespaces, ns];
+    notifyListeners();
+    await _saveRemembered();
+  }
+
+  /// Forgets a remembered namespace.
+  Future<void> forgetNamespace(String ns) async {
+    if (!rememberedNamespaces.contains(ns)) return;
+    rememberedNamespaces = [for (final n in rememberedNamespaces) if (n != ns) n];
+    notifyListeners();
+    await _saveRemembered();
+  }
+
+  Future<void> _saveRemembered() async {
+    try {
+      await api.putRememberedNamespaces(rememberedNamespaces, context: currentContext);
+    } catch (_) {
+      // Local convenience only; the choice still applies for this session.
+    }
+  }
+
   /// The namespaces tables show: all, one, or a set. Overview, Security,
   /// Alerts and Metrics keep their own scope (see PageScope).
   NamespaceScope namespaceScope = NamespaceScope.all;
@@ -336,7 +367,19 @@ class AppState extends ChangeNotifier {
       if (stale()) return;
       namespaces = ns.namespaces;
       namespacesListed = ns.listed;
-      if (namespaceScope.isAll && ns.defaultNamespace?.isNotEmpty == true) namespaceScope = NamespaceScope.single(ns.defaultNamespace);
+      kubeconfigNamespace = ns.defaultNamespace?.isNotEmpty == true ? ns.defaultNamespace : null;
+      try {
+        rememberedNamespaces = await api.getRememberedNamespaces(context: currentContext);
+      } catch (_) {
+        rememberedNamespaces = const [];
+      }
+      if (stale()) return;
+      if (namespaceScope.isAll) {
+        // Can't list namespaces: all namespaces would be refused, so open in
+        // the kubeconfig's namespace, else a remembered one, else `default`.
+        final first = kubeconfigNamespace ?? (ns.listed ? null : (rememberedNamespaces.firstOrNull ?? 'default'));
+        if (first != null) namespaceScope = NamespaceScope.single(first);
+      }
       selectedType ??= typeFor('', 'Pod');
       _previous = null;
     } catch (e) {

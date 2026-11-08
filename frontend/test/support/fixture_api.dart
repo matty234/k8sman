@@ -83,6 +83,12 @@ class FixtureApi extends ApiClient {
   Future<({bool? remoteIcons, bool flag, bool effective})> getIconSettings() async => (remoteIcons: null, flag: false, effective: false);
 
   @override
+  Future<List<String>> getRememberedNamespaces({String? context}) async => [];
+
+  @override
+  Future<void> putRememberedNamespaces(List<String> namespaces, {String? context}) async {}
+
+  @override
   Future<({List<String> namespaces, String? defaultNamespace, bool listed})> namespaces() async =>
       (namespaces: List<String>.from(fixture('api-namespaces.json')['namespaces']), defaultNamespace: 'demo', listed: true);
 
