@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
@@ -70,5 +71,26 @@ func TestIconEndpointRejectsBadGroups(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("%s: status %d", g, rec.Code)
 		}
+	}
+}
+
+func TestIconSettingsEndpoint(t *testing.T) {
+	s := iconServer(t, "prod", "https://203.0.113.10:6443", Options{})
+	call := func(method, body string) string {
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, localRequest(method, "/api/settings/icons", strings.NewReader(body)))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status %d %s", method, rec.Code, rec.Body)
+		}
+		return strings.TrimSpace(rec.Body.String())
+	}
+	if got := call("GET", ""); got != `{"effective":false,"flag":false,"remoteIcons":null}` {
+		t.Fatalf("automatic on a remote cluster: %s", got)
+	}
+	if got := call("PUT", `{"remoteIcons":true}`); got != `{"effective":true,"flag":false,"remoteIcons":true}` {
+		t.Fatalf("turned on: %s", got)
+	}
+	if got := call("PUT", `{"remoteIcons":null}`); got != `{"effective":false,"flag":false,"remoteIcons":null}` {
+		t.Fatalf("back to automatic: %s", got)
 	}
 }

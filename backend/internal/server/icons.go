@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"sort"
 	"sync"
@@ -10,12 +11,47 @@ import (
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/icons"
+	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
 func (s *Server) iconRoutes(opts Options) {
 	s.icons = icons.NewResolver(opts.IconCacheDir, func() bool { return s.remoteIcons(opts.NoRemoteIcons) })
 	s.mux.HandleFunc("GET /api/icons", s.handleIconIndex)
 	s.mux.HandleFunc("GET /api/icons/{group}", s.handleIcon)
+	s.mux.HandleFunc("GET /api/settings/icons", func(w http.ResponseWriter, r *http.Request) { s.writeIconSettings(w, opts.NoRemoteIcons) })
+	s.mux.HandleFunc("PUT /api/settings/icons", func(w http.ResponseWriter, r *http.Request) { s.handlePutIconSettings(w, r, opts.NoRemoteIcons) })
+}
+
+// writeIconSettings reports the remote-icons setting: {remoteIcons: true |
+// false | null (automatic), flag: --no-remote-icons is set, effective:
+// whether icons are fetched for the current context}.
+func (s *Server) writeIconSettings(w http.ResponseWriter, disabled bool) {
+	var v *bool
+	if s.settings != nil {
+		v = s.settings.Get().RemoteIcons
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"remoteIcons": v, "flag": disabled, "effective": s.remoteIcons(disabled)})
+}
+
+// handlePutIconSettings saves settings.json "remoteIcons".
+// Body: {"remoteIcons": true | false | null}; null = automatic.
+func (s *Server) handlePutIconSettings(w http.ResponseWriter, r *http.Request, disabled bool) {
+	var body struct {
+		RemoteIcons *bool `json:"remoteIcons"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&body); err != nil {
+		httpx.WriteJSON(w, http.StatusBadRequest, apiError{Error: "body must be {remoteIcons}", Code: http.StatusBadRequest})
+		return
+	}
+	if s.settings == nil {
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{Error: "settings are not available", Code: http.StatusServiceUnavailable})
+		return
+	}
+	if err := s.settings.Update(func(st *settings.Settings) { st.RemoteIcons = body.RemoteIcons }); err != nil {
+		writeErr(w, err)
+		return
+	}
+	s.writeIconSettings(w, disabled)
 }
 
 // remoteIcons decides whether icons may be fetched from the internet: never
