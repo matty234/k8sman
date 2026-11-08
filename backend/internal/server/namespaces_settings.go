@@ -38,7 +38,9 @@ func (s *Server) handlePutNamespaces(w http.ResponseWriter, r *http.Request) {
 		Context    string   `json:"context"`
 		Namespaces []string `json:"namespaces"`
 	}
-	bad := func(msg string) { httpx.WriteJSON(w, http.StatusBadRequest, apiError{Error: msg, Code: http.StatusBadRequest}) }
+	bad := func(msg string) {
+		httpx.WriteJSON(w, http.StatusBadRequest, apiError{Error: msg, Code: http.StatusBadRequest})
+	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil || len(body.Namespaces) > maxRememberedNamespaces {
 		bad("body must be {context?, namespaces}")
 		return
