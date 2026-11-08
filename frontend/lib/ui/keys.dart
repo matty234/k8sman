@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:re_editor/re_editor.dart' show CodeEditor;
 import 'package:xterm/xterm.dart' show TerminalView;
 
 import 'logs/log_stream_view.dart';
@@ -24,12 +25,13 @@ bool get primaryModifierPressed =>
 /// Whether keyboard focus is in something that wants plain characters: a text
 /// field (a focused field is an [EditableText]; Flutter delivers the key event
 /// to it as well as to ancestor shortcuts, so unmodified-key shortcuts such
-/// as `:` must check this), a terminal, or the log viewer.
+/// as `:` must check this), the code editor, a terminal, or the log viewer.
 bool get textEntryFocused {
   final context = FocusManager.instance.primaryFocus?.context;
   if (context == null) return false;
   if (context.widget is EditableText) return true;
   return context.findAncestorWidgetOfExactType<EditableText>() != null ||
+      context.findAncestorWidgetOfExactType<CodeEditor>() != null ||
       context.findAncestorWidgetOfExactType<TerminalView>() != null ||
       context.findAncestorWidgetOfExactType<LogStreamView>() != null;
 }
