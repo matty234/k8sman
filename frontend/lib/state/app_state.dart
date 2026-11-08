@@ -7,6 +7,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import 'cluster_error.dart';
 import 'namespace_scope.dart';
+import 'nav_history.dart';
 import 'saved_views.dart';
 import 'sidebar_config.dart';
 import 'table_prefs.dart';
@@ -207,9 +208,11 @@ class AppState extends ChangeNotifier {
   void showView(MainView v, {String? focus}) {
     if (focus != null) pageFocus = focus;
     if (showInDock?.call(v) ?? false) return;
+    _seedHistory();
     if (v != view && detail != null) inspectorCollapsed = true;
     if (v != view) previousView = view;
     view = v;
+    _recordNav();
     notifyListeners();
   }
 
@@ -400,6 +403,7 @@ class AppState extends ChangeNotifier {
     connecting = ConnectProgress(context: name, server: info?.server, auth: info?.auth, started: clock.now());
     _detailStack.clear();
     recentDetails.clear();
+    history.clear();
     namespaceScope = NamespaceScope.all;
     selectedType = null;
     _endViewSession();
@@ -413,6 +417,7 @@ class AppState extends ChangeNotifier {
       if (gen != _gen) return;
       currentContext = name;
       await init();
+      history.clear();
     } catch (e) {
       if (gen != _gen) return;
       error = '$e';
@@ -472,6 +477,7 @@ class AppState extends ChangeNotifier {
     namespaceScope = p.namespaceScope;
     selectedType = p.selectedType;
     view = p.view;
+    history.clear();
     _detailStack
       ..clear()
       ..addAll(p.detail);
@@ -509,10 +515,12 @@ class AppState extends ChangeNotifier {
   /// Shows [t]'s table. Ends an open view's session unless [keepSession]
   /// (used by [openView]).
   void selectType(ResourceType t, {bool keepSession = false}) {
+    _seedHistory();
     if (!keepSession) _endViewSession();
     if (detail != null && (t != selectedType || view != MainView.resources)) inspectorCollapsed = true;
     selectedType = t;
     view = MainView.resources;
+    _recordNav();
     notifyListeners();
   }
 
@@ -606,6 +614,7 @@ class AppState extends ChangeNotifier {
   /// Selects a namespace scope for tables. Ends an open view's session
   /// (the view keeps its own namespaces).
   void setNamespaceScope(NamespaceScope scope) {
+    _seedHistory();
     namespaceScope = scope;
     if (!scope.isAll) {
       recentNamespaces
@@ -614,6 +623,7 @@ class AppState extends ChangeNotifier {
       if (recentNamespaces.length > 5) recentNamespaces.removeLast();
     }
     _endViewSession();
+    _recordNav(replace: true);
     notifyListeners();
   }
 
@@ -642,12 +652,14 @@ class AppState extends ChangeNotifier {
   /// Open an object from the table: replaces the sidebar stack. [tab]
   /// switches the inspector to that tab (else it keeps its own).
   void openDetail(DetailTarget t, {DetailTab? tab}) {
+    _seedHistory();
     _detailStack
       ..clear()
       ..add(t);
     _remember(t);
     _requestedTab = tab;
     inspectorCollapsed = false;
+    _recordNav();
     notifyListeners();
   }
 
@@ -655,10 +667,12 @@ class AppState extends ChangeNotifier {
   /// namespace if the table is scoped to another one, with the inspector
   /// collapsed so the table gets the width (its row stays selected).
   void showInList(DetailTarget t) {
+    _seedHistory();
     if (t.namespace != null && !namespaceScope.contains(t.namespace)) setNamespace(t.namespace);
     selectedType = t.type;
     view = MainView.resources;
     if (detail != null) inspectorCollapsed = true;
+    _recordNav();
     notifyListeners();
   }
 
@@ -669,8 +683,10 @@ class AppState extends ChangeNotifier {
     if (t == null) return false;
     final target = DetailTarget(type: t, name: ref.name, namespace: t.namespaced ? ref.namespace : null);
     if (detail == target) return true;
+    _seedHistory();
     _detailStack.add(target);
     _remember(target);
+    _recordNav();
     notifyListeners();
     return true;
   }
@@ -678,6 +694,7 @@ class AppState extends ChangeNotifier {
   void back() {
     if (_detailStack.length > 1) {
       _detailStack.removeLast();
+      _recordNav(replace: true);
       notifyListeners();
     }
   }
@@ -686,6 +703,62 @@ class AppState extends ChangeNotifier {
     _detailStack.clear();
     _requestedTab = null;
     inspectorCollapsed = false;
+    _recordNav(replace: true);
+    notifyListeners();
+  }
+
+  // ---- back / forward history ----
+
+  final NavHistory history = NavHistory();
+  bool _navigating = false;
+
+  NavLocation get _location =>
+      NavLocation(view, selectedType, namespaceScope, viewSession?.view.id, inspectorCollapsed ? null : detail);
+
+  bool get _locatable => view != MainView.resources || selectedType != null;
+
+  /// Called before a navigation changes anything, so the place the user
+  /// leaves is the first entry.
+  void _seedHistory() {
+    if (!_navigating && history.current == null && _locatable) history.record(_location, clock.now());
+  }
+
+  void _recordNav({bool replace = false}) {
+    if (!_navigating && _locatable) history.record(_location, clock.now(), replace: replace);
+  }
+
+  bool get canNavBack => history.canGoBack;
+  bool get canNavForward => history.canGoForward;
+
+  void navBack() => _go(history.back());
+  void navForward() => _go(history.forward());
+
+  /// Shows [l] without recording it.
+  void _go(NavLocation? l) {
+    if (l == null) return;
+    _navigating = true;
+    try {
+      if (l.view != view) previousView = view;
+      if (l.viewId != viewSession?.view.id) {
+        final v = l.viewId == null ? null : savedViews.where((x) => x.id == l.viewId).firstOrNull;
+        if (v != null) {
+          // Same context here, so this runs synchronously.
+          openView(v);
+        } else {
+          _endViewSession();
+        }
+      }
+      view = l.view;
+      if (l.type != null) selectedType = l.type;
+      namespaceScope = l.scope;
+      _detailStack.clear();
+      if (l.detail != null) {
+        _detailStack.add(l.detail!);
+        inspectorCollapsed = false;
+      }
+    } finally {
+      _navigating = false;
+    }
     notifyListeners();
   }
 
@@ -968,11 +1041,13 @@ class AppState extends ChangeNotifier {
     }
     _detailStack.clear();
     recentDetails.clear();
+    history.clear();
     namespaceScope = NamespaceScope.all;
     selectedType = null;
     _endViewSession();
     types = const [];
     await init();
+    history.clear();
     switchingKubeconfig = false;
     columnsChanged();
     return null;

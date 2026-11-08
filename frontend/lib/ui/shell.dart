@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kBackMouseButton, kForwardMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -151,7 +152,7 @@ class _ShellState extends State<Shell> {
     final dock = context.watch<LogDock>();
     final detail = app.detail;
     final collapsed = app.inspectorCollapsed;
-    return CallbackShortcuts(
+    final shell = CallbackShortcuts(
       bindings: {
         primaryShortcut(LogicalKeyboardKey.keyJ): dock.toggle,
         primaryShortcut(LogicalKeyboardKey.keyI): app.toggleInspector,
@@ -159,6 +160,9 @@ class _ShellState extends State<Shell> {
         primaryShortcut(LogicalKeyboardKey.keyF): () => visibleTable(context)?.filterFocus.requestFocus(),
         primaryShortcut(LogicalKeyboardKey.keyS): _saveView,
         primaryShortcut(LogicalKeyboardKey.comma): _settings,
+        // ⌘[ is outdent in the editors, so text entry keeps it.
+        primaryShortcut(LogicalKeyboardKey.bracketLeft): () => textEntryFocused ? null : app.navBack(),
+        primaryShortcut(LogicalKeyboardKey.bracketRight): () => textEntryFocused ? null : app.navForward(),
         for (final a in commandPaletteShortcuts) a: _palette,
       },
       child: Focus(
@@ -229,6 +233,14 @@ class _ShellState extends State<Shell> {
           }),
         ),
       ),
+    );
+    return Listener(
+      // The mouse's side buttons: back / forward, wherever the pointer is.
+      onPointerDown: (e) {
+        if (e.buttons & kBackMouseButton != 0) app.navBack();
+        if (e.buttons & kForwardMouseButton != 0) app.navForward();
+      },
+      child: shell,
     );
   }
 }

@@ -24,6 +24,7 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - A calm sidebar: Overview, Nodes and Security up top, the rest under
   **More**, collapsible sections and a **Custom Resources** group, plus **Search or jump to… ⌘K**
   (the command palette).
+- Back / forward through where you've been (pages, kinds, opened objects): the mouse's side buttons, ⌘[ / ⌘] (Ctrl+[ / Ctrl+]; not while typing in a field or editor), or the palette's **Go Back** / **Go Forward**. Up to 100 steps, cleared when the context changes.
 - A searchable namespace picker with recents. Tick several namespaces to see
   them together (`team-1, team-2 +2`): clicking a name shows only that one,
   its checkbox (or ⇧Return) adds it to the set. `:ns a,b` picks a set from

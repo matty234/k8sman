@@ -54,6 +54,8 @@ final _app = [
   (shortcutLabel('K'), 'Command palette'),
   (shortcutLabel('J'), 'Bottom dock'),
   (shortcutLabel('I'), 'Inspector'),
+  (shortcutLabel('['), 'Back (also the mouse back button)'),
+  (shortcutLabel(']'), 'Forward'),
   (shortcutLabel('S'), 'Save the table as a view / update the open view'),
   (shortcutLabel(','), 'Settings'),
   ('?', 'This help'),

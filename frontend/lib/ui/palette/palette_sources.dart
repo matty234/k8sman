@@ -161,6 +161,26 @@ List<PaletteItem> paletteItems(BuildContext context) {
         aliases: const ['edit', 'yaml'],
         run: () => openResourceEditor(context, d),
       ),
+    if (app.canNavBack)
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'Go Back',
+        typeLabel: 'Action',
+        icon: _icon(Icons.arrow_back),
+        aliases: const ['previous'],
+        shortcut: shortcutLabel('['),
+        run: app.navBack,
+      ),
+    if (app.canNavForward)
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'Go Forward',
+        typeLabel: 'Action',
+        icon: _icon(Icons.arrow_forward),
+        aliases: const ['next'],
+        shortcut: shortcutLabel(']'),
+        run: app.navForward,
+      ),
     PaletteItem(
       group: PaletteGroup.actions,
       title: 'Settings…',
