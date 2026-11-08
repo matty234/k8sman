@@ -17,7 +17,7 @@ import '../modules/metrics_module.dart';
 import '../modules/modules.dart' show moduleEnabled;
 import '../state/app_state.dart';
 import '../ui/addons/addon_install_dialog.dart';
-import '../ui/integrations_dialog.dart';
+import '../ui/settings/settings_page.dart';
 
 abstract final class AddonIds {
   static const metricsServer = 'metrics-server';
@@ -222,7 +222,7 @@ Addon addonById(String id) => addonCatalog.firstWhere((a) => a.id == id);
 /// it can't, in read-only mode).
 ///
 /// Add-ons install through Helm: with the Helm integration off, explains that
-/// and offers the Integrations settings instead.
+/// and offers Settings ▸ Integrations (at Helm) instead.
 Future<void> requestAddon(BuildContext context, String id) async {
   if (moduleEnabled(const HelmModule().id, context.read<AppState>().disabledModules)) {
     await showAddonInstallDialog(context, addonById(id));
@@ -239,5 +239,5 @@ Future<void> requestAddon(BuildContext context, String id) async {
       ],
     ),
   );
-  if (open == true && context.mounted) await showIntegrationsDialog(context);
+  if (open == true && context.mounted) openSettings(context, module: const HelmModule().id);
 }

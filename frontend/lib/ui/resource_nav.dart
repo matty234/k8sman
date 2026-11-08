@@ -11,7 +11,7 @@ import '../state/app_state.dart';
 import '../util/k8s.dart' show Severity;
 import 'keys.dart' show shortcutLabel;
 import 'palette/command_palette.dart';
-import 'sidebar_editor.dart';
+import 'settings/settings_page.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/group_icon.dart';
@@ -133,7 +133,7 @@ Future<void> showKindMenu(BuildContext context, Offset globalPosition, ResourceT
     (app.sidebar.isPinned(pin) ? 'Unpin from Sidebar' : 'Pin to Sidebar', () => toggle(pin)),
     if (nsPin != null) (app.sidebar.isPinned(nsPin) ? 'Unpin “${type.kind} in $ns”' : 'Pin to Sidebar in “$ns”', () => toggle(nsPin)),
     null,
-    ('Customise Sidebar…', () => showSidebarEditor(context)),
+    ('Customise Sidebar…', () => openSettings(context, section: SettingsSection.sidebar)),
   ]);
 }
 
@@ -202,7 +202,7 @@ class _ResourceNavState extends State<ResourceNav> {
                     key: const ValueKey('customise-sidebar'),
                     tooltip: 'Customise Sidebar…',
                     icon: const Icon(Icons.tune),
-                    onPressed: () => showSidebarEditor(context),
+                    onPressed: () => openSettings(context, section: SettingsSection.sidebar),
                   ),
                   IconButton(
                     tooltip: 'Rediscover API resources',
@@ -219,7 +219,7 @@ class _ResourceNavState extends State<ResourceNav> {
         // Right-click on the section's empty space offers Customise too.
         GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onSecondaryTapUp: (d) => showSidebarMenu(context, d.globalPosition, [('Customise Sidebar…', () => showSidebarEditor(context))]),
+          onSecondaryTapUp: (d) => showSidebarMenu(context, d.globalPosition, [('Customise Sidebar…', () => openSettings(context, section: SettingsSection.sidebar))]),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final e in shown) _TopEntry(entry: e, selectedPin: selectedPin),
             if (moreOpen)
@@ -275,6 +275,7 @@ class _ResourceNavState extends State<ResourceNav> {
             ],
           ),
         ),
+        const _NavFooter(),
       ]),
     )));
     });
@@ -463,7 +464,7 @@ class _TopEntry extends StatelessWidget {
               ? ('Show $label in Sidebar', () => app.setSidebar(app.sidebar.setHidden(view, false)))
               : ('Hide $label', () => app.setSidebar(app.sidebar.setHidden(view, true))),
           null,
-          ('Customise Sidebar…', () => showSidebarEditor(context)),
+          ('Customise Sidebar…', () => openSettings(context, section: SettingsSection.sidebar)),
         ]),
       );
       // Per-cluster gating applies whatever the layout says.
@@ -496,9 +497,37 @@ class _TopEntry extends StatelessWidget {
         onSecondaryTap: (pos) => showSidebarMenu(context, pos, [
           ('Unpin from Sidebar', () => app.setSidebar(app.sidebar.unpin(pin))),
           null,
-          ('Customise Sidebar…', () => showSidebarEditor(context)),
+          ('Customise Sidebar…', () => openSettings(context, section: SettingsSection.sidebar)),
         ]),
       ),
+    );
+  }
+}
+
+/// The bottom of the sidebar: the Settings gear.
+class _NavFooter extends StatelessWidget {
+  const _NavFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    final on = context.select<AppState, bool>((a) => a.view == MainView.settings);
+    final theme = Theme.of(context);
+    return Container(
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: AppColors.of(context).separator))),
+      child: Row(children: [
+        IconButton(
+          key: const ValueKey('nav-settings'),
+          tooltip: 'Settings (${shortcutLabel(',')})',
+          iconSize: 17,
+          isSelected: on,
+          color: theme.hintColor,
+          selectedIcon: Icon(Icons.settings, color: theme.colorScheme.primary),
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () => openSettings(context),
+        ),
+      ]),
     );
   }
 }
@@ -509,7 +538,7 @@ List<(String, VoidCallback)?> _viewsSectionMenu(BuildContext context) => [
       ('Import from File…', () => importViewsFromFile(context)),
       if (context.read<AppState>().savedViews.isNotEmpty) ('Export All Views to File…', () => exportAllViewsToFile(context)),
       if (context.read<AppState>().savedViews.isNotEmpty) ('Copy All Views as YAML', () => exportAllViews(context)),
-      if (context.read<AppState>().savedViews.length > 1) ('Reorder Views…', () => showSidebarEditor(context)),
+      if (context.read<AppState>().savedViews.length > 1) ('Reorder Views…', () => openSettings(context, section: SettingsSection.views)),
     ];
 
 /// A saved view in the sidebar. The open one is highlighted, with a dot
@@ -627,29 +656,34 @@ class ReadOnlyToggle extends StatelessWidget {
     );
   }
 
-  Future<void> _toggle(BuildContext context, AppState app) async {
-    final ctx = app.currentContext;
-    if (!app.readOnly) return app.setContextReadOnly(ctx, true);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Allow changes to $ctx?'),
-        content: SizedBox(
-          width: 420,
-          child: Text(
-            app.readOnlyReason == 'auto'
-                ? 'This context looks like production, so k8sman made it read-only. Allowing changes enables edits, deletes, scaling, Helm changes and exec here. You can lock it again at any time.'
-                : 'This enables edits, deletes, scaling, Helm changes and exec on this context. You can lock it again at any time.',
-          ),
+  Future<void> _toggle(BuildContext context, AppState app) => lockContext(context, app.currentContext, !app.readOnly);
+}
+
+/// Locks kube context [ctx] (read-only), or after asking, allows changes
+/// to it again.
+Future<void> lockContext(BuildContext context, String ctx, bool lock) async {
+  final app = context.read<AppState>();
+  if (lock) return app.setContextReadOnly(ctx, true);
+  final auto = (ctx == app.currentContext ? app.readOnlyReason : app.readOnlyContexts[ctx]) == 'auto';
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Allow changes to $ctx?'),
+      content: SizedBox(
+        width: 420,
+        child: Text(
+          auto
+              ? 'This context looks like production, so k8sman made it read-only. Allowing changes enables edits, deletes, scaling, Helm changes and exec here. You can lock it again at any time.'
+              : 'This enables edits, deletes, scaling, Helm changes and exec on this context. You can lock it again at any time.',
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Allow Changes')),
-        ],
       ),
-    );
-    if (ok == true) await app.setContextReadOnly(ctx, false);
-  }
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Allow Changes')),
+      ],
+    ),
+  );
+  if (ok == true) await app.setContextReadOnly(ctx, false);
 }
 
 class _ContextPicker extends StatelessWidget {

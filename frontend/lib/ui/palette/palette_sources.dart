@@ -6,17 +6,15 @@ import 'package:provider/provider.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../app/updates/update_controller.dart';
-import '../../app/updates/update_ui.dart';
 import '../../modules/modules.dart';
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../../state/table_controller.dart';
-import '../integrations_dialog.dart';
 import '../keys.dart';
 import '../editor/resource_editor_screen.dart';
 import '../resource_nav.dart';
 import '../resource_table.dart';
-import '../sidebar_editor.dart';
+import '../settings/settings_page.dart';
 import '../terminal/open_terminal.dart';
 import 'palette_items.dart';
 import '../views/saved_views_ui.dart';
@@ -34,14 +32,15 @@ List<PaletteItem> paletteItems(BuildContext context) {
     // it switches cluster).
     for (final v in app.savedViews) viewPaletteItem(context, app, v),
     for (final p in enabledPages(app))
-      PaletteItem(
-        group: PaletteGroup.pages,
-        title: p.label,
-        typeLabel: 'Page',
-        icon: _icon(p.icon),
-        current: app.view == p.view,
-        run: () => app.showView(p.view),
-      ),
+      if (p.view != MainView.settings)
+        PaletteItem(
+          group: PaletteGroup.pages,
+          title: p.label,
+          typeLabel: 'Page',
+          icon: _icon(p.icon),
+          current: app.view == p.view,
+          run: () => app.showView(p.view),
+        ),
     for (final t in app.types)
       // events.k8s.io/Event duplicates core Event (the sidebar hides it too).
       if (t.gk != 'events.k8s.io/Event')
@@ -164,10 +163,21 @@ List<PaletteItem> paletteItems(BuildContext context) {
       ),
     PaletteItem(
       group: PaletteGroup.actions,
+      title: 'Settings…',
+      typeLabel: 'Action',
+      icon: _icon(Icons.settings_outlined),
+      aliases: const ['preferences', 'prefs', 'options'],
+      shortcut: shortcutLabel(','),
+      current: app.view == MainView.settings,
+      run: () => openSettings(context),
+    ),
+    PaletteItem(
+      group: PaletteGroup.actions,
       title: 'Customise Sidebar…',
       typeLabel: 'Action',
       icon: _icon(Icons.tune),
-      run: () => showSidebarEditor(context),
+      aliases: const ['pin', 'settings'],
+      run: () => openSettings(context, section: SettingsSection.sidebar),
     ),
     PaletteItem(
       group: PaletteGroup.actions,
@@ -175,7 +185,7 @@ List<PaletteItem> paletteItems(BuildContext context) {
       typeLabel: 'Action',
       icon: _icon(Icons.extension_outlined),
       aliases: const ['modules', 'plugins', 'settings'],
-      run: () => showIntegrationsDialog(context),
+      run: () => openSettings(context, section: SettingsSection.integrations),
     ),
     PaletteItem(
       group: PaletteGroup.actions,
@@ -191,14 +201,17 @@ List<PaletteItem> paletteItems(BuildContext context) {
         title: 'Check for Updates…',
         typeLabel: 'Action',
         icon: _icon(Icons.system_update_alt),
-        run: updates.checkNow,
+        run: () {
+          openSettings(context, section: SettingsSection.about);
+          updates.checkNow();
+        },
       ),
     PaletteItem(
       group: PaletteGroup.actions,
       title: 'About k8sman',
       typeLabel: 'Action',
       icon: _icon(Icons.info_outline),
-      run: () => showAboutPanel(context),
+      run: () => openSettings(context, section: SettingsSection.about),
     ),
   ];
 }

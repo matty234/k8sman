@@ -10,7 +10,8 @@ import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
 import 'flow_list.dart';
 import 'hubble_api.dart';
-import 'hubble_settings.dart';
+import '../modules/hubble_module.dart';
+import '../ui/settings/settings_page.dart';
 import 'traffic_map.dart';
 
 /// The Hubble page: the traffic map (namespaces and the world), live flows
@@ -101,9 +102,7 @@ class _HubbleViewState extends State<HubbleView> {
             tooltip: 'Hubble settings',
             iconSize: 18,
             icon: const Icon(Icons.tune),
-            onPressed: () async {
-              if (await showHubbleSettings(context) && mounted) _load(refresh: true);
-            },
+            onPressed: () => openSettings(context, module: const HubbleModule().id),
           ),
           IconButton(tooltip: 'Refresh status', iconSize: 18, icon: const Icon(Icons.refresh), onPressed: () => _load(refresh: true)),
         ],
@@ -212,7 +211,7 @@ class _NotConnected extends StatelessWidget {
           Row(children: [
             OutlinedButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh, size: 15), label: const Text('Check again')),
             const SizedBox(width: 8),
-            TextButton(onPressed: () => showHubbleSettings(context).then((saved) => saved ? onRetry() : null), child: const Text('Hubble settings…')),
+            TextButton(onPressed: () => openSettings(context, module: const HubbleModule().id), child: const Text('Hubble settings…')),
           ]),
         ]),
       ),

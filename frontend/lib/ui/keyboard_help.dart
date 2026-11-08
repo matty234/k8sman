@@ -15,12 +15,12 @@ Future<void> showKeyboardHelp(BuildContext context) => showDialog<void>(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _Group('Navigation', _navigation)),
+                Expanded(child: KeyboardShortcutGroup('Navigation', _navigation)),
                 const SizedBox(width: 24),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [_Group('Actions', _actions), const SizedBox(height: 16), _Group('App', _app)],
+                    children: [KeyboardShortcutGroup('Actions', _actions), const SizedBox(height: 16), KeyboardShortcutGroup('App', _app)],
                   ),
                 ),
               ],
@@ -55,13 +55,19 @@ final _app = [
   (shortcutLabel('J'), 'Bottom dock'),
   (shortcutLabel('I'), 'Inspector'),
   (shortcutLabel('S'), 'Save the table as a view / update the open view'),
+  (shortcutLabel(','), 'Settings'),
   ('?', 'This help'),
 ];
 
-class _Group extends StatelessWidget {
-  final String title;
+/// The groups of [showKeyboardHelp], for Settings ▸ Keyboard too: (title,
+/// [(keys, what it does)]).
+List<(String, List<(String, String)>)> get keyboardShortcutGroups => [('Navigation', _navigation), ('Actions', _actions), ('App', _app)];
+
+/// A titled list of shortcuts: keys on the left, what they do on the right.
+class KeyboardShortcutGroup extends StatelessWidget {
+  final String? title;
   final List<(String, String)> rows;
-  const _Group(this.title, this.rows);
+  const KeyboardShortcutGroup(this.title, this.rows, {super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -69,8 +75,10 @@ class _Group extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)),
-        const SizedBox(height: 6),
+        if (title != null) ...[
+          Text(title!, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)),
+          const SizedBox(height: 6),
+        ],
         for (final (keys, what) in rows)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),

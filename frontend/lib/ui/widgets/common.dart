@@ -262,7 +262,10 @@ class PageHeader extends StatelessWidget {
   /// Inline after the title; shrinks/ellipsizes first when space is tight.
   final Widget? subtitle;
   final List<Widget> actions;
-  const PageHeader({super.key, required this.title, this.subtitle, this.actions = const []});
+
+  /// Before the title, e.g. a Back button.
+  final Widget? leading;
+  const PageHeader({super.key, required this.title, this.subtitle, this.actions = const [], this.leading});
 
   @override
   Widget build(BuildContext context) {
@@ -271,8 +274,9 @@ class PageHeader extends StatelessWidget {
       child: SizedBox(
         height: toolbarRowHeight(context),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
+          padding: EdgeInsets.fromLTRB(leading == null ? 16 : 8, 0, 10, 0),
           child: Row(children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 4)],
             Expanded(
               child: Row(children: [
                 Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge)),

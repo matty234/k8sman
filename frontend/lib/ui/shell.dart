@@ -20,6 +20,7 @@ import 'theme.dart';
 import 'widgets/common.dart';
 import '../actions/actions.dart' show showActionError;
 import 'keyboard_help.dart';
+import 'settings/settings_page.dart';
 import 'views/saved_views_ui.dart' show showSaveViewDialog;
 import 'keys.dart';
 
@@ -36,6 +37,8 @@ class _ShellState extends State<Shell> {
   double _sidebarWidth = 560;
 
   void _palette() => showCommandPalette(context);
+
+  void _settings() => openSettings(context);
 
   /// ⌘S: with a table showing and no view open, the Save View dialog; with
   /// a modified view open, Update View. Text fields and the editors own ⌘S
@@ -60,6 +63,12 @@ class _ShellState extends State<Shell> {
   /// the key, which would swallow ':' in text fields and terminals.
   KeyEventResult _commandMode(FocusNode _, KeyEvent e) {
     if (e is! KeyDownEvent || textEntryFocused) return KeyEventResult.ignored;
+    // Esc leaves Settings even when focus didn't land on the page (e.g.
+    // after the palette closed); the page handles it first when it has focus.
+    if (e.logicalKey == LogicalKeyboardKey.escape && _app.view == MainView.settings) {
+      leaveSettings(_app);
+      return KeyEventResult.handled;
+    }
     switch (e.character) {
       case ':':
         showCommandPalette(context, command: true);
@@ -85,8 +94,10 @@ class _ShellState extends State<Shell> {
   @override
   void initState() {
     super.initState();
-    // The macOS View menu's "Command Palette…" item.
+    // The macOS View menu's "Command Palette…" item and the app menu's
+    // "Settings…".
     WindowChrome.onCommandPalette = _palette;
+    WindowChrome.onSettings = _settings;
     // "Alerts" and "Port Forwards" (palette, links) open their dock panes.
     _app = context.read<AppState>()..showInDock = _showInDock;
     HardwareKeyboard.instance.addHandler(_strayKey);
@@ -111,6 +122,7 @@ class _ShellState extends State<Shell> {
     HardwareKeyboard.instance.removeHandler(_strayKey);
     _focus.dispose();
     if (WindowChrome.onCommandPalette == _palette) WindowChrome.onCommandPalette = null;
+    if (WindowChrome.onSettings == _settings) WindowChrome.onSettings = null;
     if (_app.showInDock == _showInDock) _app.showInDock = null;
     StartupGate.release();
     super.dispose();
@@ -146,6 +158,7 @@ class _ShellState extends State<Shell> {
         // Editors and the log search handle ⌘F themselves when focused.
         primaryShortcut(LogicalKeyboardKey.keyF): () => visibleTable(context)?.filterFocus.requestFocus(),
         primaryShortcut(LogicalKeyboardKey.keyS): _saveView,
+        primaryShortcut(LogicalKeyboardKey.comma): _settings,
         for (final a in commandPaletteShortcuts) a: _palette,
       },
       child: Focus(

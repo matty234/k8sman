@@ -7,6 +7,7 @@ import 'nodes/nodes_view.dart';
 import 'overview/overview_view.dart';
 import 'portforward/portforward_view.dart';
 import 'security/security_view.dart';
+import 'settings/settings_page.dart';
 
 /// A page of the main area: its sidebar entry, palette entry and content.
 /// Core pages are [corePages]; integration modules add their own (see
@@ -67,4 +68,7 @@ final corePages = <AppPage>[
     inSidebar: false,
     builder: (_) => const PortForwardView(),
   ),
+  // The gear at the bottom of the sidebar, ⌘, and "Settings…" open it; the
+  // palette lists it as an action (see palette_sources.dart).
+  AppPage(view: MainView.settings, icon: Icons.settings_outlined, label: 'Settings', inSidebar: false, builder: (_) => const SettingsPage()),
 ];

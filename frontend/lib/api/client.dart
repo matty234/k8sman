@@ -303,6 +303,20 @@ class ApiClient {
   /// The module validates them: a bad value is an [ApiException] (400).
   Future<void> putModuleSettings(String id, Json settings) => _send('PUT', 'settings/modules/${Uri.encodeComponent(id)}', const {}, settings);
 
+  // ---- CRD group icons (settings.json) ----
+
+  /// Whether icons may be fetched from the internet: the saved choice
+  /// (null = automatic), whether `--no-remote-icons` overrides it, and what
+  /// applies to the current context.
+  Future<({bool? remoteIcons, bool flag, bool effective})> getIconSettings() async => _iconSettings(await _get('settings/icons') as Json);
+
+  /// Saves the choice (null = automatic) and returns the new state.
+  Future<({bool? remoteIcons, bool flag, bool effective})> putIconSettings(bool? remoteIcons) async =>
+      _iconSettings(await _send('PUT', 'settings/icons', const {}, {'remoteIcons': remoteIcons}) as Json);
+
+  static ({bool? remoteIcons, bool flag, bool effective}) _iconSettings(Json j) =>
+      (remoteIcons: j['remoteIcons'] as bool?, flag: j['flag'] == true, effective: j['effective'] == true);
+
   // ---- columns ----
 
   Future<ColumnsConfig> getColumns(ResourceRef r) async => ColumnsConfig.fromJson(await _get('columns', r.toQuery()));

@@ -124,7 +124,8 @@ Future<void> showAboutPanel(BuildContext context) => showDialog<void>(
       ),
     );
 
-/// About k8sman: version, and the update settings.
+/// About k8sman: version, and the update settings. The app menu's About
+/// item opens it; Settings ▸ About shows the same in the page.
 class AboutPanel extends StatelessWidget {
   final DateTime Function() now;
   const AboutPanel({super.key, this.now = DateTime.now});
@@ -133,9 +134,7 @@ class AboutPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
-    final u = context.watch<UpdateController>();
-    final info = u.info;
-    final reason = u.disabledReason;
+    final info = context.watch<UpdateController>().info;
     final faint = theme.textTheme.bodySmall?.copyWith(color: colors.faint);
     return AlertDialog(
       content: SizedBox(
@@ -152,41 +151,65 @@ class AboutPanel extends StatelessWidget {
           const SizedBox(height: 16),
           Divider(height: 1, color: colors.separator),
           const SizedBox(height: 10),
-          if (reason != null)
-            Text('Updates are off: $reason.', style: faint, textAlign: TextAlign.center)
-          else ...[
-            // Without Sparkle (Windows) the periodic check is always on.
-            if (!u.manualInstall)
-              Row(children: [
-                Expanded(child: Text('Check for updates automatically', style: theme.textTheme.bodyMedium)),
-                Switch(value: u.automaticChecks, onChanged: u.setAutomaticChecks),
-              ]),
-            Row(children: [
-              Expanded(
-                child: Text(
-                  u.available != null
-                      ? 'Version ${u.available!.label} is available.'
-                      : u.manualInstall && u.lastError != null
-                          ? 'Could not check: ${u.lastError}'
-                          : info.lastCheck == null
-                          ? 'Not checked yet.'
-                          : 'Last checked ${_ago(now().difference(info.lastCheck!))}.',
-                  style: faint,
-                ),
-              ),
-              TextButton(
-                onPressed: u.checking ? null : (u.available != null ? u.install : u.checkNow),
-                child: Text(u.available != null ? (u.manualInstall ? 'Download…' : 'Install…') : 'Check Now'),
-              ),
-            ]),
-          ],
+          UpdateStatus(now: now),
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => _open(Uri.parse(repoUrl)), child: const Text('GitHub')),
+        TextButton(onPressed: openRepo, child: const Text('GitHub')),
         FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),
       ],
     );
+  }
+}
+
+/// Opens the project's page on GitHub.
+Future<void> openRepo() => _open(Uri.parse(repoUrl));
+
+/// Whether updates are on, the automatic-check switch (with [automatic]),
+/// when the last check ran, and Check Now / Install…. Shown by the About
+/// panel and Settings ▸ About.
+class UpdateStatus extends StatelessWidget {
+  final DateTime Function() now;
+
+  /// Shows "Check for updates automatically" (Settings has it under
+  /// General instead).
+  final bool automatic;
+  const UpdateStatus({super.key, this.now = DateTime.now, this.automatic = true});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final u = context.watch<UpdateController>();
+    final info = u.info;
+    final reason = u.disabledReason;
+    final faint = theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).faint);
+    if (reason != null) return Text('Updates are off: $reason.', style: faint, textAlign: TextAlign.center);
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      // Without Sparkle (Windows) the periodic check is always on.
+      if (automatic && !u.manualInstall)
+        Row(children: [
+          Expanded(child: Text('Check for updates automatically', style: theme.textTheme.bodyMedium)),
+          Switch(value: u.automaticChecks, onChanged: u.setAutomaticChecks),
+        ]),
+      Row(children: [
+        Expanded(
+          child: Text(
+            u.available != null
+                ? 'Version ${u.available!.label} is available.'
+                : u.manualInstall && u.lastError != null
+                    ? 'Could not check: ${u.lastError}'
+                    : info.lastCheck == null
+                    ? 'Not checked yet.'
+                    : 'Last checked ${_ago(now().difference(info.lastCheck!))}.',
+            style: faint,
+          ),
+        ),
+        TextButton(
+          onPressed: u.checking ? null : (u.available != null ? u.install : u.checkNow),
+          child: Text(u.available != null ? (u.manualInstall ? 'Download…' : 'Install…') : 'Check Now'),
+        ),
+      ]),
+    ]);
   }
 }
 

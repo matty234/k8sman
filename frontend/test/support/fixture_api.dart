@@ -67,6 +67,21 @@ class FixtureApi extends ApiClient {
   @override
   Future<void> putSidebar(Json? layout) async => sidebarLayout = layout;
 
+  /// The integrations turned off (settings.json stand-in).
+  Set<String> disabledModules = {};
+
+  @override
+  Future<Set<String>> getDisabledModules() async => {...disabledModules};
+
+  @override
+  Future<void> putDisabledModules(Set<String> ids) async => disabledModules = {...ids};
+
+  @override
+  Future<Json> getModuleSettings(String id) async => {};
+
+  @override
+  Future<({bool? remoteIcons, bool flag, bool effective})> getIconSettings() async => (remoteIcons: null, flag: false, effective: false);
+
   @override
   Future<({List<String> namespaces, String? defaultNamespace, bool listed})> namespaces() async =>
       (namespaces: List<String>.from(fixture('api-namespaces.json')['namespaces']), defaultNamespace: 'demo', listed: true);

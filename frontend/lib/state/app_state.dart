@@ -32,6 +32,9 @@ class MainView {
   static const access = MainView('access');
   static const portForwards = MainView('portForwards');
 
+  /// The Settings page (not in the sidebar's layout: the gear opens it).
+  static const settings = MainView('settings');
+
   @override
   bool operator ==(Object other) => other is MainView && other.name == name;
   @override
@@ -205,9 +208,14 @@ class AppState extends ChangeNotifier {
     if (focus != null) pageFocus = focus;
     if (showInDock?.call(v) ?? false) return;
     if (v != view && detail != null) inspectorCollapsed = true;
+    if (v != view) previousView = view;
     view = v;
     notifyListeners();
   }
+
+  /// The page shown before the last [showView] changed it: where the
+  /// Settings page's Back (and Esc) returns to.
+  MainView previousView = MainView.resources;
 
   /// What the page shown by the last [showView] should select when it
   /// builds; the page clears it once used.

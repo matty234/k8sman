@@ -8,23 +8,10 @@ import '../ui/widgets/common.dart';
 
 const _id = 'hubble';
 
-/// Opens Hubble's settings for the current kube context. True when saved.
-Future<bool> showHubbleSettings(BuildContext context) async {
-  final api = context.read<ApiClient>();
-  final app = context.read<AppState>();
-  final saved = await showDialog<bool>(
-    context: context,
-    builder: (_) => MultiProvider(
-      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
-      child: const Dialog(insetPadding: EdgeInsets.all(32), child: SizedBox(width: 440, child: HubbleSettingsForm())),
-    ),
-  );
-  return saved == true;
-}
-
 /// Overrides for clusters where discovery guesses wrong: the relay Service,
 /// TLS, and the name its certificate is checked against. Saved per kube
-/// context (settings.json moduleSettings.hubble).
+/// context (settings.json moduleSettings.hubble). Shown in Settings ▸
+/// Integrations under Cilium Hubble.
 class HubbleSettingsForm extends StatefulWidget {
   const HubbleSettingsForm({super.key});
 
@@ -39,6 +26,7 @@ class _HubbleSettingsFormState extends State<HubbleSettingsForm> {
   bool _rdns = true;
   bool _loading = true;
   String? _error;
+  bool _saved = false;
 
   @override
   void initState() {
@@ -87,10 +75,19 @@ class _HubbleSettingsFormState extends State<HubbleSettingsForm> {
       await api.putModuleSettings(_id, body);
       final m = builtInModules.firstWhere((m) => m.id == _id);
       moduleStatuses.refresh(m, api, app.currentContext);
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) {
+        setState(() {
+          _error = null;
+          _saved = true;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e is ApiException ? e.message : '$e');
     }
+  }
+
+  void _edited() {
+    if (_saved) setState(() => _saved = false);
   }
 
   @override
@@ -98,40 +95,48 @@ class _HubbleSettingsFormState extends State<HubbleSettingsForm> {
     final theme = Theme.of(context);
     final app = context.read<AppState>();
     final small = theme.textTheme.bodySmall;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('Hubble settings', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 4),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         Text('For ${app.currentContext}. Leave empty to find Hubble Relay automatically.', style: small?.copyWith(color: theme.hintColor)),
         const SizedBox(height: 14),
         if (_loading)
-          const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
+          const Center(
+            child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
+          )
         else ...[
           TextField(
             key: const ValueKey('hubble-relay'),
             controller: _relay,
             style: small,
+            onChanged: (_) => _edited(),
             decoration: const InputDecoration(isDense: true, labelText: 'Relay Service', hintText: 'namespace/name[:port], e.g. kube-system/hubble-relay:80'),
           ),
           const SizedBox(height: 12),
-          Row(children: [
-            Text('TLS', style: small),
-            const SizedBox(width: 12),
-            MenuSelect<String>(
-              value: _tls,
-              options: [
-                ('', Text('As the relay is configured', style: small)),
-                ('on', Text('On', style: small)),
-                ('off', Text('Off', style: small)),
-              ],
-              onChanged: (v) => setState(() => _tls = v),
-            ),
-          ]),
+          Row(
+            children: [
+              Text('TLS', style: small),
+              const SizedBox(width: 12),
+              MenuSelect<String>(
+                value: _tls,
+                options: [
+                  ('', Text('As the relay is configured', style: small)),
+                  ('on', Text('On', style: small)),
+                  ('off', Text('Off', style: small)),
+                ],
+                onChanged: (v) => setState(() {
+                  _tls = v;
+                  _saved = false;
+                }),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _serverName,
             style: small,
+            onChanged: (_) => _edited(),
             decoration: const InputDecoration(isDense: true, labelText: 'TLS server name', hintText: 'ui.hubble-relay.cilium.io'),
           ),
           const SizedBox(height: 8),
@@ -142,19 +147,27 @@ class _HubbleSettingsFormState extends State<HubbleSettingsForm> {
             contentPadding: EdgeInsets.zero,
             controlAffinity: ListTileControlAffinity.leading,
             title: Text('Look up reverse DNS for world addresses', style: small),
-            subtitle: Text('Public addresses on the map get their PTR name. Cluster objects (nodes, Services, Ingresses) always name their own addresses.', style: small?.copyWith(color: theme.hintColor)),
-            onChanged: (v) => setState(() => _rdns = v ?? true),
+            subtitle: Text(
+              'Public addresses on the map get their PTR name. Cluster objects (nodes, Services, Ingresses) always name their own addresses.',
+              style: small?.copyWith(color: theme.hintColor),
+            ),
+            onChanged: (v) => setState(() {
+              _rdns = v ?? true;
+              _saved = false;
+            }),
           ),
         ],
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 10), child: InlineMessage(_error!, isError: true)),
-        const SizedBox(height: 16),
-        Row(children: [
-          const Spacer(),
-          OutlinedButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          const SizedBox(width: 8),
-          FilledButton(onPressed: _loading ? null : _save, child: const Text('Save')),
-        ]),
-      ]),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const Spacer(),
+            if (_saved) Text('Saved', style: small?.copyWith(color: theme.hintColor)),
+            const SizedBox(width: 10),
+            FilledButton(key: const ValueKey('hubble-save'), onPressed: _loading ? null : _save, child: const Text('Save')),
+          ],
+        ),
+      ],
     );
   }
 }

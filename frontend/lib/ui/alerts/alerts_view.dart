@@ -9,7 +9,7 @@ import '../../prometheus/prom_api.dart';
 import '../../modules/modules.dart' show moduleEnabled;
 import '../../modules/prometheus_module.dart';
 import '../../state/app_state.dart';
-import '../integrations_dialog.dart';
+import '../settings/settings_page.dart';
 import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
@@ -230,7 +230,7 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const InlineMessage('Alerts come from Prometheus, and the Prometheus integration is turned off.'),
             const SizedBox(height: 12),
-            OutlinedButton(onPressed: () => showIntegrationsDialog(context), child: const Text('Integrations…')),
+            OutlinedButton(onPressed: () => openSettings(context, module: const PrometheusModule().id), child: const Text('Integrations…')),
           ]),
         ),
       );

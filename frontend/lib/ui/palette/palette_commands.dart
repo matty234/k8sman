@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../modules/modules.dart';
 import '../../state/app_state.dart';
 import '../resource_nav.dart';
+import '../settings/settings_page.dart';
 import 'palette_items.dart';
 
 Widget Function(Color) _icon(IconData i) => (c) => Icon(i, size: 15, color: c);
@@ -75,6 +76,23 @@ CommandResults rankCommand(
     final items = [if (viewItem != null) for (final v in app.savedViews) viewItem(v)];
     return CommandResults([PaletteSection(PaletteGroup.views, _filter(arg, items))], arg);
   }
+  // `:settings [section]`: the Settings page, at a section.
+  if (cmd == 'settings' || cmd == 'preferences' || cmd == 'prefs') {
+    final named = SettingsSection.parse(arg);
+    final items = [
+      for (final s in SettingsSection.values)
+        PaletteItem(
+          group: PaletteGroup.pages,
+          title: 'Settings: ${s.title}',
+          typeLabel: 'Settings',
+          icon: _icon(s.icon),
+          aliases: [s.name],
+          run: () => showSettings(app, section: s),
+        ),
+    ];
+    final first = named == null ? null : items[named.index];
+    return CommandResults([PaletteSection(PaletteGroup.pages, first != null ? [first, ...items.where((i) => i != first)] : _filter(arg, items))], arg);
+  }
   if (cmd == 'ctx' || cmd == 'context' || cmd == 'contexts') {
     final items = [
       for (final c in app.contexts)
@@ -118,6 +136,7 @@ CommandResults rankCommand(
   if (!scored.any((k) => k.$1)) {
     // `:name` goes to a page by its commands.
     for (final p in enabledPages(app)) {
+      if (p.view == MainView.settings) continue;
       final item = PaletteItem(
         group: PaletteGroup.pages,
         title: p.label,

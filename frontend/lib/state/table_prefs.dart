@@ -66,6 +66,25 @@ class TablePrefsStore {
 
   TablePrefs of(String kind) => _prefs.putIfAbsent(kind, TablePrefs.new);
 
+  /// Kinds with saved preferences, sorted (Settings ▸ Tables).
+  List<String> get savedKinds => [for (final e in _prefs.entries) if (!e.value.isEmpty) e.key]..sort();
+
+  /// Forgets [kind]'s sort, widths and filter (in place, so a table that
+  /// holds them sees the reset) and saves that.
+  void reset(String kind) {
+    final p = _prefs[kind];
+    if (p == null || p.isEmpty) return;
+    p
+      ..sortColumn = null
+      ..sortDescending = false
+      ..widths.clear()
+      ..filter = '';
+    changed(kind);
+  }
+
+  /// [reset] for every kind.
+  void resetAll() => savedKinds.forEach(reset);
+
   /// Call after changing [of]`(kind)`.
   void changed(String kind) {
     _changed.add(kind);

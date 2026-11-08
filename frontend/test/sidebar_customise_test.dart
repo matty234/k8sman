@@ -6,7 +6,7 @@ import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/modules/metrics_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/resource_nav.dart';
-import 'package:k8sman/ui/sidebar_editor.dart';
+import 'package:k8sman/ui/settings/sidebar_settings.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
@@ -156,26 +156,25 @@ void main() {
     expect(app.sidebar.isPinned(_deploy), isFalse);
   });
 
-  testWidgets('customise sheet: untick, unpin, restore defaults', (tester) async {
-    await loadRealFonts(); // the test font's wide glyphs can't fit a 380pt sheet
-    final (app, _) = await _pumpNav(tester, layout: SidebarConfig.defaults.pin(_deploy), width: 900, height: 900);
-    await tester.tap(find.byKey(const ValueKey('customise-sidebar')));
-    await tester.pumpAndSettle();
-    expect(find.byType(SidebarEditorDialog), findsOneWidget);
+  testWidgets('Settings ▸ Sidebar: untick and unpin save at once', (tester) async {
+    final api = FakeApiClient();
+    final app = AppState(api)
+      ..types = testTypes
+      ..sidebar = SidebarConfig.defaults.pin(_deploy);
+    tester.view.physicalSize = const Size(700, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ChangeNotifierProvider<AppState>.value(
+      value: app,
+      child: MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: SingleChildScrollView(child: SidebarLayoutEditor()))),
+    ));
     await tester.tap(find.byKey(const ValueKey('sidebar-show-overview')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('sidebar-unpin-apps/Deployment@')));
     await tester.pump();
-    await tester.tap(find.text('Done'));
-    await tester.pumpAndSettle();
     expect(app.sidebar.isHidden(MainView.overview), isTrue);
     expect(app.sidebar.pins, isEmpty);
-
-    await tester.tap(find.byKey(const ValueKey('customise-sidebar')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Restore Defaults'));
-    await tester.tap(find.text('Done'));
-    await tester.pumpAndSettle();
-    expect(app.sidebar.isDefault, isTrue);
+    expect(api.sidebarLayout, isNotNull, reason: 'saved without a Done button');
   });
 
   testWidgets('many pins: short windows scroll instead of overflowing', (tester) async {
@@ -187,7 +186,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('screenshots: customised sidebar and the customise sheet', (tester) async {
+  testWidgets('screenshots: customised sidebar and Settings ▸ Sidebar', (tester) async {
     await loadRealFonts();
     final api = FixtureApi();
     final (app, _) = await pumpShell(tester, api, size: const Size(1200, 780));
@@ -207,8 +206,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('customise-sidebar')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.byType(SidebarEditorDialog), findsOneWidget);
-    await saveScreenshot(tester, 'sidebar-customise-sheet');
+    expect(find.byType(SidebarLayoutEditor), findsOneWidget);
+    await saveScreenshot(tester, 'sidebar-settings');
     expect(tester.takeException(), isNull);
   });
 }

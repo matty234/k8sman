@@ -18,6 +18,9 @@ class WindowChrome {
   /// View ▸ Command Palette… in the native menu bar (set by the shell).
   static VoidCallback? onCommandPalette;
 
+  /// The app menu's Settings… (⌘,), set by the shell.
+  static VoidCallback? onSettings;
+
   /// Listen for fullscreen changes. Call once at startup (macOS only).
   static void init() {
     if (!nativeMacChrome) return;
@@ -27,6 +30,8 @@ class WindowChrome {
           isFullScreen.value = call.arguments == true;
         case 'commandPalette':
           onCommandPalette?.call();
+        case 'settings':
+          onSettings?.call();
       }
       return null;
     });
