@@ -12,6 +12,7 @@ import '../../state/app_state.dart';
 import '../../util/diff.dart';
 import '../../util/k8s.dart';
 import '../editor/resource_editor_screen.dart';
+import '../editor/yaml_code_editor.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../keys.dart';
@@ -320,6 +321,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
       focusNode: _editorFocus,
       readOnly: !_editing,
       wordWrap: false,
+      shortcutsActivatorsBuilder: const IndentShortcuts(),
       style: CodeEditorStyle(
         fontFamily: monoFamily,
         fontFamilyFallback: monoFallback,

@@ -6,6 +6,7 @@ import 'package:re_highlight/styles/atom-one-dark.dart';
 import 'package:re_highlight/styles/atom-one-light.dart';
 
 import '../../util/k8s.dart';
+import '../keys.dart';
 import '../theme.dart';
 
 /// The YAML code editor shared by the inspector's YAML tab and the
@@ -75,15 +76,30 @@ class YamlCodeEditor extends StatelessWidget {
   }
 }
 
-/// re_editor's defaults minus Save (⌘S) and ⌘↩ (a newline by default), so
-/// both bubble up to the screen's shortcuts.
+/// re_editor's default shortcuts plus ⌘] / ⌘[ to indent and outdent (Ctrl
+/// on other platforms), as in VS Code and Xcode. Unbound, those keys reach
+/// text input and type a bracket or quote.
+class IndentShortcuts extends CodeShortcutsActivatorsBuilder {
+  const IndentShortcuts();
+
+  @override
+  List<ShortcutActivator>? build(CodeShortcutType type) {
+    final base = const DefaultCodeShortcutsActivatorsBuilder().build(type);
+    if (type != CodeShortcutType.indent && type != CodeShortcutType.outdent) return base;
+    final key = type == CodeShortcutType.indent ? LogicalKeyboardKey.bracketRight : LogicalKeyboardKey.bracketLeft;
+    return [...?base, SingleActivator(key, meta: !useCtrlShortcuts, control: useCtrlShortcuts)];
+  }
+}
+
+/// [IndentShortcuts] minus Save (⌘S) and ⌘↩ (a newline by default), so both
+/// bubble up to the full-window editor's own shortcuts.
 class _EditorShortcuts extends CodeShortcutsActivatorsBuilder {
   const _EditorShortcuts();
 
   @override
   List<ShortcutActivator>? build(CodeShortcutType type) {
     if (type == CodeShortcutType.save) return null;
-    final base = const DefaultCodeShortcutsActivatorsBuilder().build(type);
+    final base = const IndentShortcuts().build(type);
     if (type != CodeShortcutType.newLine || base == null) return base;
     return [
       for (final a in base)
