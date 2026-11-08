@@ -70,7 +70,7 @@ class PodPanel extends ResourcePanel {
         ),
       ),
       if (volumes.isNotEmpty)
-        DetailSection(title: 'Volumes', icon: Icons.storage_outlined, trailing: Hint('${volumes.length}'), child: _Volumes(volumes, containers, ctx.namespace)),
+        DetailSection(title: 'Volumes', icon: Icons.storage_outlined, trailing: Hint('${volumes.length}'), child: _Volumes(volumes, containers, ctx.namespace, ctx.name)),
       if (scheduling.isNotEmpty) DetailSection(title: 'Scheduling', icon: Icons.account_tree_outlined, child: KeyValueTable(scheduling, keyWidth: 110)),
       DetailSection(title: 'Conditions', icon: Icons.fact_check_outlined, child: ConditionsTable(ctx.status['conditions'] as List?)),
     ];
@@ -295,7 +295,8 @@ class _Volumes extends StatelessWidget {
   final List<Json> volumes;
   final List<PodContainer> containers;
   final String? namespace;
-  const _Volumes(this.volumes, this.containers, this.namespace);
+  final String pod;
+  const _Volumes(this.volumes, this.containers, this.namespace, this.pod);
 
   @override
   Widget build(BuildContext context) {
@@ -334,7 +335,7 @@ class _Volumes extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 3),
-        Padding(padding: const EdgeInsets.only(left: 8), child: _source(context, type, src)),
+        Padding(padding: const EdgeInsets.only(left: 8), child: _source(context, type, src, name)),
         if (mounts.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(left: 8, top: 2),
@@ -357,7 +358,7 @@ class _Volumes extends StatelessWidget {
     return Text(items.map((i) => '${i['key']} → ${i['path']}').join(', '), style: monoStyle(context, size: 10.5, color: Theme.of(context).hintColor));
   }
 
-  Widget _source(BuildContext context, String type, Json src) {
+  Widget _source(BuildContext context, String type, Json src, String volume) {
     final opt = src['optional'] == true ? const Hint('optional') : null;
     switch (type) {
       case 'configMap':
@@ -381,15 +382,21 @@ class _Volumes extends StatelessWidget {
           children: [for (final s in asMapList(src['sources'])) Padding(padding: const EdgeInsets.only(bottom: 2), child: _projectedSource(context, s))],
         );
       case 'ephemeral':
+        // Kubernetes names the claim <pod>-<volume> and deletes it with the pod.
         final t = asMap(dig(src, ['volumeClaimTemplate', 'spec']));
-        return Hint(
-          [
-            'generic ephemeral PVC',
-            if (t['storageClassName'] != null) 'class ${t['storageClassName']}',
-            if (dig(t, ['resources', 'requests', 'storage']) != null) '${dig(t, ['resources', 'requests', 'storage'])}',
-            if (t['accessModes'] is List) (t['accessModes'] as List).join(','),
-          ].join(' · '),
-        );
+        final claim = '$pod-$volume';
+        return InlineWrap([
+          _link('PersistentVolumeClaim', claim, label: 'pvc/$claim'),
+          Hint(
+            [
+              'ephemeral, deleted with the pod',
+              if (t['storageClassName'] != null) 'class ${t['storageClassName']}',
+              if (dig(t, ['resources', 'requests', 'storage']) != null) '${dig(t, ['resources', 'requests', 'storage'])}',
+              if (t['accessModes'] is List) (t['accessModes'] as List).join(','),
+            ].join(' · '),
+          ),
+          if (t['volumeMode'] == 'Block') const Hint('block device'),
+        ]);
       case 'csi':
         return InlineWrap([Hint('driver ${src['driver']}'), for (final e in asMap(src['volumeAttributes']).entries) Chipish(text: '${e.key}=${e.value}')]);
       case 'nfs':
