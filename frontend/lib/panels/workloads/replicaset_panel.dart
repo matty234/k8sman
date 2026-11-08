@@ -16,6 +16,9 @@ class ReplicaSetPanel extends ResourcePanel {
   const ReplicaSetPanel();
 
   @override
+  bool get showsOwned => true;
+
+  @override
   Set<String> get kinds => const {'apps/ReplicaSet'};
 
   @override

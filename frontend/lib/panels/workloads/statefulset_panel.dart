@@ -47,6 +47,9 @@ class StatefulSetPanel extends ResourcePanel {
   const StatefulSetPanel();
 
   @override
+  bool get showsOwned => true;
+
+  @override
   Set<String> get kinds => const {'apps/StatefulSet'};
 
   @override

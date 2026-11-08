@@ -34,6 +34,9 @@ class DaemonSetPanel extends ResourcePanel {
   const DaemonSetPanel();
 
   @override
+  bool get showsOwned => true;
+
+  @override
   Set<String> get kinds => const {'apps/DaemonSet'};
 
   @override

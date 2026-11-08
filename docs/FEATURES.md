@@ -109,6 +109,12 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - Collapse it to a slim tab with ⌘I. Tabs switch instantly, back navigation
   works, and panels cross-link related objects.
 - A metadata summary: namespace, owners, age, labels and annotations.
+- An **Owns** section for any object lists what it owns (objects whose
+  ownerReferences name its uid), grouped by kind with status badges. A child
+  opens on click and a chevron expands its own children, as a tree. It is read
+  from the watch cache, so it searches common child kinds plus kinds already
+  cached, and says so when some were not searched. Hidden on workload panels
+  that already list their children.
 - A YAML view and editor with dry-run validation, diff review before apply,
   conflict detection and ⌘S. Optionally show managedFields.
 - **Open in Editor** (in the YAML tab) opens the object in a full-window

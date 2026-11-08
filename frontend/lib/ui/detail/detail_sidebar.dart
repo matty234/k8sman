@@ -21,6 +21,7 @@ import '../widgets/group_icon.dart';
 import '../portforward/portforward_dialog.dart';
 import '../resource_nav.dart' show kindIconWidget;
 import 'metadata_section.dart';
+import 'owned_section.dart';
 import 'yaml_editor.dart';
 import '../keys.dart';
 
@@ -203,6 +204,7 @@ class _LiveObjectState extends State<_LiveObject> {
                         children: [
                           MetadataSection(ctx: ctx),
                           ..._safeSections(context, panel, ctx),
+                          if (!panel.showsOwned && ctx.uid.isNotEmpty) OwnedSection(key: ValueKey('owned-${ctx.uid}'), uid: ctx.uid, namespace: ctx.namespace),
                         ],
                       )),
                       for (final x in extraTabs) Builder(builder: (c) => x.builder(c, ctx)),

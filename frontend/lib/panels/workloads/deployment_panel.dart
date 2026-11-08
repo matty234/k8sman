@@ -21,6 +21,9 @@ class DeploymentPanel extends ResourcePanel {
   const DeploymentPanel();
 
   @override
+  bool get showsOwned => true;
+
+  @override
   Set<String> get kinds => const {'apps/Deployment'};
 
   @override

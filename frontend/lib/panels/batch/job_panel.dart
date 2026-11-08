@@ -16,6 +16,9 @@ class JobPanel extends ResourcePanel {
   const JobPanel();
 
   @override
+  bool get showsOwned => true;
+
+  @override
   Set<String> get kinds => {'batch/Job'};
 
   @override

@@ -27,6 +27,9 @@ class CronJobPanel extends ResourcePanel {
   const CronJobPanel();
 
   @override
+  bool get showsOwned => true;
+
+  @override
   Set<String> get kinds => {'batch/CronJob'};
 
   @override

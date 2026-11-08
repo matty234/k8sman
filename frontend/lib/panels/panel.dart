@@ -46,6 +46,11 @@ abstract class ResourcePanel {
 
   List<Widget> buildSections(BuildContext context, PanelContext ctx);
 
+  /// True when the panel already lists the object's children prominently
+  /// (a Deployment's ReplicaSets and Pods), so the shell skips its generic
+  /// "Owns" section.
+  bool get showsOwned => false;
+
   /// Optional extra tabs (e.g. Logs for pods).
   List<PanelTab> tabs(PanelContext ctx) => const [];
 

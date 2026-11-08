@@ -232,6 +232,13 @@ class ApiClient {
     return [for (final i in (j['items'] as List? ?? const [])) Map<String, dynamic>.from(i)];
   }
 
+  /// Objects that name [uid] in their ownerReferences (`/api/owned`), from the
+  /// backend's watch cache. [partial] means some kinds were not searched.
+  Future<({List<Json> items, bool partial})> owned({required String uid, String? namespace}) async {
+    final j = await _get('owned', {'uid': uid, 'namespace': namespace}) as Json;
+    return (items: [for (final i in (j['items'] as List? ?? const [])) Map<String, dynamic>.from(i)], partial: j['partial'] == true);
+  }
+
   // ---- sidebar layout (settings.json) ----
 
   /// The saved sidebar layout (`{items:[…]}`), or null for the default.
