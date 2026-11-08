@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
+import '../keys.dart';
 import '../theme.dart';
 import 'common.dart';
 
@@ -355,7 +356,8 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
         query: r is _NsRow ? _q : '',
         value: _value,
         active: i == _active,
-        onTap: () => _pick(i),
+        // ⌘-click (Ctrl-click) or ⇧-click adds or removes, like a Finder list.
+        onTap: () => primaryModifierPressed || HardwareKeyboard.instance.isShiftPressed ? _toggle(i) : _pick(i),
         onToggle: () => _toggle(i),
         onHover: () => setState(() => _active = i),
         onRemove: r is _NsRow && r.custom ? () => _forget(r.name) : null,
@@ -432,7 +434,9 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 5, 12, 6),
                 child: Text(
-                  _value.isMulti ? '${_value.namespaces.length} namespaces · ☐ or ⇧↩ adds or removes' : 'Click shows one · ☐ or ⇧↩ adds more',
+                  _value.isMulti
+                      ? '${_value.namespaces.length} namespaces · ${useCtrlShortcuts ? 'Ctrl' : '⌘'}-click or ⇧↩ adds or removes'
+                      : 'Click shows one · ${useCtrlShortcuts ? 'Ctrl' : '⌘'}-click or ⇧↩ adds more',
                   style: small,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
