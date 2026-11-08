@@ -22,7 +22,14 @@ class ApiException implements Exception {
 
   /// Field-level validation causes: {field, message, reason}.
   final List<Map<String, dynamic>> causes;
-  ApiException(this.status, this.message, {this.reason, this.causes = const []});
+
+  /// For a `LocalPortInUse` conflict: the forward holding the local port
+  /// (`namespace/kind/name:port`; empty when another process has it) and a
+  /// free port to use instead.
+  final String? usedBy;
+  final int? suggestedPort;
+  ApiException(this.status, this.message, {this.reason, this.causes = const [], this.usedBy, this.suggestedPort});
+  bool get isPortInUse => reason == 'LocalPortInUse';
   bool get isConflict => status == 409;
   bool get isNotFound => status == 404;
   bool get isForbidden => status == 403;
@@ -400,8 +407,10 @@ class ApiClient {
     int localPort = 0,
     bool autoStart = false,
     String? label,
+    bool replace = false,
   }) async =>
       PortForward.fromJson(await _send('POST', 'portforwards', const {}, {
+        'replace': replace,
         'namespace': namespace,
         'kind': kind,
         'name': name,
@@ -416,6 +425,12 @@ class ApiClient {
 
   Future<void> startPortForward(String id) => _send('POST', 'portforwards/$id/start', const {}, null);
   Future<void> stopPortForward(String id) => _send('POST', 'portforwards/$id/stop', const {}, null);
+
+  /// Stops every running forward (of [context] only, if given) in one
+  /// request; they stay saved. Returns how many were stopped.
+  Future<int> stopAllPortForwards({String? context}) async =>
+      ((await _send('POST', 'portforwards/stop', {'context': context}, null)) as Json)['stopped'] as int;
+
   Future<void> deletePortForward(String id) => _send('DELETE', 'portforwards/$id', const {}, null);
 
   // ---- icons ----

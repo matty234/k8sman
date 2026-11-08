@@ -69,6 +69,16 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
       child: Icon(Icons.help_outline, size: 16, color: theme.hintColor),
     );
     final docked = widget.docked;
+    final stopAll = !(fs?.any((f) => f.state != 'stopped') ?? false)
+        ? const SizedBox.shrink()
+        : TextButton.icon(
+            key: const ValueKey('stop-all-forwards'),
+            onPressed: () async {
+              if (await stopAllForwards(context, forwards: fs)) await _refresh();
+            },
+            icon: const Icon(Icons.stop_circle_outlined, size: 16),
+            label: const Text('Stop all'),
+          );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (docked)
         SizedBox(
@@ -78,6 +88,7 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
             // Expanded, not Flexible + Spacer (they'd split the width and
             // centre the help icon).
             Expanded(child: fs == null ? const SizedBox() : Text('$active active · ${fs.length} saved', style: theme.textTheme.bodySmall, overflow: TextOverflow.ellipsis)),
+            stopAll,
             help,
             const SizedBox(width: 12),
           ]),
@@ -86,7 +97,7 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
         PageHeader(
           title: 'Port Forwards',
           subtitle: fs == null ? null : Text('$active active · ${fs.length} saved'),
-          actions: [help],
+          actions: [stopAll, help],
         ),
       if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: InlineMessage(_error!, isError: true)),
       docked ? Divider(height: 1, color: AppColors.of(context).separator) : const Divider(),
@@ -124,6 +135,53 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
                   ),
       ),
     ]);
+  }
+}
+
+/// Asks "Stop N port forwards?" and stops them in one request. When running
+/// forwards span several contexts it also offers all of them, not just the
+/// current context's. Returns whether anything was stopped.
+Future<bool> stopAllForwards(BuildContext context, {List<PortForward>? forwards}) async {
+  final api = context.read<ApiClient>();
+  final current = context.read<AppState>().currentContext;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  try {
+    final running = (forwards ?? await api.portForwards()).where((f) => f.state != 'stopped').toList();
+    final here = running.where((f) => f.context == current).length;
+    if (running.isEmpty) {
+      messenger?.showSnackBar(const SnackBar(content: Text('No port forwards are running')));
+      return false;
+    }
+    if (!context.mounted) return false;
+    // null = cancelled, '' = every context.
+    final scope = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        String forwardsLabel(int n) => '$n port forward${n == 1 ? '' : 's'}';
+        final several = running.length > here && here > 0;
+        return AlertDialog(
+          title: Text('Stop ${forwardsLabel(here > 0 ? here : running.length)}?'),
+          content: Text(several
+              ? 'This cluster has ${forwardsLabel(here)} running; ${forwardsLabel(running.length)} across all clusters. They stay saved and can be started again.'
+              : 'They stay saved and can be started again.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            if (several) TextButton(onPressed: () => Navigator.pop(ctx, ''), child: Text('All ${running.length}')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, here > 0 ? current : ''),
+              child: Text(several ? 'This cluster ($here)' : 'Stop'),
+            ),
+          ],
+        );
+      },
+    );
+    if (scope == null) return false;
+    final n = await api.stopAllPortForwards(context: scope.isEmpty ? null : scope);
+    messenger?.showSnackBar(SnackBar(content: Text('Stopped $n port forward${n == 1 ? '' : 's'}')));
+    return true;
+  } on ApiException catch (e) {
+    messenger?.showSnackBar(SnackBar(content: Text(e.message)));
+    return false;
   }
 }
 

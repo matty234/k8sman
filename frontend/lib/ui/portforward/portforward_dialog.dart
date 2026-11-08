@@ -95,6 +95,10 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
   bool _busy = false;
   String? _error;
 
+  /// The local port is taken: offer to replace the forward holding it or to
+  /// use another port.
+  ApiException? _conflict;
+
   static String _suggestLocal(int? remote) => remote != null && remote >= 1024 ? '$remote' : '';
 
   @override
@@ -105,8 +109,8 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
     super.dispose();
   }
 
-  Future<void> _create() async {
-    setState(() => (_busy = true, _error = null));
+  Future<void> _create({bool replace = false}) async {
+    setState(() => (_busy = true, _error = null, _conflict = null));
     try {
       final pf = await widget.ctx.api.createPortForward(
         namespace: widget.ctx.namespace ?? '',
@@ -116,10 +120,11 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
         localPort: int.tryParse(_local.text.trim()) ?? 0,
         autoStart: _autoStart,
         label: _label.text.trim().isEmpty ? null : _label.text.trim(),
+        replace: replace,
       );
       if (mounted) Navigator.pop(context, pf);
     } on ApiException catch (e) {
-      setState(() => (_busy = false, _error = e.message));
+      setState(() => (_busy = false, e.isPortInUse ? _conflict = e : _error = e.message));
     } catch (e) {
       setState(() => (_busy = false, _error = '$e'));
     }
@@ -184,6 +189,15 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
                     : 'Follows a ready pod: reconnects to a new one if the pod is replaced.',
                 style: theme.textTheme.bodySmall),
           ),
+          if (_conflict case final c?) _PortConflict(
+            port: _local.text.trim(),
+            conflict: c,
+            onReplace: () => _create(replace: true),
+            onUseOther: () {
+              _local.text = '${c.suggestedPort}';
+              _create();
+            },
+          ),
           if (_error != null) Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
         ]),
       ),
@@ -191,6 +205,36 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(onPressed: _busy || _remote.text.trim().isEmpty ? null : _create, child: Text(_busy ? 'Starting…' : 'Start forwarding')),
       ],
+    );
+  }
+}
+
+/// "Port 8080 is used by X": replace it, or use the next free port.
+class _PortConflict extends StatelessWidget {
+  final String port;
+  final ApiException conflict;
+  final VoidCallback onReplace, onUseOther;
+  const _PortConflict({required this.port, required this.conflict, required this.onReplace, required this.onUseOther});
+
+  @override
+  Widget build(BuildContext context) {
+    final ours = (conflict.usedBy ?? '').isNotEmpty;
+    final other = conflict.suggestedPort;
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(ours ? 'Port $port is used by ${conflict.usedBy}.' : 'Port $port is in use by another process.'),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, children: [
+          if (ours) OutlinedButton(onPressed: onReplace, child: const Text('Replace it')),
+          if (other != null) OutlinedButton(onPressed: onUseOther, child: Text('Use $other instead')),
+        ]),
+      ]),
     );
   }
 }

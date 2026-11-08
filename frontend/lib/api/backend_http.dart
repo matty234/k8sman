@@ -26,13 +26,17 @@ void throwIfFailed(http.Response res) {
   var msg = res.body;
   String? reason;
   var causes = <Map<String, dynamic>>[];
+  String? usedBy;
+  int? suggestedPort;
   try {
     final j = jsonDecode(res.body) as Map;
     msg = '${j['error'] ?? msg}';
     reason = j['reason'] as String?;
+    usedBy = j['usedBy'] as String?;
+    suggestedPort = j['suggestedPort'] as int?;
     causes = [for (final c in (j['causes'] as List? ?? const [])) Map<String, dynamic>.from(c)];
   } catch (_) {}
-  throw ApiException(res.statusCode, msg, reason: reason, causes: causes);
+  throw ApiException(res.statusCode, msg, reason: reason, causes: causes, usedBy: usedBy, suggestedPort: suggestedPort);
 }
 
 /// The decoded JSON body, or null when it is empty.

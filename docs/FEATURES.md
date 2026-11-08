@@ -215,6 +215,7 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - A **Forwards** tab in the bottom dock with start, stop, remove, labels,
   Open in browser and Copy URL. Its badge counts running forwards (amber
   while one reconnects, red if one fails), and it flashes when you start one.
+- **Stop all** in the Forwards tab (or the palette's **Stop All Port Forwards**) stops every running forward after a confirmation, offering this cluster or all clusters when forwards span several. Starting a forward on a local port another forward of ours holds offers **Replace it** or the next free port; a port held by another process only suggests a free one.
 
 ## Pages
 

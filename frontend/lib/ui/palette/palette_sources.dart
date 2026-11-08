@@ -11,6 +11,7 @@ import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../../state/table_controller.dart';
 import '../keys.dart';
+import '../portforward/portforward_view.dart' show stopAllForwards;
 import '../editor/resource_editor_screen.dart';
 import '../resource_nav.dart';
 import '../resource_table.dart';
@@ -181,6 +182,14 @@ List<PaletteItem> paletteItems(BuildContext context) {
         shortcut: shortcutLabel(']'),
         run: app.navForward,
       ),
+    PaletteItem(
+      group: PaletteGroup.actions,
+      title: 'Stop All Port Forwards',
+      typeLabel: 'Action',
+      icon: _icon(Icons.stop_circle_outlined),
+      aliases: const ['port-forward', 'forwards', 'close'],
+      run: () => stopAllForwards(context),
+    ),
     PaletteItem(
       group: PaletteGroup.actions,
       title: 'Settings…',
