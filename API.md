@@ -540,7 +540,7 @@ with a count); critical unless a later run of the same origin succeeded.
 ## Gateway API status
 
 Gateway API objects are read through the generic resource endpoints. One
-small endpoint backs the Integrations dialog.
+small endpoint backs its status in Settings ▸ Integrations.
 
 | Method | Path | Purpose |
 |---|---|---|

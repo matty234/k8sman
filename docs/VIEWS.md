@@ -165,7 +165,9 @@ focused) opens *Save view…*:
 - **Right-click a view in the sidebar:** Rename, Duplicate, Change context
   (bound ↔ any), Copy as YAML, Delete. Delete shows an undo snackbar instead
   of a confirm dialog, since it doesn't touch the cluster.
-- **Reorder:** in the sidebar editor (`ui/sidebar_editor.dart`).
+- **Reorder:** in Settings ▸ Views (`ui/settings/views_settings.dart`),
+  which also has each view's menu, the launch view (under General) and
+  import / export.
 
 **Where views appear.**
 
@@ -344,7 +346,7 @@ Where the build differs from the design above:
     Text fields and the two YAML editors keep ⌘S for themselves.
   - **`:view save <name>`** saves the open table as a view for any context
     (the name keeps its case); `:view` alone lists views.
-  - **Reordering** is in the sidebar editor (the same drag handles as pins),
+  - **Reordering** is in Settings ▸ Views (drag handles, saved at once),
     saved with `PUT /api/settings/views/order`. Undoing a delete puts the
     view back with `PUT …/{id}?index=N`.
   - **Files.** Import Views… has **From File…**, and the Views menu has

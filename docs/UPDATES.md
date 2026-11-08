@@ -81,7 +81,8 @@ Why not the alternatives:
     hourly against the wall clock, so a Mac that slept checks soon after waking).
   - **About k8sman** shows the version, the *Check for updates automatically*
     switch (stored in the app's user defaults, `UpdatesAutomaticChecks`), the
-    last check time, and **Check Now**.
+    last check time, and **Check Now**. The Settings page has the same:
+    the switch under General, the version and **Check Now** under About.
   - When a background check finds an update, Sparkle doesn't open its window.
     It calls the gentle-reminder delegate, and Flutter shows a small
     bottom-right banner: *Update available: vX.Y.Z — Release Notes ·

@@ -152,8 +152,8 @@ packaging/ Homebrew cask template
 Integrations with other tools (Argo CD, Helm, GPUs, …) are modules: one
 interface on each side, compiled in, listed in one place. Core features
 (tables, logs, terminals, port-forwards, nodes, security, access, the
-editor) are not modules. Each module can be turned off in **Customise
-Sidebar → Integrations…** (or the palette's **Integrations…**), saved as
+editor) are not modules. Each module can be turned off in **Settings ▸
+Integrations** (or the palette's **Integrations…**), saved as
 `disabledModules` in `settings.json`. Use the same id on both sides.
 
 **Backend** (`backend/internal/server/module.go`):
@@ -216,7 +216,9 @@ than importing Cilium).
      rebuild);
    - `navGroups` (a section of the kinds list, placed `after` a core one),
      `kindIcons` and `requires` (other module ids it needs);
-   - `detect` when the Integrations dialog (or a page, tab or section)
+   - `description`: one line under the module's name in Settings (the
+     settings search matches it);
+   - `detect` when Settings ▸ Integrations (or a page, tab or section)
      should know how the module stands on the cluster: its CRDs or service
      found, whether it works. It takes the `ApiClient` and returns a
      `ModuleStatus` (checking, notInstalled, connected, error, plus a
@@ -234,8 +236,11 @@ than importing Cilium).
      (`module_nav_gate.dart`) to show the sidebar row only on clusters
      where `detect` found the integration (GPUs, Hubble; `showOnError:
      false` also hides it when the check failed);
-   - `settingsBuilder`: a form for your `Configurable` settings, opened
-     from the Integrations dialog. Read and save them with
+   - `settingsBuilder`: a form for your `Configurable` settings, shown
+     inline under the module's row in Settings ▸ Integrations (no title or
+     Close button; keep a Save button only if the form needs one). Link to
+     it from your pages with `openSettings(context, module: id)`
+     (`ui/settings/settings_page.dart`). Read and save them with
      `ApiClient.getModuleSettings` / `putModuleSettings` (Hubble's form),
      or, when saving needs checks against the service, through your own
      endpoints (Argo CD's sign-in form verifies a token with Argo before

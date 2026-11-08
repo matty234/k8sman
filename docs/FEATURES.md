@@ -11,8 +11,16 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   **Rediscover** button.
 - CRD group icons: from the Helm chart that installed the CRD, bundled icons
   for well-known projects, the group's website favicon, or a generated
-  monogram. Internet fetches are on by default only for local clusters. Set
-  `"remoteIcons"` in `settings.json` or pass `--no-remote-icons` to change it.
+  monogram. Internet fetches are on by default only for local clusters.
+  Change it in **Settings ▸ Clusters** (`"remoteIcons"` in `settings.json`),
+  or pass `--no-remote-icons` to turn them off whatever the setting.
+- **Settings** (⌘, / Ctrl+,, the gear at the bottom of the sidebar, the
+  palette's **Settings…** or `:settings [section]`) holds every setting on
+  one page: General (launch view, update checks), Clusters (kubeconfig files,
+  read-only contexts, remote icons), Sidebar (pages, pins and their order),
+  Views, Integrations, Tables (reset a kind's saved sort, widths and filter),
+  Keyboard (the shortcut list) and About. A search box filters across
+  sections. Changes apply and save as you make them; Esc goes back.
 - A calm sidebar: Overview, Nodes and Security up top, the rest under
   **More**, collapsible sections and a **Custom Resources** group, plus **Search or jump to… ⌘K**
   (the command palette).
@@ -47,7 +55,8 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   Context, Export to File…, Copy as YAML, Open at Launch, Delete (with
   Undo). Right-click the section header: Import Views… (paste, or From
   File…), Import from File…, Export All Views to File…, Copy All Views as
-  YAML and Reorder Views…. Drag views to reorder them in Customise Sidebar.
+  YAML and Reorder Views…. Drag views to reorder them in **Settings ▸ Views**,
+  which also renames, deletes, imports and exports them.
 - **⌘S** saves the table as a view, or updates the open view. `:view save
   <name>` saves it from command mode. A view's kubeconfig matches by the
   file it resolves to, so the default kubeconfig and an explicit
@@ -258,12 +267,12 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   credential plugins are found.
 - Automatic, EdDSA-signed updates with Sparkle.
 - Integrations you don't use (Argo CD, Argo Workflows, Helm, GPUs,
-  Prometheus, Gateway API, Metrics, Add-ons) can be turned off in
-  **Customise Sidebar → Integrations…**: their pages, panels, palette
-  entries and overview checks go away. The dialog also says how each
-  integration stands on the current cluster (for example "2 GPU nodes ·
-  DCGM metrics", "using kubectl only", the Prometheus instance found,
-  metrics-server available or not), checked once per cluster after the
-  first table appears, and opens the settings of those that have some:
-  Hubble's relay, and Argo CD's sign-in (token, argocd CLI login or initial
-  admin password).
+  Prometheus, Gateway API, Hubble, Metrics, Add-ons) can be turned off in
+  **Settings ▸ Integrations** (also the palette's **Integrations…**): their
+  pages, panels, palette entries and overview checks go away. Each row also
+  says how the integration stands on the current cluster (for example "2 GPU
+  nodes · DCGM metrics", "using kubectl only", the Prometheus instance
+  found, metrics-server available or not), checked once per cluster after
+  the first table appears, and expands to the settings of those that have
+  some: Hubble's relay, and Argo CD's sign-in (token, argocd CLI login or
+  initial admin password).

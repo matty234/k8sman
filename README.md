@@ -319,7 +319,7 @@ either:
   `./install.sh --uninstall` removes them.
 
 k8sman reads `~/.kube/config` (or `$KUBECONFIG`) and keeps its settings in
-`~/.config/k8sman`. Exec credential plugins must be on your `PATH`.
+`~/.config/k8sman`; change them on the **Settings** page (⌘, or Ctrl+,). Exec credential plugins must be on your `PATH`.
 
 ### Updates
 
