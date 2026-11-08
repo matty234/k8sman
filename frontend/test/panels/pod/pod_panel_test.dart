@@ -106,7 +106,7 @@ void main() {
     await tapAndExpect('secret/web-secret', 'Secret', 'web-secret');
     await tapAndExpect('k8sman-dev-control-plane', 'Node', 'k8sman-dev-control-plane');
     await tapAndExpect('web', 'ServiceAccount', 'web');
-    await tapAndExpect('ConfigMap/web-config', 'ConfigMap', 'web-config'); // volume
+    await tapAndExpect('web-config', 'ConfigMap', 'web-config'); // volume
   });
 
   testWidgets('log stream view streams lines, searches and filters', (tester) async {

@@ -300,18 +300,50 @@ class _Volumes extends StatelessWidget {
   final String pod;
   const _Volumes(this.volumes, this.containers, this.namespace, this.pod);
 
+  /// The token volume Kubernetes adds to every pod (`kube-api-access-*`:
+  /// a service account token, kube-root-ca.crt and the namespace): shown
+  /// as one footer line rather than a full entry.
+  static bool _isDefaultToken(Json v) {
+    if (!'${v['name']}'.startsWith('kube-api-access-')) return false;
+    final sources = asMapList(dig(v, ['projected', 'sources']));
+    return sources.isNotEmpty && sources.any((s) => s['serviceAccountToken'] is Map);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final shown = [for (final v in volumes) if (!_isDefaultToken(v)) v];
+    final token = volumes.where(_isDefaultToken).firstOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final (i, v) in volumes.indexed) ...[
-          if (i > 0) Divider(height: 12, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
-          _volume(context, v),
-        ],
+        for (final v in shown) Padding(padding: const EdgeInsets.only(bottom: 8), child: _volume(context, v)),
+        if (token != null)
+          Tooltip(
+            message: 'Added by Kubernetes: a service account token, kube-root-ca.crt and the namespace\n${_mountsOf('${token['name']}').join('\n')}',
+            child: Hint('+ service account token (${token['name']})'),
+          ),
       ],
     );
+  }
+
+  List<String> _mountsOf(String volume) => [
+    for (final c in containers)
+      for (final m in asMapList(c.spec['volumeMounts']))
+        if (m['name'] == volume) '${c.name}:${m['mountPath']}${m['readOnly'] == true ? ' (ro)' : ''}',
+  ];
+
+  /// Mounts grouped by path: "/csi (a, b, c)", or just "/csi" when the pod
+  /// has a single container.
+  String _mountSummary(String volume) {
+    final byPath = <String, List<String>>{};
+    for (final c in containers) {
+      for (final m in asMapList(c.spec['volumeMounts'])) {
+        if (m['name'] != volume) continue;
+        byPath.putIfAbsent('${m['mountPath']}${m['readOnly'] == true ? ' (ro)' : ''}', () => []).add(c.name);
+      }
+    }
+    final single = containers.length < 2;
+    return byPath.entries.map((e) => single ? e.key : '${e.key} (${e.value.join(', ')})').join(' · ');
   }
 
   Widget _volume(BuildContext context, Json v) {
@@ -319,32 +351,26 @@ class _Volumes extends StatelessWidget {
     final name = '${v['name']}';
     final type = v.keys.firstWhere((k) => k != 'name', orElse: () => 'unknown');
     final src = asMap(v[type]);
-    final mounts = [
-      for (final c in containers)
-        for (final m in asMapList(c.spec['volumeMounts']))
-          if (m['name'] == name) '${c.name}:${m['mountPath']}${m['readOnly'] == true ? ' (ro)' : ''}',
-    ];
+    final mounts = _mountSummary(name);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 2,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Flexible(
-              child: Text(name, maxLines: 1, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 8),
+            Text(name, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
             Chipish(text: type),
+            _source(context, type, src, name),
           ],
         ),
-        const SizedBox(height: 3),
-        Padding(padding: const EdgeInsets.only(left: 8), child: _source(context, type, src, name)),
-        if (mounts.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(left: 8, top: 2),
-            child: Text('mounted by ${mounts.join(', ')}', style: monoStyle(context, size: 10.5, color: theme.hintColor)),
-          )
-        else
-          const Padding(padding: EdgeInsets.only(left: 8, top: 2), child: Hint('not mounted by any container')),
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: mounts.isEmpty
+              ? const Hint('not mounted')
+              : Text('→ $mounts', style: monoStyle(context, size: 10.5, color: theme.hintColor)),
+        ),
       ],
     );
   }
@@ -364,9 +390,9 @@ class _Volumes extends StatelessWidget {
     final opt = src['optional'] == true ? const Hint('optional') : null;
     switch (type) {
       case 'configMap':
-        return InlineWrap([_link('ConfigMap', src['name'] as String?), ?opt, _items(context, src)]);
+        return InlineWrap([_link('ConfigMap', src['name'] as String?, label: '${src['name']}'), ?opt, _items(context, src)]);
       case 'secret':
-        return InlineWrap([_link('Secret', src['secretName'] as String?), ?opt, _items(context, src)]);
+        return InlineWrap([_link('Secret', src['secretName'] as String?, label: '${src['secretName']}'), ?opt, _items(context, src)]);
       case 'persistentVolumeClaim':
         return InlineWrap([
           _link('PersistentVolumeClaim', src['claimName'] as String?, label: 'pvc/${src['claimName']}'),
@@ -375,7 +401,12 @@ class _Volumes extends StatelessWidget {
       case 'emptyDir':
         return Hint([src['medium'] == 'Memory' ? 'tmpfs (memory-backed)' : 'node disk', if (src['sizeLimit'] != null) 'limit ${src['sizeLimit']}'].join(' · '));
       case 'hostPath':
-        return InlineWrap([MonoValue('${src['path']}', size: 11), if (src['type'] != null && src['type'] != '') Hint('${src['type']}')]);
+        final hostType = '${src['type'] ?? ''}';
+        return InlineWrap([
+          MonoValue('${src['path']}', size: 11),
+          // Directory / DirectoryOrCreate are the norm; name the rest (File, Socket, …).
+          if (!const {'', 'Directory', 'DirectoryOrCreate'}.contains(hostType)) Hint(hostType),
+        ]);
       case 'downwardAPI':
         return _downward(context, src);
       case 'projected':
