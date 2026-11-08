@@ -109,6 +109,9 @@ const testTypes = <ResourceType>[
   ResourceType(group: 'rbac.authorization.k8s.io', version: 'v1', resource: 'rolebindings', kind: 'RoleBinding'),
   ResourceType(group: 'rbac.authorization.k8s.io', version: 'v1', resource: 'clusterrolebindings', kind: 'ClusterRoleBinding', namespaced: false),
   ResourceType(group: 'apiextensions.k8s.io', version: 'v1', resource: 'customresourcedefinitions', kind: 'CustomResourceDefinition', namespaced: false),
+  ResourceType(group: 'external-secrets.io', version: 'v1', resource: 'externalsecrets', kind: 'ExternalSecret', custom: true),
+  ResourceType(group: 'external-secrets.io', version: 'v1', resource: 'secretstores', kind: 'SecretStore', custom: true),
+  ResourceType(group: 'external-secrets.io', version: 'v1', resource: 'clustersecretstores', kind: 'ClusterSecretStore', namespaced: false, custom: true),
   ResourceType(group: 'example.k8sman.dev', version: 'v1alpha1', resource: 'widgets', kind: 'Widget', custom: true),
 ];
 

@@ -123,6 +123,7 @@ func builtinModules() []Module {
 		&promModule{},
 		&gatewayModule{},
 		&hubbleModule{},
+		&externalSecretsModule{},
 	}
 }
 

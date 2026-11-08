@@ -5,6 +5,7 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../externalsecrets/managed_by.dart';
 import '../panel.dart';
 import 'usage.dart';
 import 'values.dart';
@@ -22,6 +23,7 @@ class SecretPanel extends ResourcePanel {
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final data = asMap(ctx.object['data']);
     return [
+      ManagedByExternalSecret(key: ValueKey('${ctx.uid}/eso'), ctx: ctx),
       SecretBody(key: ValueKey('${ctx.uid}/secret'), ctx: ctx),
       UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.secret, existingKeys: {...data.keys}),
     ];

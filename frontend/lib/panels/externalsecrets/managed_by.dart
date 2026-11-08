@@ -1,0 +1,31 @@
+import 'package:flutter/material.dart';
+
+import '../../ui/widgets/common.dart';
+import '../../util/k8s.dart';
+import '../panel.dart';
+import '../pod/pod_widgets.dart';
+import 'es_common.dart';
+
+/// "Managed by ExternalSecret <link>" for the Secret panel. The owner is
+/// read from ownerReferences (creationPolicy Owner); a Secret ESO merged
+/// into only carries its `reconcile.external-secrets.io/managed` label, so
+/// that says no more than "managed". Nothing for other Secrets.
+class ManagedByExternalSecret extends StatelessWidget {
+  final PanelContext ctx;
+  const ManagedByExternalSecret({super.key, required this.ctx});
+
+  @override
+  Widget build(BuildContext context) {
+    final owner = ownerRefs(ctx.object).where((o) => o.group == esGroup && o.kind == 'ExternalSecret').firstOrNull;
+    final managed = dig<String>(ctx.metadata, ['labels', 'reconcile.external-secrets.io/managed']) != null;
+    if (owner == null && !managed) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InlineWrap([
+        const Icon(Icons.vpn_key_outlined, size: 14),
+        const Hint('Managed by'),
+        if (owner != null) ResourceLink(owner, label: 'ExternalSecret/${owner.name}') else const Hint('External Secrets Operator'),
+      ]),
+    );
+  }
+}

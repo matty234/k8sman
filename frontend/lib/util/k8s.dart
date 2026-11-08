@@ -129,9 +129,9 @@ enum Severity { ok, warn, error, neutral, info }
 Severity severityOf(String? status) {
   final s = (status ?? '').toLowerCase();
   if (s.isEmpty) return Severity.neutral;
-  const ok = {'running', 'ready', 'true', 'bound', 'active', 'complete', 'completed', 'succeeded', 'available', 'healthy', 'normal', 'established', 'reconciled', 'allocated', 'reserved'};
+  const ok = {'running', 'ready', 'true', 'bound', 'active', 'complete', 'completed', 'succeeded', 'available', 'healthy', 'normal', 'established', 'reconciled', 'allocated', 'reserved', 'secretsynced', 'valid', 'synced'};
   const warn = {'pending', 'containercreating', 'podinitializing', 'waiting', 'terminating', 'unknown', 'progressing', 'released', 'suspended', 'warning'};
-  const err = {'failed', 'error', 'crashloopbackoff', 'imagepullbackoff', 'errimagepull', 'notready', 'false', 'lost', 'oomkilled', 'evicted', 'createcontainerconfigerror', 'invalidimagename', 'backofflimitexceeded', 'deadlineexceeded'};
+  const err = {'failed', 'error', 'crashloopbackoff', 'imagepullbackoff', 'errimagepull', 'notready', 'false', 'lost', 'oomkilled', 'evicted', 'createcontainerconfigerror', 'invalidimagename', 'backofflimitexceeded', 'deadlineexceeded', 'secretsyncederror', 'invalidproviderconfig', 'validationfailed', 'errored'};
   final head = s.split(RegExp(r'[,:]')).where((p) => p.isNotEmpty).toList();
   if (head.any(err.contains)) return Severity.error;
   // Init containers still starting (Init:PodInitializing, Init:0/2) are in

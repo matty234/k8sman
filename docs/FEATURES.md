@@ -171,6 +171,13 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     shapes) ResourceClaim, ResourceClaimTemplate, DeviceClass and ResourceSlice
     in a "Dynamic Resources" sidebar section (only where served), with state,
     device and node columns; Pods list their claims and Nodes their devices.
+  - **External Secrets Operator** (`external-secrets.io`, v1 or v1beta1)
+    ExternalSecret, ClusterExternalSecret, SecretStore, ClusterSecretStore and
+    PushSecret in an "External Secrets" sidebar section (only where served):
+    sync status and error message, store and target Secret links (with a
+    warning when the Secret is missing), data mapping, provider settings
+    (auth Secrets as links, never values), "Refresh now" (sets `force-sync`),
+    and "Managed by ExternalSecret" on the Secret it owns.
   - **Prometheus Operator** Prometheus, Alertmanager, PrometheusRule (live rule
     state), ServiceMonitor and PodMonitor (live target health).
 
