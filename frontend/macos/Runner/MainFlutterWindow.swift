@@ -189,7 +189,16 @@ class MainFlutterWindow: NSWindow {
   /// equivalent is ⌘P, not ⌘K: should AppKit ever match a menu key
   /// equivalent before Flutter sees the key, ⌘K still reaches a focused
   /// terminal ("clear"). Flutter binds both keys itself.
+  ///
+  /// Also turns the app menu's "Preferences…" (⌘,) into "Settings…", which
+  /// opens Flutter's Settings page (Flutter binds ⌘, itself too).
   func installMenuItems() {
+    if let appMenu = NSApp.mainMenu?.items.first?.submenu,
+       let prefs = appMenu.items.first(where: { $0.keyEquivalent == "," }) {
+      prefs.title = "Settings…"
+      prefs.target = self
+      prefs.action = #selector(showSettings(_:))
+    }
     guard let view = NSApp.mainMenu?.items.first(where: { $0.title == "View" })?.submenu else { return }
     let item = NSMenuItem(title: "Command Palette…", action: #selector(showCommandPalette(_:)), keyEquivalent: "p")
     item.target = self
@@ -199,6 +208,10 @@ class MainFlutterWindow: NSWindow {
 
   @objc func showCommandPalette(_ sender: Any?) {
     windowChannel?.invokeMethod("commandPalette", arguments: nil)
+  }
+
+  @objc func showSettings(_ sender: Any?) {
+    windowChannel?.invokeMethod("settings", arguments: nil)
   }
 
   /// Open panel for a .yaml / .yml file (importing saved views).
