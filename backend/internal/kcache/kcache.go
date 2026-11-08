@@ -542,6 +542,28 @@ func (s *stream) snapshotLocked(f *filter) Snapshot {
 	return Snapshot{Items: items, ResourceVersion: s.rv, stream: s, filter: f}
 }
 
+// Warm returns a snapshot of every synced stream that has no label or field
+// selector (so each holds all of its kind in its namespace scope). It starts
+// nothing and does not keep streams warm; use it to scan what is already
+// cached, e.g. for owner lookups.
+func (c *Cache) Warm() []Snapshot {
+	c.mu.Lock()
+	var ss []*stream
+	for k, s := range c.streams {
+		if k.LabelSelector == "" && k.FieldSelector == "" {
+			ss = append(ss, s)
+		}
+	}
+	c.mu.Unlock()
+	var out []Snapshot
+	for _, s := range ss {
+		if snap, err := s.snapshot(nil); err == nil {
+			out = append(out, snap)
+		}
+	}
+	return out
+}
+
 func sleep(ctx context.Context, d time.Duration) {
 	t := time.NewTimer(d)
 	defer t.Stop()

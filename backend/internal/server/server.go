@@ -110,6 +110,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/items", s.handleItems)
 	s.mux.HandleFunc("GET /api/object", s.handleObject)
 	s.mux.HandleFunc("GET /api/events", s.handleEvents)
+	s.mux.HandleFunc("GET /api/owned", s.handleOwned)
 	s.mux.HandleFunc("GET /api/columns", s.handleGetColumns)
 	s.mux.HandleFunc("PUT /api/columns", s.handlePutColumns)
 	s.mux.HandleFunc("DELETE /api/columns", s.handleDeleteColumns)
