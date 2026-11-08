@@ -21,6 +21,9 @@ class MetricsModule extends AppModule {
   String get name => 'Metrics';
 
   @override
+  String get description => 'CPU and memory usage from metrics-server.';
+
+  @override
   List<AppPage> get pages => [
         AppPage(
           view: page,

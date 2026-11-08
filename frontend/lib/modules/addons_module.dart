@@ -19,6 +19,9 @@ class AddonsModule extends AppModule {
   String get name => 'Add-ons';
 
   @override
+  String get description => 'Installs common cluster add-ons (metrics-server, Prometheus, Trivy, …) through Helm.';
+
+  @override
   List<String> get requires => const ['helm'];
 
   @override

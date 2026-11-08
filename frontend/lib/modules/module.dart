@@ -45,7 +45,7 @@ enum ModuleState {
 class ModuleStatus {
   final ModuleState state;
 
-  /// One line for the Integrations dialog, e.g. "relay v1.18 · 13 nodes".
+  /// One line for Settings ▸ Integrations, e.g. "relay v1.18 · 13 nodes".
   final String? message;
   const ModuleStatus(this.state, [this.message]);
 
@@ -60,8 +60,12 @@ abstract class AppModule {
   /// is what settings save when the module is turned off.
   String get id;
 
-  /// Display name (Integrations settings).
+  /// Display name (Settings ▸ Integrations).
   String get name;
+
+  /// One line on what the module adds, under its name in Settings (and
+  /// matched by the settings search).
+  String get description => '';
 
   /// Ids of modules this one needs (Add-ons installs through Helm): it is
   /// off while any of them is.
@@ -83,7 +87,7 @@ abstract class AppModule {
   /// Asks the backend how the module stands on the current cluster: its
   /// CRDs or service found, and whether it works (see [ModuleStatus]). Run
   /// once per kube context, on first use, and cached: read it through
-  /// [moduleStatuses] (modules.dart), which the Integrations dialog shows.
+  /// [moduleStatuses] (modules.dart), which Settings ▸ Integrations shows.
   /// Null = nothing to detect.
   Future<ModuleStatus> Function(ApiClient api)? get detect => null;
 
@@ -93,8 +97,9 @@ abstract class AppModule {
   /// doesn't handle. They follow the kind's own [ResourcePanel.tabs].
   List<PanelTab> inspectorTabs(PanelContext ctx) => const [];
 
-  /// The module's settings form, opened from the Integrations dialog.
-  /// Settings are saved per kube context with
+  /// The module's settings form, shown inline under the module's row in
+  /// Settings ▸ Integrations (no title or Close button: the row has the
+  /// name). Settings are saved per kube context with
   /// [ApiClient.getModuleSettings] / [ApiClient.putModuleSettings]; the
   /// backend module validates them (`Configurable`).
   WidgetBuilder? get settingsBuilder => null;

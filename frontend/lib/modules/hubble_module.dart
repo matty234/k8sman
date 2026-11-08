@@ -28,6 +28,9 @@ class HubbleModule extends AppModule {
   String get name => 'Cilium Hubble';
 
   @override
+  String get description => 'Network flows and the traffic map, from Hubble Relay.';
+
+  @override
   List<AppPage> get pages => [
         AppPage(
           view: page,

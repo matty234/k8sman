@@ -21,6 +21,9 @@ class ArgoCdModule extends AppModule {
   String get name => 'Argo CD';
 
   @override
+  String get description => 'Applications and ApplicationSets: sync status, history and per-resource diffs.';
+
+  @override
   List<ResourcePanel> get panels => argocdPanels;
 
   @override
@@ -44,5 +47,5 @@ class ArgoCdModule extends AppModule {
       };
 
   @override
-  WidgetBuilder get settingsBuilder => (_) => const ArgoCdSettingsForm();
+  WidgetBuilder get settingsBuilder => (_) => const ArgoCdSettingsForm(inline: true);
 }

@@ -20,6 +20,9 @@ class PrometheusModule extends AppModule {
   String get name => 'Prometheus';
 
   @override
+  String get description => 'Alerts and the usage charts on pods, nodes and workloads.';
+
+  @override
   List<ResourcePanel> get panels => prometheusPanels;
 
   @override

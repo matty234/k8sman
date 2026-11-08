@@ -18,6 +18,9 @@ class HelmModule extends AppModule {
   String get name => 'Helm';
 
   @override
+  String get description => 'Releases: values, manifests, history, upgrades and rollbacks.';
+
+  @override
   List<AppPage> get pages => [
         AppPage(
           view: page,

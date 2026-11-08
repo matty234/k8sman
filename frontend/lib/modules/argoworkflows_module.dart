@@ -18,6 +18,9 @@ class ArgoWorkflowsModule extends AppModule {
   String get name => 'Argo Workflows';
 
   @override
+  String get description => 'Workflows, templates and cron workflows, with their steps and logs.';
+
+  @override
   List<ResourcePanel> get panels => argoWorkflowsPanels;
 
   @override

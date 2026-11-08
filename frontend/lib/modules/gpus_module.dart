@@ -23,6 +23,9 @@ class GpusModule extends AppModule {
   String get name => 'NVIDIA GPUs';
 
   @override
+  String get description => 'The GPUs page and GPU columns on nodes and pods.';
+
+  @override
   List<AppPage> get pages => [
         AppPage(
           view: page,

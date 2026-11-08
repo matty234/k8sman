@@ -17,6 +17,9 @@ class GatewayModule extends AppModule {
   String get name => 'Gateway API';
 
   @override
+  String get description => 'Gateways and routes, with their listeners, parents and backends.';
+
+  @override
   List<ResourcePanel> get panels => gatewayPanels;
 
   @override
