@@ -361,6 +361,37 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Last Sync", Type: "age", Query: `.status.refreshTime`},
 		ageCol,
 	},
+	// Admission policies and webhook configurations (admissionregistration.k8s.io).
+	"validatingadmissionpolicies.admissionregistration.k8s.io": {
+		{Name: "Failure Policy", Query: `.spec.failurePolicy // "Fail"`},
+		{Name: "Validations", Type: "number", Query: `.spec.validations // [] | length`},
+		{Name: "Matches", Query: admissionMatches},
+		{Name: "Param Kind", Query: `.spec.paramKind.kind // ""`},
+		ageCol,
+	},
+	"validatingadmissionpolicybindings.admissionregistration.k8s.io": {
+		{Name: "Policy", Query: `.spec.policyName`},
+		{Name: "Actions", Query: `[.spec.validationActions[]?] | join(",")`},
+		{Name: "Param", Query: admissionParam},
+		{Name: "Namespaces", Query: admissionNamespaces},
+		ageCol,
+	},
+	"mutatingadmissionpolicies.admissionregistration.k8s.io": {
+		{Name: "Failure Policy", Query: `.spec.failurePolicy // "Fail"`},
+		{Name: "Mutations", Type: "number", Query: `.spec.mutations // [] | length`},
+		{Name: "Reinvocation", Query: `.spec.reinvocationPolicy // "Never"`},
+		{Name: "Matches", Query: admissionMatches},
+		{Name: "Param Kind", Query: `.spec.paramKind.kind // ""`},
+		ageCol,
+	},
+	"mutatingadmissionpolicybindings.admissionregistration.k8s.io": {
+		{Name: "Policy", Query: `.spec.policyName`},
+		{Name: "Param", Query: admissionParam},
+		{Name: "Namespaces", Query: admissionNamespaces},
+		ageCol,
+	},
+	"validatingwebhookconfigurations.admissionregistration.k8s.io": {admissionWebhookCount, admissionWebhookTarget, ageCol},
+	"mutatingwebhookconfigurations.admissionregistration.k8s.io":   {admissionWebhookCount, admissionWebhookTarget, ageCol},
 }
 
 // esReadyReason is an ESO object's Ready condition reason ("Unknown" when
@@ -374,6 +405,19 @@ var esStoreCols = []Column{
 	{Name: "Capabilities", Query: `.status.capabilities // ""`},
 	ageCol,
 }
+
+// Admission column queries.
+const (
+	admissionMatches = `[.spec.matchConstraints.resourceRules[]? | .resources[]?] | unique | join(",")`
+	admissionParam   = `.spec.paramRef | if . == null then "" elif .name then .name elif .selector then "(selector)" else "(all)" end`
+	// The binding's namespace selector: matchLabels as k=v, expressions by key.
+	admissionNamespaces = `.spec.matchResources.namespaceSelector // {} | [(.matchLabels // {} | to_entries[] | "\(.key)=\(.value)"), (.matchExpressions[]? | "\(.key) \(.operator)")] | join(",")`
+)
+
+var (
+	admissionWebhookCount  = Column{Name: "Webhooks", Type: "number", Query: `.webhooks // [] | length`}
+	admissionWebhookTarget = Column{Name: "First Target", Query: `.webhooks[0]?.clientConfig | if . == null then "" elif .service then "\(.service.namespace)/\(.service.name)" else .url // "" end`}
+)
 
 // draClasses lists the distinct device classes of the requests [reqs]
 // selects.

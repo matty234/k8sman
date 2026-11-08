@@ -32,6 +32,14 @@ const _coreSections = [
     'rbac.authorization.k8s.io/RoleBinding',
     'rbac.authorization.k8s.io/ClusterRoleBinding',
   ]),
+  NavGroup('Admission', [
+    'admissionregistration.k8s.io/ValidatingAdmissionPolicy',
+    'admissionregistration.k8s.io/ValidatingAdmissionPolicyBinding',
+    'admissionregistration.k8s.io/MutatingAdmissionPolicy',
+    'admissionregistration.k8s.io/MutatingAdmissionPolicyBinding',
+    'admissionregistration.k8s.io/ValidatingWebhookConfiguration',
+    'admissionregistration.k8s.io/MutatingWebhookConfiguration',
+  ]),
 ];
 
 /// Section title → kinds: the core sections plus the enabled modules'.
@@ -83,6 +91,12 @@ const _kindIcons = <String, IconData>{
   'rbac.authorization.k8s.io/ClusterRole': Icons.admin_panel_settings_outlined,
   'rbac.authorization.k8s.io/RoleBinding': Icons.link,
   'rbac.authorization.k8s.io/ClusterRoleBinding': Icons.add_link,
+  'admissionregistration.k8s.io/ValidatingAdmissionPolicy': Icons.policy_outlined,
+  'admissionregistration.k8s.io/ValidatingAdmissionPolicyBinding': Icons.link,
+  'admissionregistration.k8s.io/MutatingAdmissionPolicy': Icons.auto_fix_high,
+  'admissionregistration.k8s.io/MutatingAdmissionPolicyBinding': Icons.link,
+  'admissionregistration.k8s.io/ValidatingWebhookConfiguration': Icons.webhook,
+  'admissionregistration.k8s.io/MutatingWebhookConfiguration': Icons.webhook,
 };
 
 class ResourceNav extends StatefulWidget {

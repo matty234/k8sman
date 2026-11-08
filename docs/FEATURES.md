@@ -185,6 +185,12 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     sidebar section (only where served). Where Kyverno is found, any object
     gets a **Policy results** tab from the cached reports (per-resource
     reports by scope or owner, per-namespace ones by resource), failures first.
+  - **Admission** (`admissionregistration.k8s.io`) Validating and Mutating
+    admission policies and their bindings, and Validating/Mutating webhook
+    configurations, in an "Admission" sidebar section (only where served):
+    match rules, CEL (matchConditions, variables, validations, mutations) with
+    copy, type-check warnings, the bindings using a policy, and each webhook's
+    target and failure policy.
   - **Prometheus Operator** Prometheus, Alertmanager, PrometheusRule (live rule
     state), ServiceMonitor and PodMonitor (live target health).
 

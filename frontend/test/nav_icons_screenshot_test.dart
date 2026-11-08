@@ -88,7 +88,7 @@ class CrdFixtureApi extends FixtureApi {
 }
 
 Future<AppState> pumpApp(WidgetTester tester, ApiClient api, ThemeMode mode) async {
-  tester.view.physicalSize = const Size(1200, 1340); // the custom groups fit above the sidebar's footer
+  tester.view.physicalSize = const Size(1200, 1400); // the custom groups fit above the sidebar's footer
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final app = AppState(api);

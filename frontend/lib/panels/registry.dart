@@ -4,6 +4,7 @@ import '../api/models.dart';
 import '../modules/modules.dart';
 import '../state/app_state.dart';
 import '../ui/widgets/common.dart';
+import 'admission/admission_panels.dart';
 import 'batch/index.dart';
 import 'cluster/index.dart';
 import 'config/index.dart';
@@ -25,6 +26,7 @@ final List<ResourcePanel> corePanels = [
   ...configPanels,
   ...storagePanels,
   ...clusterPanels,
+  ...admissionPanels,
   ...customPanels,
 ];
 
