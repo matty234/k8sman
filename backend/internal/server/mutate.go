@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -22,6 +23,7 @@ func (s *Server) mutationRoutes() {
 
 	s.mux.HandleFunc("GET /api/portforwards", s.handleListForwards)
 	s.mux.HandleFunc("POST /api/portforwards", s.handleCreateForward)
+	s.mux.HandleFunc("POST /api/portforwards/stop", s.handleStopForwards)
 	s.mux.HandleFunc("PATCH /api/portforwards/{id}", s.handleUpdateForward)
 	s.mux.HandleFunc("POST /api/portforwards/{id}/start", s.handleForwardAction)
 	s.mux.HandleFunc("POST /api/portforwards/{id}/stop", s.handleForwardAction)
@@ -103,12 +105,25 @@ func (s *Server) handleCreateForward(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
-	var spec portforward.Spec
-	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
+	var body struct {
+		portforward.Spec
+		// Replace stops and forgets the forward holding the same local port.
+		Replace bool `json:"replace"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, httpx.BadRequest("invalid body: %v", err))
 		return
 	}
-	st, err := s.pf.Create(spec)
+	st, err := s.pf.Create(body.Spec, body.Replace)
+	var inUse *portforward.PortInUseError
+	if errors.As(err, &inUse) {
+		e := apiError{Error: err.Error(), Code: http.StatusConflict, Reason: "LocalPortInUse", SuggestedPort: inUse.Suggested}
+		if inUse.By != nil {
+			e.UsedBy = fmt.Sprintf("%s/%s/%s:%s", inUse.By.Namespace, inUse.By.Kind, inUse.By.Name, inUse.By.Port)
+		}
+		httpx.WriteJSON(w, http.StatusConflict, e)
+		return
+	}
 	if err != nil {
 		writeErr(w, httpx.BadRequest("%v", err))
 		return
@@ -152,6 +167,13 @@ func (s *Server) handleForwardAction(w http.ResponseWriter, r *http.Request) {
 	}
 	st, _ := s.pf.Get(id)
 	httpx.WriteJSON(w, http.StatusOK, st)
+}
+
+// handleStopForwards stops every running forward (of ?context=, if given) in
+// one request. They stay saved.
+func (s *Server) handleStopForwards(w http.ResponseWriter, r *http.Request) {
+	n := s.pf.StopContext(r.URL.Query().Get("context"))
+	httpx.WriteJSON(w, http.StatusOK, map[string]int{"stopped": n})
 }
 
 func (s *Server) handleDeleteForward(w http.ResponseWriter, r *http.Request) {

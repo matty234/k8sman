@@ -178,6 +178,10 @@ type apiError struct {
 	// Reason is the Kubernetes StatusReason (e.g. Conflict, Invalid).
 	Reason string              `json:"reason,omitempty"`
 	Causes []map[string]string `json:"causes,omitempty"`
+	// LocalPortInUse (creating a port-forward): the forward holding the port
+	// (empty when another process has it) and a free port to use instead.
+	UsedBy        string `json:"usedBy,omitempty"`
+	SuggestedPort int    `json:"suggestedPort,omitempty"`
 }
 
 func writeErr(w http.ResponseWriter, err error) {

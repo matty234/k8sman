@@ -163,11 +163,39 @@ func (m *Manager) Get(id string) (Status, bool) {
 	return f.status, true
 }
 
+// PortInUseError means the requested local port is taken: By is the forward
+// of ours holding it, or nil when another process has it. Suggested is a free
+// port nearby.
+type PortInUseError struct {
+	Port      int
+	By        *Status
+	Suggested int
+}
+
+func (e *PortInUseError) Error() string {
+	if e.By != nil {
+		return fmt.Sprintf("local port %d is already used by forward %s/%s/%s:%s", e.Port, e.By.Namespace, e.By.Kind, e.By.Name, e.By.Port)
+	}
+	return fmt.Sprintf("local port %d is in use by another process", e.Port)
+}
+
+// nextFreePort is the first port after port that is free and not taken by a
+// forward of ours, falling back to any free port.
+func nextFreePort(addr string, port int, taken map[int]bool) int {
+	for p := port + 1; p < port+200 && p < 65536; p++ {
+		if !taken[p] && portFree(addr, p) {
+			return p
+		}
+	}
+	p, _ := freePort(addr)
+	return p
+}
+
 var validKinds = map[string]bool{"pod": true, "service": true, "deployment": true, "statefulset": true, "daemonset": true, "replicaset": true}
 
 // Create validates, persists and starts a new forward. LocalPort 0 picks a
 // free port (and keeps it stable across reconnects/restarts).
-func (m *Manager) Create(s Spec) (Status, error) {
+func (m *Manager) Create(s Spec, replace bool) (Status, error) {
 	s.Kind = strings.ToLower(s.Kind)
 	if !validKinds[s.Kind] {
 		return Status{}, fmt.Errorf("unsupported kind %q", s.Kind)
@@ -188,7 +216,8 @@ func (m *Manager) Create(s Spec) (Status, error) {
 	if s.Address == "" {
 		s.Address = "127.0.0.1"
 	}
-	if s.LocalPort == 0 {
+	autoPort := s.LocalPort == 0
+	if autoPort {
 		// Prefer the same port number locally when it's free (nicer URLs).
 		if n, err := strconv.Atoi(s.Port); err == nil && n >= 1024 && portFree(s.Address, n) {
 			s.LocalPort = n
@@ -200,20 +229,50 @@ func (m *Manager) Create(s Spec) (Status, error) {
 			s.LocalPort = p
 		}
 	}
+	explicit := s.LocalPort != 0 && !autoPort
 	m.mu.Lock()
+	var clashing []*forward
+	var first *Status
+	taken := map[int]bool{}
 	for _, f := range m.forwards {
 		f.mu.Lock()
-		clash := f.status.LocalPort == s.LocalPort && f.status.Address == s.Address && f.status.State != Stopped
+		st := f.status
 		f.mu.Unlock()
-		if clash {
-			m.mu.Unlock()
-			return Status{}, fmt.Errorf("local port %d is already used by another forward", s.LocalPort)
+		if st.State == Stopped || st.Address != s.Address {
+			continue
+		}
+		taken[st.LocalPort] = true
+		if st.LocalPort == s.LocalPort {
+			clashing = append(clashing, f)
+			if first == nil {
+				first = &st
+			}
+		}
+	}
+	if len(clashing) > 0 && !replace {
+		m.mu.Unlock()
+		return Status{}, &PortInUseError{Port: s.LocalPort, By: first, Suggested: nextFreePort(s.Address, s.LocalPort, taken)}
+	}
+	if len(clashing) == 0 && explicit && !portFree(s.Address, s.LocalPort) {
+		m.mu.Unlock()
+		return Status{}, &PortInUseError{Port: s.LocalPort, Suggested: nextFreePort(s.Address, s.LocalPort, taken)}
+	}
+	// Replacing: forget the old forwards in the same step as adding the new
+	// one, so the saved set never holds both.
+	for _, o := range clashing {
+		for id, f := range m.forwards {
+			if f == o {
+				delete(m.forwards, id)
+			}
 		}
 	}
 	s.ID = newID()
 	f := &forward{status: Status{Spec: s, State: Stopped}}
 	m.forwards[s.ID] = f
 	m.mu.Unlock()
+	for _, o := range clashing {
+		m.stop(o)
+	}
 	if err := m.save(); err != nil {
 		return Status{}, err
 	}
@@ -296,6 +355,25 @@ func (m *Manager) Delete(id string) error {
 	}
 	m.stop(f)
 	return m.save()
+}
+
+// StopContext stops every running forward of a context ("" = all contexts),
+// keeping them saved, and returns how many it stopped.
+func (m *Manager) StopContext(contextName string) int {
+	m.mu.Lock()
+	var fs []*forward
+	for _, f := range m.forwards {
+		f.mu.Lock()
+		if f.status.State != Stopped && (contextName == "" || f.status.Context == contextName) {
+			fs = append(fs, f)
+		}
+		f.mu.Unlock()
+	}
+	m.mu.Unlock()
+	for _, f := range fs {
+		m.stop(f)
+	}
+	return len(fs)
 }
 
 // StopAll is called on shutdown.

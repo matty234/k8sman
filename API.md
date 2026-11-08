@@ -288,7 +288,8 @@ Forwards with `autoStart` start when the backend launches.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/portforwards` | `{forwards:[{id, context, kubeconfig, namespace, kind, name, port, localPort, address, autoStart, label, state, pod, remotePort, error, since, reconnects, connections, url}]}`. `state` is `stopped`, `starting`, `active`, `reconnecting` or `error` |
-| POST | `/api/portforwards` | create: `{namespace, kind: pod/service/deployment/statefulset/daemonset/replicaset, name, port (number or name), localPort (0 = auto), autoStart, label}` |
+| POST | `/api/portforwards` | create: `{namespace, kind: pod/service/deployment/statefulset/daemonset/replicaset, name, port (number or name), localPort (0 = auto), autoStart, label, replace}`. If `localPort` is held by another forward of ours, or by another process, it answers 409 `{reason: "LocalPortInUse", usedBy, suggestedPort}` (`usedBy` is `namespace/kind/name:port`, empty when another process holds it). With `replace: true` the forward holding the port is stopped and forgotten, and the new one starts in its place (not possible when another process holds the port) |
+| POST | `/api/portforwards/stop` | stop every running forward in one request, or only those of `?context=`; they stay saved. `{stopped: n}` |
 | PATCH | `/api/portforwards/{id}` | `{autoStart?, label?, localPort?}` |
 | POST | `/api/portforwards/{id}/start`, `/api/portforwards/{id}/stop` | start or stop a forward |
 | DELETE | `/api/portforwards/{id}` | stop and forget a forward |
