@@ -13,6 +13,7 @@ import '../ui/pages.dart';
 import 'addons_module.dart';
 import 'argocd_module.dart';
 import 'argoworkflows_module.dart';
+import 'dra_module.dart';
 import 'gateway_module.dart';
 import 'gpus_module.dart';
 import 'helm_module.dart';
@@ -34,6 +35,7 @@ const List<AppModule> builtInModules = [
   ArgoWorkflowsModule(),
   PrometheusModule(),
   GatewayModule(),
+  DraModule(),
   HubbleModule(),
 ];
 

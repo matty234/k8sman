@@ -129,7 +129,7 @@ enum Severity { ok, warn, error, neutral, info }
 Severity severityOf(String? status) {
   final s = (status ?? '').toLowerCase();
   if (s.isEmpty) return Severity.neutral;
-  const ok = {'running', 'ready', 'true', 'bound', 'active', 'complete', 'completed', 'succeeded', 'available', 'healthy', 'normal', 'established', 'reconciled'};
+  const ok = {'running', 'ready', 'true', 'bound', 'active', 'complete', 'completed', 'succeeded', 'available', 'healthy', 'normal', 'established', 'reconciled', 'allocated', 'reserved'};
   const warn = {'pending', 'containercreating', 'podinitializing', 'waiting', 'terminating', 'unknown', 'progressing', 'released', 'suspended', 'warning'};
   const err = {'failed', 'error', 'crashloopbackoff', 'imagepullbackoff', 'errimagepull', 'notready', 'false', 'lost', 'oomkilled', 'evicted', 'createcontainerconfigerror', 'invalidimagename', 'backofflimitexceeded', 'deadlineexceeded'};
   final head = s.split(RegExp(r'[,:]')).where((p) => p.isNotEmpty).toList();
