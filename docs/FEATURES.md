@@ -81,8 +81,13 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   types), saved per resource type.
 - Sorting, including quantity-aware sorting. A filter that combines terms
   (`status=Running restarts>3`, `status!=Running`, `memory>256Mi`, `age<1h`)
-  and suggests columns and their values as you type.
-- Drag headers to reorder columns and dividers to resize them; sort, widths and
+  and suggests columns and their values as you type. `!text` (or `-text`)
+  excludes rows containing it, `!status=Running` negates a column term, and
+  `/regex/` or `name=/^web-\d+/` match by case-insensitive regex; an invalid
+  regex outlines the box in red and matches nothing.
+- Drag headers to reorder columns and dividers to resize them; double-click a
+  divider to fit the column to its widest text (up to 600px; again to reset);
+  sort, widths and
   filter are remembered per kind across launches.
 - Multi-select with ⌘-click, ⇧-click, ⌘A and ⇧↑/⇧↓. Bulk delete and restart
   show progress and a failure report.

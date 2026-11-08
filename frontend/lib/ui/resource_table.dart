@@ -17,6 +17,7 @@ import '../metrics/quantity_cell.dart';
 import '../state/app_state.dart';
 import '../state/cluster_error.dart';
 import '../state/table_controller.dart';
+import '../state/table_query.dart' show cellText;
 import '../util/k8s.dart';
 import 'cluster_error_view.dart';
 import 'column_editor.dart';
@@ -219,7 +220,7 @@ class _TableBodyState extends State<_TableBody> {
         identical(h.columnErrors, tc.columnErrors)) {
       return h;
     }
-    return _headerCache = _Header(controller: tc, widths: widths, onResize: _resize, onResizeDone: _resizeDone, onResetWidth: _resetWidth, onReorder: _reorder);
+    return _headerCache = _Header(controller: tc, widths: widths, onResize: _resize, onResizeDone: _resizeDone, onFitWidth: _fitWidth, onReorder: _reorder);
   }
 
   /// Dragging a header divider: the column keeps that width (for this kind,
@@ -264,11 +265,42 @@ class _TableBodyState extends State<_TableBody> {
     context.read<AppState>().tablePrefs.changed(tc.type.gk);
   }
 
-  void _resetWidth(int col) {
+  /// Double-clicking a divider: the column takes the width of its widest
+  /// text (header, or up to 500 loaded rows), at most 600px. Saved like a
+  /// drag. Already fitted, it goes back to the default width instead.
+  void _fitWidth(int col) {
     final tc = context.read<TableController>();
     if (col >= tc.columns.length) return;
     final prefs = context.read<AppState>().tablePrefs;
-    if (prefs.of(tc.type.gk).widths.remove(tc.columns[col].name) != null) prefs.changed(tc.type.gk);
+    final c = tc.columns[col];
+    final widths = prefs.of(tc.type.gk).widths;
+    final theme = Theme.of(context);
+    final cellStyle = theme.textTheme.bodyMedium?.copyWith(fontSize: 12.5, fontWeight: col == 0 ? FontWeight.w500 : null);
+    final headStyle = theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600);
+    double measure(String t, TextStyle? st) {
+      final p = TextPainter(text: TextSpan(text: t, style: st), textDirection: TextDirection.ltr, maxLines: 1)..layout();
+      final w = p.width;
+      p.dispose();
+      return w;
+    }
+
+    // + header sort arrow; cells pad 6 each side. Status badges add padding.
+    var best = measure(c.name, headStyle) + 18;
+    final rows = tc.rows;
+    final step = math.max(1, (rows.length / 500).ceil());
+    for (var r = 0; r < rows.length; r += step) {
+      final v = rows[r].cells.elementAtOrNull(col);
+      final t = c.type == 'age' ? (parseTime(v) != null ? formatAge(parseTime(v)!) : cellText(v)) : cellText(v);
+      if (t.isEmpty) continue;
+      best = math.max(best, measure(t, cellStyle) + (c.type == 'status' ? 20 : 0));
+    }
+    final fit = (best + 14).clamp(_minColumnWidth, 600.0).ceilToDouble();
+    if (widths[c.name] == fit) {
+      widths.remove(c.name);
+    } else {
+      widths[c.name] = fit;
+    }
+    prefs.changed(tc.type.gk);
     setState(() {});
   }
 
@@ -805,7 +837,7 @@ class _Header extends StatefulWidget {
   final bool sortAscending;
   final Map<int, String> columnErrors;
   final void Function(int col, double width) onResize;
-  final void Function(int col) onResetWidth;
+  final void Function(int col) onFitWidth;
   final VoidCallback onResizeDone;
 
   /// A header was dragged from column [from] to position [to].
@@ -815,7 +847,7 @@ class _Header extends StatefulWidget {
     required this.widths,
     required this.onResize,
     required this.onResizeDone,
-    required this.onResetWidth,
+    required this.onFitWidth,
     required this.onReorder,
   }) : columns = controller.columns,
        sortColumn = controller.sortColumn,
@@ -896,7 +928,7 @@ class _HeaderState extends State<_Header> {
                   startWidth: () => widths[i],
                   onResize: (w) => widget.onResize(i, w),
                   onResizeDone: widget.onResizeDone,
-                  onReset: () => widget.onResetWidth(i),
+                  onReset: () => widget.onFitWidth(i),
                 ),
               ),
           if (from != null && to != null && to != from)
@@ -999,7 +1031,8 @@ class _HeaderState extends State<_Header> {
   }
 }
 
-/// A column divider in the header: drag to resize, double-click to reset.
+/// A column divider in the header: drag to resize, double-click to fit the content
+/// (again to reset).
 class _ResizeHandle extends StatefulWidget {
   static const width = 9.0;
   final double Function() startWidth;
