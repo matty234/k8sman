@@ -39,17 +39,17 @@ func TestFindOwned(t *testing.T) {
 		pod,
 		ownedObj("v1", "Pod", "b", "other-ns", "p2", "rs"),
 		ownedObj("v1", "Pod", "a", "unowned", "p3", ""),
-		ownedObj("v1", "ConfigMap", "a", "cm", "cm1", "rs"),
+		ownedObj("batch/v1", "Job", "a", "job", "j1", "rs"),
 	)
 	kc := kcache.New(dyn)
 	defer kc.Close()
 
 	items, partial := findOwned(context.Background(), kc, "u-rs", "a")
-	if len(items) != 2 || items[0].Kind != "ConfigMap" || items[1].Name != "p1" || items[1].Status != "Running" {
+	if len(items) != 2 || items[0].Kind != "Job" || items[1].Name != "p1" || items[1].Status != "Running" {
 		t.Fatalf("namespaced: %+v", items)
 	}
-	if !partial { // secrets were not cached
-		t.Error("expected partial")
+	if partial { // every listed kind was searched
+		t.Error("unexpected partial")
 	}
 	// A cluster-scoped owner reads what is already cached, in any namespace.
 	items, _ = findOwned(context.Background(), kc, "u-rs", "")

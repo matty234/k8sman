@@ -24,25 +24,28 @@ type ownedItem struct {
 }
 
 // Likely child kinds of any owner. ownedListed kinds start a shared watch
-// when none is warm (namespaced lookups only); ownedWarmOnly kinds are read
-// only if already cached, because holding every Secret in memory for an
-// "Owns" list is not worth it.
+// when none is warm (namespaced lookups only): the usual children of
+// controllers and operators. ownedWarmOnly kinds are read only if already
+// cached; opening an object shouldn't start a watch on every Secret,
+// ConfigMap and Service in its namespace.
 var (
 	ownedListed = []schema.GroupVersionResource{
-		gvrPods, gvrReplicaSets, gvrJobs, gvrPVCs, gvrServices,
+		gvrPods, gvrReplicaSets, gvrJobs, gvrPVCs,
 		{Group: "apps", Version: "v1", Resource: "controllerrevisions"},
-		{Group: "discovery.k8s.io", Version: "v1", Resource: "endpointslices"},
-		{Version: "v1", Resource: "endpoints"},
-		{Version: "v1", Resource: "configmaps"},
 	}
-	ownedWarmOnly = []schema.GroupVersionResource{{Version: "v1", Resource: "secrets"}}
+	ownedWarmOnly = []schema.GroupVersionResource{
+		gvrServices,
+		{Group: "discovery.k8s.io", Version: "v1", Resource: "endpointslices"},
+		{Version: "v1", Resource: "configmaps"},
+		{Version: "v1", Resource: "secrets"},
+	}
 )
 
 // findOwned returns the cached objects owned by uid, from every warm stream
 // plus the likely child kinds. ns narrows to one namespace (a namespaced
 // owner only owns objects in its own namespace); "" (a cluster-scoped owner)
 // searches all namespaces but, to avoid starting cluster-wide watches, only
-// reads kinds that are already cached. partial reports that some likely kind
+// reads kinds that are already cached. partial reports that a listed kind
 // could not be searched.
 //
 // There is no uid index: this scans the cached objects (an in-memory loop,
@@ -84,11 +87,10 @@ func findOwned(ctx context.Context, kc *kcache.Cache, uid, ns string) (items []o
 		}
 		scan(objs)
 	}
-	for _, gvr := range ownedWarmOnly {
-		if _, ok := kc.Cached(kcache.Key{GVR: gvr, Namespace: ns}); !ok {
-			partial = true
-		}
-	}
+	// Warm-only kinds don't count towards partial: they're read whenever
+	// cached (via Warm above), and flagging them would show the hint on
+	// nearly every object.
+	_ = ownedWarmOnly
 	sort.Slice(items, func(i, j int) bool {
 		a, b := items[i], items[j]
 		if a.Kind != b.Kind {
