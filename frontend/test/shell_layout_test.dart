@@ -336,12 +336,13 @@ void main() {
       expect(find.text('Delete'), findsOneWidget);
     });
 
-    testWidgets('Job: a single overflow action is an icon button, not a menu', (tester) async {
+    testWidgets('Job: Copy kubectl and Delete share the ⋯ menu', (tester) async {
       await open(tester, 'batch', 'Job', 'migrate-db');
       expect(find.byType(OutlinedButton), findsNWidgets(2)); // Logs, Suspend
-      expect(find.byTooltip('More actions'), findsNothing);
-      expect(find.byKey(const ValueKey('action-delete')), findsOneWidget);
-      expect(find.byTooltip('Delete'), findsOneWidget);
+      await tester.tap(find.byTooltip('More actions'));
+      await tester.pumpAndSettle();
+      expect(find.text('Copy kubectl…'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
     });
   });
 

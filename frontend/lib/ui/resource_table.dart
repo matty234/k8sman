@@ -25,6 +25,7 @@ import '../actions/actions.dart' show ResourceAction;
 import '../panels/registry.dart';
 import 'detail/detail_sidebar.dart' show resourceActionsFor;
 import 'keyboard_help.dart';
+import 'kubectl_menu.dart';
 import 'logs/open_logs.dart' show kLogsActionId, openPodsLogs;
 import 'row_context_menu.dart';
 import 'terminal/open_terminal.dart' show kTerminalActionId;
@@ -417,6 +418,9 @@ class _TableBodyState extends State<_TableBody> {
         for (final a in safe) item(a.icon, '${a.verb} ${rows.length} ${tc.type.resource}', () => _runBulk(a, rows)),
         const PopupMenuDivider(height: 9),
         item(Icons.content_copy, 'Copy names', () => copyToClipboard(context, names, label: '${rows.length} names')),
+        item(Icons.terminal, 'Copy kubectl command…', () {
+          showKubectlMenu(context, globalPosition, app: app, type: tc.type, refs: [for (final r in rows) (namespace: r.namespace, name: r.name)]);
+        }),
         item(Icons.deselect, 'Clear selection', tc.clearSelection),
         if (destructive.isNotEmpty) const PopupMenuDivider(height: 9),
         for (final a in destructive) item(a.icon, '${a.verb} ${rows.length} ${tc.type.resource}…', () => _runBulk(a, rows), danger: true),

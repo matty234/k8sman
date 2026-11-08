@@ -8,6 +8,7 @@ import '../api/models.dart';
 import '../panels/registry.dart';
 import '../state/app_state.dart';
 import 'detail/detail_sidebar.dart' show resourceActionsFor;
+import 'kubectl_menu.dart';
 
 /// Right-click menu for a table row: Open, the same resource actions the
 /// inspector header offers (logs, terminal, port-forward, scale, restart,
@@ -73,6 +74,9 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
       } catch (e) {
         if (context.mounted) showActionError(context, '$e');
       }
+    }),
+    item(Icons.terminal, 'Copy kubectl command…', () {
+      showKubectlMenu(context, globalPosition, app: app, type: type, refs: [(namespace: ns, name: row.name)], pod: object);
     }),
     if (destructive.isNotEmpty) const PopupMenuDivider(height: 9),
     for (final a in destructive) item(a.icon, a.label, () => a.run(context), danger: true),

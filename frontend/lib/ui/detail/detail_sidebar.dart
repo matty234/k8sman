@@ -12,6 +12,7 @@ import '../../panels/registry.dart';
 import '../../state/app_state.dart';
 import '../../state/table_controller.dart';
 import '../../util/k8s.dart';
+import '../kubectl_menu.dart';
 import '../logs/open_logs.dart';
 import '../terminal/open_terminal.dart';
 import '../theme.dart';
@@ -142,7 +143,24 @@ class _LiveObjectState extends State<_LiveObject> {
 
     final actions = ctx == null || _deleted ? const <ResourceAction>[] : _actionsFor(app, t, panel, ctx);
     final primary = actions.where((a) => !a.destructive).take(3).toList();
-    final rest = actions.where((a) => !primary.contains(a)).toList();
+    final others = actions.where((a) => !primary.contains(a)).toList();
+    // "Copy kubectl command…" sits after the other safe actions.
+    final rest = obj == null || _deleted
+        ? others
+        : [
+            ...others.where((a) => !a.destructive),
+            ResourceAction(
+              id: 'kubectl',
+              label: 'Copy kubectl…',
+              icon: Icons.terminal,
+              run: (context) async {
+                final box = context.findRenderObject() as RenderBox?;
+                final at = box == null ? Offset.zero : box.localToGlobal(Offset(box.size.width, box.size.height));
+                await showKubectlMenu(context, at, app: app, type: t.type, refs: [(namespace: t.namespace, name: t.name)], pod: obj);
+              },
+            ),
+            ...others.where((a) => a.destructive),
+          ];
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       // With no primary actions there is no action row: the destructive

@@ -88,6 +88,11 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   show progress and a failure report.
 - A right-click menu: Open, Copy name, Copy namespace/name, Copy YAML, and
   the kind's actions.
+- **Copy kubectl command…** (row menu, multi-select menu and the inspector's
+  ⋯ menu): `get -o yaml`, `describe`, Pod `logs -f` / `exec -it`, and
+  `rollout restart` / `status` for workloads, with `-n`, `--context` and
+  `--kubeconfig` as the app has them. Several rows give one command per
+  namespace.
 - Usage columns from metrics-server.
 - Empty in this namespace? A **Show all namespaces** button.
 - Clear error states for unreachable, timed-out, unauthorized, forbidden and
