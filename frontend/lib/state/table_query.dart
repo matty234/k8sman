@@ -7,6 +7,11 @@
 ///   `restarts>0`       numbers and quantities compare by value (`>=`, `<`, `<=`)
 ///   `age<1h`           age columns compare durations (s, m, h, d)
 ///   `"a b"`            quotes keep spaces in a term or value
+///   `!nginx`           no cell contains "nginx" (`-nginx` too); `!status=x`
+///                      negates a column term (same as `status!=x`)
+///   `/ngi+x$/`         any cell matches the regex (case-insensitive)
+///   `name=/^web-\d+/`  the Name column matches the regex (`!=` negates)
+/// A regex that doesn't compile matches nothing, and [TableQuery.error] says why.
 /// A `key=value` term whose key isn't a column is plain text, so `app=web`
 /// still finds that label in a Labels column.
 library;
@@ -119,7 +124,10 @@ typedef _Pred = bool Function(TableRowData row, DateTime now);
 /// A parsed query. Empty queries match everything.
 class TableQuery {
   final List<_Pred> _preds;
-  TableQuery._(this._preds);
+
+  /// The first invalid regex's message, or null. Such a term matches nothing.
+  final String? error;
+  TableQuery._(this._preds, this.error);
 
   bool get isEmpty => _preds.isEmpty;
   bool matches(TableRowData row, {DateTime? now}) {
@@ -130,22 +138,63 @@ class TableQuery {
   factory TableQuery.parse(String text, List<ColumnDef> columns) {
     final fields = filterFields(columns);
     final preds = <_Pred>[];
-    for (final t in tokenizeQuery(text)) {
+    String? error;
+    var badCount = 0;
+    // `/pattern/` → matcher (compiled once); null when it isn't one, and
+    // a never-matching one (with [error] set) when it doesn't compile.
+    bool Function(String)? regex(String v) {
+      if (v.length < 3 || !v.startsWith('/') || !v.endsWith('/')) return null;
+      try {
+        return RegExp(v.substring(1, v.length - 1), caseSensitive: false).hasMatch;
+      } on FormatException catch (e) {
+        error ??= e.message;
+        badCount++;
+        return (_) => false;
+      }
+    }
+
+    for (var t in tokenizeQuery(text)) {
+      var negate = false;
+      if (t.length > 1 && (t[0] == '!' || t[0] == '-') && !t.startsWith('!=')) {
+        negate = true;
+        t = t.substring(1);
+      }
+      final before = preds.length, bads = badCount;
+      _term(t, fields, preds, regex);
+      // Negate the term just added, unless it can never match (bad regex).
+      if (negate && preds.length > before) {
+        final p = preds.removeLast();
+        preds.add(badCount != bads ? p : (row, now) => !p(row, now));
+      }
+    }
+    return TableQuery._(preds, error);
+  }
+
+  static void _term(String t, List<FilterField> fields, List<_Pred> preds, bool Function(String)? Function(String) regex) {
+    {
       final split = splitTerm(t);
       final f = split == null ? null : _field(fields, split.$1);
+      final re = split == null || f == null ? regex(t) : null;
+      if (re != null) {
+        preds.add((row, _) => re(row.name) || row.cells.any((c) => re(cellText(c))));
+        return;
+      }
       if (split == null || f == null) {
         final needle = t.toLowerCase();
         preds.add((row, _) => row.name.toLowerCase().contains(needle) || row.cells.any((c) => cellText(c).toLowerCase().contains(needle)));
-        continue;
+        return;
       }
       final (_, op, rawValue) = split;
       final value = rawValue.toLowerCase();
-      if (value.isEmpty) continue; // still typing `status=`
+      if (value.isEmpty) return; // still typing `status=`
+      final colRe = op == '=' || op == ':' || op == '!=' ? regex(rawValue) : null;
       String text(TableRowData row) => switch (f.column) {
         null => f.key == 'name' ? row.name : (row.namespace ?? ''),
         final i => cellText(row.cells.elementAtOrNull(i)),
       };
       switch (op) {
+        case '=' || ':' || '!=' when colRe != null:
+          preds.add(op == '!=' ? (row, _) => !colRe(text(row)) : (row, _) => colRe(text(row)));
         case '=' || ':':
           preds.add((row, _) => text(row).toLowerCase().contains(value));
         case '!=':
@@ -155,7 +204,6 @@ class TableQuery {
           preds.add(cmp == null ? (_, _) => false : (row, now) => cmp(f.column == null ? null : row.cells.elementAtOrNull(f.column!), now));
       }
     }
-    return TableQuery._(preds);
   }
 }
 
@@ -211,8 +259,12 @@ List<FilterSuggestion> filterSuggestions(
     if (text[i] == '"') quoted = !quoted;
     if (!quoted && text[i].trim().isEmpty) start = i + 1;
   }
-  final before = text.substring(0, start);
-  final term = text.substring(start);
+  var before = text.substring(0, start);
+  var term = text.substring(start);
+  if (term.length > 1 && (term[0] == '!' || term[0] == '-') && !term.startsWith('!=')) {
+    before += term[0]; // `!sta` completes to `!status=`
+    term = term.substring(1);
+  }
   final split = splitTerm(term);
   final f = split == null ? null : _field(fields, split.$1);
 

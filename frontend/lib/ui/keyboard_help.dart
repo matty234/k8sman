@@ -33,7 +33,7 @@ Future<void> showKeyboardHelp(BuildContext context) => showDialog<void>(
 
 final _navigation = [
   (':', 'Command mode: :po, :ns <name>, :ctx, :view [save <name>]'),
-  ('/  ${shortcutLabel('F')}', 'Filter the table'),
+  ('/  ${shortcutLabel('F')}', 'Filter the table: status=x  !text  /regex/'),
   ('j / k  ↑ / ↓', 'Move the selection'),
   ('g / G', 'First / last row'),
   ('Enter', 'Open in the inspector'),

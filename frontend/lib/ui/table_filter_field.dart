@@ -59,6 +59,7 @@ class _TableFilterFieldState extends State<TableFilterField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    String? regexErrorOf(String t) => t.contains('/') && widget.controller.columns.isNotEmpty ? TableQuery.parse(t, widget.controller.columns).error : null;
     return RawAutocomplete<FilterSuggestion>(
       textEditingController: _text,
       focusNode: _focus,
@@ -86,21 +87,36 @@ class _TableFilterFieldState extends State<TableFilterField> {
           }
           return KeyEventResult.ignored;
         },
-        child: TextField(
+        child: ListenableBuilder(
+          listenable: text,
+          builder: (context, _) => _field(theme, text, focus, onSubmitted, regexErrorOf(text.text)),
+        ),
+      ),
+      optionsViewBuilder: (context, onSelected, options) => _SuggestionList(options: options.toList(), onSelected: onSelected),
+    );
+  }
+
+  Widget _field(ThemeData theme, TextEditingController text, FocusNode focus, VoidCallback onSubmitted, String? regexError) {
+    return TextField(
           key: const ValueKey('table-filter'),
           controller: text,
           focusNode: focus,
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Filter  (or status=…, age<1h)'),
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search, size: 15),
+            hintText: 'Filter  (or status=…, !text, /regex/)',
+            enabledBorder: regexError == null ? null : OutlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.error)),
+            focusedBorder: regexError == null ? null : OutlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.error, width: 2)),
+            suffixIcon: regexError == null
+                ? null
+                : Tooltip(message: 'Invalid regex: $regexError', child: Icon(Icons.error_outline, size: 15, color: theme.colorScheme.error)),
+          ),
           style: theme.textTheme.bodyMedium,
           onChanged: widget.controller.setFilter,
           onSubmitted: (_) {
             if (_shown.isEmpty) widget.controller.bodyFocus.requestFocus();
             onSubmitted();
           },
-        ),
-      ),
-      optionsViewBuilder: (context, onSelected, options) => _SuggestionList(options: options.toList(), onSelected: onSelected),
-    );
+        );
   }
 }
 
@@ -109,7 +125,7 @@ class _SuggestionList extends StatelessWidget {
   final ValueChanged<FilterSuggestion> onSelected;
   const _SuggestionList({required this.options, required this.onSelected});
 
-  static const _help = 'Terms combine: status=running restarts>0 · != excludes · quote "two words"';
+  static const _help = 'Terms combine: status=running restarts>0 · !text or != excludes · /regex/ · quote "two words"';
 
   @override
   Widget build(BuildContext context) {

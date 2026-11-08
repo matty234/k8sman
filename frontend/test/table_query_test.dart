@@ -58,6 +58,21 @@ void main() {
     expect(matching('restarts>lots'), isEmpty);
     expect(matching('"0.0.3"'), ['bad']);
     expect(matching('app=web'), isEmpty, reason: 'unknown key: plain text "app=web"');
+
+    // Bare negation, negated column terms, regexes.
+    expect(matching('!running'), ['job', 'bad']);
+    expect(matching('-running'), ['job', 'bad']);
+    expect(matching('!status=running'), ['job', 'bad']);
+    expect(matching('!status=running !crash'), ['job']);
+    expect(matching('/^(api|web)\$/'), ['api', 'web'], reason: 'regex on any cell, incl. name');
+    expect(matching('status=/^run/'), ['api', 'web']);
+    expect(matching('status!=/^run/'), ['job', 'bad']);
+    expect(matching('!/crash|complete/'), ['api', 'web']);
+    expect(matching('pod-ip=/10\\.0\\.1\\./'), ['job']);
+    expect(matching('/(/'), isEmpty, reason: 'invalid regex matches nothing');
+    expect(matching('!/(/'), isEmpty);
+    expect(TableQuery.parse('/(/', cols).error, isNotNull);
+    expect(TableQuery.parse('/a/', cols).error, isNull);
  
     // PVC "Used" (percent): compares by value; claims without stats never match.
     const used = [ColumnDef(name: 'Used', query: '.k8sman.usage.percent', type: 'percent')];
@@ -137,7 +152,7 @@ void main() {
     expect(tc().rows.map((r) => r.name), ['web', 'db', 'api']);
   });
 
-  testWidgets('drag a header divider to resize a column; double-click resets it', (tester) async {
+  testWidgets('drag a header divider to resize a column; double-click fits it, again resets', (tester) async {
     final api = TableFakeApi()
       ..onWatch = () => [WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [fakeRow('api'), fakeRow('web')]))];
     final app = await pumpTable(tester, api, deployType, size: const Size(1000, 600));
@@ -154,10 +169,18 @@ void main() {
     await tester.pump();
     expect(nameWidth(), 40, reason: 'has a minimum');
 
-    await tester.tap(handle.hitTestable());
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.tap(handle.hitTestable());
-    await tester.pump(const Duration(milliseconds: 400));
+    Future<void> doubleClick() async {
+      await tester.tap(handle.hitTestable());
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(handle.hitTestable());
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    await doubleClick();
+    final fitted = app.tablePrefs.of(deployType.gk).widths['Name']!;
+    expect(fitted, inInclusiveRange(60, 150), reason: 'fits "api"/"web" and the header, not the minimum');
+    expect(nameWidth(), fitted);
+    await doubleClick();
     expect(app.tablePrefs.of(deployType.gk).widths, isEmpty);
     await tester.pump(const Duration(seconds: 1));
     expect(api.tablePrefsPuts.last, (deployType.gk, null), reason: 'nothing left to save');
