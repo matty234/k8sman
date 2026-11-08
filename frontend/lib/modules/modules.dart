@@ -20,6 +20,7 @@ import 'gpus_module.dart';
 import 'helm_module.dart';
 import 'hubble_module.dart';
 import 'metrics_module.dart';
+import 'kyverno_module.dart';
 import 'module.dart';
 import 'prometheus_module.dart';
 
@@ -39,6 +40,7 @@ const List<AppModule> builtInModules = [
   DraModule(),
   ExternalSecretsModule(),
   HubbleModule(),
+  KyvernoModule(),
 ];
 
 /// Whether module [id] is on: not turned off in [disabled], nor any module

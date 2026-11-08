@@ -178,6 +178,13 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     warning when the Secret is missing), data mapping, provider settings
     (auth Secrets as links, never values), "Refresh now" (sets `force-sync`),
     and "Managed by ExternalSecret" on the Secret it owns.
+  - **Kyverno** (module, `kyverno.io` and `wgpolicyk8s.io`) ClusterPolicy and
+    Policy (rules, status, and the results they produced), PolicyReport and
+    ClusterPolicyReport (summary, results filterable by outcome), exceptions,
+    cleanup policies and 1.14+ `policies.kyverno.io` kinds in a "Kyverno"
+    sidebar section (only where served). Where Kyverno is found, any object
+    gets a **Policy results** tab from the cached reports (per-resource
+    reports by scope or owner, per-namespace ones by resource), failures first.
   - **Prometheus Operator** Prometheus, Alertmanager, PrometheusRule (live rule
     state), ServiceMonitor and PodMonitor (live target health).
 

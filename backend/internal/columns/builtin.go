@@ -260,6 +260,23 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Submits", Query: `.spec.submit.workflowTemplateRef.name // ""`},
 		ageCol,
 	},
+	// Kyverno. Newer versions keep the action per validate rule.
+	"clusterpolicies.kyverno.io": kyvernoPolicyCols,
+	"policies.kyverno.io":        kyvernoPolicyCols,
+	"policyexceptions.kyverno.io": {
+		{Name: "Policies", Query: `[.spec.exceptions[]?.policyName] | join(",")`},
+		ageCol,
+	},
+	"updaterequests.kyverno.io": {
+		{Name: "Type", Query: `.spec.requestType`},
+		{Name: "Policy", Query: `.spec.policy`},
+		{Name: "State", Type: "status", Query: `.status.state`},
+		ageCol,
+	},
+	"cleanuppolicies.kyverno.io":          kyvernoCleanupCols,
+	"clustercleanuppolicies.kyverno.io":   kyvernoCleanupCols,
+	"policyreports.wgpolicyk8s.io":        kyvernoReportCols,
+	"clusterpolicyreports.wgpolicyk8s.io": kyvernoReportCols,
 	// Gateway API. Status cells read "True", "False: <reason>",
 	// "Unknown: <reason>" or "Warning: <detail>" so they colour correctly.
 	"gatewayclasses.gateway.networking.k8s.io": {
