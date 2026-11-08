@@ -198,14 +198,17 @@ class _LiveObjectState extends State<_LiveObject> {
                     // each carry their own scroll view, which could draw a
                     // frame or two scrolled and then slide into place.
                     child: InstantTabView(children: [
-                      SelectionArea(child: ListView(
+                      // Laid out in full (not a lazy ListView): a handful of
+                      // sections, and the scrollbar keeps one size instead of
+                      // re-estimating the height as sections scroll in.
+                      SelectionArea(child: SingleChildScrollView(
                         key: PageStorageKey('overview-${ctx!.uid}'),
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                        children: [
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                           MetadataSection(ctx: ctx),
                           ..._safeSections(context, panel, ctx),
                           if (!panel.showsOwned && ctx.uid.isNotEmpty) OwnedSection(key: ValueKey('owned-${ctx.uid}'), uid: ctx.uid, namespace: ctx.namespace),
-                        ],
+                        ]),
                       )),
                       for (final x in extraTabs) Builder(builder: (c) => x.builder(c, ctx)),
                       YamlEditorTab(key: ValueKey('yaml-${ctx.uid}'), target: t, resourceVersion: dig<String>(obj, ['metadata', 'resourceVersion']) ?? '', editRequest: _editRequest),
