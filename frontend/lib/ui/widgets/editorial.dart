@@ -348,6 +348,9 @@ class StatItem {
   /// Colours the figure (and the note, with [noteTone]) and draws a short
   /// bar of [frac] under it: Severity.warn or Severity.error. Null: plain.
   final Severity? tone;
+
+  /// Overrides the colour [tone] gives (e.g. a page's own severity scale).
+  final Color? color;
   final double? frac;
   final bool noteTone;
 
@@ -366,6 +369,7 @@ class StatItem {
     this.of,
     this.note,
     this.tone,
+    this.color,
     this.frac,
     this.noteTone = false,
     this.onTap,
@@ -441,7 +445,7 @@ class _StatBlock extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     final tone = item.tone;
-    final color = tone == null ? null : severityColor(context, tone);
+    final color = item.color ?? (tone == null ? null : severityColor(context, tone));
     final big = theme.textTheme.headlineMedium?.copyWith(
       fontSize: 30,
       height: 1.1,
@@ -756,15 +760,21 @@ class SeverityBar extends StatelessWidget {
 class HairlineCell extends StatelessWidget {
   final Widget child;
   final Color? accent;
+
+  /// Selected (e.g. the active filter): the selection tint behind it.
+  final bool selected;
   final VoidCallback? onTap;
   final EdgeInsetsGeometry padding;
-  const HairlineCell({super.key, required this.child, this.accent, this.onTap, this.padding = const EdgeInsets.fromLTRB(12, 4, 6, 6)});
+  const HairlineCell({super.key, required this.child, this.accent, this.selected = false, this.onTap, this.padding = const EdgeInsets.fromLTRB(12, 4, 6, 6)});
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final cell = Container(
-      decoration: BoxDecoration(border: Border(left: BorderSide(color: accent ?? colors.separator, width: 2))),
+      decoration: BoxDecoration(
+        color: selected ? colors.selection : null,
+        border: Border(left: BorderSide(color: accent ?? colors.separator, width: 2)),
+      ),
       padding: padding,
       child: child,
     );
@@ -847,7 +857,7 @@ class _TitleRuleLayout extends MultiChildLayoutDelegate {
     double centre(Size s) => (h - s.height) / 2;
     var right = w;
     if (hasChild(_Slot.trailing)) {
-      final s = layoutChild(_Slot.trailing, BoxConstraints(maxWidth: w * 0.7, maxHeight: h));
+      final s = layoutChild(_Slot.trailing, BoxConstraints(maxWidth: w * 0.85, maxHeight: h));
       positionChild(_Slot.trailing, Offset(w - s.width, centre(s)));
       right = w - s.width - 10;
     }

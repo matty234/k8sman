@@ -272,7 +272,7 @@ class _SecurityViewState extends State<SecurityView> {
         DetailSection(
           title: 'Most permissive grants',
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(data.includeSystem ? 'including system' : 'excluding system defaults', style: hint),
+            Flexible(child: Text(data.includeSystem ? 'including system' : 'excluding system defaults', maxLines: 1, overflow: TextOverflow.ellipsis, style: hint)),
             const SizedBox(width: 8),
             TextButton(
               style: TextButton.styleFrom(visualDensity: VisualDensity.compact),

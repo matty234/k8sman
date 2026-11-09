@@ -7,6 +7,7 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import 'security_api.dart';
 
 // ---------------------------------------------------------------------------
@@ -140,31 +141,26 @@ class ObjectChip extends StatelessWidget {
 // Summary: score + category tiles
 // ---------------------------------------------------------------------------
 
+/// The posture at a glance: score, findings and the serious counts as
+/// large figures divided by hairlines, coloured only by severity.
 class SummaryLine extends StatelessWidget {
   final SecurityData data;
   const SummaryLine({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    final numStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: const [FontFeature.tabularFigures()]);
-    return Wrap(spacing: 18, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      Tooltip(
-        message: 'A rough posture score: 100 with no findings; each critical costs ~9 points, high ~4, medium ~1.5.',
-        child: Text.rich(TextSpan(children: [
-          TextSpan(text: '${data.score}', style: numStyle),
-          TextSpan(text: '/100 score', style: hint),
-        ])),
+    final score = data.score;
+    return StatStrip(minCell: 104, maxCell: 150, items: [
+      StatItem(
+        'score',
+        '$score',
+        of: '/ 100',
+        tooltip: 'A rough posture score: 100 with no findings; each critical costs ~9 points, high ~4, medium ~1.5.',
+        tone: score < 50 ? Severity.error : (score < 80 ? Severity.warn : null),
       ),
-      Text.rich(TextSpan(children: [TextSpan(text: '${data.findings.length}', style: numStyle), TextSpan(text: ' findings', style: hint)])),
+      StatItem(data.findings.length == 1 ? 'finding' : 'findings', '${data.findings.length}'),
       for (final s in SecSeverity.values.take(3))
-        if (data.countAll(s) > 0)
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            SevDot(s, size: 7),
-            const SizedBox(width: 5),
-            Text.rich(TextSpan(children: [TextSpan(text: '${data.countAll(s)}', style: numStyle), TextSpan(text: ' ${s.name}', style: hint)])),
-          ]),
+        if (data.countAll(s) > 0) StatItem(s.name, '${data.countAll(s)}', color: sevColor(context, s)),
     ]);
   }
 }
@@ -177,6 +173,9 @@ IconData categoryIcon(String id) => switch (id) {
       _ => Icons.checklist_outlined,
     };
 
+/// One unboxed cell per category, side by side: a hairline down the left
+/// (in the colour of its worst finding), the name, the total and a dot per
+/// severity. Clicking one filters the page to it.
 class CategoryTiles extends StatelessWidget {
   final List<SecCategory> categories;
   final String? selected;
@@ -186,13 +185,10 @@ class CategoryTiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
-      const gap = 10.0;
       final cols = (box.maxWidth / 170).floor().clamp(1, categories.length.clamp(1, 5));
-      final w = ((box.maxWidth - gap * (cols - 1)) / cols).floorToDouble();
-      return Wrap(spacing: gap, runSpacing: gap, children: [
-        for (final c in categories)
-          SizedBox(width: w, child: _CategoryTile(category: c, selected: selected == c.id, onTap: () => onSelect(c.id))),
-      ]);
+      return evenGrid([
+        for (final c in categories) _CategoryTile(category: c, selected: selected == c.id, onTap: () => onSelect(c.id)),
+      ], cols, gap: 20, runGap: 14);
     });
   }
 }
@@ -206,65 +202,59 @@ class _CategoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = AppColors.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    return Material(
-      color: selected ? theme.colorScheme.primary.withValues(alpha: 0.08) : theme.colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: selected ? theme.colorScheme.primary.withValues(alpha: 0.7) : colors.separator, width: selected ? 1.2 : 0.5),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
+    final worst = SecSeverity.values.take(3).where((s) => category.count(s) > 0).firstOrNull;
+    return Tooltip(
+      message: selected ? 'Show all findings' : 'Show only ${category.title}',
+      waitDuration: const Duration(milliseconds: 600),
+      child: HairlineCell(
+        selected: selected,
+        accent: selected ? theme.colorScheme.primary : (worst == null ? null : sevColor(context, worst)),
         onTap: onTap,
-        child: Tooltip(
-          message: selected ? 'Show all findings' : 'Show only ${category.title}',
-          waitDuration: const Duration(milliseconds: 600),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Icon(categoryIcon(category.id), size: 15, color: theme.hintColor),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(category.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                ),
-              ]),
-              const SizedBox(height: 6),
-              Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                Text('${category.total}',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      height: 1.1,
-                      color: theme.colorScheme.onSurface,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    )),
-                const SizedBox(width: 6),
-                Flexible(child: Text(category.total == 1 ? 'finding' : 'findings', maxLines: 1, overflow: TextOverflow.ellipsis, style: hint)),
-              ]),
-              const SizedBox(height: 6),
-              SizedBox(
-                height: 16,
-                child: category.total == 0
-                    ? Text('Nothing found', style: hint)
-                    : ClipRect(
-                        child: Wrap(spacing: 10, clipBehavior: Clip.hardEdge, children: [
-                          for (final s in SecSeverity.values)
-                            if (category.count(s) > 0)
-                              Tooltip(
-                                message: '${category.count(s)} ${s.name}',
-                                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                  SevDot(s, size: 7),
-                                  const SizedBox(width: 4),
-                                  Text('${category.count(s)}', style: hint?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
-                                ]),
-                              ),
-                        ]),
-                      ),
-              ),
-            ]),
+        padding: const EdgeInsets.fromLTRB(12, 4, 8, 6),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(categoryIcon(category.id), size: 14, color: theme.hintColor),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(category.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            ),
+          ]),
+          const SizedBox(height: 2),
+          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+            Text('${category.total}',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w300,
+                  letterSpacing: -0.4,
+                  height: 1.15,
+                  color: theme.colorScheme.onSurface,
+                  fontFeatures: tabularFigures,
+                )),
+            const SizedBox(width: 6),
+            Flexible(child: Text(category.total == 1 ? 'finding' : 'findings', maxLines: 1, overflow: TextOverflow.ellipsis, style: hint)),
+          ]),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 16,
+            child: category.total == 0
+                ? Text('Nothing found', style: hint)
+                : ClipRect(
+                    child: Wrap(spacing: 10, clipBehavior: Clip.hardEdge, children: [
+                      for (final s in SecSeverity.values)
+                        if (category.count(s) > 0)
+                          Tooltip(
+                            message: '${category.count(s)} ${s.name}',
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              SevDot(s, size: 7),
+                              const SizedBox(width: 4),
+                              Text('${category.count(s)}', style: hint?.copyWith(fontFeatures: tabularFigures)),
+                            ]),
+                          ),
+                    ]),
+                  ),
           ),
-        ),
+        ]),
       ),
     );
   }
