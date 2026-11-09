@@ -198,16 +198,14 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
 
     try {
       _watch = _api.watch(t.type.ref, namespace: t.namespace, fieldSelector: 'metadata.name=${t.name}').listen((m) {
-        switch (m.type) {
-          case 'SNAPSHOT':
-            final row = m.table?.rows.where((r) => r.name == t.name).firstOrNull;
-            row == null ? seen('DELETED', null) : seen('MODIFIED', row);
-          case 'BATCH':
-            for (final e in m.events) {
+        for (final e in m.frames) {
+          switch (e.type) {
+            case 'SNAPSHOT':
+              final row = e.table?.rows.where((r) => r.name == t.name).firstOrNull;
+              row == null ? seen('DELETED', null) : seen('MODIFIED', row);
+            case 'ADDED' || 'MODIFIED' || 'DELETED':
               seen(e.type, e.row);
-            }
-          case 'ADDED' || 'MODIFIED' || 'DELETED':
-            seen(m.type, m.row);
+          }
         }
       }, onError: (Object _) {}, cancelOnError: true);
     } catch (_) {

@@ -197,6 +197,9 @@ class WatchMessage {
   /// On BATCH (only with `batch=true`): ADDED/MODIFIED/DELETED frames to
   /// apply in order, with one UI update for the lot.
   final List<WatchMessage> events;
+  /// This frame, or a BATCH's events in order.
+  Iterable<WatchMessage> get frames => type == 'BATCH' ? events : [this];
+
   const WatchMessage({required this.type, this.table, this.row, this.error, this.reason, this.code, this.host, this.namespace, this.events = const []});
 
   factory WatchMessage.fromJson(Json j) => WatchMessage(

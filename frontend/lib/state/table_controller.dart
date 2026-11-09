@@ -10,6 +10,7 @@ import '../api/models.dart';
 import '../metrics/quantity.dart';
 import 'cluster_error.dart';
 import 'namespace_scope.dart';
+import 'reconnecting_watch.dart';
 import 'saved_views.dart';
 import 'startup_gate.dart';
 import 'table_prefs.dart';
@@ -93,32 +94,32 @@ class TableController extends ChangeNotifier {
   /// forbids them) while the others show their rows.
   final Map<String, ClusterError> partialErrors = {};
 
-  StreamSubscription<WatchMessage>? _sub;
-  Timer? _retry;
   Timer? _failureTimer;
-  int _attempt = 0;
   bool _disposed = false;
 
-  void _connect() {
-    _sub?.cancel();
-    partialErrors.clear();
-    // One namespace (or all) goes as `namespace`, as it always did; only a
-    // set needs `namespaces`.
-    final multi = type.namespaced && scope.isMulti;
-    _sub = api.watch(type.ref, namespace: type.namespaced ? scope.single : null, scope: multi ? scope : null, columns: session?.columns).listen(
-      _onMessage,
-      onError: (Object e) => _onDisconnect(ClusterError.fromException(e)),
-      onDone: () => _onDisconnect(null),
-    );
-  }
+  late final _watch = ReconnectingWatch(
+    open: () {
+      partialErrors.clear();
+      // One namespace (or all) goes as `namespace`, as it always did; only a
+      // set needs `namespaces`.
+      final multi = type.namespaced && scope.isMulti;
+      return api.watch(type.ref, namespace: type.namespaced ? scope.single : null, scope: multi ? scope : null, columns: session?.columns);
+    },
+    onFrame: _onMessage,
+    onLost: (e) {
+      // A clean close after an ERROR frame keeps that (more specific) error.
+      if (e != null) _setFailure(ClusterError.fromException(e));
+      notifyListeners();
+    },
+  );
+
+  void _connect() => _watch.start();
 
   /// Reconnect now (the Retry button), keeping rows and the shown failure
   /// until the result is in.
   void retry() {
     if (_disposed) return;
-    _attempt = 0;
-    _retry?.cancel();
-    _connect();
+    _watch.restart();
   }
 
   void _setFailure(ClusterError f) {
@@ -142,7 +143,7 @@ class TableController extends ChangeNotifier {
 
   void _onMessage(WatchMessage m) {
     // A BATCH frame applies its events in order and notifies once.
-    final prune = m.type == 'BATCH' ? m.events.fold(false, (p, e) => _apply(e) || p) : _apply(m);
+    final prune = m.frames.fold(false, (p, e) => _apply(e) || p);
     if (prune) _pruneSelection();
     notifyListeners();
   }
@@ -163,7 +164,7 @@ class TableController extends ChangeNotifier {
         loaded = true;
         StartupGate.firstContentShown();
         _clearFailure();
-        _attempt = 0;
+        _watch.resetBackoff();
         return true;
       case 'ADDED' || 'MODIFIED':
         final r = m.row;
@@ -185,29 +186,7 @@ class TableController extends ChangeNotifier {
     return false;
   }
 
-  /// Base and cap of the reconnect backoff.
-  static const _backoffBase = Duration(milliseconds: 500);
-  static const _backoffCap = Duration(seconds: 16);
-  static final _random = math.Random();
-
-  void _onDisconnect(ClusterError? err) {
-    if (_disposed) return;
-    // A clean close after an ERROR frame keeps that (more specific) error.
-    if (err != null) _setFailure(err);
-    notifyListeners();
-    final delay = reconnectDelay(_attempt, _random);
-    _attempt++;
-    _retry?.cancel();
-    _retry = Timer(delay, _connect);
-  }
-
-  /// Exponential backoff (500 ms doubling to 16 s) with "equal jitter": a
-  /// random delay in [d/2, d], so many tables (and windows) that lost the
-  /// backend together don't reconnect in lockstep.
-  static Duration reconnectDelay(int attempt, math.Random random) {
-    final d = math.min(_backoffBase.inMilliseconds * (1 << attempt.clamp(0, 5)), _backoffCap.inMilliseconds);
-    return Duration(milliseconds: d ~/ 2 + random.nextInt(d ~/ 2 + 1));
-  }
+  static Duration reconnectDelay(int attempt, math.Random random) => ReconnectingWatch.delay(attempt, random);
 
   // ---- selection ----
 
@@ -420,9 +399,8 @@ class TableController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _retry?.cancel();
     _failureTimer?.cancel();
-    _sub?.cancel();
+    _watch.stop();
     bodyFocus.dispose();
     filterFocus.dispose();
     super.dispose();

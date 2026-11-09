@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -10,7 +9,7 @@ import '../../api/models.dart';
 import '../../modules/modules.dart' show moduleInspectorTabs, moduleStatuses;
 import '../../panels/registry.dart';
 import '../../state/app_state.dart';
-import '../../state/table_controller.dart';
+import '../../state/reconnecting_watch.dart';
 import '../../util/k8s.dart';
 import '../kubectl_menu.dart';
 import '../links_ui.dart';
@@ -62,8 +61,14 @@ class _LiveObjectState extends State<_LiveObject> {
   static final _recent = <DetailTarget, Json>{};
   bool _deleted = false;
   String? _error;
-  StreamSubscription<WatchMessage>? _sub;
-  Timer? _retry;
+  late final _watch = ReconnectingWatch(
+    open: () {
+      final t = widget.target;
+      return context.read<ApiClient>().watch(t.type.ref, namespace: t.namespace, fieldSelector: 'metadata.name=${t.name}', includeObject: true);
+    },
+    // A BATCH frame: apply its events in order, rebuild once.
+    onFrame: (m) => setState(() => m.frames.forEach(_apply)),
+  );
   /// The tab last open, by kind and label (see build).
   ({String gk, String label})? _openTab;
 
@@ -74,7 +79,7 @@ class _LiveObjectState extends State<_LiveObject> {
   void initState() {
     super.initState();
     _object = widget.target.seed;
-    _subscribe();
+    _watch.restart();
     // Module tabs can depend on a module's detection (e.g. Hubble's Flows
     // tab only where Hubble is installed).
     moduleStatuses.addListener(_onModuleStatus);
@@ -86,10 +91,8 @@ class _LiveObjectState extends State<_LiveObject> {
     final t = widget.target;
     if (t == old.target) return;
     // The state outlives the target: no blank frame, tab and sections kept.
-    _sub?.cancel();
-    _retry?.cancel();
+    _watch.stop();
     _spinTimer?.cancel();
-    _attempt = 0;
     _deleted = false;
     _error = null;
     _spin = false;
@@ -103,23 +106,11 @@ class _LiveObjectState extends State<_LiveObject> {
     }
     // Holding an arrow key moves faster than it is worth watching.
     _settle?.cancel();
-    _settle = Timer(const Duration(milliseconds: 120), () => mounted ? _subscribe() : null);
+    _settle = Timer(const Duration(milliseconds: 120), () => mounted ? _watch.restart() : null);
   }
 
   void _onModuleStatus() {
     if (mounted) setState(() {});
-  }
-
-  void _subscribe() {
-    final t = widget.target;
-    _sub?.cancel();
-    _sub = context
-        .read<ApiClient>()
-        .watch(t.type.ref, namespace: t.namespace, fieldSelector: 'metadata.name=${t.name}', includeObject: true)
-        .listen((m) {
-      // A BATCH frame: apply its events in order, rebuild once.
-      setState(() => m.type == 'BATCH' ? m.events.forEach(_apply) : _apply(m));
-    }, onError: (Object e) => _reconnect(), onDone: _reconnect);
   }
 
   void _apply(WatchMessage m) {
@@ -141,7 +132,7 @@ class _LiveObjectState extends State<_LiveObject> {
   void _apply1(WatchMessage m) {
     switch (m.type) {
       case 'SNAPSHOT':
-        _attempt = 0;
+        _watch.resetBackoff();
         final rows = m.table?.rows ?? const [];
         if (rows.isEmpty) {
           _deleted = _object != null;
@@ -161,25 +152,12 @@ class _LiveObjectState extends State<_LiveObject> {
     }
   }
 
-  /// Consecutive reconnects without a SNAPSHOT in between.
-  int _attempt = 0;
-  static final _random = math.Random();
-
-  void _reconnect() {
-    if (!mounted) return;
-    _retry?.cancel();
-    // Same jittered exponential backoff as the tables (250 ms … 16 s).
-    final delay = TableController.reconnectDelay(_attempt++, _random);
-    _retry = Timer(delay, () => mounted ? _subscribe() : null);
-  }
-
   @override
   void dispose() {
     moduleStatuses.removeListener(_onModuleStatus);
-    _retry?.cancel();
     _settle?.cancel();
     _spinTimer?.cancel();
-    _sub?.cancel();
+    _watch.stop();
     super.dispose();
   }
 
