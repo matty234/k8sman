@@ -3,6 +3,8 @@
 /// timing, exit code, logs).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
@@ -188,17 +190,9 @@ class _WorkflowNodesViewState extends State<WorkflowNodesView> {
                   final node = id == null ? null : _nodes[id];
                   return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(
-                      child: ClipRect(
-                        child: InteractiveViewer(
-                          constrained: false,
-                          minScale: 0.2,
-                          maxScale: 2.5,
-                          boundaryMargin: const EdgeInsets.all(400),
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: WorkflowGraphCanvas(graph: _graph, selected: id, onSelect: _select),
-                          ),
-                        ),
+                      child: _FittedGraph(
+                        graph: _graph,
+                        child: WorkflowGraphCanvas(graph: _graph, selected: id, onSelect: _select),
                       ),
                     ),
                     if (node != null)
@@ -861,4 +855,77 @@ class _PodLinkState extends State<_PodLink> {
           );
         },
       );
+}
+
+/// A pannable, zoomable graph that starts fitted and centred in its view,
+/// and re-fits when the view resizes (e.g. a details panel opens) until the
+/// user pans or zooms; "Fit" puts it back.
+class _FittedGraph extends StatefulWidget {
+  final WfGraph graph;
+  final Widget child;
+  const _FittedGraph({required this.graph, required this.child});
+
+  @override
+  State<_FittedGraph> createState() => _FittedGraphState();
+}
+
+class _FittedGraphState extends State<_FittedGraph> {
+  static const _pad = 24.0;
+  final _ctrl = TransformationController();
+  Size? _view;
+  bool _userMoved = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _fit(Size view) {
+    final w = widget.graph.width + _pad * 2, h = widget.graph.height + _pad * 2;
+    if (w <= 0 || h <= 0 || view.isEmpty) return;
+    final scale = math.min(1.0, math.min(view.width / w, view.height / h)).clamp(0.2, 1.0);
+    final dx = (view.width - w * scale) / 2, dy = (view.height - h * scale) / 2;
+    _ctrl.value = Matrix4.identity()
+      ..translateByDouble(math.max(0.0, dx), math.max(0.0, dy), 0, 1)
+      ..scaleByDouble(scale, scale, 1, 1);
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        final view = box.biggest;
+        if (view != _view && !_userMoved) {
+          _view = view;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _fit(view);
+          });
+        }
+        _view = view;
+        return Stack(children: [
+          ClipRect(
+            child: InteractiveViewer(
+              transformationController: _ctrl,
+              constrained: false,
+              minScale: 0.2,
+              maxScale: 2.5,
+              boundaryMargin: const EdgeInsets.all(400),
+              onInteractionStart: (_) => _userMoved = true,
+              child: Padding(padding: const EdgeInsets.all(_pad), child: widget.child),
+            ),
+          ),
+          Positioned(
+            left: 8,
+            bottom: 8,
+            child: TextButton.icon(
+              key: const ValueKey('wf-graph-fit'),
+              onPressed: () {
+                _userMoved = false;
+                _fit(view);
+              },
+              icon: const Icon(Icons.fit_screen_outlined, size: 16),
+              label: const Text('Fit'),
+            ),
+          ),
+        ]);
+      });
 }
