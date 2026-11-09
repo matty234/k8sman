@@ -166,6 +166,17 @@ class ApiClient {
     await _send('PUT', 'settings/namespaces', const {}, {'context': ?context, 'namespaces': namespaces});
   }
 
+  /// Namespaces the user starred for [context] (the current one if null).
+  Future<List<String>> getFavouriteNamespaces({String? context}) async {
+    final j = await _get('settings/favourite-namespaces', {'context': context}) as Json;
+    return [for (final n in (j['namespaces'] as List? ?? const [])) '$n'];
+  }
+
+  /// Replaces the starred namespaces for [context].
+  Future<void> putFavouriteNamespaces(List<String> namespaces, {String? context}) async {
+    await _send('PUT', 'settings/favourite-namespaces', const {}, {'context': ?context, 'namespaces': namespaces});
+  }
+
   /// One connection step for the current context: `reach` (does anything
   /// answer at the server address? fails in ~10 s) or `auth` (do the
   /// credentials work? runs the exec plugin, which may wait for a browser

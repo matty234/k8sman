@@ -112,6 +112,15 @@ class TableFakeApi extends ApiClient {
   @override
   Future<void> putRememberedNamespaces(List<String> namespaces, {String? context}) async => remembered = [...namespaces];
 
+  /// Starred namespaces (GET/PUT /api/settings/favourite-namespaces).
+  List<String> favourites = [];
+
+  @override
+  Future<List<String>> getFavouriteNamespaces({String? context}) async => favourites;
+
+  @override
+  Future<void> putFavouriteNamespaces(List<String> namespaces, {String? context}) async => favourites = [...namespaces];
+
   /// Names whose action fails with this message.
   Map<String, String> failures = {};
 

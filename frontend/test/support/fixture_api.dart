@@ -89,6 +89,12 @@ class FixtureApi extends ApiClient {
   Future<void> putRememberedNamespaces(List<String> namespaces, {String? context}) async {}
 
   @override
+  Future<List<String>> getFavouriteNamespaces({String? context}) async => [];
+
+  @override
+  Future<void> putFavouriteNamespaces(List<String> namespaces, {String? context}) async {}
+
+  @override
   Future<({List<String> namespaces, String? defaultNamespace, bool listed})> namespaces() async =>
       (namespaces: List<String>.from(fixture('api-namespaces.json')['namespaces']), defaultNamespace: 'demo', listed: true);
 

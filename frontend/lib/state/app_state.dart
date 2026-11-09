@@ -186,6 +186,31 @@ class AppState extends ChangeNotifier {
   /// settings.json), in the order added. For users who can't list namespaces.
   List<String> rememberedNamespaces = const [];
 
+  /// Namespaces the user starred for this context (saved in settings.json),
+  /// sorted by name.
+  List<String> favouriteNamespaces = const [];
+
+  /// Stars [ns], or unstars it if it is starred.
+  Future<void> toggleFavouriteNamespace(String ns) async {
+    favouriteNamespaces = favouriteNamespaces.contains(ns)
+        ? [for (final n in favouriteNamespaces) if (n != ns) n]
+        : ([...favouriteNamespaces, ns]..sort());
+    notifyListeners();
+    try {
+      await api.putFavouriteNamespaces(favouriteNamespaces, context: currentContext);
+    } catch (_) {
+      // Local convenience only; the star still applies for this session.
+    }
+  }
+
+  /// The scope to fall back to when a selection is cleared: the kubeconfig
+  /// namespace if it sets one (what the app opens in), else all namespaces,
+  /// or, where they can't be listed, a remembered one or `default`.
+  NamespaceScope get defaultNamespaceScope =>
+      kubeconfigNamespace != null
+          ? NamespaceScope.single(kubeconfigNamespace)
+          : (namespacesListed ? NamespaceScope.all : NamespaceScope.single(rememberedNamespaces.firstOrNull ?? 'default'));
+
   /// The kubeconfig context's own namespace, if it sets one.
   String? kubeconfigNamespace;
 
@@ -372,6 +397,11 @@ class AppState extends ChangeNotifier {
         rememberedNamespaces = await api.getRememberedNamespaces(context: currentContext);
       } catch (_) {
         rememberedNamespaces = const [];
+      }
+      try {
+        favouriteNamespaces = [...await api.getFavouriteNamespaces(context: currentContext)]..sort();
+      } catch (_) {
+        favouriteNamespaces = const [];
       }
       if (stale()) return;
       if (namespaceScope.isAll) {
