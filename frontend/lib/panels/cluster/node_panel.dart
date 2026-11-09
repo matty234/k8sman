@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 
-import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../gpu/gpu_sections.dart';
+import '../../metrics/metrics_api.dart' show Usage;
+import '../../metrics/quantity.dart' show formatPercent;
 import '../../prometheus/metric_history_chart.dart';
 import '../../metrics/network_usage.dart';
 import '../../metrics/node_usage.dart';
+import '../../ui/nodes/nodes_view.dart' show podHasProblem;
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
 import '../dra/dra_sections.dart';
+import '../network/inspector_kit.dart';
 import '../panel.dart';
 import 'logic.dart';
 import 'widgets.dart';
-import '../../util/pod.dart';
 
 const _pressureTypes = ['MemoryPressure', 'DiskPressure', 'PIDPressure', 'NetworkUnavailable'];
 
@@ -27,41 +30,187 @@ class NodePanel extends ResourcePanel {
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final status = ctx.status;
     final labels = asMap(ctx.metadata['labels']);
+    final conds = asMapList(status['conditions']);
+    final bad = [for (final c in conds) if (c['type'] == 'Ready' ? c['status'] != 'True' : c['status'] != 'False') '${c['type']}'];
+    final taints = asMapList(ctx.spec['taints']);
+    final addrs = asMapList(status['addresses']);
+    final info = asMap(status['nodeInfo']);
+    final images = asMapList(status['images']);
+    final cap = asMap(status['capacity']);
+    final alloc = asMap(status['allocatable']);
     return [
-      // Metrics history first, as on pods (hidden without Prometheus).
-      nodeHistory(ctx),
-      // Live network from the kubelet when there is no Prometheus.
-      liveNetworkSection(ctx),
-      DetailSection(title: 'Node status', icon: Icons.dns_outlined, child: _StatusBlock(ctx)),
-      _NodePods(key: ValueKey(ctx.uid), api: ctx.api, nodeName: ctx.name, allocatable: asMap(status['allocatable'])),
+      // Is this node OK? Status, pods and usage (one fetch of its pods).
+      _NodeView(key: ValueKey(ctx.uid), ctx: ctx),
       gpuNodeSection(ctx),
       draNodeSection(ctx),
-      DetailSection(
-        title: 'Conditions',
-        icon: Icons.fact_check_outlined,
+      // Reference detail, collapsed behind a one-line summary.
+      PodSection(
+        id: 'node-capacity',
+        title: 'Capacity & allocatable',
         initiallyExpanded: false,
+        trailing: SectionSummary([
+          if (alloc['cpu'] != null) '${formatCpu(parseCpuMillis(alloc['cpu']))} cpu',
+          if (alloc['memory'] != null) formatBytes(parseBytes(alloc['memory'])),
+          if (alloc['pods'] != null) '${alloc['pods']} pods',
+          if (cap.isEmpty && alloc.isEmpty) 'not reported',
+        ].join(' · ')),
+        child: _CapacityTable(status),
+      ),
+      PodSection(
+        id: 'node-taints',
+        title: 'Taints',
+        initiallyExpanded: false,
+        trailing: SectionSummary(taints.isEmpty ? 'none' : taints.map((t) => '${t['key']}'.split('/').last).join(' · ')),
+        child: taints.isEmpty
+            ? const Padding(padding: EdgeInsets.only(left: 4), child: Text('No taints: any pod can be scheduled here'))
+            : Wrap(spacing: 4, runSpacing: 4, children: [for (final t in taints) _TaintChip(t)]),
+      ),
+      PodSection(
+        id: 'node-conditions',
+        title: 'Conditions',
+        initiallyExpanded: false,
+        trailing: SectionSummary(
+          conds.isEmpty ? 'none' : (bad.isEmpty ? 'all OK' : bad.join(', ')),
+          color: bad.isEmpty ? null : severityColor(context, Severity.error),
+        ),
         child: ConditionsTable(status['conditions'] as List?),
       ),
-      DetailSection(title: 'Addresses', icon: Icons.lan_outlined, child: _Addresses(ctx)),
-      DetailSection(title: 'Capacity vs allocatable', icon: Icons.memory, child: _CapacityTable(status)),
-      DetailSection(title: 'System info', icon: Icons.info_outline, child: _SystemInfo(ctx, labels)),
-      DetailSection(
+      PodSection(
+        id: 'node-system',
+        title: 'System info',
+        initiallyExpanded: false,
+        trailing: SectionSummary([
+          ?info['osImage'] as String?,
+          if (info['containerRuntimeVersion'] != null) '${info['containerRuntimeVersion']}'.replaceFirst('://', ' '),
+        ].join(' · ')),
+        child: _SystemInfo(ctx, labels),
+      ),
+      PodSection(
+        id: 'node-addresses',
+        title: 'Addresses',
+        initiallyExpanded: false,
+        trailing: SectionSummary(addrs.isEmpty ? 'none' : addrs.map((a) => '${a['address']}').join(' · ')),
+        child: _Addresses(ctx),
+      ),
+      PodSection(
+        id: 'node-images',
         title: 'Images',
-        icon: Icons.layers_outlined,
-        trailing: Text('${asMapList(status['images']).length}', style: Theme.of(context).textTheme.labelSmall),
-        child: _Images(asMapList(status['images'])),
+        initiallyExpanded: false,
+        trailing: SectionSummary(() {
+          final total = images.fold<double>(0, (s, i) => s + ((i['sizeBytes'] as num?)?.toDouble() ?? 0));
+          return images.isEmpty ? 'none' : '${images.length} · ${formatBytes(total)}';
+        }()),
+        child: _Images(images),
       ),
     ];
   }
 }
 
-class _StatusBlock extends StatelessWidget {
+/// The node's status header (with live usage when metrics answer), its
+/// pods as compact rows, metrics history, live network and the allocated
+/// requests and limits, from one fetch of the pods on the node.
+class _NodeView extends StatefulWidget {
   final PanelContext ctx;
-  const _StatusBlock(this.ctx);
+  const _NodeView({super.key, required this.ctx});
+
+  @override
+  State<_NodeView> createState() => _NodeViewState();
+}
+
+class _NodeViewState extends State<_NodeView> {
+  late Future<List<Json>> _future = _fetch();
+
+  PanelContext get ctx => widget.ctx;
+
+  @override
+  void didUpdateWidget(covariant _NodeView old) {
+    super.didUpdateWidget(old);
+    if (old.ctx.name != ctx.name) _future = _fetch();
+  }
+
+  Future<List<Json>> _fetch() => ctx.api.items(const ResourceRef(resource: 'pods'), fieldSelector: 'spec.nodeName=${ctx.name}');
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final allocatable = asMap(ctx.status['allocatable']);
+    return FutureBuilder<List<Json>>(
+      future: _future,
+      builder: (context, snap) {
+        final pods = snap.data;
+        final allocation = pods == null ? null : nodeAllocation(pods);
+        final cpu = parseCpuMillis(allocatable['cpu']);
+        final mem = parseBytes(allocatable['memory']);
+        final t = allocation?.total;
+        String pct(double used, double? of) => of == null || of <= 0 ? '–' : formatPercent(used / of);
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          NodeUsagePoller(
+            api: ctx.api,
+            builder: (context, usage, error) => _NodeHeader(ctx, usage: usage?[ctx.name]?.usage, pods: pods, allocation: allocation),
+          ),
+          PodSection(
+            id: 'node-pods',
+            title: 'Pods',
+            trailing: SectionSummary(pods == null ? '' : _podSummary(pods)),
+            child: snap.hasError
+                ? InlineMessage('${snap.error}', isError: true)
+                : pods == null
+                    ? const SectionSpinner()
+                    : PodRows(
+                        pods,
+                        showNamespace: true,
+                        hideTerminal: true,
+                        empty: 'No running pods',
+                        trailing: (p) {
+                          final r = podResources(p);
+                          return [
+                            if (r.cpuRequest > 0 || r.memRequest > 0)
+                              Tooltip(
+                                message: 'requests',
+                                child: Text(
+                                  [if (r.cpuRequest > 0) formatCpu(r.cpuRequest), if (r.memRequest > 0) formatBytes(r.memRequest)].join(' · '),
+                                  style: monoStyle(context, size: 11, color: Theme.of(context).hintColor),
+                                ),
+                              ),
+                          ];
+                        },
+                      ),
+          ),
+          // Metrics history (hidden without Prometheus), then live network
+          // from the kubelet when there is no Prometheus.
+          nodeHistory(ctx),
+          liveNetworkSection(ctx),
+          PodSection(
+            id: 'node-allocation',
+            title: 'Usage & allocation',
+            initiallyExpanded: false,
+            trailing: SectionSummary(t == null ? '' : 'requests: cpu ${pct(t.cpuRequest, cpu)} · memory ${pct(t.memRequest, mem)}'),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              NodeLiveUsage(api: ctx.api, nodeName: ctx.name, allocatable: allocatable, requests: t),
+              const SizedBox(height: 12),
+              if (allocation != null) _Allocation(allocation, allocatable) else if (snap.hasError) InlineMessage('${snap.error}', isError: true) else const SectionSpinner(),
+            ]),
+          ),
+        ]);
+      },
+    );
+  }
+
+  static String _podSummary(List<Json> pods) {
+    final active = pods.where((p) => !isTerminalPod(p)).toList();
+    final problems = active.where(podHasProblem).length;
+    return [plural(active.length, 'pod'), if (problems > 0) '$problems with problems'].join(' · ');
+  }
+}
+
+class _NodeHeader extends StatelessWidget {
+  final PanelContext ctx;
+  final Usage? usage;
+  final List<Json>? pods;
+  final NodeAllocation? allocation;
+  const _NodeHeader(this.ctx, {this.usage, this.pods, this.allocation});
+
+  @override
+  Widget build(BuildContext context) {
     final conds = asMapList(ctx.status['conditions']);
     Json? cond(String t) => conds.where((c) => c['type'] == t).firstOrNull;
     final ready = cond('Ready');
@@ -76,53 +225,72 @@ class _StatusBlock extends StatelessWidget {
     ];
     final taints = asMapList(ctx.spec['taints']);
     final unschedTaint = taints.any((t) => t['key'] == 'node.kubernetes.io/unschedulable');
+    final alloc = asMap(ctx.status['allocatable']);
+    final cpu = parseCpuMillis(alloc['cpu']);
+    final mem = parseBytes(alloc['memory']);
+    final maxPods = double.tryParse('${alloc['pods'] ?? ''}');
+    final t = allocation?.total;
+    final overcommitted = t != null && ((cpu != null && t.cpuLimit > cpu) || (mem != null && t.memLimit > mem));
+    final active = pods?.where((p) => !isTerminalPod(p)).toList();
+    final troubled = active?.where(podHasProblem).length ?? 0;
+    final version = dig<String>(ctx.status, ['nodeInfo', 'kubeletVersion']);
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (cordoned)
-        Callout(
-          severity: Severity.warn,
-          icon: Icons.block,
-          title: 'Cordoned: SchedulingDisabled',
-          child: Text(
-            'spec.unschedulable is true; no new pods will be scheduled here${unschedTaint ? '' : '.'}'
-            '${unschedTaint ? ' (node.kubernetes.io/unschedulable taint set).' : ''}',
-            style: theme.textTheme.bodySmall,
+    final insights = <PodInsight>[
+      if (readyStatus != 'True') PodInsight(readyStatus == 'Unknown' ? Severity.warn : Severity.error, 'Node is $readyText', [ready?['reason'], ready?['message']].whereType<String>().join(': ')),
+      for (final p in _pressureTypes)
+        if (cond(p) != null && cond(p)!['status'] != 'False')
+          PodInsight(
+            cond(p)!['status'] == 'True' ? Severity.error : Severity.warn,
+            cond(p)!['status'] == 'True' ? p : '$p: ${cond(p)!['status'] ?? 'unknown'}',
+            [cond(p)!['reason'], cond(p)!['message']].whereType<String>().join(': '),
           ),
+      if (cordoned)
+        PodInsight(
+          Severity.warn,
+          'Cordoned: SchedulingDisabled',
+          'spec.unschedulable is true; no new pods will be scheduled here${unschedTaint ? ' (node.kubernetes.io/unschedulable taint set).' : '.'}',
         ),
-      if (readyStatus != 'True')
-        Callout(
-          severity: Severity.error,
-          icon: Icons.error_outline,
-          title: 'Node is $readyText',
-          child: ready?['message'] != null ? Text('${ready!['message']}', style: theme.textTheme.bodySmall) : null,
-        ),
-      Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        StatusBadge(readyText, severity: readyStatus == 'True' ? Severity.ok : (readyStatus == 'Unknown' ? Severity.warn : Severity.error)),
-        if (cordoned) const StatusBadge('SchedulingDisabled', severity: Severity.warn),
-        for (final t in _pressureTypes)
-          if (cond(t) != null)
-            Tooltip(
-              message: '${cond(t)!['reason'] ?? ''}\n${cond(t)!['message'] ?? ''}'.trim(),
-              child: StatusBadge(t, dense: true, severity: _pressureSeverity(cond(t)!['status'] as String?)),
-            ),
-      ]),
-      const SizedBox(height: 8),
-      KeyValueTable([
-        ('Roles', roles.isEmpty ? '<none>' : Wrap(spacing: 4, runSpacing: 4, children: [for (final r in roles) Chipish(text: r)])),
-        ('Kubelet', dig<String>(ctx.status, ['nodeInfo', 'kubeletVersion'])),
-        ('Ready since', ready == null ? null : AgeText(ready['lastTransitionTime'], suffix: ' ago')),
-        ('Heartbeat', ready == null ? null : AgeText(ready['lastHeartbeatTime'], suffix: ' ago')),
-        ('Taints', taints.isEmpty ? 'none' : Wrap(spacing: 4, runSpacing: 4, children: [for (final t in taints) _TaintChip(t)])),
-        ('Pod CIDR', strList(ctx.spec['podCIDRs']).isNotEmpty ? strList(ctx.spec['podCIDRs']).join(', ') : ctx.spec['podCIDR'] as String?),
-      ], keyWidth: 100),
-    ]);
-  }
+      if (overcommitted) const PodInsight(Severity.warn, 'Overcommitted', 'The pods\' limits exceed what the node can allocate.'),
+      if (troubled > 0) PodInsight(Severity.warn, troubled == 1 ? '1 pod has problems' : '$troubled pods have problems', 'See Pods below.'),
+    ];
 
-  static Severity _pressureSeverity(String? s) => switch (s) {
-        'False' => Severity.ok,
-        'True' => Severity.error,
-        _ => Severity.warn,
-      };
+    Severity load(double f) => f >= 0.95 ? Severity.error : (f >= 0.8 ? Severity.warn : Severity.neutral);
+    HeaderFigure resource(String name, double? used, double? requested, double? of, String Function(double?) f) {
+      if (of == null || of <= 0) return HeaderFigure('–', name);
+      if (used != null) {
+        return HeaderFigure(formatPercent(used / of), '$name used',
+            severity: load(used / of), tooltip: '${f(used)} of ${f(of)} allocatable${requested != null ? ' · ${f(requested)} requested' : ''}');
+      }
+      if (requested != null) {
+        return HeaderFigure(formatPercent(requested / of), '$name req', severity: load(requested / of), tooltip: '${f(requested)} of ${f(of)} allocatable requested (no live metrics)');
+      }
+      return HeaderFigure('–', name);
+    }
+
+    final small = Theme.of(context).textTheme.bodySmall;
+    final internalIp = asMapList(ctx.status['addresses']).where((a) => a['type'] == 'InternalIP').map((a) => '${a['address']}').firstOrNull;
+    final cidrs = strList(ctx.spec['podCIDRs']).isNotEmpty ? strList(ctx.spec['podCIDRs']).join(', ') : ctx.spec['podCIDR'] as String?;
+    return InspectorHeader(
+      mark: worstOf(insights) ?? Severity.ok,
+      headline: readyText,
+      chips: [if (cordoned) const HeadlineChip('Cordoned', tooltip: 'SchedulingDisabled: no new pods will be scheduled here')],
+      detail: [roles.isEmpty ? 'no role' : roles.join(', '), ?version].join(' · '),
+      figures: [
+        resource('cpu', usage?.cpuMillis, t?.cpuRequest, cpu, formatCpu),
+        resource('mem', usage?.memoryBytes, t?.memRequest, mem, formatBytes),
+        HeaderFigure(active == null ? '–' : '${active.length}', 'pods',
+            of: maxPods == null ? null : '/${maxPods.toStringAsFixed(0)}',
+            severity: active != null && maxPods != null && active.length >= maxPods ? Severity.warn : Severity.neutral),
+      ],
+      insights: insights,
+      facts: KeyValueTable(keyWidth: 82, [
+        ('Ready since', ready == null ? null : AgeText(ready['lastTransitionTime'], suffix: ' ago', style: small)),
+        ('Heartbeat', ready == null ? null : AgeText(ready['lastHeartbeatTime'], suffix: ' ago', style: small)),
+        ('Internal IP', internalIp == null ? null : Align(alignment: Alignment.centerLeft, child: Chipish(text: internalIp, copyValue: internalIp))),
+        ('Pod CIDR', cidrs),
+      ]),
+    );
+  }
 }
 
 class _TaintChip extends StatelessWidget {
@@ -270,73 +438,6 @@ class _Images extends StatelessWidget {
   }
 }
 
-/// Fetches pods on the node once and renders "Allocated resources" and the
-/// pod list as two sections.
-class _NodePods extends StatefulWidget {
-  final ApiClient api;
-  final String nodeName;
-  final Json allocatable;
-  const _NodePods({super.key, required this.api, required this.nodeName, required this.allocatable});
-
-  @override
-  State<_NodePods> createState() => _NodePodsState();
-}
-
-class _NodePodsState extends State<_NodePods> {
-  late Future<List<Json>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _fetch();
-  }
-
-  @override
-  void didUpdateWidget(covariant _NodePods old) {
-    super.didUpdateWidget(old);
-    if (old.nodeName != widget.nodeName) _future = _fetch();
-  }
-
-  Future<List<Json>> _fetch() =>
-      widget.api.items(const ResourceRef(resource: 'pods'), fieldSelector: 'spec.nodeName=${widget.nodeName}');
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<List<Json>>(
-      future: _future,
-      builder: (context, snap) {
-        Widget body(Widget Function(List<Json>) f) {
-          if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
-          if (!snap.hasData) {
-            return const SectionSpinner();
-          }
-          return f(snap.data!);
-        }
-
-        final pods = snap.data ?? const <Json>[];
-        final active = pods.where((p) => !isTerminalPod(p)).length;
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          DetailSection(
-            title: 'Usage',
-            icon: Icons.query_stats,
-            child: NodeLiveUsage(api: widget.api, nodeName: widget.nodeName, allocatable: widget.allocatable, requests: snap.hasData ? nodeAllocation(pods).total : null),
-          ),
-          DetailSection(
-            title: 'Allocated resources',
-            icon: Icons.speed,
-            child: body((pods) => _Allocation(nodeAllocation(pods), widget.allocatable)),
-          ),
-          DetailSection(
-            title: 'Pods on node',
-            icon: Icons.view_in_ar_outlined,
-            trailing: snap.hasData ? Text('$active', style: Theme.of(context).textTheme.labelSmall) : null,
-            child: body((pods) => _PodList(pods)),
-          ),
-        ]);
-      },
-    );
-  }
-}
 
 class _Allocation extends StatelessWidget {
   final NodeAllocation a;
@@ -373,60 +474,4 @@ class _Allocation extends StatelessWidget {
   }
 }
 
-class _PodList extends StatelessWidget {
-  final List<Json> pods;
-  const _PodList(this.pods);
 
-  static int _rank(String status) => switch (severityOf(status)) {
-        Severity.error => 0,
-        Severity.warn => 1,
-        _ => 2,
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final active = pods.where((p) => !isTerminalPod(p)).toList();
-    final terminal = pods.length - active.length;
-    if (active.isEmpty) return InlineMessage('No running pods${terminal > 0 ? ' ($terminal completed)' : ''}');
-    final rows = [for (final p in active) (p, podKubectlStatus(p), podResources(p))]
-      ..sort((a, b) {
-        final r = _rank(a.$2).compareTo(_rank(b.$2));
-        if (r != 0) return r;
-        final ns = '${dig(a.$1, ['metadata', 'namespace'])}'.compareTo('${dig(b.$1, ['metadata', 'namespace'])}');
-        return ns != 0 ? ns : '${dig(a.$1, ['metadata', 'name'])}'.compareTo('${dig(b.$1, ['metadata', 'name'])}');
-      });
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      CompactTable(
-        headers: const ['STATUS', 'POD', 'CPU REQ', 'MEM REQ'],
-        flex: const [5, 11, 3, 3],
-        align: const [TextAlign.left, TextAlign.left, TextAlign.right, TextAlign.right],
-        rows: [
-          for (final (p, status, res) in rows)
-            [
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: StatusBadge(status.length > 16 ? '${status.substring(0, 15)}…' : status, dense: true),
-              ),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                ResourceLink(ObjectRef(kind: 'Pod', name: '${dig(p, ['metadata', 'name'])}', namespace: dig<String>(p, ['metadata', 'namespace'])),
-                    label: '${dig(p, ['metadata', 'name'])}'),
-                Text(
-                  '${dig(p, ['metadata', 'namespace'])}${podRestarts(p) > 0 ? ' · ${podRestarts(p)} restarts' : ''}',
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor),
-                ),
-              ]),
-              MonoText(res.cpuRequest > 0 ? formatCpu(res.cpuRequest) : '—', color: res.cpuRequest > 0 ? null : theme.hintColor),
-              MonoText(res.memRequest > 0 ? formatBytes(res.memRequest) : '—', color: res.memRequest > 0 ? null : theme.hintColor),
-            ],
-        ],
-      ),
-      if (terminal > 0)
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text('$terminal completed/failed pods not shown', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
-        ),
-    ]);
-  }
-}

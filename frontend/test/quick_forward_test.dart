@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -50,6 +51,11 @@ void main() {
   testWidgets('service: one-click forward per service port', (tester) async {
     final api = _PfApi();
     await pumpPanel(tester, _fx('svc-web.json'), api: api);
+    // Port actions show on hover.
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: tester.getCenter(find.byKey(const ValueKey('svc-port-80'))));
+    addTearDown(mouse.removePointer);
+    await tester.pumpAndSettle();
     final btn = find.byKey(const ValueKey('quick-forward-service-80'));
     expect(btn, findsOneWidget);
     await tester.tap(btn);

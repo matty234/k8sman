@@ -449,7 +449,10 @@ class RowGroupLabel extends StatelessWidget {
 class TrimmedRows extends StatefulWidget {
   final List<Widget> children;
   final int limit;
-  const TrimmedRows(this.children, {super.key, this.limit = 6});
+
+  /// Rows shown while trimmed.
+  final int keep;
+  const TrimmedRows(this.children, {super.key, this.limit = 6, this.keep = 4});
 
   @override
   State<TrimmedRows> createState() => _TrimmedRowsState();
@@ -463,7 +466,7 @@ class _TrimmedRowsState extends State<TrimmedRows> {
     final theme = Theme.of(context);
     final total = widget.children.length;
     final trims = total > widget.limit;
-    final shown = trims && !_all ? 4 : total;
+    final shown = trims && !_all ? widget.keep : total;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ...widget.children.take(shown),
       if (trims)
@@ -597,7 +600,7 @@ class PodRows extends StatelessWidget {
       if (shown.isEmpty)
         Padding(padding: const EdgeInsets.only(left: 4), child: Text(empty, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)))
       else
-        TrimmedRows([for (final p in problemsFirst(shown)) PodLinkRow(p, showNamespace: showNamespace, trailing: trailing?.call(p) ?? const [])], limit: 12),
+        TrimmedRows([for (final p in problemsFirst(shown)) PodLinkRow(p, showNamespace: showNamespace, trailing: trailing?.call(p) ?? const [])], limit: 12, keep: 8),
       if (hidden > 0)
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 6, 0, 0),

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/panels/pod/pod_section.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/metrics/quantity_cell.dart';
@@ -82,8 +83,9 @@ void main() {
 
   testWidgets('Node panel: Usage section', (tester) async {
     await loadRealFonts();
+    PodSectionMemory.set('node-allocation', true); // collapsed by default
     await pumpPanel(tester, nodeFixture(), api: MetricsFakeApi(), size: const Size(560, 1600));
-    expect(find.text('Usage'), findsOneWidget);
+    expect(find.text('Usage & allocation'), findsOneWidget);
     expect(find.text('limit'), findsOneWidget, reason: 'legend shows the limit tick');
     expect(find.byWidgetPredicate((w) => w is Tooltip && (w.message ?? '').startsWith('Sampled')), findsOneWidget);
     await saveScreenshot(tester, 'metrics-node-panel');

@@ -6,6 +6,7 @@ import '../../ui/detail/detail_sidebar.dart' show EventList;
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../network/inspector_kit.dart';
 import '../panel.dart';
 
 /// Normalised view of a core/v1 or events.k8s.io/v1 Event.
@@ -90,11 +91,11 @@ class EventPanel extends ResourcePanel {
     final ns = ctx.namespace;
     final regardingUid = ev.regarding['uid'] as String?;
     return [
-      DetailSection(title: 'Event', icon: Icons.notifications_outlined, child: _EventBody(ev, namespace: ns)),
+      _EventHeader(ev, namespace: ns),
       if (ev.regarding.isNotEmpty)
-        DetailSection(
+        PodSection(
+          id: 'event-others',
           title: 'Other events for ${ev.regarding['kind'] ?? 'object'}/${ev.regarding['name'] ?? ''}',
-          icon: Icons.history,
           initiallyExpanded: ev.type == 'Warning',
           child: _SiblingEvents(
             key: ValueKey(ctx.uid),
@@ -110,63 +111,58 @@ class EventPanel extends ResourcePanel {
   }
 }
 
-class _EventBody extends StatelessWidget {
+/// The event as a status header: type and reason, how often and when,
+/// the involved object, then the message and the remaining facts.
+class _EventHeader extends StatelessWidget {
   final EventView ev;
   final String? namespace;
-  const _EventBody(this.ev, {this.namespace});
+  const _EventHeader(this.ev, {this.namespace});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final warn = ev.type == 'Warning';
-    final c = warn ? severityColor(context, Severity.warn) : theme.colorScheme.outlineVariant;
+    final bar = warn ? severityColor(context, Severity.warn) : AppColors.of(context).separator;
     ObjectRef ref(Json j) => ObjectRef.fromOwnerRef(j, namespace: namespace);
     final source = [ev.sourceComponent, if (ev.sourceHost != null) 'on ${ev.sourceHost}'].whereType<String>().join(' ');
+    final small = theme.textTheme.bodySmall;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-        StatusBadge(ev.type, severity: warn ? Severity.warn : Severity.ok),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(ev.reason.isEmpty ? '(no reason)' : ev.reason,
-              overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-        ),
-        if (ev.count > 1)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
-            child: Text('×${ev.count}', style: monoStyle(context, size: 11)),
-          ),
-      ]),
-      const SizedBox(height: 8),
-      Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        decoration: BoxDecoration(
-          color: (warn ? c : theme.colorScheme.surfaceContainerHighest).withValues(alpha: warn ? 0.10 : 0.5),
-          border: Border(left: BorderSide(color: c, width: 3)),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(ev.message.isEmpty ? '(no message)' : ev.message, style: theme.textTheme.bodyMedium),
+      InspectorHeader(
+        mark: warn ? Severity.warn : Severity.neutral,
+        headline: ev.reason.isEmpty ? '(no reason)' : ev.reason,
+        detail: [ev.type, if (ev.count > 1) '×${ev.count}'].join(' · '),
+        figures: [
+          HeaderFigure('${ev.count}', ev.count == 1 ? 'time' : 'times', severity: warn && ev.count > 1 ? Severity.warn : Severity.neutral),
+          if (parseTime(ev.lastSeen) != null) HeaderFigure.age(ev.lastSeen, 'last seen'),
+          if (parseTime(ev.firstSeen) != null) HeaderFigure.age(ev.firstSeen, 'first seen'),
+        ],
+        facts: KeyValueTable(keyWidth: 72, [
+          ('Object', ev.regarding.isEmpty ? null : Align(alignment: Alignment.centerLeft, child: ResourceLink(ref(ev.regarding)))),
+          ('Field', ev.fieldPath),
+        ]),
       ),
-      const SizedBox(height: 8),
+      // The message, marked like an insight: amber for warnings.
+      Container(
+        margin: const EdgeInsets.only(top: 4, bottom: 12),
+        padding: const EdgeInsets.only(left: 10),
+        decoration: BoxDecoration(border: Border(left: BorderSide(color: bar, width: 2.5))),
+        child: Text(ev.message.isEmpty ? '(no message)' : ev.message, style: theme.textTheme.bodyMedium?.copyWith(height: 1.35)),
+      ),
       KeyValueTable([
-        ('Object', ev.regarding.isEmpty ? null : Align(alignment: Alignment.centerLeft, child: ResourceLink(ref(ev.regarding)))),
-        ('Field', ev.fieldPath),
         ('Related', ev.related.isEmpty ? null : Align(alignment: Alignment.centerLeft, child: ResourceLink(ref(ev.related)))),
-        ('Last seen', parseTime(ev.lastSeen) == null ? null : AgeText(ev.lastSeen, suffix: ' ago', style: theme.textTheme.bodySmall)),
-        ('First seen', parseTime(ev.firstSeen) == null ? null : AgeText(ev.firstSeen, suffix: ' ago', style: theme.textTheme.bodySmall)),
         ('Count', ev.count > 1 ? '${ev.count}' : null),
         ('Series',
             ev.series.isEmpty
                 ? null
-                : Row(children: [
-                    Text('${ev.series['count'] ?? '?'} occurrences, last observed ', style: theme.textTheme.bodySmall),
-                    AgeText(ev.series['lastObservedTime'], suffix: ' ago'),
+                : Wrap(children: [
+                    Text('${ev.series['count'] ?? '?'} occurrences, last observed ', style: small),
+                    AgeText(ev.series['lastObservedTime'], suffix: ' ago', style: small),
                   ])),
         ('Action', ev.action),
         ('Source', source.isEmpty ? null : source),
         ('Reporter', ev.reportingController),
         ('Instance', ev.reportingInstance),
-      ], keyWidth: 90),
+      ], keyWidth: 72),
     ]);
   }
 }

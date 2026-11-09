@@ -7,10 +7,11 @@ import '../../ui/detail/detail_sidebar.dart' show EventList;
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
+import '../network/inspector_kit.dart';
 import '../panel.dart';
 import 'logic.dart';
 import 'quota_panel.dart';
-import 'widgets.dart';
 
 class NamespacePanel extends ResourcePanel {
   const NamespacePanel();
@@ -20,31 +21,96 @@ class NamespacePanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
-        DetailSection(title: 'Status', icon: Icons.folder_outlined, child: _NsStatus(ctx)),
-        DetailSection(
-          title: 'Inventory',
-          icon: Icons.inventory_2_outlined,
-          child: _Inventory(key: ValueKey(ctx.uid), api: ctx.api, app: ctx.app, namespace: ctx.name),
-        ),
-        DetailSection(
-          title: 'Quotas & limits',
-          icon: Icons.data_usage,
-          child: _QuotasAndLimits(key: ValueKey(ctx.uid), api: ctx.api, namespace: ctx.name),
-        ),
-        DetailSection(
+        _NamespaceView(key: ValueKey(ctx.uid), ctx: ctx),
+        _QuotaSection(key: ValueKey('${ctx.uid}/quotas'), api: ctx.api, namespace: ctx.name),
+        PodSection(
+          id: 'ns-warnings',
           title: 'Recent warnings',
-          icon: Icons.warning_amber_rounded,
-          child: _Warnings(key: ValueKey(ctx.uid), api: ctx.api, namespace: ctx.name),
+          child: _Warnings(key: ValueKey('${ctx.uid}/warnings'), api: ctx.api, namespace: ctx.name),
         ),
       ];
 }
 
-class _NsStatus extends StatelessWidget {
-  final PanelContext ctx;
-  const _NsStatus(this.ctx);
+/// Quotas and limit ranges, collapsed behind a count; one fetch for the
+/// summary and the body.
+class _QuotaSection extends StatefulWidget {
+  final ApiClient api;
+  final String namespace;
+  const _QuotaSection({super.key, required this.api, required this.namespace});
 
   @override
-  Widget build(BuildContext context) {
+  State<_QuotaSection> createState() => _QuotaSectionState();
+}
+
+class _QuotaSectionState extends State<_QuotaSection> {
+  late final Future<(List<Json>, List<Json>)> _future = () async {
+    final r = await Future.wait([
+      widget.api.items(const ResourceRef(resource: 'resourcequotas'), namespace: widget.namespace),
+      widget.api.items(const ResourceRef(resource: 'limitranges'), namespace: widget.namespace),
+    ]);
+    return (r[0], r[1]);
+  }();
+
+  @override
+  Widget build(BuildContext context) => PodSection(
+        id: 'ns-quotas',
+        title: 'Quotas & limits',
+        initiallyExpanded: false,
+        trailing: FutureBuilder<(List<Json>, List<Json>)>(
+          future: _future,
+          builder: (context, snap) {
+            final d = snap.data;
+            if (d == null) return const SizedBox.shrink();
+            final (q, l) = d;
+            return SectionSummary(q.isEmpty && l.isEmpty ? 'unbounded' : [if (q.isNotEmpty) plural(q.length, 'quota'), if (l.isNotEmpty) plural(l.length, 'limit range')].join(' · '));
+          },
+        ),
+        child: _QuotasAndLimits(future: _future, namespace: widget.namespace),
+      );
+}
+
+/// The namespace's status header (phase, resource counts) and its
+/// inventory as compact rows, from one fetch per bucket.
+class _NamespaceView extends StatefulWidget {
+  final PanelContext ctx;
+  const _NamespaceView({super.key, required this.ctx});
+
+  @override
+  State<_NamespaceView> createState() => _NamespaceViewState();
+}
+
+class _NamespaceViewState extends State<_NamespaceView> {
+  late final Future<List<Object>> _future = Future.wait([
+    for (final b in _buckets)
+      widget.ctx.api
+          .items(ResourceRef(group: b.group, resource: b.resource), namespace: widget.ctx.name)
+          .then<Object>((v) => v, onError: (Object e) => e),
+  ]); // List<Json> or error per bucket
+
+  PanelContext get ctx => widget.ctx;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<Object>>(
+        future: _future,
+        builder: (context, snap) {
+          final results = snap.data;
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _header(context, results),
+            PodSection(
+              id: 'ns-inventory',
+              title: 'Inventory',
+              trailing: SectionSummary(results == null ? '' : '${[for (final r in results) if (r is List<Json>) r.length].fold<int>(0, (a, b) => a + b)} objects'),
+              child: snap.hasError
+                  ? InlineMessage('${snap.error}', isError: true)
+                  : results == null
+                      ? const SectionSpinner()
+                      : _Inventory(results: results, app: ctx.app, namespace: ctx.name),
+            ),
+          ]);
+        },
+      );
+
+  Widget _header(BuildContext context, List<Object>? results) {
     final theme = Theme.of(context);
     final phase = ctx.status['phase'] as String? ?? 'Unknown';
     final deleting = ctx.metadata['deletionTimestamp'];
@@ -54,52 +120,70 @@ class _NsStatus extends StatelessWidget {
     final conds = asMapList(ctx.status['conditions']);
     // Namespace deletion conditions are all "bad when True".
     final blocking = conds.where((c) => c['status'] == 'True').toList();
+    List<Json>? items(String resource) {
+      final i = _buckets.indexWhere((b) => b.resource == resource);
+      final r = results?[i];
+      return r is List<Json> ? r : null;
+    }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final pods = items('pods');
+    final podHealth = pods == null ? const <(String, Severity, int)>[] : inventoryHealth('pods', pods);
+    final failing = podHealth.where((h) => h.$2 == Severity.error).fold<int>(0, (a, h) => a + h.$3);
+    final pending = podHealth.where((h) => h.$2 == Severity.warn).fold<int>(0, (a, h) => a + h.$3);
+    final workloads = [for (final r in ['deployments', 'statefulsets', 'daemonsets']) ...?items(r)];
+    final degraded = [for (final r in ['deployments', 'statefulsets', 'daemonsets']) ...inventoryHealth(r, items(r) ?? const [])]
+        .where((h) => h.$2 == Severity.warn)
+        .fold<int>(0, (a, h) => a + h.$3);
+    final services = items('services');
+    final insights = <PodInsight>[
       if (terminating)
-        Callout(
-          severity: Severity.error,
-          icon: Icons.hourglass_bottom,
-          title: 'Terminating',
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (deleting != null)
-              Row(children: [
-                Text('Deletion requested ', style: theme.textTheme.bodySmall),
-                AgeText(deleting, suffix: ' ago'),
-              ]),
-            if (specFin.isNotEmpty || metaFin.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text('Waiting on finalizers:', style: theme.textTheme.bodySmall),
-              const SizedBox(height: 2),
-              Wrap(spacing: 4, runSpacing: 4, children: [
-                for (final f in specFin) Chipish(text: 'spec: $f'),
-                for (final f in metaFin) Chipish(text: 'metadata: $f'),
-              ]),
-            ],
-            if (blocking.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              for (final c in blocking)
-                Padding(
-                  padding: const EdgeInsets.only(top: 3),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('${c['type']}${c['reason'] != null ? ' · ${c['reason']}' : ''}',
-                        style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
-                    if (c['message'] != null) Text('${c['message']}', style: theme.textTheme.bodySmall),
-                  ]),
-                ),
-            ],
-          ]),
+        PodInsight(
+          Severity.error,
+          'Terminating',
+          specFin.isNotEmpty || metaFin.isNotEmpty ? 'Waiting on finalizers (below).' : 'Deletion is in progress.',
         ),
-      KeyValueTable([
-        ('Phase', Align(alignment: Alignment.centerLeft, child: StatusBadge(terminating ? 'Terminating' : phase))),
-        ('Finalizers', !terminating && specFin.isNotEmpty ? specFin.join(', ') : null),
+      if (terminating)
+        for (final c in blocking) PodInsight(Severity.error, '${c['type']}${c['reason'] != null ? ' · ${c['reason']}' : ''}', c['message'] as String?),
+      if (failing > 0) PodInsight(Severity.error, failing == 1 ? '1 pod failing' : '$failing pods failing'),
+      if (pending > 0) PodInsight(Severity.warn, pending == 1 ? '1 pod pending' : '$pending pods pending'),
+      if (degraded > 0) PodInsight(Severity.warn, degraded == 1 ? '1 workload degraded' : '$degraded workloads degraded'),
+    ];
+    final counts = [
+      if (pods != null) plural(pods.length, 'pod'),
+      if (items('deployments') != null) plural(items('deployments')!.length, 'deployment'),
+      if (services != null) plural(services.length, 'service'),
+    ].join(' · ');
+    return InspectorHeader(
+      mark: worstOf(insights) ?? (results == null ? Severity.neutral : Severity.ok),
+      headline: terminating ? 'Terminating' : phase,
+      detail: counts,
+      figures: [
+        HeaderFigure(pods == null ? '–' : '${pods.length}', 'pods', severity: failing > 0 ? Severity.error : (pending > 0 ? Severity.warn : Severity.neutral)),
+        HeaderFigure(results == null ? '–' : '${workloads.length}', 'workloads', severity: degraded > 0 ? Severity.warn : Severity.neutral),
+        HeaderFigure(services == null ? '–' : '${services.length}', 'services'),
+      ],
+      insights: insights,
+      facts: KeyValueTable(keyWidth: 82, [
+        if (deleting != null)
+          ('Deleting', Row(children: [Text('requested ', style: theme.textTheme.bodySmall), AgeText(deleting, suffix: ' ago', style: theme.textTheme.bodySmall)])),
+        (
+          'Finalizers',
+          specFin.isEmpty && metaFin.isEmpty
+              ? null
+              : Wrap(spacing: 4, runSpacing: 4, children: [
+                  for (final f in specFin) Chipish(text: terminating ? 'spec: $f' : f),
+                  for (final f in metaFin) Chipish(text: 'metadata: $f'),
+                ]),
+        ),
         if (!terminating && conds.isNotEmpty)
-          ('Conditions', Wrap(spacing: 4, runSpacing: 4, children: [
-            for (final c in conds)
-              StatusBadge('${c['type']}=${c['status']}', dense: true, severity: c['status'] == 'True' ? Severity.error : Severity.ok),
-          ])),
-      ], keyWidth: 100),
-    ]);
+          (
+            'Conditions',
+            Wrap(spacing: 4, runSpacing: 4, children: [
+              for (final c in conds) StatusBadge('${c['type']}=${c['status']}', dense: true, severity: c['status'] == 'True' ? Severity.error : Severity.ok),
+            ]),
+          ),
+      ]),
+    );
   }
 }
 
@@ -168,109 +252,84 @@ List<(String, Severity, int)> inventoryHealth(String resource, List<Json> items)
   return out;
 }
 
-class _Inventory extends StatefulWidget {
-  final ApiClient api;
+/// The inventory buckets as compact rows: the worst state's dot, the kind,
+/// its health breakdown (coloured only when wrong) and the count. A click
+/// opens the kind's table in this namespace.
+class _Inventory extends StatelessWidget {
+  final List<Object> results;
   final AppState app;
   final String namespace;
-  const _Inventory({super.key, required this.api, required this.app, required this.namespace});
-
-  @override
-  State<_Inventory> createState() => _InventoryState();
-}
-
-class _InventoryState extends State<_Inventory> {
-  late Future<List<Object>> _future; // List<Json> or error per bucket
-
-  @override
-  void initState() {
-    super.initState();
-    _future = Future.wait([
-      for (final b in _buckets)
-        widget.api
-            .items(ResourceRef(group: b.group, resource: b.resource), namespace: widget.namespace)
-            .then<Object>((v) => v, onError: (Object e) => e),
-    ]);
-  }
-
-  @override
-  Widget build(BuildContext context) => AsyncSection<List<Object>>(
-        future: _future,
-        builder: (context, results) => LayoutBuilder(builder: (context, box) {
-          final cols = box.maxWidth > 420 ? 3 : 2;
-          final w = (box.maxWidth - (cols - 1) * 6) / cols;
-          // Reserve a second status line only if some tile needs it.
-          var lines = 1;
-          for (var i = 0; i < _buckets.length; i++) {
-            final r = results[i];
-            if (r is List<Json> && inventoryHealth(_buckets[i].resource, r).length > 2) lines = 2;
-          }
-          return Wrap(spacing: 6, runSpacing: 6, children: [
-            for (var i = 0; i < _buckets.length; i++)
-              SizedBox(width: w, child: _Tile(bucket: _buckets[i], result: results[i], app: widget.app, namespace: widget.namespace, lines: lines)),
-          ]);
-        }),
-      );
-}
-
-class _Tile extends StatelessWidget {
-  final _Bucket bucket;
-  final Object result;
-  final AppState app;
-  final String namespace;
-  final int lines;
-  const _Tile({required this.bucket, required this.result, required this.app, required this.namespace, required this.lines});
+  const _Inventory({required this.results, required this.app, required this.namespace});
 
   @override
   Widget build(BuildContext context) {
+    final rows = [for (var i = 0; i < _buckets.length; i++) (_buckets[i], results[i])];
+    int rank((_Bucket, Object) r) {
+      final items = r.$2 is List<Json> ? r.$2 as List<Json> : null;
+      if (items == null) return 2;
+      final h = inventoryHealth(r.$1.resource, items);
+      final worst = h.isEmpty ? null : h.first.$2;
+      return worst == Severity.error ? 0 : (worst == Severity.warn ? 1 : (items.isEmpty ? 4 : 3));
+    }
+
+    final ordered = [...rows]..sort((a, b) => rank(a).compareTo(rank(b)));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final (b, r) in ordered) _row(context, b, r),
+    ]);
+  }
+
+  Widget _row(BuildContext context, _Bucket bucket, Object result) {
     final theme = Theme.of(context);
-    final items = result is List<Json> ? result as List<Json> : null;
+    final items = result is List<Json> ? result : null;
     final type = app.typeFor(bucket.group, bucket.kind);
     final health = items == null ? const <(String, Severity, int)>[] : inventoryHealth(bucket.resource, items);
     final worst = health.isEmpty ? null : health.first.$2;
-    final border = worst == Severity.error || worst == Severity.warn ? severityColor(context, worst!) : theme.colorScheme.outlineVariant;
-    final count = items?.length;
+    final sev = items == null
+        ? Severity.neutral
+        : worst == Severity.error || worst == Severity.warn
+            ? worst!
+            : items.isEmpty
+                ? Severity.neutral
+                : Severity.ok;
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     return Tooltip(
       message: items == null ? '$result' : 'Show ${bucket.label} in $namespace',
-      child: InkWell(
+      waitDuration: const Duration(milliseconds: 600),
+      child: Hoverable(
         key: ValueKey('inventory-${bucket.resource}'),
-        borderRadius: BorderRadius.circular(6),
         onTap: type == null
             ? null
             : () {
                 app.setNamespace(namespace);
                 app.selectType(type);
               },
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: border.withValues(alpha: 0.6)),
-            color: theme.colorScheme.surfaceContainer,
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(bucket.icon, size: 14, color: theme.hintColor),
-              const SizedBox(width: 4),
-              Expanded(child: Text(bucket.label, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor))),
-              Text(count == null ? '—' : '$count',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: count == 0 ? theme.hintColor : null)),
-            ]),
-            SizedBox(
-              height: 15.0 * lines + 1,
-              child: health.isEmpty
-                  ? (items == null ? Text('no access', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.error)) : null)
+        builder: (h) => Container(
+          decoration: BoxDecoration(color: h ? AppColors.of(context).hover : null, borderRadius: BorderRadius.circular(5)),
+          padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+          child: Row(children: [
+            StateDot(sev),
+            const SizedBox(width: 8),
+            SizedBox(width: 96, child: Text(bucket.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontSize: 12.5))),
+            Expanded(
+              child: items == null
+                  ? Text('no access', style: hint?.copyWith(color: severityColor(context, Severity.error)))
                   : Text.rich(
-                      TextSpan(children: [
+                      TextSpan(style: hint, children: [
                         for (var i = 0; i < health.length; i++) ...[
-                          if (i > 0) TextSpan(text: ' · ', style: TextStyle(color: theme.hintColor)),
-                          TextSpan(text: '${health[i].$3} ${health[i].$1}', style: TextStyle(color: severityColor(context, health[i].$2))),
+                          if (i > 0) const TextSpan(text: ' · '),
+                          TextSpan(
+                            text: '${health[i].$3} ${health[i].$1}',
+                            style: health[i].$2 == Severity.error || health[i].$2 == Severity.warn ? TextStyle(color: severityColor(context, health[i].$2), fontWeight: FontWeight.w600) : null,
+                          ),
                         ],
                       ]),
-                      maxLines: lines,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall,
                     ),
             ),
+            const SizedBox(width: 8),
+            Text(items == null ? '—' : '${items.length}',
+                style: theme.textTheme.bodySmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()], fontWeight: FontWeight.w600, color: items == null || items.isEmpty ? theme.hintColor : null)),
           ]),
         ),
       ),
@@ -278,40 +337,21 @@ class _Tile extends StatelessWidget {
   }
 }
 
-class _QuotasAndLimits extends StatefulWidget {
-  final ApiClient api;
+class _QuotasAndLimits extends StatelessWidget {
+  final Future<(List<Json>, List<Json>)> future;
   final String namespace;
-  const _QuotasAndLimits({super.key, required this.api, required this.namespace});
-
-  @override
-  State<_QuotasAndLimits> createState() => _QuotasAndLimitsState();
-}
-
-class _QuotasAndLimitsState extends State<_QuotasAndLimits> {
-  late Future<(List<Json>, List<Json>)> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = () async {
-      final r = await Future.wait([
-        widget.api.items(const ResourceRef(resource: 'resourcequotas'), namespace: widget.namespace),
-        widget.api.items(const ResourceRef(resource: 'limitranges'), namespace: widget.namespace),
-      ]);
-      return (r[0], r[1]);
-    }();
-  }
+  const _QuotasAndLimits({required this.future, required this.namespace});
 
   @override
   Widget build(BuildContext context) => AsyncSection<(List<Json>, List<Json>)>(
-        future: _future,
+        future: future,
         builder: (context, data) {
           final (quotas, limits) = data;
           final theme = Theme.of(context);
           if (quotas.isEmpty && limits.isEmpty) return const InlineMessage('No ResourceQuotas or LimitRanges: namespace is unbounded');
           Widget header(String kind, String name) => Padding(
                 padding: const EdgeInsets.only(top: 6, bottom: 2),
-                child: ResourceLink(ObjectRef(kind: kind, name: name, namespace: widget.namespace), label: '$kind/$name'),
+                child: ResourceLink(ObjectRef(kind: kind, name: name, namespace: namespace), label: '$kind/$name'),
               );
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final q in quotas) ...[

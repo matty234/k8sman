@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
+import 'package:k8sman/panels/pod/pod_section.dart';
 import 'package:k8sman/ui/widgets/common.dart';
 
 import '../../support/harness.dart';
@@ -17,6 +18,7 @@ const _rbac = 'rbac.authorization.k8s.io';
 
 void main() {
   setUpAll(loadRealFonts);
+  setUp(PodSectionMemory.reset);
 
   testWidgets('Node: status, allocation, pods, system info', (tester) async {
     final node = _dev('node-k8sman-dev-control-plane');
@@ -29,13 +31,16 @@ void main() {
         {'key': 'dedicated', 'value': 'gpu', 'effect': 'NoExecute'},
       ],
     };
+    for (final id in ['node-conditions', 'node-taints', 'node-allocation', 'node-system', 'node-images']) {
+      PodSectionMemory.set(id, true);
+    }
     final app = await pumpPanel(tester, node, api: FakeApiClient(itemsByResource: {'pods': _local('pods-on-node')}));
     await saveScreenshot(tester, 'cluster-node');
 
     expect(find.text('Cordoned: SchedulingDisabled'), findsOneWidget);
     expect(find.text('Ready'), findsWidgets);
     expect(find.text('MemoryPressure'), findsOneWidget);
-    expect(find.text('control-plane'), findsOneWidget);
+    expect(find.textContaining('control-plane ·'), findsOneWidget);
     expect(find.text('dedicated=gpu:NoExecute'), findsOneWidget);
     expect(find.text('172.18.0.2'), findsOneWidget);
     // Allocation: 1060m of 10 cores; 15 of 110 pods.
@@ -46,6 +51,10 @@ void main() {
     expect(find.text('containerd://1.6.8'), findsWidgets);
     expect(find.text('registry.k8s.io/etcd:3.5.4-0'), findsOneWidget);
 
+    if (find.text('coredns-565d847f94-qfldd').evaluate().isEmpty) {
+      await tester.tap(find.byKey(const ValueKey('show-more')));
+      await tester.pump();
+    }
     await tester.tap(find.text('coredns-565d847f94-qfldd'));
     await tester.pump();
     expect(app.detail?.name, 'coredns-565d847f94-qfldd');
@@ -63,6 +72,7 @@ void main() {
       },
       eventItems: [for (final e in _load('../dev/fixtures/events-demo.json')) Json.from(e)],
     );
+    PodSectionMemory.set('ns-quotas', true);
     final app = await pumpPanel(tester, ns, api: api);
     await saveScreenshot(tester, 'cluster-namespace');
 
@@ -100,7 +110,7 @@ void main() {
     final ev = events.firstWhere((e) => e['type'] == 'Warning' && e['reason'] == 'BackOff', orElse: () => events.firstWhere((e) => e['type'] == 'Warning'));
     final app = await pumpPanel(tester, ev, api: FakeApiClient(eventItems: events.where((e) => e['involvedObject']['uid'] == ev['involvedObject']['uid']).toList()));
     await saveScreenshot(tester, 'cluster-event');
-    expect(find.text('Warning'), findsWidgets);
+    expect(find.textContaining('Warning'), findsWidgets);
     expect(find.text('${ev['message']}'), findsWidgets);
     final link = '${ev['involvedObject']['kind']}/${ev['involvedObject']['name']}';
     await tester.tap(find.text(link));
@@ -128,7 +138,7 @@ void main() {
     final app = await pumpPanel(tester, ev,
         type: const ResourceType(group: 'events.k8s.io', version: 'v1', resource: 'events', kind: 'Event'), api: FakeApiClient());
     await saveScreenshot(tester, 'cluster-event-new');
-    expect(find.text('×42'), findsOneWidget);
+    expect(find.text('Warning · ×42'), findsOneWidget);
     expect(find.text('Back-off restarting failed container crashy in pod crashy_demo'), findsOneWidget);
     expect(find.text('spec.containers{crashy}'), findsOneWidget);
     expect(find.text('kubelet'), findsOneWidget);
