@@ -8,6 +8,7 @@ import '../../ui/widgets/common.dart' show AppLogo;
 import 'update_controller.dart';
 
 const repoUrl = 'https://github.com/matty234/k8sman';
+const siteUrl = 'https://k8sman.dev';
 
 /// Wraps the app (`MaterialApp.builder`): shows the update banner over
 /// [child] and the About panel when the app menu asks for it.
@@ -157,6 +158,7 @@ class AboutPanel extends StatelessWidget {
         ]),
       ),
       actions: [
+        TextButton(onPressed: openSite, child: const Text('k8sman.dev')),
         TextButton(onPressed: openRepo, child: const Text('GitHub')),
         FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),
       ],
@@ -166,6 +168,9 @@ class AboutPanel extends StatelessWidget {
 
 /// Opens the project's page on GitHub.
 Future<void> openRepo() => _open(Uri.parse(repoUrl));
+
+/// Opens the app's website.
+Future<void> openSite() => _open(Uri.parse(siteUrl));
 
 /// Whether updates are on, the automatic-check switch (with [automatic]),
 /// when the last check ran, and Check Now / Install…. Shown by the About

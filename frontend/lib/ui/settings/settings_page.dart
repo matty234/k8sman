@@ -516,7 +516,10 @@ class _AboutRow extends StatelessWidget {
       leading: const AppLogo(size: 34),
       label: 'k8sman',
       description: 'Version $version · A Kubernetes desktop app',
-      trailing: TextButton(onPressed: openRepo, child: const Text('GitHub')),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        TextButton(onPressed: openSite, child: const Text('k8sman.dev')),
+        TextButton(onPressed: openRepo, child: const Text('GitHub')),
+      ]),
     );
   }
 }
