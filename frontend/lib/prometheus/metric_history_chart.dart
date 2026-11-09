@@ -560,7 +560,24 @@ class AreaChart extends StatefulWidget {
 
   /// Fixes the top of the scale (rounded up to a tidy value) instead of fitting every line.
   final double? yMax;
-  const AreaChart({super.key, required this.series, required this.unit, required this.range, this.height = 76, this.labelKey, this.seriesName = 'value', this.guides = const [], this.yMax});
+
+  /// Names each guide at its right end instead of in a legend. A guide
+  /// above [yMax] isn't drawn (it would be clamped to the top); its name
+  /// and latest value sit at the top right with an arrow ("requested
+  /// 240 cores ↑").
+  final bool labelGuides;
+  const AreaChart({
+    super.key,
+    required this.series,
+    required this.unit,
+    required this.range,
+    this.height = 76,
+    this.labelKey,
+    this.seriesName = 'value',
+    this.guides = const [],
+    this.yMax,
+    this.labelGuides = false,
+  });
 
   @override
   State<AreaChart> createState() => _AreaChartState();
@@ -586,6 +603,7 @@ class _AreaChartState extends State<AreaChart> {
     final tMax = all.map((p) => p.$1.millisecondsSinceEpoch).reduce(math.max).toDouble();
     final vMax = widget.yMax != null ? _niceMax(widget.yMax!) : _niceMax([...all, for (final g in widget.guides) ...g.points].map((p) => p.$2).fold<double>(0, math.max));
     final multi = widget.series.length > 1;
+    final onScale = [for (final g in widget.guides) if (!widget.labelGuides || g.points.isEmpty || g.points.last.$2 <= vMax) g];
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       LayoutBuilder(builder: (context, box) {
@@ -612,12 +630,13 @@ class _AreaChartState extends State<AreaChart> {
                     grid: AppColors.of(context).separator,
                     hoverX: _hoverX,
                     fill: !multi,
-                    guides: widget.guides,
+                    guides: onScale,
                     guideColor: theme.hintColor,
                   ),
                 ),
               ),
               Positioned(left: 0, top: -1, child: Text(formatMetric(vMax, widget.unit), style: hint)),
+              if (widget.labelGuides) ..._guideLabels(vMax, onScale, hint),
               if (readout != null)
                 Positioned(
                   top: 2,
@@ -656,6 +675,33 @@ class _AreaChartState extends State<AreaChart> {
           ]),
         ),
     ]);
+  }
+
+  /// Names at the right end of the guides on the scale (above the line,
+  /// nudged apart), and name, value and an arrow for those above it.
+  List<Widget> _guideLabels(double vMax, List<ChartGuide> onScale, TextStyle? hint) {
+    final h = widget.height;
+    double y(double v) => h - 1 - (v / vMax).clamp(0.0, 1.0) * (h - 1 - _chartTopPad);
+    final unit = widget.unit == MetricUnit.cores ? ' cores' : '';
+    final out = <Widget>[];
+    var top = -1.0;
+    for (final g in widget.guides) {
+      if (g.points.isEmpty || onScale.contains(g)) continue;
+      out.add(Positioned(right: 0, top: top, child: Text('${g.name} ${formatMetric(g.points.last.$2, widget.unit)}$unit ↑', style: hint)));
+      top += 12;
+    }
+    final placed = <double>[];
+    final ordered = [for (final g in onScale) if (g.points.isNotEmpty) (g, y(g.points.last.$2))]..sort((a, b) => a.$2.compareTo(b.$2));
+    for (final (g, gy) in ordered) {
+      var t = gy - 15;
+      if (t < top) t = gy + 2; // under the line when there's no room above
+      for (final p in placed) {
+        if ((t - p).abs() < 12) t = p + 12;
+      }
+      placed.add(t);
+      out.add(Positioned(right: 0, top: t, child: Text(g.name, style: hint)));
+    }
+    return out;
   }
 
   static double? _nearest(List<(DateTime, double)> points, DateTime t) {
