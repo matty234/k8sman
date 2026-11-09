@@ -8,6 +8,7 @@ import '../../ui/access/grant_dialog.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../inspector_parts.dart';
 import '../panel.dart';
 import 'rbac.dart';
 import 'usage.dart';
@@ -25,36 +26,57 @@ class ServiceAccountPanel extends ResourcePanel {
     final automount = ctx.object['automountServiceAccountToken'];
     final secrets = asMapList(ctx.object['secrets']);
     final pullSecrets = asMapList(ctx.object['imagePullSecrets']);
-    Widget secretLinks(List<Json> refs) => refs.isEmpty
-        ? Text('none', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))
-        : Wrap(spacing: 10, runSpacing: 2, children: [
-            for (final s in refs) ResourceLink(ObjectRef(kind: 'Secret', name: '${s['name']}', namespace: s['namespace'] as String? ?? ctx.namespace), label: '${s['name']}'),
-          ]);
+    Widget secretRow(Json s, {required bool pull}) {
+      final name = '${s['name']}';
+      return InspectorRow(
+        key: ValueKey('sa-secret-${pull ? 'pull' : 'token'}-$name'),
+        leading: Icon(pull ? Icons.cloud_download_outlined : Icons.key),
+        title: ResourceLink(ObjectRef(kind: 'Secret', name: name, namespace: s['namespace'] as String? ?? ctx.namespace), label: name, singleLine: true),
+        subtitle: Text(pull ? 'image pull secret' : 'mountable secret'),
+      );
+    }
 
+    final nSecrets = secrets.length + pullSecrets.length;
     return [
-      DetailSection(
-        title: 'Service account',
-        icon: Icons.badge_outlined,
-        child: KeyValueTable([
-          (
-            'Automount token',
-            Row(children: [
-              StatusBadge(automount == false ? 'false' : 'true', dense: true, severity: automount == false ? Severity.neutral : Severity.ok),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  automount == null ? 'default; pods may override' : (automount == false ? 'pods must opt in' : 'explicit; pods may override'),
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
-                ),
+      // Does it mount a token, and who runs as it?
+      UsageReportBuilder(
+        ctx: ctx,
+        kind: RefKind.serviceAccount,
+        builder: (context, snap) => InspectorHeader(
+          figures: [
+            InspectorFigure(automount == false ? 'off' : 'on', 'token automount',
+                tooltip: automount == null ? 'Default; pods may override' : (automount == false ? 'Pods must opt in' : 'Explicit; pods may override')),
+            InspectorFigure('${pullSecrets.length}', pullSecrets.length == 1 ? 'pull secret' : 'pull secrets'),
+            ...usedByFigures(snap),
+          ],
+          facts: [
+            (
+              'Automount',
+              Text(
+                automount == null ? 'token mounted by default; pods may override' : (automount == false ? 'off: pods must opt in' : 'on (explicit); pods may override'),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
               ),
-            ]),
-          ),
-          ('Secrets', secretLinks(secrets)),
-          ('Image pull secrets', secretLinks(pullSecrets)),
-          ('Username', Text('system:serviceaccount:${ctx.namespace}:${ctx.name}', style: monoStyle(context, size: 11.5))),
-        ], keyWidth: 130),
+            ),
+            ('Username', Text('system:serviceaccount:${ctx.namespace}:${ctx.name}', style: monoStyle(context, size: 11.5))),
+          ],
+          factsKeyWidth: 76,
+        ),
       ),
       UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.serviceAccount, existingKeys: const {}),
+      PodSection(
+        id: 'sa-secrets',
+        title: 'Secrets',
+        initiallyExpanded: nSecrets > 0,
+        trailing: SectionSummary(nSecrets == 0
+            ? 'none'
+            : [if (pullSecrets.isNotEmpty) '${pullSecrets.length} image pull', if (secrets.isNotEmpty) '${secrets.length} mountable'].join(' · ')),
+        child: nSecrets == 0
+            ? Text('No image pull or mountable secrets.', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))
+            : TrimmedList([
+                for (final s in pullSecrets) secretRow(s, pull: true),
+                for (final s in secrets) secretRow(s, pull: false),
+              ]),
+      ),
       _Permissions(key: ValueKey('${ctx.uid}/rbac'), ctx: ctx),
     ];
   }
@@ -121,16 +143,19 @@ class _PermissionsState extends State<_Permissions> {
         List<EffectivePermission> perms(List<_ResolvedBinding> bs) =>
             effectivePermissions([for (final b in bs) if (b.role != null) (b.match, b.role!)]);
         final ownPerms = perms(own);
-        return DetailSection(
+        return PodSection(
+          id: 'sa-permissions',
           title: 'Permissions',
-          icon: Icons.admin_panel_settings_outlined,
+          initiallyExpanded: false,
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             if (list != null)
-              Text(
-                own.isEmpty ? 'defaults only' : '${ownPerms.length} grant${ownPerms.length == 1 ? '' : 's'} · ${own.length} binding${own.length == 1 ? '' : 's'}',
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+              Flexible(
+                child: SectionSummary(
+                  own.isEmpty ? 'defaults only' : '${ownPerms.length} grant${ownPerms.length == 1 ? '' : 's'} · ${own.length} binding${own.length == 1 ? '' : 's'}',
+                  color: ownPerms.any((p) => p.risk == PermissionRisk.high) ? severityColor(context, Severity.warn) : null,
+                ),
               ),
-            RefreshButton(() => setState(() => _future = _load())),
+            HeaderRefresh(() => setState(() => _future = _load())),
           ]),
           child: () {
             final sa = RbacSubject.sa(widget.ctx.namespace ?? 'default', widget.ctx.name);

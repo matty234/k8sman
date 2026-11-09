@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
+import 'package:k8sman/panels/pod/pod_section.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
@@ -14,15 +15,22 @@ Json localFixture(String name) => jsonDecode(File('test/panels/config/fixtures/$
 
 FakeApiClient podsApi(List<Json> pods) => FakeApiClient(itemsByResource: {'pods': pods});
 
+Future<void> openSection(WidgetTester tester, String id) async {
+  await tester.tap(find.byKey(ValueKey('pod-section-$id')));
+  await tester.pump();
+}
+
 void main() {
   setUpAll(loadRealFonts);
+  setUp(PodSectionMemory.reset);
 
   testWidgets('ConfigMap: data entries and used-by from the web pod', (tester) async {
     final app = await pumpPanel(tester, fixture('cm-web-config'), api: podsApi([fixture('pod-web')]));
     await saveScreenshot(tester, 'config-cm-web');
     expect(find.text('APP_MODE'), findsWidgets);
     expect(find.text('nginx.conf'), findsWidgets);
-    expect(find.text('1 pod'), findsOneWidget);
+    expect(find.text('pod uses it'), findsOneWidget);
+    expect(find.text('1 workload · 1 pod'), findsOneWidget);
     expect(find.textContaining('/etc/nginx/conf.d', findRichText: true), findsOneWidget);
     expect(find.textContaining('env APP_MODE ← key APP_MODE', findRichText: true), findsOneWidget);
 
@@ -35,14 +43,20 @@ void main() {
   testWidgets('ConfigMap: formats, long values, binaryData and missing keys', (tester) async {
     await pumpPanel(tester, richConfigMap, api: podsApi([richPod]), size: const Size(560, 3000));
     await saveScreenshot(tester, 'config-cm-rich');
-    for (final f in ['json', 'yaml', 'properties', 'shell', 'plain']) {
-      expect(find.text(f), findsWidgets, reason: f);
+    for (final f in ['json', 'yaml', 'properties', 'shell']) {
+      expect(find.textContaining(RegExp('^$f · ')), findsWidgets, reason: f);
     }
     expect(find.text('immutable'), findsOneWidget);
-    expect(find.text('16 B'), findsOneWidget); // binaryData size
+    expect(find.textContaining('missing from this ConfigMap'), findsOneWidget); // FEATURE_X (optional)
+    expect(find.textContaining('1 missing key'), findsOneWidget);
+    // Values open on demand, pretty-printed and trimmed when long.
+    await tester.tap(find.byKey(const ValueKey('cm-rich/big.txt')));
+    await tester.tap(find.byKey(const ValueKey('cm-rich/settings.json')));
+    await tester.pump();
     expect(find.text('Show all 80 lines'), findsOneWidget);
-    expect(find.textContaining('"port": 8080'), findsOneWidget); // pretty-printed
-    expect(find.text('1 missing key'), findsOneWidget); // FEATURE_X (optional)
+    expect(find.textContaining('"port": 8080'), findsOneWidget);
+    await openSection(tester, 'cm-binary');
+    expect(find.text('16 B'), findsOneWidget); // binaryData size
     await tester.tap(find.text('Show all 80 lines'));
     await tester.pumpAndSettle();
     expect(find.text('Show less'), findsOneWidget);
@@ -128,6 +142,8 @@ void main() {
     await saveScreenshot(tester, 'config-sa-web');
     expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget);
     expect(find.text('api-7d9f-abcde'), findsNothing); // runs as default
+    expect(find.text('2 grants · 2 bindings'), findsOneWidget); // the collapsed summary
+    await openSection(tester, 'sa-permissions');
     // "Can do": merged rows per target, neutral verbs.
     expect(find.text('Can do'), findsOneWidget);
     expect(find.text('pods'), findsOneWidget);
@@ -137,7 +153,6 @@ void main() {
     expect(find.text('pod-reader'), findsOneWidget);
     expect(find.text('web-pod-reader'), findsOneWidget);
     expect(find.textContaining('dangling binding'), findsOneWidget);
-    expect(find.text('2 grants · 2 bindings'), findsOneWidget);
     // The built-in issuer-discovery binding is folded into "Default access".
     expect(find.text('Default access'), findsOneWidget);
     expect(find.textContaining('/openid/v1/jwks'), findsNothing);
@@ -163,6 +178,7 @@ void main() {
     await pumpPanel(tester, fixture('sa-web'), api: api);
     await saveScreenshot(tester, 'config-sa-defaults');
     expect(find.text('defaults only'), findsOneWidget);
+    await openSection(tester, 'sa-permissions');
     expect(find.textContaining('Nothing beyond the cluster defaults'), findsOneWidget);
     expect(find.text('Can do'), findsNothing);
     expect(find.text('Default access'), findsOneWidget);
