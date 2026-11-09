@@ -4,6 +4,8 @@
 /// query fails or returns nothing.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -18,11 +20,7 @@ import 'overview_api.dart';
 import 'overview_cards.dart' show formatCores;
 import 'overview_widgets.dart' show SkeletonBar;
 
-const _ranges = <(String, Duration)>[
-  ('1h', Duration(hours: 1)),
-  ('6h', Duration(hours: 6)),
-  ('24h', Duration(hours: 24)),
-];
+const _ranges = <(String, Duration)>[('1h', Duration(hours: 1)), ('6h', Duration(hours: 6)), ('24h', Duration(hours: 24))];
 
 /// Remembered for the session.
 Duration _rememberedRange = const Duration(hours: 1);
@@ -31,23 +29,17 @@ Duration _rememberedRange = const Duration(hours: 1);
 Duration refreshEvery(Duration range) => range <= const Duration(hours: 1)
     ? const Duration(seconds: 60)
     : range <= const Duration(hours: 6)
-        ? const Duration(minutes: 2)
-        : const Duration(minutes: 5);
+    ? const Duration(minutes: 2)
+    : const Duration(minutes: 5);
 
 /// One query per chart: usage, requests and allocatable as three series
 /// told apart by a `series` label (requests and allocatable come from
 /// kube-state-metrics and are simply absent without it).
 String capacityQuery({required bool cpu, required String window}) {
   String tag(String q, String name) => 'label_replace($q, "series", "$name", "", "")';
-  final usage = cpu
-      ? 'sum(rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[$window]))'
-      : 'sum(container_memory_working_set_bytes{container!="",container!="POD"})';
+  final usage = cpu ? 'sum(rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[$window]))' : 'sum(container_memory_working_set_bytes{container!="",container!="POD"})';
   final r = cpu ? 'cpu' : 'memory';
-  return [
-    tag(usage, 'usage'),
-    tag('sum(kube_pod_container_resource_requests{resource="$r"})', 'requests'),
-    tag('sum(kube_node_status_allocatable{resource="$r"})', 'allocatable'),
-  ].join(' or ');
+  return [tag(usage, 'usage'), tag('sum(kube_pod_container_resource_requests{resource="$r"})', 'requests'), tag('sum(kube_node_status_allocatable{resource="$r"})', 'allocatable')].join(' or ');
 }
 
 class _Lines {
@@ -163,6 +155,7 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
     final cpu = ready && _cpu != null
         ? _HistoryMeter(
             key: const ValueKey('history-cpu'),
+            trailing: RangePicker(value: _range, ranges: _ranges, onChanged: _setRange),
             label: 'CPU',
             unit: MetricUnit.cores,
             lines: _cpu!,
@@ -187,21 +180,27 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
           )
         : null;
     Widget cell(Widget? chart) => chart ?? (ready ? const SizedBox.shrink() : const _ChartSkeleton());
-    return LayoutBuilder(builder: (context, box) {
-      final wide = box.maxWidth >= 620;
-      final cells = [cell(cpu), cell(mem)];
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        wide
-            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: cells[0]),
-                const SizedBox(width: 28),
-                Expanded(child: cells[1]),
-              ])
-            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [cells[0], const SizedBox(height: 12), cells[1]]),
-        const SizedBox(height: 6),
-        Align(alignment: Alignment.centerRight, child: RangePicker(value: _range, ranges: _ranges, onChanged: _setRange)),
-      ]);
-    });
+    return LayoutBuilder(
+      builder: (context, box) {
+        final wide = box.maxWidth >= 620;
+        final cells = [cell(cpu), cell(mem)];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            wide
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: cells[0]),
+                      const SizedBox(width: 28),
+                      Expanded(child: cells[1]),
+                    ],
+                  )
+                : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [cells[0], const SizedBox(height: 12), cells[1]]),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -209,11 +208,7 @@ class _ChartSkeleton extends StatelessWidget {
   const _ChartSkeleton();
 
   @override
-  Widget build(BuildContext context) => const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SkeletonBar(width: 160, height: 12),
-        SizedBox(height: 9),
-        SkeletonBar(height: 110),
-      ]);
+  Widget build(BuildContext context) => const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [SkeletonBar(width: 160, height: 12), SizedBox(height: 9), SkeletonBar(height: 110)]);
 }
 
 class _HistoryMeter extends StatelessWidget {
@@ -225,8 +220,12 @@ class _HistoryMeter extends StatelessWidget {
   final double allocatable;
   final String amount;
   final String Function(double) usedText;
+
+  /// Sits beside the title (the range picker).
+  final Widget? trailing;
   const _HistoryMeter({
     super.key,
+    this.trailing,
     required this.label,
     required this.unit,
     required this.lines,
@@ -247,43 +246,69 @@ class _HistoryMeter extends StatelessWidget {
     final now = lines.usage.last.$2;
     final use = allocatable > 0 ? now / allocatable : null;
     // Prometheus history when kube-state-metrics has it, else flat at the current value.
+    final reqPoints = lines.requests ?? _flat(requested);
+    final allocPoints = lines.allocatable ?? _flat(allocatable);
+    double peak(List<(DateTime, double)> p) => p.fold<double>(0, (a, b) => math.max(a, b.$2));
+    // The scale fits usage and requests; allocatable only shows when it is within reach.
+    final yMax = math.max(peak(lines.usage), peak(reqPoints)) * 1.25;
+    final showAlloc = allocPoints.isNotEmpty && peak(allocPoints) <= yMax;
     final guides = [
-      ChartGuide(lines.requests == null ? 'requested (now)' : 'requested', lines.requests ?? _flat(requested), dashed: true),
-      ChartGuide(lines.allocatable == null ? 'allocatable (now)' : 'allocatable', lines.allocatable ?? _flat(allocatable), faint: true),
+      ChartGuide(lines.requests == null ? 'requested (now)' : 'requested', reqPoints, dashed: true),
+      if (showAlloc) ChartGuide(lines.allocatable == null ? 'allocatable (now)' : 'allocatable', allocPoints, faint: true),
     ];
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-        Text(label, style: theme.textTheme.titleSmall),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text.rich(
-            TextSpan(children: [
-              TextSpan(text: amount, style: TextStyle(color: theme.colorScheme.onSurface)),
-              const TextSpan(text: ' requested'),
-              if (req != null) ...[
-                const TextSpan(text: ' · '),
-                TextSpan(text: formatPercent(req), style: TextStyle(color: percentColor(context, req) ?? theme.colorScheme.onSurface, fontWeight: FontWeight.w600)),
-              ],
-              TextSpan(text: '   ${usedText(now)} in use${use == null ? '' : ' · ${formatPercent(use)}'}'),
-            ]),
-            textAlign: TextAlign.right,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: hint,
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(label, style: theme.textTheme.titleSmall),
+            if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+            const SizedBox(width: 10),
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: amount,
+                        style: TextStyle(color: theme.colorScheme.onSurface),
+                      ),
+                      const TextSpan(text: ' requested'),
+                      if (req != null) ...[
+                        const TextSpan(text: ' · '),
+                        TextSpan(
+                          text: formatPercent(req),
+                          style: TextStyle(color: percentColor(context, req) ?? theme.colorScheme.onSurface, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                      TextSpan(text: '   ${usedText(now)} in use${use == null ? '' : ' · ${formatPercent(use)}'}'),
+                    ],
+                  ),
+                  textAlign: TextAlign.right,
+                  style: hint,
+                ),
+              ),
+            ),
+          ],
         ),
-      ]),
-      const SizedBox(height: 6),
-      AreaChart(series: [MetricSeries(const {}, lines.usage)], guides: guides, unit: unit, range: range, height: 92, seriesName: 'in use'),
-      const SizedBox(height: 4),
-      Row(children: [
-        _Key(color: seriesColors(context)[0], text: 'in use'),
-        const SizedBox(width: 12),
-        _Key(color: theme.hintColor, text: guides[0].name, dashed: true),
-        const SizedBox(width: 12),
-        _Key(color: theme.hintColor.withValues(alpha: 0.5), text: guides[1].name),
-      ]),
-    ]);
+        const SizedBox(height: 6),
+        AreaChart(series: [MetricSeries(const {}, lines.usage)], guides: guides, unit: unit, range: range, height: 92, seriesName: 'in use', yMax: yMax),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            _Key(color: seriesColors(context)[0], text: 'in use'),
+            const SizedBox(width: 12),
+            _Key(color: theme.hintColor, text: guides[0].name, dashed: true),
+            const SizedBox(width: 12),
+            if (guides.length > 1) _Key(color: theme.hintColor.withValues(alpha: 0.5), text: guides[1].name),
+          ],
+        ),
+      ],
+    );
   }
 }
 
@@ -296,12 +321,21 @@ class _Key extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      dashed
-          ? Row(children: [Container(width: 3, height: 2, color: color), const SizedBox(width: 2), Container(width: 3, height: 2, color: color)])
-          : Container(width: 8, height: 2, color: color),
-      const SizedBox(width: 4),
-      Text(text, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontSize: 10)),
-    ]);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        dashed
+            ? Row(
+                children: [
+                  Container(width: 3, height: 2, color: color),
+                  const SizedBox(width: 2),
+                  Container(width: 3, height: 2, color: color),
+                ],
+              )
+            : Container(width: 8, height: 2, color: color),
+        const SizedBox(width: 4),
+        Text(text, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontSize: 10)),
+      ],
+    );
   }
 }

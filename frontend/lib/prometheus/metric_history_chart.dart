@@ -547,7 +547,10 @@ class AreaChart extends StatefulWidget {
 
   /// Reference lines; they count towards the scale and show in the hover.
   final List<ChartGuide> guides;
-  const AreaChart({super.key, required this.series, required this.unit, required this.range, this.height = 76, this.labelKey, this.seriesName = 'value', this.guides = const []});
+
+  /// Fixes the top of the scale (rounded up to a tidy value) instead of fitting every line.
+  final double? yMax;
+  const AreaChart({super.key, required this.series, required this.unit, required this.range, this.height = 76, this.labelKey, this.seriesName = 'value', this.guides = const [], this.yMax});
 
   @override
   State<AreaChart> createState() => _AreaChartState();
@@ -571,7 +574,7 @@ class _AreaChartState extends State<AreaChart> {
     final all = [for (final s in widget.series) ...s.points];
     final tMin = all.map((p) => p.$1.millisecondsSinceEpoch).reduce(math.min).toDouble();
     final tMax = all.map((p) => p.$1.millisecondsSinceEpoch).reduce(math.max).toDouble();
-    final vMax = _niceMax([...all, for (final g in widget.guides) ...g.points].map((p) => p.$2).fold<double>(0, math.max));
+    final vMax = widget.yMax != null ? _niceMax(widget.yMax!) : _niceMax([...all, for (final g in widget.guides) ...g.points].map((p) => p.$2).fold<double>(0, math.max));
     final multi = widget.series.length > 1;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
