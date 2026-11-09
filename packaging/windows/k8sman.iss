@@ -68,5 +68,13 @@ Type: filesandordirs; Name: "{app}\data"
 Name: "{autoprograms}\k8sman"; Filename: "{app}\k8sman.exe"
 Name: "{autodesktop}\k8sman"; Filename: "{app}\k8sman.exe"; Tasks: desktopicon
 
+[Registry]
+; k8sman:// links (per user, like the install): Windows starts k8sman.exe
+; with the URL as its argument. Removed on uninstall.
+Root: HKCU; Subkey: "Software\Classes\k8sman"; ValueType: string; ValueName: ""; ValueData: "URL:k8sman link"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\k8sman"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\k8sman\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\k8sman.exe"",0"
+Root: HKCU; Subkey: "Software\Classes\k8sman\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\k8sman.exe"" ""%1"""
+
 [Run]
 Filename: "{app}\k8sman.exe"; Description: "{cm:LaunchProgram,k8sman}"; Flags: nowait postinstall skipifsilent

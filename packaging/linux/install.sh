@@ -18,4 +18,6 @@ cp "$here/k8sman.png" "$icons/k8sman.png"
 sed -e "s|@EXEC@|\"$here/k8sman\"|" -e "s|@ICON@|k8sman|" "$here/k8sman.desktop.in" > "$apps/k8sman.desktop"
 ln -sf "$here/k8sman" "$bin/k8sman"
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$apps" >/dev/null 2>&1 || true
+# k8sman:// links open this launcher.
+command -v xdg-mime >/dev/null 2>&1 && xdg-mime default k8sman.desktop x-scheme-handler/k8sman >/dev/null 2>&1 || true
 echo "Installed: k8sman is in your app menu, and ~/.local/bin/k8sman runs it."
