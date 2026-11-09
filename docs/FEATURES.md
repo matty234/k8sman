@@ -297,7 +297,9 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   `kubernetes.azure.com/agentpool`), else a flat list. Expand a node to see
   its pods: problem pods (not running or ready, restarting) first, then the
   busiest, with namespace, status, restarts, age and usage against their
-  limit or request; **Show all N** past 15; click one to inspect it. Nodes
+  limit or request; **Show all N** past 15; click one to inspect it. The
+  list shows as soon as nodes and pods are listed; usage from metrics-server
+  fills in after, with placeholders of the same size until it does. Nodes
   also have cordon/uncordon and **drain** in their ⋮ menu. Drain works like `kubectl drain
   --ignore-daemonsets`. It first shows the pods it will evict, what it skips
   (DaemonSet and mirror pods), and anything blocking it. Options cover
@@ -309,7 +311,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   credentials), uninstall, and stuck-release recovery.
 - **Security**: network exposure, RBAC risk (including unused privileged
   ServiceAccounts), Pod Security, best practices, Trivy image CVEs, and
-  **Copy for AI**.
+  **Copy for AI**. It loads progressively: it answers after about a second
+  with the categories whose lists are in; the rest show placeholders (never
+  "0 findings") and the score waits, while the page re-fetches quickly until
+  everything is in.
 - **Add-ons**: one-click Helm installs of metrics-server, the Prometheus
   stack, Trivy Operator, Argo CD, Envoy Gateway and cert-manager.
 - **Hubble** (on clusters running Cilium with Hubble Relay): a **Map** of

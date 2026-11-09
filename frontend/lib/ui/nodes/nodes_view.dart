@@ -224,6 +224,11 @@ class _NodesViewState extends State<NodesView> with PollingState {
   Map<String, PodUsage>? _podUsage;
   Object? _metricsError;
 
+  /// Node and pod usage haven't answered yet (the first time): their cells
+  /// show placeholders rather than requests or "—".
+  bool _usageLoading = true;
+  bool _podUsageLoading = true;
+
   NodeSort _sort = NodeSort.status;
   bool _ascending = true;
   bool _grouped = true;
@@ -248,20 +253,33 @@ class _NodesViewState extends State<NodesView> with PollingState {
     });
   }
 
+  /// Lists nodes and pods (from the backend's watch cache: quick) and shows
+  /// them at once; node and pod usage from metrics-server fill in as each
+  /// answers, without holding up the list.
   Future<void> _refresh() async {
+    final metrics = MetricsCache.of(_api);
+    final usage = metrics.nodes().then<Object>((v) => v, onError: (Object e) => e).then((u) {
+      if (!mounted) return;
+      setState(() {
+        _usage = u is List<NodeUsage> ? {for (final x in u) x.name: x} : null;
+        _metricsError = u is List<NodeUsage> ? null : u;
+        _usageLoading = false;
+      });
+    });
+    final podUsage = metrics.pods(null).then<Object>((v) => v, onError: (Object e) => e).then((u) {
+      if (!mounted) return;
+      setState(() {
+        _podUsage = u is List<PodUsage> ? {for (final x in u) x.key: x} : null;
+        _podUsageLoading = false;
+      });
+    });
     try {
       final results = await Future.wait([
         _api.items(const ResourceRef(resource: 'nodes')),
         _api.items(const ResourceRef(resource: 'pods'), fieldSelector: 'status.phase!=Succeeded,status.phase!=Failed'),
       ]);
-      final metrics = MetricsCache.of(_api);
-      final usage = await metrics.nodes().then<Object>((v) => v, onError: (Object e) => e);
-      final podUsage = await metrics.pods(null).then<Object>((v) => v, onError: (Object e) => e);
       if (!mounted) return;
       setState(() {
-        _usage = usage is List<NodeUsage> ? {for (final u in usage) u.name: u} : null;
-        _metricsError = usage is List<NodeUsage> ? null : usage;
-        _podUsage = podUsage is List<PodUsage> ? {for (final u in podUsage) u.key: u} : null;
         _nodes = summarizeNodes(results[0], results[1]);
         _error = null;
         _updated = DateTime.now();
@@ -269,6 +287,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
+    await Future.wait([usage, podUsage]);
   }
 
   void _sortBy(NodeSort s) => setState(() {
@@ -352,7 +371,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
       ),
       const Divider(),
       // Cluster-wide summary strip (wraps on narrow widths).
-      if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 10), child: _Summary(nodes, _usage, _metricsError)),
+      if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 10), child: _Summary(nodes, _usage, _metricsError, loading: _usageLoading)),
       if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: InlineMessage(_error!, isError: true)),
       Expanded(
         child: visible == null
@@ -362,7 +381,8 @@ class _NodesViewState extends State<NodesView> with PollingState {
                 : LayoutBuilder(builder: (context, box) {
                     final layout = NodeLayout.forWidth(box.maxWidth);
                     final items = _items(visible);
-                    final metrics = _usage != null;
+                    // Until usage answers, assume it will (no "requests" flip).
+                    final metrics = _usage != null || _usageLoading;
                     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       _HeaderRow(layout: layout, sort: _sort, ascending: _ascending, metrics: metrics, onSort: _sortBy),
                       Expanded(
@@ -385,6 +405,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
                                 node: p.node,
                                 layout: layout,
                                 usage: _podUsage?['${dig(p.pod, ['metadata', 'namespace'])}/${dig(p.pod, ['metadata', 'name'])}']?.usage,
+                                loading: _podUsageLoading,
                               ),
                             final _ShowAll s => _ShowAllRow(
                                 key: ValueKey('showall:${s.node.name}'),
@@ -397,6 +418,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
                                 layout: layout,
                                 usage: _usage?[n.name]?.usage,
                                 metrics: _usage != null,
+                                loading: _usageLoading,
                                 expanded: _expanded.contains(n.name),
                                 onToggle: () => _toggle(n),
                                 onChanged: _refresh,
@@ -587,7 +609,10 @@ class _Summary extends StatelessWidget {
   final List<NodeSummary> nodes;
   final Map<String, NodeUsage>? usage;
   final Object? metricsError;
-  const _Summary(this.nodes, this.usage, this.metricsError);
+
+  /// Usage hasn't answered yet: its figures are placeholders.
+  final bool loading;
+  const _Summary(this.nodes, this.usage, this.metricsError, {this.loading = false});
 
   @override
   Widget build(BuildContext context) {
@@ -620,7 +645,10 @@ class _Summary extends StatelessWidget {
         ),
         if (cordoned > 0) StatItem('cordoned', '$cordoned', tone: Severity.warn),
         if (pressure > 0) StatItem('under pressure', '$pressure', tone: Severity.error),
-        if (u != null) ...[
+        if (loading) ...[
+          const StatItem('CPU in use', null),
+          const StatItem('memory in use', null),
+        ] else if (u != null) ...[
           pct('CPU in use', u.values.fold(0.0, (a, x) => a + x.usage.cpuMillis), cpuAll),
           pct('memory in use', u.values.fold(0.0, (a, x) => a + x.usage.memoryBytes), memAll),
         ],
@@ -654,10 +682,13 @@ class _NodeRow extends StatelessWidget {
   /// Metrics are available: a node without a sample shows "—" rather
   /// than its requests.
   final bool metrics;
+
+  /// Usage hasn't answered yet: placeholders in the usage cells.
+  final bool loading;
   final bool expanded;
   final VoidCallback onToggle;
   final VoidCallback onChanged;
-  const _NodeRow(this.n, {super.key, required this.layout, this.usage, this.metrics = false, required this.expanded, required this.onToggle, required this.onChanged});
+  const _NodeRow(this.n, {super.key, required this.layout, this.usage, this.metrics = false, this.loading = false, required this.expanded, required this.onToggle, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -756,8 +787,8 @@ class _NodeRow extends StatelessWidget {
           if (layout.showRoles) _col(NodeLayout.rolesW, Text(n.roles.join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
           if (layout.showVersion) _col(NodeLayout.versionW, Text(n.kubeletVersion ?? '–', maxLines: 1, overflow: TextOverflow.ellipsis, style: info)),
           if (layout.showAge) _col(NodeLayout.ageW, n.created == null ? Text('–', style: info) : AgeText(n.created, style: info)),
-          _col(layout.cpuW, UsageCell(value: cpu, style: style)),
-          if (layout.showMem) _col(NodeLayout.usageW, UsageCell(value: mem, style: style)),
+          _col(layout.cpuW, loading ? const _UsagePlaceholder() : UsageCell(value: cpu, style: style)),
+          if (layout.showMem) _col(NodeLayout.usageW, loading ? const _UsagePlaceholder() : UsageCell(value: mem, style: style)),
           if (layout.showPods)
             _col(
               NodeLayout.podsW,
@@ -785,7 +816,8 @@ class _PodRow extends StatelessWidget {
   final NodeSummary node;
   final NodeLayout layout;
   final Usage? usage;
-  const _PodRow({super.key, required this.pod, required this.node, required this.layout, this.usage});
+  final bool loading;
+  const _PodRow({super.key, required this.pod, required this.node, required this.layout, this.usage, this.loading = false});
 
   @override
   Widget build(BuildContext context) {
@@ -847,14 +879,26 @@ class _PodRow extends StatelessWidget {
                       maxLines: 1, overflow: TextOverflow.ellipsis, style: info?.copyWith(color: restarts >= 5 ? severityColor(context, Severity.warn) : null)),
             ),
           if (layout.showAge) _col(NodeLayout.ageW, AgeText(dig(pod, ['metadata', 'creationTimestamp']), style: info)),
-          _col(layout.cpuW, UsageCell(value: cpu, style: style)),
-          if (layout.showMem) _col(NodeLayout.usageW, UsageCell(value: mem, style: style)),
+          _col(layout.cpuW, loading ? const _UsagePlaceholder() : UsageCell(value: cpu, style: style)),
+          if (layout.showMem) _col(NodeLayout.usageW, loading ? const _UsagePlaceholder() : UsageCell(value: mem, style: style)),
           if (layout.showPods) const SizedBox(width: NodeLayout.podsW + NodeLayout.gap),
           const SizedBox(width: NodeLayout.menuW),
         ]),
       ),
     );
   }
+}
+
+/// Stands in for a usage cell until metrics answer: a faint bar where the
+/// value sits, the cell's height, so nothing moves when it fills in.
+class _UsagePlaceholder extends StatelessWidget {
+  const _UsagePlaceholder();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+        height: 16,
+        child: Align(alignment: Alignment.centerRight, child: FractionallySizedBox(widthFactor: 0.55, child: SkeletonBar(height: 8))),
+      );
 }
 
 class _ShowAllRow extends StatelessWidget {
