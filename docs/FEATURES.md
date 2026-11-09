@@ -198,6 +198,12 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     target and failure policy.
   - **Prometheus Operator** Prometheus, Alertmanager, PrometheusRule (live rule
     state), ServiceMonitor and PodMonitor (live target health).
+  - A Prometheus or Alertmanager that discovery can't find (Mimir, Thanos
+    query-frontend, VictoriaMetrics under a path such as `/prometheus`) can be
+    set by hand per context in Settings > Integrations > Prometheus
+    (namespace, service, port, path prefix); its reachability shows there.
+  - History charts offer 10m, 15m, 1h, 6h, 1d and 1w, and the Prometheus
+    settings choose the range charts first open with.
 
 ## Bottom dock: alerts, logs and terminals
 

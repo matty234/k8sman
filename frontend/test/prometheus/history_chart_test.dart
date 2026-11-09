@@ -73,6 +73,20 @@ void main() {
     expect(prom.queries.where((q) => q.contains('node_network_receive_bytes_total{device!~"lo|veth.*')), hasLength(1));
   });
 
+  testWidgets('charts offer 10m and 1w and first open on the default range setting', (tester) async {
+    prom.defaultRange = '6h';
+    await pumpPanel(tester, devFixture('node-k8sman-dev-control-plane.json'), size: const Size(560, 2400));
+    for (final label in ['10m', '15m', '1h', '6h', '1d', '1w']) {
+      expect(find.text(label), findsOneWidget);
+    }
+    expect(prom.queries.firstWhere((q) => q.contains('node_cpu_seconds_total')), contains('[6m]'));
+    // Picking a range changes this view only.
+    await tester.tap(find.text('1w'));
+    await tester.pumpAndSettle();
+    expect(prom.queries.last, contains('[168m]'));
+    expect(stepFor(const Duration(days: 7)).step, const Duration(seconds: 2520));
+  });
+
   testWidgets('deployment panel sums its pods by owner, falling back to the pod-name pattern', (tester) async {
     await pumpPanel(tester, devFixture('deploy-web.json'), size: const Size(560, 3200));
     expect(find.text('Metrics history'), findsOneWidget);

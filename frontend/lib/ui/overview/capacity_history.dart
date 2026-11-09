@@ -20,17 +20,17 @@ import 'overview_api.dart';
 import 'overview_cards.dart' show formatCores;
 import 'overview_widgets.dart' show SkeletonBar;
 
-const _ranges = <(String, Duration)>[('1h', Duration(hours: 1)), ('6h', Duration(hours: 6)), ('24h', Duration(hours: 24))];
-
 /// Remembered for the session.
-Duration _rememberedRange = const Duration(hours: 1);
+Duration? _rememberedRange;
 
 /// How often a range's data is refetched.
 Duration refreshEvery(Duration range) => range <= const Duration(hours: 1)
     ? const Duration(seconds: 60)
     : range <= const Duration(hours: 6)
     ? const Duration(minutes: 2)
-    : const Duration(minutes: 5);
+    : range <= const Duration(days: 1)
+    ? const Duration(minutes: 5)
+    : const Duration(minutes: 10);
 
 /// One query per chart: usage, requests and allocatable as three series
 /// told apart by a `series` label (requests and allocatable come from
@@ -77,7 +77,7 @@ class ClusterHistory extends StatefulWidget {
 class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
   PromApi? _prom;
   _State _state = _State.checking;
-  Duration _range = _rememberedRange;
+  Duration _range = _rememberedRange ?? const Duration(hours: 1);
   _Lines? _cpu, _mem;
   Poll? _poll;
   int _seq = 0;
@@ -95,6 +95,11 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
     final ok = await _prom!.hasPrometheus();
     if (!mounted) return;
     if (!ok) return setState(() => _state = _State.unavailable);
+    if (_rememberedRange == null) {
+      final r = await defaultHistoryRange(_prom!);
+      if (!mounted) return;
+      _range = r;
+    }
     setState(() => _state = _State.loading);
     _arm();
     await _fetch();
@@ -157,7 +162,7 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
     final cpu = ready && _cpu != null
         ? _HistoryMeter(
             key: const ValueKey('history-cpu'),
-            trailing: RangePicker(value: _range, ranges: _ranges, onChanged: _setRange),
+            trailing: RangePicker(value: _range, onChanged: _setRange),
             label: 'CPU',
             unit: MetricUnit.cores,
             lines: _cpu!,

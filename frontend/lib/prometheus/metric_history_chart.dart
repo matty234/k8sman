@@ -259,12 +259,20 @@ class MetricChartSpec {
 
 /// Selectable time ranges.
 const historyRanges = <(String, Duration)>[
+  ('10m', Duration(minutes: 10)),
   ('15m', Duration(minutes: 15)),
   ('1h', Duration(hours: 1)),
   ('6h', Duration(hours: 6)),
   ('1d', Duration(days: 1)),
-  ('7d', Duration(days: 7)),
+  ('1w', Duration(days: 7)),
 ];
+
+/// The range charts first open with: the Prometheus module's `defaultRange`
+/// setting, else 1h.
+Future<Duration> defaultHistoryRange(PromApi prom) async {
+  final label = await prom.defaultRangeLabel();
+  return historyRanges.firstWhere((r) => r.$1 == label, orElse: () => historyRanges[2]).$2;
+}
 
 /// Step for ~240 points, and a rate window of at least 4 steps (and 2m, so
 /// a 30s scrape interval always has samples).
@@ -287,7 +295,8 @@ class MetricHistorySection extends StatefulWidget {
   /// Offer a "per <label>" breakdown (e.g. per container) when set.
   final String? breakdownLabel;
   final String title;
-  final Duration initialRange;
+  /// Null = the Prometheus module's default range setting.
+  final Duration? initialRange;
 
   /// An instant query that must return a series, else the section hides
   /// (e.g. Prometheus exists but doesn't have this object's metrics).
@@ -302,7 +311,7 @@ class MetricHistorySection extends StatefulWidget {
     required this.charts,
     this.breakdownLabel,
     this.title = 'Metrics history',
-    this.initialRange = const Duration(hours: 1),
+    this.initialRange,
     this.probe,
     this.note,
   });
@@ -317,6 +326,7 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
 
   Future<bool> _check() async {
     if (!await _prom.hasPrometheus()) return false;
+    _range ??= await defaultHistoryRange(_prom);
     final probe = widget.probe;
     if (probe == null) return true;
     try {
@@ -325,7 +335,7 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
       return false;
     }
   }
-  late Duration _range = widget.initialRange;
+  late Duration? _range = widget.initialRange;
   bool _breakdown = false;
 
   @override
@@ -338,16 +348,16 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
         return DetailSection(
           title: widget.title,
           icon: Icons.show_chart,
-          trailing: RangePicker(value: _range, onChanged: (r) => setState(() => _range = r)),
+          trailing: RangePicker(value: _range!, onChanged: (r) => setState(() => _range = r)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final spec in widget.charts)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: MetricHistoryChart(
-                  key: ValueKey('${spec.title}/${_range.inSeconds}/$_breakdown'),
+                  key: ValueKey('${spec.title}/${_range!.inSeconds}/$_breakdown'),
                   prom: _prom,
                   spec: spec,
-                  range: _range,
+                  range: _range!,
                   breakdown: _breakdown ? widget.breakdownLabel : null,
                 ),
               ),

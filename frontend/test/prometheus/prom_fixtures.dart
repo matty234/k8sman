@@ -20,6 +20,12 @@ class FixturePromApi extends PromApi {
   /// PromQL passed to query / query_range.
   final List<String> queries = [];
 
+  /// The Prometheus module's defaultRange setting.
+  String defaultRange = '';
+
+  @override
+  Future<String> defaultRangeLabel() async => defaultRange;
+
   /// Number of `alerts` fetches.
   int alertFetches = 0;
 

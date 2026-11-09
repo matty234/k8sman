@@ -1,6 +1,9 @@
+import 'package:flutter/widgets.dart';
+
 import '../api/client.dart';
 import '../panels/prometheus/index.dart';
 import '../prometheus/prom_api.dart';
+import '../prometheus/prometheus_settings.dart';
 import 'module.dart';
 
 /// Prometheus Operator: Prometheus, Alertmanager, PrometheusRule and
@@ -24,6 +27,9 @@ class PrometheusModule extends AppModule {
 
   @override
   List<ResourcePanel> get panels => prometheusPanels;
+
+  @override
+  WidgetBuilder get settingsBuilder => (_) => const PrometheusSettingsForm();
 
   @override
   List<NavGroup> get navGroups => const [

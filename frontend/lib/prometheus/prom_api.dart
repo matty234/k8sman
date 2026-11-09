@@ -70,6 +70,27 @@ class PromApi {
 
   static String _unix(DateTime t) => (t.millisecondsSinceEpoch / 1000).toStringAsFixed(3);
 
+  // ---- history charts' default range ----
+
+  Future<String>? _rangeFuture;
+  DateTime? _rangeAt;
+
+  /// The Prometheus module's `defaultRange` setting ("" = none or
+  /// unreadable), cached for a minute.
+  Future<String> defaultRangeLabel() {
+    final at = _rangeAt;
+    if (_rangeFuture == null || at == null || DateTime.now().difference(at) > const Duration(minutes: 1)) {
+      _rangeAt = DateTime.now();
+      _rangeFuture = api.getModuleSettings('prometheus').then((j) => '${j['defaultRange'] ?? ''}', onError: (_) => '');
+    }
+    return _rangeFuture!;
+  }
+
+  /// Forget cached discovery and settings (after the settings are saved).
+  void resetCaches() {
+    _statusFuture = _rangeFuture = null;
+  }
+
   // ---- cached availability (history charts) ----
 
   Future<PromStatus>? _statusFuture;
