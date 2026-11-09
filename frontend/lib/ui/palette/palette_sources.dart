@@ -51,7 +51,8 @@ List<PaletteItem> paletteItems(BuildContext context) {
           detail: t.group.isEmpty ? t.version : t.group,
           typeLabel: t.custom ? 'Custom Kind' : 'Kind',
           icon: (c) => kindIconWidget(t, size: 15, color: c),
-          aliases: [t.resource],
+          // The sidebar's label too ("Autoscalers", "Network Policies").
+          aliases: [t.resource, kindLabel(t)],
           exactAliases: t.shortNames,
           current: app.view == MainView.resources && app.selectedType == t,
           run: () => app.selectType(t),

@@ -120,7 +120,7 @@ CommandResults rankCommand(
         detail: t.group.isEmpty ? t.version : t.group,
         typeLabel: t.custom ? 'Custom Kind' : 'Kind',
         icon: (c) => kindIconWidget(t, size: 15, color: c),
-        aliases: [t.resource, ...t.shortNames],
+        aliases: [t.resource, ...t.shortNames, kindLabel(t)],
         current: app.view == MainView.resources && app.selectedType == t,
         run: () => app.selectType(t),
       );
