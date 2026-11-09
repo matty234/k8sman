@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../actions/actions.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../state/log_dock.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
+import '../inspector_parts.dart';
 import '../panel.dart';
 import 'batch_common.dart';
 import 'cron.dart';
+import 'job_panel.dart' show jobSpecSummary;
 
 /// The first scheduled time after [lastSchedule] (or [created]) if it is
 /// well overdue at [now], i.e. past by more than max(2m, 25% of cadence).
@@ -23,6 +28,52 @@ DateTime? overdueRun(CronSchedule s, ZoneRules zone, {DateTime? lastSchedule, Da
   return now.toUtc().isAfter(next[0].add(grace)) ? next[0] : null;
 }
 
+/// The schedule of a CronJob resolved against its time zone: the parsed
+/// expression, the zone (UTC when unknown) and how to label it.
+class _Sched {
+  final String expr;
+  final CronSchedule? sched;
+  final String? zoneName;
+  final ZoneRules? zone;
+  const _Sched._(this.expr, this.sched, this.zoneName, this.zone);
+
+  factory _Sched(Json cronJob) {
+    final expr = '${dig(cronJob, ['spec', 'schedule']) ?? ''}';
+    final sched = CronSchedule.tryParse(expr);
+    final zoneName = dig<String>(cronJob, ['spec', 'timeZone']) ?? sched?.timeZone;
+    return _Sched._(expr, sched, zoneName, resolveZone(zoneName));
+  }
+
+  ZoneRules get z => zone ?? ZoneRules.utc;
+
+  /// "Every 5 minutes" (capitalised), else the raw expression.
+  String get words {
+    final desc = describeCron(expr);
+    if (desc != null) return '${desc[0].toUpperCase()}${desc.substring(1)}';
+    return sched == null ? 'Unrecognised schedule' : expr;
+  }
+
+  List<DateTime> next(DateTime now, {int count = 5}) => sched?.nextRuns(now, count: count, zone: z) ?? const <DateTime>[];
+
+  String wall(DateTime t) => '${formatWall(z.toWall(t))} ${z.abbreviationAt(t)}';
+
+  /// "UTC", "Asia/Tokyo (JST)".
+  String get zoneShort => zoneName == null ? 'UTC' : (zone == null ? '$zoneName?' : '$zoneName (${z.abbreviationAt(batchNow().toUtc())})');
+
+  String zoneLabel(DateTime now) {
+    if (zoneName == null) return 'UTC (no spec.timeZone; controller default)';
+    if (zone == null) return '$zoneName (unknown here; showing UTC)';
+    final abbr = z.abbreviationAt(now.toUtc());
+    final off = z.offsetAt(now.toUtc());
+    final sign = off.isNegative ? '-' : '+';
+    final h = off.abs().inHours, m = off.abs().inMinutes % 60;
+    return '$zoneName ($abbr, UTC$sign${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')})';
+  }
+}
+
+/// The key prefix of a CronJob's owned-jobs fetch, for [SharedFetch].
+String cronJobsKey(ApiClient api, String uid) => 'cronjobs:${identityHashCode(api)}:$uid';
+
 class CronJobPanel extends ResourcePanel {
   const CronJobPanel();
 
@@ -34,25 +85,69 @@ class CronJobPanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
+    final now = batchNow();
     final jobSpec = asMap(dig(ctx.spec, ['jobTemplate', 'spec']));
+    final suspended = ctx.spec['suspend'] == true;
+    final s = _Sched(ctx.object);
+    final runs = s.next(now, count: 1);
+    final active = {for (final a in asMapList(ctx.status['active'])) '${a['uid'] ?? a['name']}'};
+    final signature = [ctx.status['lastScheduleTime'], ctx.status['lastSuccessfulTime'], asMapList(ctx.status['active']).map((a) => a['name']).join(',')].join('/');
+    final policy = '${ctx.spec['concurrencyPolicy'] ?? 'Allow'}';
+    final deadline = ctx.spec['startingDeadlineSeconds'];
     return [
-      DetailSection(title: 'Schedule', icon: Icons.schedule, child: CronScheduleView(ctx.object, ctx: ctx)),
-      DetailSection(title: 'Status & policy', icon: Icons.tune, child: _CronStatus(ctx.object)),
-      DetailSection(
-        title: 'Job history',
-        icon: Icons.history,
+      // Is it running on time, and did the last run work?
+      CronStatusHeader(ctx, signature: signature),
+      PodSection(
+        id: 'cron-jobs',
+        title: 'Recent jobs',
+        trailing: SharedFetchBuilder<List<Json>>(
+          fetchKey: '${cronJobsKey(ctx.api, ctx.uid)}:$signature',
+          fetch: () => fetchOwnedJobs(ctx.api, ctx.namespace, ctx.uid),
+          builder: (context, snap) {
+            final jobs = snap.data;
+            if (jobs == null) return const SizedBox.shrink();
+            final states = [for (final j in jobs) deriveJobState(j)];
+            final bad = states.where((s) => s.label == 'Failed').length;
+            final ok = states.where((s) => s.label == 'Complete').length;
+            return SectionSummary(
+              jobs.isEmpty ? 'none retained' : [plural(jobs.length, 'job'), if (ok > 0) '$ok complete', if (bad > 0) '$bad failed'].join(' · '),
+              color: bad > 0 ? severityColor(context, Severity.error) : null,
+            );
+          },
+        ),
         child: CronJobHistory(
           key: ValueKey(ctx.uid),
           api: ctx.api,
           namespace: ctx.namespace,
           uid: ctx.uid,
-          active: {for (final a in asMapList(ctx.status['active'])) '${a['uid'] ?? a['name']}'},
-          signature: [ctx.status['lastScheduleTime'], ctx.status['lastSuccessfulTime'], asMapList(ctx.status['active']).map((a) => a['name']).join(',')].join('/'),
+          active: active,
+          signature: signature,
         ),
       ),
-      DetailSection(
+      // Reference detail, collapsed behind a one-line summary.
+      PodSection(
+        id: 'cron-runs',
+        title: suspended ? 'Next runs (if resumed)' : 'Next runs',
+        initiallyExpanded: false,
+        trailing: SectionSummary(runs.isEmpty ? (s.sched == null ? 'unknown' : 'never') : s.wall(runs.first)),
+        child: CronScheduleView(ctx.object),
+      ),
+      PodSection(
+        id: 'cron-spec',
+        title: 'Spec',
+        initiallyExpanded: false,
+        trailing: SectionSummary([
+          policy,
+          'keep ${ctx.spec['successfulJobsHistoryLimit'] ?? 3} ok / ${ctx.spec['failedJobsHistoryLimit'] ?? 1} failed',
+          if (deadline is num) 'deadline ${shortSeconds(deadline.toInt())}',
+        ].join(' · ')),
+        child: _CronSpec(ctx.object),
+      ),
+      PodSection(
+        id: 'cron-template',
         title: 'Job template',
-        icon: Icons.inventory_2_outlined,
+        initiallyExpanded: false,
+        trailing: SectionSummary(jobSpecSummary(jobSpec)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           KeyValueTable([
             if (jobSpec['completions'] != null) ('Completions', '${jobSpec['completions']}'),
@@ -70,92 +165,152 @@ class CronJobPanel extends ResourcePanel {
   }
 }
 
-/// Expression, description, time zone, next runs and the overdue warning.
+/// The top of the CronJob inspector: the schedule in words, when it runs
+/// next, when it last ran and how that went (from the retained jobs),
+/// insights for a suspension, a missed schedule or a failed run, Run now
+/// and Suspend/Resume, then the expression, active jobs and last success.
+class CronStatusHeader extends StatelessWidget {
+  final PanelContext ctx;
+  final String signature;
+  const CronStatusHeader(this.ctx, {super.key, required this.signature});
+
+  @override
+  Widget build(BuildContext context) => SharedFetchBuilder<List<Json>>(
+        fetchKey: '${cronJobsKey(ctx.api, ctx.uid)}:$signature',
+        fetch: () => fetchOwnedJobs(ctx.api, ctx.namespace, ctx.uid),
+        builder: (context, snap) => _build(context, snap.data, snap.hasError),
+      );
+
+  Widget _build(BuildContext context, List<Json>? jobs, bool failedToLoad) {
+    final theme = Theme.of(context);
+    final now = batchNow();
+    final spec = ctx.spec;
+    final status = ctx.status;
+    final ns = ctx.namespace;
+    final s = _Sched(ctx.object);
+    final suspended = spec['suspend'] == true;
+    final canAct = !ctx.app.readOnly;
+    final runs = s.next(now, count: 1);
+    final lastSched = parseTime(status['lastScheduleTime']);
+    final lastOk = parseTime(status['lastSuccessfulTime']);
+    final active = asMapList(status['active']);
+    final overdue = (s.sched == null || suspended)
+        ? null
+        : overdueRun(s.sched!, s.z, lastSchedule: lastSched, created: parseTime(ctx.metadata['creationTimestamp']), now: now);
+
+    // The newest retained job tells how the last run went.
+    final newest = jobs?.firstOrNull;
+    final newestState = newest == null ? null : deriveJobState(newest);
+    final lastFailed = newestState?.label == 'Failed' || newestState?.label == 'Failing';
+    final (String? result, Severity resultSev) = switch (newestState?.label) {
+      null => (jobs == null && !failedToLoad ? null : '—', Severity.neutral),
+      'Complete' => ('ok', Severity.neutral),
+      'Failed' || 'Failing' => ('failed', Severity.error),
+      final l => (l.toLowerCase(), Severity.neutral),
+    };
+
+    final mark = suspended || overdue != null ? Severity.warn : (lastFailed ? Severity.error : (newestState?.label == 'Complete' ? Severity.ok : Severity.neutral));
+    final warn = severityColor(context, Severity.warn);
+    final detail = Text.rich(TextSpan(children: [
+      if (suspended) TextSpan(text: 'Suspended', style: TextStyle(color: warn, fontWeight: FontWeight.w600)),
+      if (suspended && s.sched != null) const TextSpan(text: '  ·  '),
+      if (s.sched == null)
+        TextSpan(text: s.expr.isEmpty ? 'no schedule' : s.expr)
+      else
+        TextSpan(text: runs.isEmpty ? 'never fires' : '${suspended ? 'would run' : 'next'} ${s.wall(runs.first)}'),
+    ]));
+
+    // Last success older than the last schedule: the latest run failed or
+    // is still running.
+    final okStale = lastOk != null && lastSched != null && lastOk.isBefore(lastSched) && active.isEmpty;
+    Widget timeRow(DateTime t, {Severity? sev}) => Wrap(spacing: 6, children: [
+          Text(formatLocal(t), style: theme.textTheme.bodySmall?.copyWith(color: sev == null ? null : severityColor(context, sev))),
+          hint(context, '(${formatRelative(t, now: now)})'),
+        ]);
+
+    return InspectorHeader(
+      mark: mark,
+      headline: s.words,
+      detail: detail,
+      figures: [
+        InspectorFigure(suspended ? 'paused' : (runs.isEmpty ? '—' : formatRelative(runs.first, now: now)), 'next run',
+            severity: suspended ? Severity.warn : Severity.neutral, tooltip: runs.isEmpty ? null : s.wall(runs.first)),
+        InspectorFigure(lastSched == null ? 'never' : formatRelative(lastSched, now: now), 'last run', tooltip: lastSched == null ? null : formatLocal(lastSched)),
+        InspectorFigure(result, 'last result', severity: resultSev, tooltip: newest == null ? null : '${dig(newest, ['metadata', 'name'])}: ${newestState!.label}'),
+        InspectorFigure('${active.length}', 'active'),
+      ],
+      insights: [
+        if (suspended) const PodInsight(Severity.warn, 'Suspended: no new jobs will be scheduled', 'spec.suspend is true. Jobs already running are not affected.'),
+        if (overdue != null)
+          PodInsight(
+            Severity.warn,
+            'Missed schedule: a run was due ${formatRelative(overdue, now: now)}',
+            'Expected at ${s.wall(overdue)}, but lastScheduleTime is '
+                '${lastSched != null ? formatRelative(lastSched, now: now) : 'unset'}. '
+                'Check the controller, startingDeadlineSeconds and concurrencyPolicy.',
+          ),
+        if (lastFailed)
+          PodInsight(
+            Severity.error,
+            'Last run failed${newestState!.reason != null ? ': ${newestState.reason}' : ''}',
+            '${dig(newest!, ['metadata', 'name'])}${newestState.message != null ? ': ${newestState.message}' : ''}',
+          ),
+      ],
+      actions: [
+        if (canAct) RunNowButton(ctx),
+        if (canAct && suspended)
+          ActionButton(ctx,
+              action: 'unsuspend',
+              label: 'Resume',
+              icon: Icons.play_arrow,
+              title: 'Resume CronJob ${ctx.name}?',
+              message: 'Sets spec.suspend=false. Runs resume from the next scheduled time; missed runs within startingDeadlineSeconds may start immediately.'),
+        if (canAct && !suspended)
+          ActionButton(ctx, action: 'suspend', label: 'Suspend', icon: Icons.pause, title: 'Suspend CronJob ${ctx.name}?', message: 'No new jobs will be scheduled.'),
+      ],
+      facts: [
+        (
+          'Schedule',
+          Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Chipish(text: s.expr.isEmpty ? '(none)' : s.expr, copyValue: s.expr),
+            hint(context, s.zoneShort),
+          ]),
+        ),
+        if (active.isNotEmpty)
+          (
+            'Active',
+            Wrap(spacing: 10, runSpacing: 2, children: [
+              for (final a in active)
+                ResourceLink(ObjectRef(group: 'batch', kind: 'Job', name: '${a['name']}', namespace: a['namespace'] as String? ?? ns), label: '${a['name']}'),
+            ]),
+          ),
+        ('Last ok', lastOk == null ? hint(context, lastSched == null ? 'never' : 'never succeeded') : timeRow(lastOk, sev: okStale ? Severity.warn : null)),
+      ],
+    );
+  }
+}
+
+/// The next five runs in the CronJob's time zone (dimmed while suspended).
 class CronScheduleView extends StatelessWidget {
   final Json cronJob;
-  /// When given (and not read-only), Resume / Run now controls are shown.
-  final PanelContext? ctx;
-  const CronScheduleView(this.cronJob, {super.key, this.ctx});
+  const CronScheduleView(this.cronJob, {super.key});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final now = batchNow();
-    final spec = asMap(cronJob['spec']);
-    final status = asMap(cronJob['status']);
-    final expr = '${spec['schedule'] ?? ''}';
-    final suspended = spec['suspend'] == true;
-    final sched = CronSchedule.tryParse(expr);
-    final canAct = ctx != null && !ctx!.app.readOnly;
-    final desc = describeCron(expr);
-    final zoneName = (spec['timeZone'] as String?) ?? sched?.timeZone;
-    final zone = resolveZone(zoneName);
-    final z = zone ?? ZoneRules.utc;
-    final runs = sched?.nextRuns(now, count: 5, zone: z) ?? const <DateTime>[];
-    final overdue = (sched == null || suspended)
-        ? null
-        : overdueRun(sched, z, lastSchedule: parseTime(status['lastScheduleTime']), created: parseTime(dig(cronJob, ['metadata', 'creationTimestamp'])), now: now);
-
-    String zoneLabel;
-    if (zoneName == null) {
-      zoneLabel = 'UTC (no spec.timeZone; controller default)';
-    } else if (zone == null) {
-      zoneLabel = '$zoneName (unknown here; showing UTC)';
-    } else {
-      final abbr = z.abbreviationAt(now.toUtc());
-      final off = z.offsetAt(now.toUtc());
-      final sign = off.isNegative ? '-' : '+';
-      final h = off.abs().inHours, m = off.abs().inMinutes % 60;
-      zoneLabel = '$zoneName ($abbr, UTC$sign${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')})';
-    }
+    final suspended = dig(cronJob, ['spec', 'suspend']) == true;
+    final s = _Sched(cronJob);
+    final runs = s.next(now);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (suspended)
-        Callout(
-          severity: Severity.warn,
-          icon: Icons.pause_circle_outline,
-          title: 'Suspended: no new jobs will be scheduled',
-          body: 'spec.suspend is true. Jobs already running are not affected.',
-          action: canAct
-              ? ActionButton(ctx!,
-                  action: 'unsuspend',
-                  label: 'Resume',
-                  icon: Icons.play_arrow,
-                  title: 'Resume CronJob ${ctx!.name}?',
-                  message: 'Sets spec.suspend=false. Runs resume from the next scheduled time; missed runs within startingDeadlineSeconds may start immediately.')
-              : null,
-        ),
-      if (overdue != null)
-        Callout(
-          severity: Severity.warn,
-          title: 'Missed schedule: a run was due ${formatRelative(overdue, now: now)}',
-          body: 'Expected at ${formatWall(z.toWall(overdue))} ${z.abbreviationAt(overdue)}, but lastScheduleTime is '
-              '${status['lastScheduleTime'] != null ? formatRelative(parseTime(status['lastScheduleTime'])!, now: now) : 'unset'}. '
-              'Check the controller, startingDeadlineSeconds and concurrencyPolicy.',
-        ),
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Chipish(text: expr.isEmpty ? '(none)' : expr, copyValue: expr),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            desc != null ? '${desc[0].toUpperCase()}${desc.substring(1)}' : (sched == null ? 'Unrecognised schedule' : expr),
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: suspended ? theme.hintColor : null),
-          ),
-        ),
-      ]),
-      const SizedBox(height: 6),
       Row(children: [
         Icon(Icons.public, size: 13, color: theme.hintColor),
         const SizedBox(width: 4),
-        Expanded(child: hint(context, 'Time zone: $zoneLabel')),
+        Expanded(child: hint(context, 'Time zone: ${s.zoneLabel(now)}')),
       ]),
-      const SizedBox(height: 10),
-      Row(children: [
-        Expanded(child: Text(suspended ? 'Next runs (if resumed)' : 'Next runs', style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor))),
-        if (canAct) RunNowButton(ctx!),
-      ]),
-      const SizedBox(height: 4),
-      if (sched == null)
+      const SizedBox(height: 6),
+      if (s.sched == null)
         const InlineMessage('Cannot compute run times for this expression.')
       else if (runs.isEmpty)
         const InlineMessage('This schedule never fires.')
@@ -168,12 +323,12 @@ class CronScheduleView extends StatelessWidget {
               child: Row(children: [
                 SizedBox(
                   width: 18,
-                  child: Icon(i == 0 ? Icons.arrow_right : Icons.circle, size: i == 0 ? 16 : 5, color: i == 0 ? theme.colorScheme.primary : theme.hintColor),
+                  child: Icon(i == 0 ? Icons.arrow_right : Icons.circle, size: i == 0 ? 16 : 5, color: theme.hintColor),
                 ),
-                mono(context, '${formatWall(z.toWall(r))} ${z.abbreviationAt(r)}', color: i == 0 ? null : theme.colorScheme.onSurfaceVariant),
+                Flexible(child: mono(context, s.wall(r), color: i == 0 ? null : theme.colorScheme.onSurfaceVariant)),
                 const SizedBox(width: 10),
                 Text(formatRelative(r, now: now),
-                    style: theme.textTheme.bodySmall?.copyWith(color: i == 0 ? theme.colorScheme.primary : theme.hintColor, fontWeight: i == 0 ? FontWeight.w600 : null)),
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontWeight: i == 0 ? FontWeight.w600 : null)),
               ]),
             ),
           ),
@@ -181,20 +336,15 @@ class CronScheduleView extends StatelessWidget {
   }
 }
 
-class _CronStatus extends StatelessWidget {
+/// Concurrency policy, starting deadline, history limits and suspend.
+class _CronSpec extends StatelessWidget {
   final Json cj;
-  const _CronStatus(this.cj);
+  const _CronSpec(this.cj);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final now = batchNow();
     final spec = asMap(cj['spec']);
-    final status = asMap(cj['status']);
-    final ns = dig<String>(cj, ['metadata', 'namespace']);
-    final active = asMapList(status['active']);
-    final lastSched = parseTime(status['lastScheduleTime']);
-    final lastOk = parseTime(status['lastSuccessfulTime']);
     final suspended = spec['suspend'] == true;
     final policy = '${spec['concurrencyPolicy'] ?? 'Allow'}';
     final policyHelp = switch (policy) {
@@ -202,35 +352,17 @@ class _CronStatus extends StatelessWidget {
       'Replace' => 'replace the active run',
       _ => 'runs may overlap',
     };
-
-    Widget timeRow(DateTime t, {Severity? sev}) => Wrap(spacing: 6, children: [
-          Text(formatLocal(t), style: theme.textTheme.bodySmall?.copyWith(color: sev == null ? null : severityColor(context, sev))),
-          hint(context, '(${formatRelative(t, now: now)})'),
-        ]);
-
-    // Last success older than last schedule => the latest run failed or is still running.
-    Severity? okSev;
-    if (lastOk != null && lastSched != null && lastOk.isBefore(lastSched) && active.isEmpty) okSev = Severity.warn;
-
     return KeyValueTable([
-      ('Suspend', suspended ? const Align(alignment: Alignment.centerLeft, child: StatusBadge('Suspended', severity: Severity.warn, dense: true)) : 'false'),
       (
-        'Active jobs',
-        active.isEmpty
-            ? hint(context, 'none')
-            : Wrap(spacing: 10, runSpacing: 2, children: [
-                for (final a in active)
-                  ResourceLink(ObjectRef(group: 'batch', kind: 'Job', name: '${a['name']}', namespace: a['namespace'] as String? ?? ns), label: '${a['name']}'),
-              ]),
+        'Concurrency',
+        Text.rich(TextSpan(style: theme.textTheme.bodySmall, children: [
+          TextSpan(text: policy, style: const TextStyle(fontWeight: FontWeight.w600)),
+          TextSpan(text: ' · $policyHelp', style: TextStyle(color: theme.hintColor)),
+        ])),
       ),
-      ('Last schedule', lastSched == null ? hint(context, 'never') : timeRow(lastSched)),
-      ('Last successful', lastOk == null ? hint(context, lastSched == null ? 'never' : 'never succeeded') : timeRow(lastOk, sev: okSev)),
-      ('Concurrency', Text.rich(TextSpan(style: theme.textTheme.bodySmall, children: [
-        TextSpan(text: policy, style: const TextStyle(fontWeight: FontWeight.w600)),
-        TextSpan(text: ' · $policyHelp', style: TextStyle(color: theme.hintColor)),
-      ]))),
       ('Starting deadline', spec['startingDeadlineSeconds'] is num ? formatSeconds((spec['startingDeadlineSeconds'] as num).toInt()) : hint(context, 'none')),
       ('History limits', '${spec['successfulJobsHistoryLimit'] ?? 3} successful · ${spec['failedJobsHistoryLimit'] ?? 1} failed'),
+      ('Suspend', suspended ? const Align(alignment: Alignment.centerLeft, child: StatusBadge('Suspended', severity: Severity.warn, dense: true)) : 'false'),
     ], keyWidth: 120);
   }
 }
@@ -250,9 +382,6 @@ Future<List<Json>> fetchOwnedJobs(ApiClient api, String? namespace, String uid) 
   owned.sort((a, b) => key(b).compareTo(key(a)));
   return owned;
 }
-
-/// Bumped after an in-panel action creates a Job, so history refetches.
-final ValueNotifier<int> cronJobHistoryRefresh = ValueNotifier(0);
 
 /// "Run now": triggers the CronJob, then refreshes the job history. The
 /// snackbar from [runResourceAction] offers to open the created Job.
@@ -274,7 +403,7 @@ class _RunNowButtonState extends State<RunNowButton> {
         message: 'Creates a one-off Job from the job template, outside the schedule. '
             'concurrencyPolicy is not applied to manual runs.',
         confirmLabel: 'Run now');
-    if (res != null) cronJobHistoryRefresh.value++;
+    if (res != null) SharedFetch.invalidate(cronJobsKey(widget.ctx.api, widget.ctx.uid));
     if (mounted) setState(() => _busy = false);
   }
 
@@ -287,7 +416,9 @@ class _RunNowButtonState extends State<RunNowButton> {
       );
 }
 
-class CronJobHistory extends StatefulWidget {
+/// The retained jobs as compact rows: failures first (and open), then the
+/// rest newest first, each with a logs action.
+class CronJobHistory extends StatelessWidget {
   final ApiClient api;
   final String? namespace;
   final String uid;
@@ -296,58 +427,19 @@ class CronJobHistory extends StatefulWidget {
   const CronJobHistory({super.key, required this.api, required this.namespace, required this.uid, required this.active, required this.signature});
 
   @override
-  State<CronJobHistory> createState() => _CronJobHistoryState();
-}
-
-class _CronJobHistoryState extends State<CronJobHistory> {
-  late Future<List<Json>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = fetchOwnedJobs(widget.api, widget.namespace, widget.uid);
-    cronJobHistoryRefresh.addListener(_refresh);
-  }
-
-  void _refresh() {
-    if (!mounted) return;
-    setState(() {
-      _future = fetchOwnedJobs(widget.api, widget.namespace, widget.uid);
-    });
-  }
-
-  @override
-  void dispose() {
-    cronJobHistoryRefresh.removeListener(_refresh);
-    super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(CronJobHistory old) {
-    super.didUpdateWidget(old);
-    if (old.uid != widget.uid || old.signature != widget.signature) {
-      _future = fetchOwnedJobs(widget.api, widget.namespace, widget.uid);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => AsyncSection<List<Json>>(
-        future: _future,
-        builder: (context, jobs) {
+  Widget build(BuildContext context) => SharedFetchBuilder<List<Json>>(
+        fetchKey: '${cronJobsKey(api, uid)}:$signature',
+        fetch: () => fetchOwnedJobs(api, namespace, uid),
+        builder: (context, snap) {
+          if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
+          final jobs = snap.data;
+          if (jobs == null) return const SectionSpinner(size: 14, strokeWidth: 1.5);
           if (jobs.isEmpty) return const InlineMessage('No jobs found. Older runs are pruned by the history limits.');
-          final states = [for (final j in jobs) deriveJobState(j)];
-          final ok = states.where((s) => s.label == 'Complete').length;
-          final bad = states.where((s) => s.label == 'Failed').length;
-          final theme = Theme.of(context);
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text.rich(TextSpan(style: theme.textTheme.bodySmall, children: [
-              TextSpan(text: '${jobs.length} job${jobs.length == 1 ? '' : 's'} retained · '),
-              TextSpan(text: '$ok complete', style: TextStyle(color: severityColor(context, Severity.ok))),
-              const TextSpan(text: ' · '),
-              TextSpan(text: '$bad failed', style: TextStyle(color: severityColor(context, bad > 0 ? Severity.error : Severity.neutral))),
-            ])),
-            const SizedBox(height: 6),
-            for (final (i, j) in jobs.indexed) _HistoryRow(j, states[i], active: widget.active.contains(dig(j, ['metadata', 'uid'])) || widget.active.contains(dig(j, ['metadata', 'name']))),
+          final rows = [for (final j in jobs) (j, deriveJobState(j))];
+          bool failed((Json, JobState) r) => r.$2.label == 'Failed' || r.$2.label == 'Failing';
+          return TrimmedList([
+            for (final (j, st) in [...rows.where(failed), ...rows.where((r) => !failed(r))])
+              _HistoryRow(j, st, active: active.contains(dig(j, ['metadata', 'uid'])) || active.contains(dig(j, ['metadata', 'name']))),
           ]);
         },
       );
@@ -365,42 +457,46 @@ class _HistoryRow extends StatelessWidget {
     final name = dig<String>(job, ['metadata', 'name']) ?? '';
     final ns = dig<String>(job, ['metadata', 'namespace']);
     final dur = jobDuration(job);
-    final c = severityColor(context, st.severity);
+    final failed = st.label == 'Failed' || st.label == 'Failing';
+    final start = parseTime(dig(job, ['status', 'startTime']));
+    final selector = selectorToString(dig(job, ['spec', 'selector']));
     final small = theme.textTheme.bodySmall;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainer.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(6),
-        border: Border(left: BorderSide(color: c, width: 3)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          SizedBox(width: 84, child: Align(alignment: Alignment.centerLeft, child: StatusBadge(st.label, severity: st.severity, dense: true))),
-          Expanded(child: ResourceLink(ObjectRef(group: 'batch', kind: 'Job', name: name, namespace: ns), label: name)),
-          if (active) ...[const StatusBadge('active', severity: Severity.info, dense: true), const SizedBox(width: 8)],
-          SizedBox(width: 44, child: Text(jobCompletions(job), textAlign: TextAlign.right, style: monoStyle(context, size: 11))),
-          SizedBox(
-            width: 64,
-            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              Icon(Icons.timer_outlined, size: 11, color: theme.hintColor),
-              const SizedBox(width: 2),
-              Text(dur != null ? formatDuration(dur) : '–', style: small),
-            ]),
+    return InspectorRow(
+      key: ValueKey('cron-job-$name'),
+      memoryId: 'cron-job:${dig(job, ['metadata', 'uid']) ?? name}',
+      dot: active ? Severity.info : st.severity,
+      hollowDot: st.label == 'Complete',
+      dotTooltip: active ? 'active' : st.label,
+      problem: failed,
+      title: ResourceLink(ObjectRef(group: 'batch', kind: 'Job', name: name, namespace: ns), label: name, singleLine: true),
+      subtitle: Text.rich(TextSpan(children: [
+        TextSpan(text: active ? 'Active' : st.label, style: failed ? TextStyle(color: severityColor(context, Severity.error), fontWeight: FontWeight.w600) : null),
+        TextSpan(text: '  ·  ${jobCompletions(job)}'),
+        if (dur != null) TextSpan(text: '  ·  ${formatDuration(dur)}'),
+      ])),
+      meta: [AgeText(dig(job, ['metadata', 'creationTimestamp']), suffix: ' ago')],
+      actions: [
+        if (selector.isNotEmpty && ns != null)
+          RowAction(
+            key: ValueKey('cron-job-logs-$name'),
+            icon: Icons.notes,
+            tooltip: 'View logs',
+            onTap: () => context.read<LogDock>().openAggregate(ns, selector: selector, title: 'job/$name'),
           ),
-          const SizedBox(width: 6),
-          SizedBox(
-            width: 60,
-            child: Align(alignment: Alignment.centerRight, child: AgeText(dig(job, ['metadata', 'creationTimestamp']), suffix: ' ago')),
-          ),
-        ]),
-        if (st.label == 'Failed' && (st.reason != null || st.message != null))
+      ],
+      details: (context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (failed && (st.reason != null || st.message != null))
           Padding(
-            padding: const EdgeInsets.only(left: 84, top: 2),
-            child: Text('${st.reason ?? ''}${st.message != null ? ': ${st.message}' : ''}',
-                maxLines: 2, overflow: TextOverflow.ellipsis, style: small?.copyWith(color: c)),
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text('${st.reason ?? ''}${st.message != null ? '${st.reason != null ? ': ' : ''}${st.message}' : ''}',
+                style: small?.copyWith(color: severityColor(context, Severity.error))),
           ),
+        KeyValueTable([
+          if (start != null) ('Started', '${formatLocal(start)} (${formatRelative(start)})'),
+          if (st.finishedAt != null) (failed ? 'Failed' : 'Finished', formatLocal(st.finishedAt!)),
+          ('Completions', jobCompletions(job)),
+          if (dur != null) ('Duration', formatDuration(dur)),
+        ], keyWidth: 84),
       ]),
     );
   }

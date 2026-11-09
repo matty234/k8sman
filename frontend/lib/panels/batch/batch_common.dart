@@ -54,6 +54,15 @@ String formatSeconds(int s) {
   return '${s}s (${formatDuration(Duration(seconds: s))})';
 }
 
+/// Seconds as a short span for one-line summaries: "45s", "10m", "1h30m",
+/// "2h", "1d6h".
+String shortSeconds(int s) {
+  if (s < 60) return '${s}s';
+  if (s < 3600) return s % 60 == 0 ? '${s ~/ 60}m' : '${s ~/ 60}m${s % 60}s';
+  if (s < 86400) return (s ~/ 60) % 60 == 0 ? '${s ~/ 3600}h' : '${s ~/ 3600}h${(s ~/ 60) % 60}m';
+  return (s ~/ 3600) % 24 == 0 ? '${s ~/ 86400}d' : '${s ~/ 86400}d${(s ~/ 3600) % 24}h';
+}
+
 int _int(dynamic v) => v is num ? v.toInt() : 0;
 
 /// Derived Job state.
@@ -238,6 +247,19 @@ class CountsBar extends StatelessWidget {
       ]),
     ]);
   }
+}
+
+/// "importer:2.4.1 · restart Never" (or "3 containers · 1 init · ...") for
+/// a collapsed pod template's header.
+String podTemplateSummaryLine(Json template) {
+  final spec = asMap(template['spec']);
+  final ctrs = asMapList(spec['containers']);
+  final init = asMapList(spec['initContainers']);
+  return [
+    if (ctrs.length == 1) '${ctrs.first['image'] ?? ctrs.first['name']}'.split('/').last else plural(ctrs.length, 'container'),
+    if (init.isNotEmpty) '${init.length} init',
+    'restart ${spec['restartPolicy'] ?? 'Always'}',
+  ].join(' · ');
 }
 
 /// Containers, images, commands and pod-level settings of a pod template.

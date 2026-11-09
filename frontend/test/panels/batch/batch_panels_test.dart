@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/batch/batch_common.dart';
 import 'package:k8sman/panels/batch/cron.dart';
 import 'package:k8sman/panels/batch/cronjob_panel.dart';
+import 'package:k8sman/panels/pod/pod_section.dart';
 import 'package:k8sman/util/k8s.dart';
 
 import '../../support/harness.dart';
@@ -143,8 +145,17 @@ List<Json> failedPods() => [
       failedPod(3, '2026-11-03T10:00:50Z', 137, 'OOMKilled'),
     ];
 
+/// Opens a collapsed inspector section by its id.
+Future<void> openSection(WidgetTester tester, String id) async {
+  await tester.tap(find.byKey(ValueKey('pod-section-$id')));
+  await tester.pump();
+}
+
 void main() {
-  setUp(() => batchNow = () => DateTime.utc(2026, 11, 3, 11, 33));
+  setUp(() {
+    batchNow = () => DateTime.utc(2026, 11, 3, 11, 33);
+    PodSectionMemory.reset();
+  });
   tearDown(() => batchNow = DateTime.now);
 
   group('pure helpers', () {
@@ -213,10 +224,15 @@ void main() {
       await loadRealFonts();
       final app = await pumpPanel(tester, migrateDb, api: _api(pods: migratePods));
       await saveScreenshot(tester, 'batch-job-complete');
-      expect(find.text('Complete'), findsWidgets);
-      expect(find.text('1 succeeded'), findsOneWidget);
-      expect(find.text('took 11s'), findsOneWidget);
+      expect(find.text('Complete in 11s'), findsOneWidget);
+      expect(find.text('1 succeeded'), findsOneWidget); // the Pods summary
+      expect(find.text('took'), findsOneWidget);
+      // Healthy pods start collapsed; details open on demand.
+      expect(find.textContaining('exit 0', findRichText: true), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('job-pod-migrate-db-xgbx9')));
+      await tester.pump();
       expect(find.textContaining('exit 0', findRichText: true), findsOneWidget);
+      await openSection(tester, 'job-template');
       expect(find.text("sh -c 'echo running migrations; sleep 3; echo done'"), findsOneWidget);
       expect(find.text('Never'), findsOneWidget);
       await tester.tap(find.text('migrate-db-xgbx9'));
@@ -232,15 +248,18 @@ void main() {
       expect(find.text('Failed'), findsWidgets);
       expect(find.textContaining('BackoffLimitExceeded'), findsWidgets);
       expect(find.text('Job has reached the specified backoff limit'), findsWidgets);
-      expect(find.text('3 failed'), findsOneWidget);
-      expect(find.text('2 · 3 failures so far'), findsOneWidget);
+      expect(find.text('Failed: BackoffLimitExceeded'), findsOneWidget);
+      expect(find.text('3 failed'), findsOneWidget); // the Pods summary
       expect(find.text('#1'), findsOneWidget);
       expect(find.text('#3'), findsOneWidget);
       expect(find.textContaining('exit 137', findRichText: true), findsOneWidget);
       expect(find.textContaining('OOMKilled', findRichText: true), findsOneWidget);
       expect(find.text('psycopg2.OperationalError: connection refused'), findsOneWidget);
+      await openSection(tester, 'job-spec');
+      expect(find.text('2 · 3 failures so far'), findsOneWidget);
       expect(find.textContaining('will be deleted in 28m'), findsOneWidget);
       expect(find.text('FailJob when exit code in [42] (container import)'), findsOneWidget);
+      await openSection(tester, 'job-template');
       expect(find.textContaining("'s3://bucket/data set.csv'"), findsOneWidget);
       await tester.tap(find.text('importer'));
       await tester.pump();
@@ -277,11 +296,14 @@ void main() {
       await saveScreenshot(tester, 'batch-cronjob');
       expect(find.text('*/5 * * * *'), findsOneWidget);
       expect(find.text('Every 5 minutes'), findsOneWidget);
-      expect(find.textContaining('UTC (no spec.timeZone'), findsOneWidget);
-      expect(find.text('Tue 03 Nov 11:35 UTC'), findsOneWidget);
-      expect(find.text('in 2m'), findsOneWidget);
-      expect(find.text('Tue 03 Nov 11:55 UTC'), findsOneWidget);
+      expect(find.text('in 2m'), findsOneWidget); // next run
+      expect(find.text('ok'), findsOneWidget); // last result
       expect(find.textContaining('Missed schedule'), findsNothing);
+      await openSection(tester, 'cron-runs');
+      expect(find.textContaining('UTC (no spec.timeZone'), findsOneWidget);
+      expect(find.text('Tue 03 Nov 11:35 UTC'), findsNWidgets(2)); // the summary and the list
+      expect(find.text('Tue 03 Nov 11:55 UTC'), findsOneWidget);
+      await openSection(tester, 'cron-spec');
       expect(find.text('2 successful · 1 failed'), findsOneWidget);
       // History: owned jobs only, newest first.
       final newer = tester.getTopLeft(find.text('report-29895100')).dy;
@@ -306,9 +328,10 @@ void main() {
       };
       await pumpPanel(tester, cj, api: _api(jobs: liveJobs));
       expect(find.text('At minute 0 past every 6th hour on Mon–Fri'), findsOneWidget);
+      await openSection(tester, 'cron-runs');
       expect(find.textContaining('Asia/Tokyo (JST, UTC+09:00)'), findsOneWidget);
       // 11:33Z = 20:33 JST Tuesday → next is 00:00 JST Wednesday.
-      expect(find.text('Wed 04 Nov 00:00 JST'), findsOneWidget);
+      expect(find.text('Wed 04 Nov 00:00 JST'), findsNWidgets(2));
       expect(find.textContaining('Missed schedule'), findsOneWidget);
       expect(find.text('report-1'), findsOneWidget);
 
@@ -325,6 +348,7 @@ void main() {
       cj['spec']['schedule'] = '@every 5m';
       await pumpPanel(tester, cj, api: _api());
       expect(find.text('Unrecognised schedule'), findsOneWidget);
+      await openSection(tester, 'cron-runs');
       expect(find.text('Cannot compute run times for this expression.'), findsOneWidget);
     });
   });

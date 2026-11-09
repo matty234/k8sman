@@ -6,7 +6,9 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
 import '../../ui/logs/open_logs.dart';
+import '../inspector_parts.dart';
 import '../panel.dart';
 import 'batch_common.dart';
 
@@ -26,48 +28,99 @@ class JobPanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
-    final job = ctx.object;
-    final pods = _int(ctx.status['active']) + _int(ctx.status['succeeded']) + _int(ctx.status['failed']);
+    final spec = ctx.spec;
+    final status = ctx.status;
+    final failed = _int(status['failed']);
+    final active = _int(status['active']);
+    final succeeded = _int(status['succeeded']);
+    final st = deriveJobState(ctx.object);
+    final template = asMap(spec['template']);
+    final conditions = asMapList(status['conditions']);
+    final trueConds = [for (final c in conditions) if (c['status'] == 'True') '${c['type']}'];
+    final failedConds = trueConds.any((t) => t == 'Failed' || t == 'FailureTarget');
     return [
-      DetailSection(title: 'Job', icon: Icons.work_outline, child: JobSummary(job, ctx: ctx)),
-      DetailSection(
+      // Did it work, and if not, why?
+      JobStatusHeader(ctx),
+      PodSection(
+        id: 'job-pods',
         title: 'Pods',
-        icon: Icons.view_in_ar,
-        trailing: pods > 0 ? hint(context, '$pods attempt${pods == 1 ? '' : 's'} counted') : null,
+        trailing: SectionSummary(
+          [
+            if (failed > 0) '$failed failed',
+            if (active > 0) '$active active',
+            if (succeeded > 0) '$succeeded succeeded',
+            if (failed + active + succeeded == 0) 'none counted',
+          ].join(' · '),
+          color: failed > 0 ? severityColor(context, st.label == 'Failed' || st.label == 'Failing' ? Severity.error : Severity.warn) : null,
+        ),
         child: JobPods(
           key: ValueKey(ctx.uid),
           api: ctx.api,
           namespace: ctx.namespace,
           uid: ctx.uid,
           // Refetch when the counts move (a pod started, finished or failed).
-          signature: [ctx.status['active'], ctx.status['ready'], ctx.status['succeeded'], ctx.status['failed'], ctx.status['terminating'], ctx.metadata['resourceVersion']]
-              .join('/'),
+          signature: [status['active'], status['ready'], status['succeeded'], status['failed'], status['terminating'], ctx.metadata['resourceVersion']].join('/'),
         ),
       ),
-      DetailSection(title: 'Conditions', icon: Icons.fact_check_outlined, child: ConditionsTable(ctx.status['conditions'] as List?)),
-      DetailSection(
+      // Reference detail, collapsed behind a one-line summary.
+      PodSection(
+        id: 'job-spec',
+        title: 'Spec',
+        initiallyExpanded: false,
+        trailing: SectionSummary(jobSpecSummary(spec)),
+        child: JobSpecTable(ctx.object),
+      ),
+      PodSection(
+        id: 'job-template',
         title: 'Pod template',
-        icon: Icons.inventory_2_outlined,
-        child: PodTemplateSummary(asMap(ctx.spec['template']), namespace: ctx.namespace),
+        initiallyExpanded: false,
+        trailing: SectionSummary(podTemplateSummaryLine(template)),
+        child: PodTemplateSummary(template, namespace: ctx.namespace),
+      ),
+      PodSection(
+        id: 'job-conditions',
+        title: 'Conditions',
+        initiallyExpanded: false,
+        trailing: SectionSummary(
+          conditions.isEmpty ? 'none' : (trueConds.isEmpty ? 'none true' : trueConds.join(', ')),
+          color: failedConds ? severityColor(context, Severity.error) : null,
+        ),
+        child: ConditionsTable(status['conditions'] as List?),
       ),
     ];
   }
 }
 
-/// Status, counts and settings of one Job. Also used by the CronJob history.
-class JobSummary extends StatelessWidget {
-  final Json job;
+/// "completions 1 · parallelism 2 · backoff 6 · TTL 1h": the settings that
+/// shape a run.
+String jobSpecSummary(Json spec) {
+  final completions = (spec['completions'] as num?)?.toInt();
+  final deadline = (spec['activeDeadlineSeconds'] as num?)?.toInt();
+  final ttl = (spec['ttlSecondsAfterFinished'] as num?)?.toInt();
+  return [
+    completions == null ? 'work queue' : 'completions $completions',
+    'parallelism ${(spec['parallelism'] as num?)?.toInt() ?? 1}',
+    'backoff ${(spec['backoffLimit'] as num?)?.toInt() ?? 6}',
+    if (spec['completionMode'] == 'Indexed') 'indexed',
+    if (deadline != null) 'deadline ${shortSeconds(deadline)}',
+    if (ttl != null) 'TTL ${shortSeconds(ttl)}',
+  ].join(' · ');
+}
 
-  /// When given (and not read-only), in-context actions are shown.
-  final PanelContext? ctx;
-  const JobSummary(this.job, {super.key, this.ctx});
+/// The is-it-OK header of a Job: "Complete in 2m", "Running 3/5
+/// succeeded" or "Failed: BackoffLimitExceeded", with succeeded, failed,
+/// active and duration figures, the insights that explain a problem, and
+/// where it came from.
+class JobStatusHeader extends StatelessWidget {
+  final PanelContext ctx;
+  const JobStatusHeader(this.ctx, {super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final job = ctx.object;
     final now = batchNow();
-    final spec = asMap(job['spec']);
-    final status = asMap(job['status']);
+    final spec = ctx.spec;
+    final status = ctx.status;
     final st = deriveJobState(job);
 
     final succeeded = _int(status['succeeded']);
@@ -76,6 +129,119 @@ class JobSummary extends StatelessWidget {
     final ready = status['ready'] is num ? _int(status['ready']) : null;
     final terminating = _int(status['terminating']);
     final completions = (spec['completions'] as num?)?.toInt();
+    final backoff = (spec['backoffLimit'] as num?)?.toInt() ?? 6;
+    final deadline = (spec['activeDeadlineSeconds'] as num?)?.toInt();
+    final start = parseTime(status['startTime']);
+    final dur = jobDuration(job, now: now);
+    final owners = ownerRefs(job);
+    final readyActive = ready == null ? active : ready.clamp(0, active);
+    final failing = st.label == 'Failed' || st.label == 'Failing';
+    final canAct = !ctx.app.readOnly;
+
+    final headline = switch (st.label) {
+      'Complete' => dur != null ? 'Complete in ${formatDuration(dur)}' : 'Complete',
+      'Failed' || 'Failing' => st.reason != null ? '${st.label}: ${st.reason}' : st.label,
+      'Running' => completions != null ? 'Running $succeeded/$completions succeeded' : 'Running · $succeeded succeeded',
+      _ => st.label,
+    };
+    final mark = switch (st.label) {
+      'Complete' || 'Completing' => Severity.ok,
+      'Running' => failed > 0 ? Severity.warn : Severity.info,
+      _ => st.severity,
+    };
+    final detail = [
+      if (st.finishedAt != null) '${st.label == 'Failed' ? 'failed' : 'finished'} ${formatRelative(st.finishedAt!, now: now)}',
+      if (!st.finished && start != null) 'started ${formatRelative(start, now: now)}',
+      if (st.label == 'Pending' && start == null) 'no pods started yet',
+    ].join(' · ');
+
+    // A live job running out of time.
+    PodInsight? deadlineInsight;
+    if (deadline != null && !st.finished && start != null && st.reason != 'DeadlineExceeded') {
+      final left = start.add(Duration(seconds: deadline)).difference(now);
+      if (left.inSeconds < deadline * 0.1) {
+        deadlineInsight = PodInsight(Severity.warn, left.isNegative ? 'Past its active deadline' : 'Active deadline in ${formatDuration(left)}',
+            'activeDeadlineSeconds is ${shortSeconds(deadline)}; the job fails with DeadlineExceeded when it runs out.');
+      }
+    }
+    final failedIdx = status['failedIndexes'] as String?;
+
+    final insights = <PodInsight>[
+      if (failing) PodInsight(Severity.error, _failureTitle(st.reason), st.message),
+      if (st.label == 'Suspended') PodInsight(Severity.warn, 'Suspended: no new pods will be created', st.message ?? 'spec.suspend is true; active pods were terminated.'),
+      if (st.label == 'Running' && failed > 0)
+        PodInsight(Severity.warn, 'Retrying after ${plural(failed, 'failed attempt')}',
+            'The job fails once failures exceed backoffLimit ($backoff). Failed pods are listed first under Pods.'),
+      if (spec['completionMode'] == 'Indexed' && (failedIdx ?? '').isNotEmpty) PodInsight(Severity.error, 'Failed indexes: $failedIdx'),
+      ?deadlineInsight,
+    ];
+
+    return InspectorHeader(
+      mark: mark,
+      headline: headline,
+      headlineTone: failing ? Severity.error : (st.label == 'Suspended' ? Severity.warn : null),
+      detail: detail.isEmpty ? null : Text(detail),
+      figures: [
+        InspectorFigure('$succeeded', 'succeeded',
+            of: completions == null ? null : '/$completions',
+            tooltip: completions == null ? 'Work queue: no fixed completion count' : '$succeeded of $completions completions'),
+        InspectorFigure('$failed', 'failed',
+            severity: failed == 0 ? Severity.neutral : (failing ? Severity.error : Severity.warn),
+            tooltip: 'backoffLimit $backoff: the job fails after ${backoff + 1} failed attempts'),
+        InspectorFigure('$active', 'active',
+            tooltip: [
+              '$readyActive running',
+              if (active - readyActive > 0) '${active - readyActive} starting',
+              if (terminating > 0) '$terminating terminating',
+            ].join(', ')),
+        if (dur != null) InspectorFigure(formatDuration(dur), st.finished ? 'took' : 'running for'),
+      ],
+      insights: insights,
+      actions: [
+        if (st.label == 'Suspended' && canAct)
+          ActionButton(ctx,
+              action: 'unsuspend',
+              label: 'Resume',
+              icon: Icons.play_arrow,
+              title: 'Resume Job ${ctx.name}?',
+              message: 'Sets spec.suspend=false; the job controller starts creating pods again.'),
+      ],
+      facts: [
+        if (owners.isNotEmpty) ('Owner', Wrap(spacing: 8, children: [for (final o in owners) ResourceLink(o)])),
+        if (start != null) ('Started', _timeWithAge(context, start)),
+        if (st.finishedAt != null) (st.label == 'Failed' ? 'Failed' : 'Finished', _timeWithAge(context, st.finishedAt!)),
+        if (terminating > 0) ('Pods', '$terminating terminating'),
+      ],
+    );
+  }
+
+  static String _failureTitle(String? reason) => switch (reason) {
+        'BackoffLimitExceeded' => 'Too many failed attempts (BackoffLimitExceeded)',
+        'DeadlineExceeded' => 'activeDeadlineSeconds exceeded',
+        'PodFailurePolicy' => 'Failed by the pod failure policy',
+        'MaxFailedIndexesExceeded' => 'Too many failed indexes',
+        'FailedIndexes' => 'Some indexes failed',
+        null => 'Failed',
+        _ => 'Failed: $reason',
+      };
+}
+
+/// The settings of a Job (completions, parallelism, backoff, deadline, TTL,
+/// pod failure policy, suspend) with the live state where it matters:
+/// failures against the backoff budget, time left, deletion due.
+class JobSpecTable extends StatelessWidget {
+  final Json job;
+  const JobSpecTable(this.job, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final now = batchNow();
+    final spec = asMap(job['spec']);
+    final status = asMap(job['status']);
+    final st = deriveJobState(job);
+    final failed = _int(status['failed']);
+    final completions = (spec['completions'] as num?)?.toInt();
     final parallelism = (spec['parallelism'] as num?)?.toInt() ?? 1;
     final backoff = (spec['backoffLimit'] as num?)?.toInt() ?? 6;
     final backoffPerIndex = (spec['backoffLimitPerIndex'] as num?)?.toInt();
@@ -83,18 +249,8 @@ class JobSummary extends StatelessWidget {
     final ttl = (spec['ttlSecondsAfterFinished'] as num?)?.toInt();
     final mode = '${spec['completionMode'] ?? 'NonIndexed'}';
     final start = parseTime(status['startTime']);
-    final dur = jobDuration(job, now: now);
-    final owners = ownerRefs(job);
     final pfp = podFailurePolicySummary(spec['podFailurePolicy']);
-
-    final ok = severityColor(context, Severity.ok);
-    final err = severityColor(context, Severity.error);
-    final info = severityColor(context, Severity.info);
-    final warn = severityColor(context, Severity.warn);
-    final neutral = severityColor(context, Severity.neutral);
-
-    final total = completions ?? (succeeded + failed + active > parallelism ? succeeded + failed + active : parallelism);
-    final readyActive = ready == null ? active : ready.clamp(0, active);
+    final dur = jobDuration(job, now: now);
 
     // Backoff budget: the job fails once failures exceed backoffLimit.
     final backoffText = StringBuffer('$backoff');
@@ -133,93 +289,25 @@ class JobSummary extends StatelessWidget {
     final completedIdx = status['completedIndexes'] as String?;
     final failedIdx = status['failedIndexes'] as String?;
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-        StatusBadge(st.label, severity: st.severity),
-        if (st.reason != null) ...[
-          const SizedBox(width: 8),
-          Flexible(child: Text(st.reason!, style: theme.textTheme.bodyMedium?.copyWith(color: severityColor(context, st.severity), fontWeight: FontWeight.w600))),
-        ],
-        const Spacer(),
-        if (dur != null) hint(context, st.finished ? 'took ${formatDuration(dur)}' : 'running ${formatDuration(dur)}'),
-      ]),
-      const SizedBox(height: 8),
-      if (st.label == 'Failed' || st.label == 'Failing')
-        Callout(
-          severity: Severity.error,
-          title: _failureTitle(st.reason),
-          body: st.message,
-        )
-      else if (st.label == 'Suspended')
-        Callout(
-          severity: Severity.warn,
-          icon: Icons.pause_circle_outline,
-          title: 'Suspended: no new pods will be created',
-          body: st.message ?? 'spec.suspend is true; active pods were terminated.',
-          action: ctx == null || ctx!.app.readOnly
-              ? null
-              : ActionButton(ctx!,
-                  action: 'unsuspend',
-                  label: 'Resume',
-                  icon: Icons.play_arrow,
-                  title: 'Resume Job ${ctx!.name}?',
-                  message: 'Sets spec.suspend=false; the job controller starts creating pods again.'),
-        )
-      else if (st.label == 'Running' && failed > 0)
-        Callout(
-          severity: Severity.warn,
-          title: 'Retrying after $failed failed attempt${failed == 1 ? '' : 's'}',
-          body: 'The job fails once failures exceed backoffLimit ($backoff). See Pods below for exit codes.',
+    return KeyValueTable([
+      ('Completions', '${jobCompletions(job)}${completions == null ? ' (work queue)' : ''}'),
+      ('Parallelism', '$parallelism'),
+      ('Completion mode', mode),
+      if (mode == 'Indexed' && (completedIdx ?? '').isNotEmpty) ('Completed indexes', completedIdx),
+      if (mode == 'Indexed' && (failedIdx ?? '').isNotEmpty) ('Failed indexes', _sevText(context, failedIdx!, Severity.error)),
+      ('Backoff limit', _sevText(context, backoffText.toString(), backoffSev)),
+      if (backoffPerIndex != null) ('Backoff per index', '$backoffPerIndex${spec['maxFailedIndexes'] != null ? ' · max failed indexes ${spec['maxFailedIndexes']}' : ''}'),
+      if (deadlineWidget != null) ('Active deadline', deadlineWidget),
+      if (ttlWidget != null) ('TTL after finished', ttlWidget),
+      if (pfp.isNotEmpty)
+        (
+          'Pod failure policy',
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [for (final r in pfp) Text(r, style: theme.textTheme.bodySmall)]),
         ),
-      CountsBar(
-        total: total,
-        caption: completions == null ? '(no fixed completion count)' : 'of $completions',
-        segments: [
-          CountSegment('succeeded', succeeded, ok),
-          CountSegment('failed', failed, err),
-          CountSegment('running', readyActive, info),
-          if (active - readyActive > 0) CountSegment('starting', active - readyActive, warn),
-          if (terminating > 0) CountSegment('terminating', terminating, neutral),
-        ],
-      ),
-      const SizedBox(height: 10),
-      KeyValueTable([
-        if (owners.isNotEmpty)
-          (
-            'Owner',
-            Wrap(spacing: 8, children: [for (final o in owners) ResourceLink(o)]),
-          ),
-        ('Completions', '${jobCompletions(job)}${completions == null ? ' (work queue)' : ''}'),
-        ('Parallelism', '$parallelism'),
-        ('Completion mode', mode),
-        if (mode == 'Indexed' && (completedIdx ?? '').isNotEmpty) ('Completed indexes', completedIdx),
-        if (mode == 'Indexed' && (failedIdx ?? '').isNotEmpty) ('Failed indexes', _sevText(context, failedIdx!, Severity.error)),
-        ('Backoff limit', _sevText(context, backoffText.toString(), backoffSev)),
-        if (backoffPerIndex != null) ('Backoff per index', '$backoffPerIndex${spec['maxFailedIndexes'] != null ? ' · max failed indexes ${spec['maxFailedIndexes']}' : ''}'),
-        if (deadlineWidget != null) ('Active deadline', deadlineWidget),
-        if (ttlWidget != null) ('TTL after finished', ttlWidget),
-        if (pfp.isNotEmpty)
-          (
-            'Pod failure policy',
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [for (final r in pfp) Text(r, style: theme.textTheme.bodySmall)]),
-          ),
-        if (spec['suspend'] == true) ('Suspend', _sevText(context, 'true', Severity.warn)),
-        if (start != null) ('Started', _timeWithAge(context, start)),
-        if (st.finishedAt != null) (st.label == 'Failed' ? 'Failed at' : 'Completed', _timeWithAge(context, st.finishedAt!)),
-        if (dur != null) ('Duration', formatDuration(dur)),
-      ]),
-    ]);
+      if (spec['suspend'] == true) ('Suspend', _sevText(context, 'true', Severity.warn)),
+      if (dur != null) ('Duration', formatDuration(dur)),
+    ], keyWidth: 120);
   }
-
-  static String _failureTitle(String? reason) => switch (reason) {
-        'BackoffLimitExceeded' => 'Failed: too many failed attempts (BackoffLimitExceeded)',
-        'DeadlineExceeded' => 'Failed: activeDeadlineSeconds exceeded',
-        'PodFailurePolicy' => 'Failed by pod failure policy',
-        'MaxFailedIndexesExceeded' => 'Failed: too many failed indexes',
-        'FailedIndexes' => 'Failed: some indexes failed',
-        null => 'Failed',
-        _ => 'Failed: $reason',
-      };
 }
 
 Widget _sevText(BuildContext context, String text, Severity? sev) => Text(text,
@@ -244,6 +332,9 @@ Future<List<Json>> fetchJobPods(ApiClient api, String? namespace, String uid) as
   return items;
 }
 
+/// The job's pods as compact rows: failed (and stuck) attempts first and
+/// open, then the rest in the order they were created. Each row keeps its
+/// attempt number.
 class JobPods extends StatefulWidget {
   final ApiClient api;
   final String? namespace;
@@ -279,8 +370,19 @@ class _JobPodsState extends State<JobPods> {
           if (pods.isEmpty) {
             return const InlineMessage('No pods found. They may have been cleaned up (TTL or history limits) or not created yet.');
           }
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            for (var i = 0; i < pods.length; i++) JobPodRow(pods[i], attempt: i + 1),
+          final numbered = [for (final (i, p) in pods.indexed) (i + 1, p, jobPodStatus(p).$2)];
+          bool bad(Severity s) => s == Severity.error || s == Severity.warn;
+          final ordered = [...numbered.where((e) => bad(e.$3)), ...numbered.where((e) => !bad(e.$3))];
+          var opened = 0;
+          return TrimmedList([
+            for (final (n, pod, sev) in ordered)
+              JobPodRow(
+                pod,
+                key: ValueKey('job-pod-${dig(pod, ['metadata', 'name'])}'),
+                attempt: n,
+                // Open the first few failures; a long run of them stays tidy.
+                initiallyExpanded: sev == Severity.error && opened++ < 3,
+              ),
           ]);
         },
       );
@@ -309,10 +411,13 @@ class _JobPodsState extends State<JobPods> {
   }
 }
 
+/// One attempt: "#2 import-data-2cx9", its state, how long it ran and a
+/// logs action; open for the node, timings and each container's exit.
 class JobPodRow extends StatelessWidget {
   final Json pod;
   final int attempt;
-  const JobPodRow(this.pod, {super.key, required this.attempt});
+  final bool initiallyExpanded;
+  const JobPodRow(this.pod, {super.key, required this.attempt, this.initiallyExpanded = false});
 
   @override
   Widget build(BuildContext context) {
@@ -323,7 +428,6 @@ class JobPodRow extends StatelessWidget {
     final idx = dig<String>(pod, ['metadata', 'annotations', 'batch.kubernetes.io/job-completion-index']) ??
         dig<String>(pod, ['metadata', 'labels', 'batch.kubernetes.io/job-completion-index']);
     final (label, sev) = jobPodStatus(pod);
-    final c = severityColor(context, sev);
     final statuses = [
       for (final s in asMapList(dig(pod, ['status', 'initContainerStatuses']))) (s, true),
       for (final s in asMapList(dig(pod, ['status', 'containerStatuses']))) (s, false),
@@ -336,41 +440,49 @@ class JobPodRow extends StatelessWidget {
     }
     final phase = dig<String>(pod, ['status', 'phase']);
     final done = phase == 'Succeeded' || phase == 'Failed';
+    final ran = start != null && finish != null && done ? (finish.difference(start).isNegative ? Duration.zero : finish.difference(start)) : null;
     final podMsg = dig<String>(pod, ['status', 'message']);
+    final problem = sev == Severity.error || sev == Severity.warn;
+    final hintStyle = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: sev == Severity.error ? c.withValues(alpha: 0.06) : theme.colorScheme.surfaceContainer.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(6),
-        border: Border(left: BorderSide(color: c, width: 3)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Text('#$attempt', style: monoStyle(context, size: 11, color: theme.hintColor)),
-          const SizedBox(width: 6),
-          StatusBadge(label, severity: sev, dense: true),
-          if (idx != null) ...[const SizedBox(width: 6), Chipish(text: 'index $idx')],
-          const SizedBox(width: 8),
-          Expanded(child: ResourceLink(ObjectRef(kind: 'Pod', name: name, namespace: ns), label: name)),
-          AgeText(dig(pod, ['metadata', 'creationTimestamp'])),
-        ]),
-        const SizedBox(height: 3),
+    return InspectorRow(
+      dot: sev,
+      hollowDot: sev == Severity.ok,
+      dotTooltip: label,
+      problem: problem,
+      initiallyExpanded: initiallyExpanded,
+      title: Row(children: [
+        Text('#$attempt', style: monoStyle(context, size: 11, color: theme.hintColor)),
+        const SizedBox(width: 6),
+        Flexible(child: ResourceLink(ObjectRef(kind: 'Pod', name: name, namespace: ns), label: name, singleLine: true)),
+      ]),
+      subtitle: Text.rich(TextSpan(children: [
+        TextSpan(text: label, style: problem ? TextStyle(color: severityColor(context, sev), fontWeight: FontWeight.w600) : null),
+        if (idx != null) TextSpan(text: '  ·  index $idx'),
+        if (ran != null) TextSpan(text: '  ·  ran ${formatDuration(ran)}'),
+      ])),
+      meta: [AgeText(dig(pod, ['metadata', 'creationTimestamp']))],
+      actions: [
+        RowAction(key: ValueKey('job-pod-logs-$name'), icon: Icons.notes, tooltip: 'View logs', onTap: () => openPodLogs(context, pod)),
+      ],
+      details: (context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Wrap(spacing: 10, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
           if (node != null)
             Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.dns_outlined, size: 12, color: theme.hintColor),
               const SizedBox(width: 3),
-              ResourceLink(ObjectRef(kind: 'Node', name: node), label: node),
+              Flexible(child: ResourceLink(ObjectRef(kind: 'Node', name: node), label: node, singleLine: true)),
             ])
           else
-            hint(context, 'not scheduled'),
-          if (start != null) hint(context, 'started ${formatLocal(start)}'),
-          if (start != null && finish != null && done) hint(context, 'ran ${formatDuration(finish.difference(start).isNegative ? Duration.zero : finish.difference(start))}'),
+            Text('not scheduled', style: hintStyle),
+          if (start != null) Text('started ${formatLocal(start)}', style: hintStyle),
         ]),
-        if (podMsg != null && podMsg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 3), child: Text(podMsg, style: theme.textTheme.bodySmall?.copyWith(color: c))),
-        for (final (s, init) in statuses) _ContainerStateLine(s, init: init),
+        if (podMsg != null && podMsg.isNotEmpty)
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(podMsg, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, sev)))),
+        if (statuses.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          DetailGroup('Containers', [for (final (s, init) in statuses) _ContainerStateLine(s, init: init)], gap: 3),
+        ],
       ]),
     );
   }
@@ -397,7 +509,7 @@ class _ContainerStateLine extends StatelessWidget {
     if (term.isNotEmpty) {
       final code = _int(term['exitCode']);
       final sig = term['signal'] != null ? ' signal ${term['signal']}' : '';
-      color = severityColor(context, code == 0 ? Severity.ok : Severity.error);
+      color = code == 0 ? null : severityColor(context, Severity.error);
       parts.add(TextSpan(text: 'exit $code$sig', style: TextStyle(color: color, fontWeight: FontWeight.w600)));
       if (term['reason'] != null) parts.add(TextSpan(text: ' · ${term['reason']}'));
       final a = parseTime(term['startedAt']), b = parseTime(term['finishedAt']);
@@ -409,8 +521,7 @@ class _ContainerStateLine extends StatelessWidget {
       parts.add(TextSpan(text: 'waiting: $r', style: TextStyle(color: color, fontWeight: FontWeight.w600)));
       message = wait['message'] as String?;
     } else if (running.isNotEmpty) {
-      color = severityColor(context, Severity.info);
-      parts.add(TextSpan(text: 'running', style: TextStyle(color: color, fontWeight: FontWeight.w600)));
+      parts.add(const TextSpan(text: 'running', style: TextStyle(fontWeight: FontWeight.w600)));
       final a = parseTime(running['startedAt']);
       if (a != null) parts.add(TextSpan(text: ' · since ${formatLocal(a)}', style: TextStyle(color: theme.hintColor)));
     }
@@ -421,33 +532,21 @@ class _ContainerStateLine extends StatelessWidget {
           style: TextStyle(color: severityColor(context, Severity.warn))));
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 3),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(Icons.subdirectory_arrow_right, size: 12, color: theme.hintColor),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text.rich(
-              TextSpan(style: theme.textTheme.bodySmall, children: [
-                TextSpan(text: '$name  ', style: monoStyle(context, size: 11)),
-                ...parts,
-              ]),
-            ),
-          ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text.rich(
+        TextSpan(style: theme.textTheme.bodySmall, children: [
+          TextSpan(text: '$name  ', style: monoStyle(context, size: 11)),
+          ...parts,
         ]),
-        if (message != null && message.trim().isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(left: 16, top: 2),
-            child: Tooltip(
-              message: message.trim(),
-              child: Text(message.trim(), maxLines: 6, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: color ?? theme.hintColor)),
-            ),
+      ),
+      if (message != null && message.trim().isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Tooltip(
+            message: message.trim(),
+            child: Text(message.trim(), maxLines: 6, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: color ?? theme.hintColor)),
           ),
-      ]),
-    );
+        ),
+    ]);
   }
 }
