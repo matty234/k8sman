@@ -17,6 +17,7 @@ import '../modules/modules.dart' show moduleEnabled;
 import '../state/app_state.dart';
 import '../ui/addons/addon_install_dialog.dart';
 import '../ui/settings/settings_page.dart';
+import '../ui/widgets/dialogs.dart';
 
 abstract final class AddonIds {
   static const metricsServer = 'metrics-server';
@@ -227,16 +228,12 @@ Future<void> requestAddon(BuildContext context, String id) async {
     await showAddonInstallDialog(context, addonById(id));
     return;
   }
-  final open = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Install ${addonById(id).name}?'),
-      content: const SizedBox(width: 420, child: Text('Add-ons install through Helm, and the Helm integration is turned off.')),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Integrations…')),
-      ],
-    ),
+  final open = await showConfirm(
+    context,
+    title: 'Install ${addonById(id).name}?',
+    message: 'Add-ons install through Helm, and the Helm integration is turned off.',
+    confirmLabel: 'Integrations…',
+    width: 420,
   );
-  if (open == true && context.mounted) openSettings(context, module: const HelmModule().id);
+  if (open && context.mounted) openSettings(context, module: const HelmModule().id);
 }

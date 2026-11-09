@@ -16,6 +16,7 @@ import '../editor/yaml_code_editor.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../keys.dart';
+import '../widgets/dialogs.dart';
 
 /// YAML tab: syntax-highlighted view, and (unless read-only) an inline editor
 /// with server-side dry-run validation, diff review and conflict-safe apply.
@@ -138,17 +139,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
 
   Future<void> _discard() async {
     if (_dirty) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('Discard changes?'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep editing')),
-            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Discard')),
-          ],
-        ),
-      );
-      if (ok != true) return;
+      if (!await showConfirm(context, title: 'Discard changes?', confirmLabel: 'Discard', cancelLabel: 'Keep editing')) return;
     }
     setState(() {
       _editing = false;

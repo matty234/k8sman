@@ -10,6 +10,7 @@ import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../state/table_controller.dart';
 import '../widgets/common.dart' show copyToClipboard;
+import '../widgets/dialogs.dart';
 
 /// A short default name from the table's state, e.g.
 /// "Deployment · team-1, team-2 +2 · back-end".
@@ -280,23 +281,8 @@ class _SaveViewDialogState extends State<_SaveViewDialog> {
 }
 
 /// Asks for a new name.
-Future<String?> showRenameViewDialog(BuildContext context, SavedView v) {
-  final c = TextEditingController(text: v.name);
-  return showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Rename View'),
-      content: SizedBox(
-        width: 380,
-        child: TextField(controller: c, autofocus: true, onSubmitted: (s) => Navigator.pop(context, s.trim())),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, c.text.trim()), child: const Text('Rename')),
-      ],
-    ),
-  ).whenComplete(c.dispose);
-}
+Future<String?> showRenameViewDialog(BuildContext context, SavedView v) =>
+    showTextPrompt(context, title: 'Rename View', initial: v.name, confirmLabel: 'Rename');
 
 /// The menu of a saved view (sidebar right-click): Rename, Duplicate,
 /// Change context, Copy as YAML, Open at Launch, Delete (with undo).

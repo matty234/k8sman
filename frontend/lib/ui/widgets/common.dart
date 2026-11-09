@@ -781,12 +781,13 @@ class InlineMessage extends StatelessWidget {
 
 /// Copies [text]. The snackbar echoes the value unless [label] is given —
 /// always pass a label for sensitive values (e.g. `label: 'decoded API_TOKEN'`).
-void copyToClipboard(BuildContext context, String text, {String? label}) {
+/// [message] replaces the whole snackbar text.
+void copyToClipboard(BuildContext context, String text, {String? label, String? message}) {
   Clipboard.setData(ClipboardData(text: text));
   final shown = label ?? (text.length > 40 ? '${text.substring(0, 40)}…' : text);
   ScaffoldMessenger.maybeOf(context)
     ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text('Copied $shown'), duration: const Duration(seconds: 1)));
+    ..showSnackBar(SnackBar(content: Text(message ?? 'Copied $shown'), duration: const Duration(seconds: 1)));
 }
 
 /// Opens [url] in the browser; ignores unparsable URLs.

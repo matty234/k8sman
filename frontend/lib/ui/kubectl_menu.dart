@@ -7,6 +7,7 @@ import '../state/log_dock.dart' show defaultLogContainer;
 import '../util/k8s.dart';
 import '../util/kubectl.dart';
 import 'widgets/common.dart' show copyToClipboard;
+import 'widgets/context_menu.dart';
 
 /// The context and kubeconfig the app is on (the active kubeconfig, or none
 /// for the default loading rules).
@@ -37,8 +38,6 @@ Future<void> showKubectlMenu(
   String? container,
 }) async {
   final env = kubectlEnvOf(app);
-  final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
-  final local = overlay.globalToLocal(globalPosition);
   final theme = Theme.of(context);
   final single = refs.length == 1;
   final c = container ?? (pod == null ? null : kubectlPodContainer(pod));
@@ -49,12 +48,10 @@ Future<void> showKubectlMenu(
         child: Text(label, style: theme.textTheme.bodyMedium),
       );
 
-  final chosen = await showMenu<String>(
-    context: context,
-    popUpAnimationStyle: AnimationStyle.noAnimation,
-    position: RelativeRect.fromRect(Rect.fromPoints(local, local), Offset.zero & overlay.size),
-    constraints: const BoxConstraints(minWidth: 220, maxWidth: 320),
-    items: [
+  final chosen = await showContextMenuAt<String>(
+    context,
+    globalPosition,
+    [
       item('kubectl get -o yaml', env.get(type, refs)),
       item('kubectl describe', env.describe(type, refs)),
       if (single && type.gk == '/Pod') ...[
@@ -66,6 +63,7 @@ Future<void> showKubectlMenu(
         item('kubectl rollout status', env.rolloutStatus(type, refs)),
       ],
     ],
+    constraints: const BoxConstraints(minWidth: 220, maxWidth: 320),
   );
   if (chosen != null && context.mounted) copyToClipboard(context, chosen, label: 'kubectl command');
 }

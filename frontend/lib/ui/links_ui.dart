@@ -7,6 +7,7 @@ import '../app/links.dart';
 import '../modules/modules.dart';
 import '../state/app_state.dart';
 import 'context_badge.dart';
+import 'widgets/common.dart' show copyToClipboard;
 
 /// What [followLink] did.
 enum LinkOutcome {
@@ -67,10 +68,7 @@ AppLink pageLink(AppState app, MainView v) => AppLink(context: app.currentContex
 /// chose it in Settings or holds ⌥ (Alt) while choosing Copy Link.
 void copyLink(BuildContext context, AppState app, AppLink link) {
   final appForm = app.appLinks || HardwareKeyboard.instance.isAltPressed;
-  Clipboard.setData(ClipboardData(text: appForm ? link.appUrl : link.webUrl));
-  ScaffoldMessenger.maybeOf(context)
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(appForm ? 'App link copied' : 'Link copied'), duration: const Duration(seconds: 1)));
+  copyToClipboard(context, appForm ? link.appUrl : link.webUrl, message: appForm ? 'App link copied' : 'Link copied');
 }
 
 // ---- following links ----

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../api/models.dart';
 import '../../ui/theme.dart';
@@ -128,10 +127,7 @@ class _SecretBodyState extends State<SecretBody> {
   Json get _data => asMap(widget.ctx.object['data']);
 
   void _copy(String key, String text) {
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.maybeOf(context)
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('Copied decoded $key'), duration: const Duration(seconds: 1)));
+    copyToClipboard(context, text, label: 'decoded $key');
   }
 
   @override

@@ -16,6 +16,7 @@ import '../ui/editor/resource_editor_screen.dart';
 import '../ui/nodes/drain_dialog.dart';
 import '../ui/theme.dart';
 import '../util/k8s.dart';
+import '../ui/widgets/dialogs.dart';
 
 /// Contexts that are obviously local/disposable get lighter confirmation.
 bool isLocalContext(String ctx) {
@@ -541,27 +542,16 @@ Future<void> showDeleteDialog(BuildContext context, PanelContext ctx) async {
 
 Future<void> showScaleDialog(BuildContext context, PanelContext ctx) async {
   final current = (dig<num>(ctx.object, ['spec', 'replicas']) ?? 1).toInt();
-  final controller = TextEditingController(text: '$current');
-  final target = await showDialog<int>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Scale ${ctx.type.kind} ${ctx.name}'),
-      content: SizedBox(
-        width: 320,
-        child: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(labelText: 'Replicas (currently $current)'),
-          onSubmitted: (v) => Navigator.pop(context, int.tryParse(v)),
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, int.tryParse(controller.text)), child: const Text('Next')),
-      ],
-    ),
+  final typed = await showTextPrompt(
+    context,
+    title: 'Scale ${ctx.type.kind} ${ctx.name}',
+    label: 'Replicas (currently $current)',
+    initial: '$current',
+    confirmLabel: 'Next',
+    width: 320,
+    keyboardType: TextInputType.number,
   );
+  final target = typed == null ? null : int.tryParse(typed);
   if (target == null || target < 0 || target == current || !context.mounted) return;
   await runResourceAction(context, ctx, 'scale',
       body: {'replicas': target},

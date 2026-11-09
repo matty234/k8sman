@@ -10,6 +10,8 @@ import '../theme.dart';
 import 'exec_protocol.dart';
 import 'terminal_tab.dart';
 import '../keys.dart';
+import '../widgets/dialogs.dart';
+import '../widgets/context_menu.dart';
 
 /// Dark palette used in both app themes (terminals read best dark).
 const terminalTheme = TerminalTheme(
@@ -99,31 +101,16 @@ class _TerminalSessionState extends State<TerminalSession> {
   }
 
   Future<void> _customCommand() async {
-    final ctl = TextEditingController(text: s.request.command == null ? '' : shellJoinArgs(s.request.command!));
-    final cmd = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Run a command'),
-        content: SizedBox(
-          width: 420,
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Executed directly (no shell), e.g. /bin/bash -l, python3, redis-cli.', style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 10),
-            TextField(
-              key: const ValueKey('terminal-command-field'),
-              controller: ctl,
-              autofocus: true,
-              style: monoStyle(context),
-              decoration: const InputDecoration(hintText: '/bin/bash -l', isDense: true),
-              onSubmitted: (v) => Navigator.pop(context, v),
-            ),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, ctl.text), child: const Text('Run')),
-        ],
-      ),
+    final cmd = await showTextPrompt(
+      context,
+      title: 'Run a command',
+      description: 'Executed directly (no shell), e.g. /bin/bash -l, python3, redis-cli.',
+      hint: '/bin/bash -l',
+      initial: s.request.command == null ? '' : shellJoinArgs(s.request.command!),
+      confirmLabel: 'Run',
+      width: 420,
+      fieldKey: const ValueKey('terminal-command-field'),
+      mono: true,
     );
     final args = cmd == null ? const <String>[] : splitCommandLine(cmd);
     if (args.isNotEmpty) _restart(command: args);
@@ -179,20 +166,12 @@ class _TerminalSessionState extends State<TerminalSession> {
   }
 
   Future<void> _contextMenu(TapDownDetails d) async {
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (overlay == null) return;
-    final p = overlay.globalToLocal(d.globalPosition);
-    final v = await showMenu<String>(
-      popUpAnimationStyle: AnimationStyle.noAnimation,
-      context: context,
-      position: RelativeRect.fromLTRB(p.dx, p.dy, overlay.size.width - p.dx, overlay.size.height - p.dy),
-      items: [
-        PopupMenuItem(value: 'copy', height: 28, enabled: s.hasSelection, child: const Text('Copy')),
-        const PopupMenuItem(value: 'paste', height: 28, child: Text('Paste')),
-        const PopupMenuDivider(height: 9),
-        const PopupMenuItem(value: 'clear', height: 28, child: Text('Clear')),
-      ],
-    );
+    final v = await showContextMenuAt<String>(context, d.globalPosition, [
+      PopupMenuItem(value: 'copy', height: 28, enabled: s.hasSelection, child: const Text('Copy')),
+      const PopupMenuItem(value: 'paste', height: 28, child: Text('Paste')),
+      const PopupMenuDivider(height: 9),
+      const PopupMenuItem(value: 'clear', height: 28, child: Text('Clear')),
+    ]);
     switch (v) {
       case 'copy':
         await _copy();

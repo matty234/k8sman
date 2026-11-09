@@ -17,6 +17,8 @@ import '../terminal/open_terminal.dart';
 import '../terminal/terminal_tab.dart';
 import 'log_stream_view.dart';
 import '../keys.dart';
+import '../widgets/dialogs.dart';
+import '../widgets/context_menu.dart';
 
 /// Height of the dock's tab strip (also the whole dock when collapsed).
 const double kLogDockStripHeight = 30;
@@ -300,18 +302,13 @@ Future<void> closeDockTab(BuildContext context, LogDock dock, DockTab tab) async
 }
 
 Future<bool> _confirmEndSessions(BuildContext context, int n) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(n == 1 ? 'End the terminal session?' : 'End $n terminal sessions?'),
-      content: const Text('The shell and anything running in it will be stopped.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(key: const ValueKey('confirm-close-terminal'), onPressed: () => Navigator.pop(context, true), child: const Text('Close')),
-      ],
-    ),
+  return showConfirm(
+    context,
+    title: n == 1 ? 'End the terminal session?' : 'End $n terminal sessions?',
+    message: 'The shell and anything running in it will be stopped.',
+    confirmLabel: 'Close',
+    confirmKey: const ValueKey('confirm-close-terminal'),
   );
-  return ok == true;
 }
 
 class _DockTab extends StatelessWidget {
@@ -321,22 +318,14 @@ class _DockTab extends StatelessWidget {
 
   Future<void> _menu(BuildContext context, Offset global) async {
     final dock = context.read<LogDock>();
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (overlay == null) return;
-    final p = overlay.globalToLocal(global);
     PopupMenuItem<String> item(String v, String label, {bool enabled = true}) => PopupMenuItem(value: v, height: 28, enabled: enabled, child: Text(label));
-    final v = await showMenu<String>(
-      popUpAnimationStyle: AnimationStyle.noAnimation,
-      context: context,
-      position: RelativeRect.fromLTRB(p.dx, p.dy, overlay.size.width - p.dx, overlay.size.height - p.dy),
-      items: [
-        item('close', 'Close'),
-        item('others', 'Close others', enabled: dock.tabs.length > 1),
-        item('all', 'Close all'),
-        const PopupMenuDivider(height: 9),
-        item('copy', 'Copy pod name', enabled: tab is! AggregateLogStream),
-      ],
-    );
+    final v = await showContextMenuAt<String>(context, global, [
+      item('close', 'Close'),
+      item('others', 'Close others', enabled: dock.tabs.length > 1),
+      item('all', 'Close all'),
+      const PopupMenuDivider(height: 9),
+      item('copy', 'Copy pod name', enabled: tab is! AggregateLogStream),
+    ]);
     if (!context.mounted) return;
     switch (v) {
       case 'close':

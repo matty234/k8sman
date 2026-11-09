@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../actions/actions.dart';
@@ -10,6 +9,8 @@ import '../state/app_state.dart';
 import 'detail/detail_sidebar.dart' show resourceActionsFor;
 import 'kubectl_menu.dart';
 import 'links_ui.dart';
+import 'widgets/common.dart' show copyToClipboard;
+import 'widgets/context_menu.dart';
 
 /// Right-click menu for a table row: Open, the same resource actions the
 /// inspector header offers (logs, terminal, port-forward, scale, restart,
@@ -22,11 +23,6 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
   final app = context.read<AppState>();
   final ns = type.namespaced ? row.namespace : null;
   final target = DetailTarget(type: type, name: row.name, namespace: ns);
-  // Resolve the menu position before any await (context use across gaps).
-  final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
-  final local = overlay.globalToLocal(globalPosition);
-  final theme = Theme.of(context);
-  final messenger = ScaffoldMessenger.maybeOf(context);
 
   Json? object;
   try {
@@ -42,24 +38,10 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
   final destructive = actions.where((a) => a.destructive).toList();
   final qualified = ns == null ? row.name : '$ns/${row.name}';
 
-  PopupMenuItem<VoidCallback> item(IconData icon, String label, VoidCallback run, {bool danger = false, String? shortcut}) {
-    final color = danger ? theme.colorScheme.error : null;
-    return PopupMenuItem<VoidCallback>(
-      value: run,
-      height: 30,
-      child: Row(children: [
-        Icon(icon, size: 15, color: color ?? theme.hintColor),
-        const SizedBox(width: 10),
-        Expanded(child: Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: color))),
-        if (shortcut != null) Text(shortcut, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-      ]),
-    );
-  }
+  PopupMenuItem<VoidCallback> item(IconData icon, String label, VoidCallback run, {bool danger = false, String? shortcut}) =>
+      menuItem(run, icon, label, danger: danger, shortcut: shortcut);
 
-  void copy(String text, String what) {
-    Clipboard.setData(ClipboardData(text: text));
-    messenger?.showSnackBar(SnackBar(content: Text('Copied $what'), duration: const Duration(seconds: 1)));
-  }
+  void copy(String text, String what) => copyToClipboard(context, text, label: what);
 
   final entries = <PopupMenuEntry<VoidCallback>>[
     item(Icons.open_in_new, 'Open', () => app.openDetail(target), shortcut: '↩'),
@@ -85,12 +67,6 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
     for (final a in destructive) item(a.icon, a.label, () => a.run(context), danger: true),
   ];
 
-  final chosen = await showMenu<VoidCallback>(
-    context: context,
-    popUpAnimationStyle: AnimationStyle.noAnimation,
-    position: RelativeRect.fromRect(Rect.fromPoints(local, local), Offset.zero & overlay.size),
-    constraints: const BoxConstraints(minWidth: 220, maxWidth: 320),
-    items: entries,
-  );
+  final chosen = await showContextMenuAt<VoidCallback>(context, globalPosition, entries, constraints: const BoxConstraints(minWidth: 220, maxWidth: 320));
   if (chosen != null && context.mounted) chosen();
 }

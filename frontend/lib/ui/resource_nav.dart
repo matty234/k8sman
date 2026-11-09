@@ -22,6 +22,8 @@ import 'theme.dart';
 import 'widgets/common.dart';
 import 'widgets/group_icon.dart';
 import 'views/saved_views_ui.dart';
+import 'widgets/dialogs.dart';
+import 'widgets/context_menu.dart';
 
 /// Curated sections for built-in kinds, in display order. Modules add
 /// theirs (Gateway API, Monitoring, Argo CD, …). Anything not listed lands
@@ -250,17 +252,14 @@ const _topRowHeight = 27.0;
 
 /// A native-style context menu of (label, action) items; null = divider.
 Future<void> showSidebarMenu(BuildContext context, Offset globalPosition, List<(String, VoidCallback)?> items) async {
-  final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
-  final local = overlay.globalToLocal(globalPosition);
-  final chosen = await showMenu<VoidCallback>(
-    context: context,
-    popUpAnimationStyle: AnimationStyle.noAnimation,
-    position: RelativeRect.fromRect(Rect.fromPoints(local, local), Offset.zero & overlay.size),
-    constraints: const BoxConstraints(minWidth: 200, maxWidth: 320),
-    items: [
+  final chosen = await showContextMenuAt<VoidCallback>(
+    context,
+    globalPosition,
+    [
       for (final i in items)
         if (i == null) const PopupMenuDivider(height: 9) else PopupMenuItem(value: i.$2, height: 28, child: Text(i.$1)),
     ],
+    constraints: const BoxConstraints(minWidth: 200, maxWidth: 320),
   );
   chosen?.call();
 }
@@ -924,25 +923,16 @@ Future<void> lockContext(BuildContext context, String ctx, bool lock) async {
   final app = context.read<AppState>();
   if (lock) return app.setContextReadOnly(ctx, true);
   final auto = (ctx == app.currentContext ? app.readOnlyReason : app.readOnlyContexts[ctx]) == 'auto';
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Allow changes to $ctx?'),
-      content: SizedBox(
-        width: 420,
-        child: Text(
-          auto
-              ? 'This context looks like production, so k8sman made it read-only. Allowing changes enables edits, deletes, scaling, Helm changes and exec here. You can lock it again at any time.'
-              : 'This enables edits, deletes, scaling, Helm changes and exec on this context. You can lock it again at any time.',
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Allow Changes')),
-      ],
-    ),
+  final ok = await showConfirm(
+    context,
+    title: 'Allow changes to $ctx?',
+    message: auto
+        ? 'This context looks like production, so k8sman made it read-only. Allowing changes enables edits, deletes, scaling, Helm changes and exec here. You can lock it again at any time.'
+        : 'This enables edits, deletes, scaling, Helm changes and exec on this context. You can lock it again at any time.',
+    confirmLabel: 'Allow Changes',
+    width: 420,
   );
-  if (ok == true) await app.setContextReadOnly(ctx, false);
+  if (ok) await app.setContextReadOnly(ctx, false);
 }
 
 class ContextPicker extends StatelessWidget {

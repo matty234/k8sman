@@ -20,6 +20,7 @@ import '../widgets/common.dart';
 import '../widgets/editorial.dart';
 import 'resource_templates.dart';
 import 'yaml_code_editor.dart';
+import '../widgets/dialogs.dart';
 
 /// Opens [target] in the full-window YAML editor.
 Future<void> openResourceEditor(BuildContext context, DetailTarget target, {bool statusMode = false}) =>
@@ -445,17 +446,7 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
   }
 
   Future<bool> _confirmDiscard(String title, String label) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(title),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep editing')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(label)),
-        ],
-      ),
-    );
-    return ok == true;
+    return showConfirm(context, title: title, confirmLabel: label, cancelLabel: 'Keep editing');
   }
 
   Future<void> _close() async {

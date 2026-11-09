@@ -42,6 +42,7 @@ import 'widgets/partial_banner.dart';
 import 'views/saved_views_ui.dart';
 import 'widgets/page_mode_switch.dart';
 import '../modules/modules.dart' show pageFor;
+import 'widgets/context_menu.dart';
 
 /// Live table for the selected resource type. Re-created (via key) whenever
 /// the type, namespace or column config changes.
@@ -420,36 +421,17 @@ class _TableBodyState extends State<_TableBody> {
 
   /// Right-click on a row of a multi-selection: actions for all of them.
   Future<void> _showBulkMenu(BuildContext context, Offset globalPosition, TableController tc, AppState app, List<TableRowData> rows) async {
-    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final local = overlay.globalToLocal(globalPosition);
     final theme = Theme.of(context);
     final actions = bulkActionsFor(app, tc.type, rows);
-    PopupMenuItem<VoidCallback> item(IconData icon, String label, VoidCallback run, {bool danger = false}) {
-      final color = danger ? theme.colorScheme.error : null;
-      return PopupMenuItem<VoidCallback>(
-        value: run,
-        height: 30,
-        child: Row(
-          children: [
-            Icon(icon, size: 15, color: color ?? theme.hintColor),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: color)),
-            ),
-          ],
-        ),
-      );
-    }
+    PopupMenuItem<VoidCallback> item(IconData icon, String label, VoidCallback run, {bool danger = false}) => menuItem(run, icon, label, danger: danger);
 
     final names = rows.map((r) => tc.type.namespaced && r.namespace != null ? '${r.namespace}/${r.name}' : r.name).join('\n');
     final safe = actions.where((a) => !a.destructive);
     final destructive = actions.where((a) => a.destructive);
-    final chosen = await showMenu<VoidCallback>(
-      context: context,
-      popUpAnimationStyle: AnimationStyle.noAnimation,
-      position: RelativeRect.fromRect(Rect.fromPoints(local, local), Offset.zero & overlay.size),
-      constraints: const BoxConstraints(minWidth: 220, maxWidth: 320),
-      items: [
+    final chosen = await showContextMenuAt<VoidCallback>(
+      context,
+      globalPosition,
+      [
         PopupMenuItem<VoidCallback>(
           enabled: false,
           height: 26,
@@ -466,6 +448,7 @@ class _TableBodyState extends State<_TableBody> {
         if (destructive.isNotEmpty) const PopupMenuDivider(height: 9),
         for (final a in destructive) item(a.icon, '${a.verb} ${rows.length} ${tc.type.resource}…', () => _runBulk(a, rows), danger: true),
       ],
+      constraints: const BoxConstraints(minWidth: 220, maxWidth: 320),
     );
     if (chosen != null && context.mounted) chosen();
   }
