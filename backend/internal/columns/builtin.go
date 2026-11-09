@@ -5,7 +5,7 @@ package columns
 // frequently absent.
 var builtin = map[string][]Column{
 	"pods": {
-		{Name: "Ready", Query: `"\([.status.containerStatuses[]? | select(.ready)] | length)/\(.spec.containers | length)"`},
+		{Name: "Ready", Type: "ratio", Query: `"\([.status.containerStatuses[]? | select(.ready)] | length)/\(.spec.containers | length)"`},
 		{Name: "Status", Type: "status", Query: `if .metadata.deletionTimestamp then "Terminating"
 else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode // 0) != 0) or (.state.waiting != null)) | "Init:" + (.state.waiting.reason // .state.terminated.reason // "Error")] | first)
   // ([.status.containerStatuses[]? | .state.waiting.reason // (select(.state.terminated) | .state.terminated.reason) | select(.)] | first)
@@ -18,14 +18,14 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		ageCol,
 	},
 	"deployments.apps": {
-		{Name: "Ready", Query: `"\(.status.readyReplicas // 0)/\(.spec.replicas // 0)"`},
+		{Name: "Ready", Type: "ratio", Query: `"\(.status.readyReplicas // 0)/\(.spec.replicas // 0)"`},
 		{Name: "Up-to-date", Type: "number", Query: `.status.updatedReplicas // 0`},
 		{Name: "Available", Type: "number", Query: `.status.availableReplicas // 0`},
 		{Name: "Images", Query: `[.spec.template.spec.containers[].image] | join(", ")`},
 		ageCol,
 	},
 	"statefulsets.apps": {
-		{Name: "Ready", Query: `"\(.status.readyReplicas // 0)/\(.spec.replicas // 0)"`},
+		{Name: "Ready", Type: "ratio", Query: `"\(.status.readyReplicas // 0)/\(.spec.replicas // 0)"`},
 		{Name: "Service", Query: `.spec.serviceName`},
 		{Name: "Images", Query: `[.spec.template.spec.containers[].image] | join(", ")`},
 		ageCol,
@@ -189,14 +189,14 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 	},
 	"prometheuses.monitoring.coreos.com": {
 		{Name: "Version", Query: `.spec.version // ""`},
-		{Name: "Ready", Query: `"\(.status.availableReplicas // 0)/\(.spec.replicas // 1)"`},
+		{Name: "Ready", Type: "ratio", Query: `"\(.status.availableReplicas // 0)/\(.spec.replicas // 1)"`},
 		{Name: "Retention", Query: `.spec.retention // "24h"`},
 		{Name: "Status", Type: "status", Query: `([.status.conditions[]? | select(.type == "Available")][0] | if . == null then "" elif .status == "True" then "Available" else (.reason // "Unavailable") end)`},
 		ageCol,
 	},
 	"alertmanagers.monitoring.coreos.com": {
 		{Name: "Version", Query: `.spec.version // ""`},
-		{Name: "Ready", Query: `"\(.status.availableReplicas // 0)/\(.spec.replicas // 1)"`},
+		{Name: "Ready", Type: "ratio", Query: `"\(.status.availableReplicas // 0)/\(.spec.replicas // 1)"`},
 		{Name: "Retention", Query: `.spec.retention // "120h"`},
 		{Name: "Status", Type: "status", Query: `([.status.conditions[]? | select(.type == "Available")][0] | if . == null then "" elif .status == "True" then "Available" else (.reason // "Unavailable") end)`},
 		ageCol,

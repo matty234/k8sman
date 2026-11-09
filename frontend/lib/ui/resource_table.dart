@@ -623,6 +623,8 @@ class _TableBodyState extends State<_TableBody> {
     switch (c.type) {
       case 'age':
         return 80;
+      case 'ratio':
+        return 72;
       case 'number':
       case 'quantity':
         return 90;
@@ -1017,7 +1019,7 @@ class _HeaderState extends State<_Header> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: Row(
-        mainAxisAlignment: const {'number', 'quantity', 'usage'}.contains(c.type) ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: const {'number', 'quantity', 'usage', 'ratio'}.contains(c.type) ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           Flexible(
             child: Text(
@@ -1385,6 +1387,9 @@ class TableCellView extends StatelessWidget {
           textAlign: TextAlign.right,
           style: base?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
         );
+      case 'ratio':
+        // Neutral: a completed pod's 0/1 is fine, and Status carries health.
+        return Text(_text(v), textAlign: TextAlign.right, maxLines: 1, style: base?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]));
       case 'labels':
         if (v is Map) {
           return Text(v.entries.map((e) => '${e.key}=${e.value}').join('  '), overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11));

@@ -30,7 +30,9 @@ type Column struct {
 	//   "percent" (a number 0–100 drawn as a small bar, amber from 80 and
 	//   red from 90), "usage" (an object {raw, base?, percent?, basis?,
 	//   unit: "cpu"|"bytes"}: the value with a bar and percentage of base,
-	//   amber from 70 and red from 90, sorted by percent).
+	//   amber from 70 and red from 90, sorted by percent), "ratio" (an
+	//   "x/y" count such as ready replicas: narrow, right-aligned, sorted
+	//   by x/y).
 	Type string `json:"type,omitempty"`
 }
 

@@ -384,7 +384,7 @@ class TableController extends ChangeNotifier {
     final sc = sortColumn;
     if (sc != null && sc < columns.length) {
       final isAge = columns[sc].type == 'age';
-      final compare = switch (columns[sc].type) { 'quantity' => compareQuantities, 'usage' => compareUsage, _ => _compare };
+      final compare = switch (columns[sc].type) { 'quantity' => compareQuantities, 'usage' => compareUsage, 'ratio' => compareRatios, _ => _compare };
       bool empty(dynamic v) => v == null || (v is String && v.isEmpty);
       list.sort((a, b) {
         final x = a.cells.elementAtOrNull(sc), y = b.cells.elementAtOrNull(sc);
@@ -427,4 +427,21 @@ class TableController extends ChangeNotifier {
     filterFocus.dispose();
     super.dispose();
   }
+}
+
+
+/// "x/y" cells by x/y, then by y (more replicas first among equals); text
+/// that isn't a ratio sorts after.
+int compareRatios(dynamic a, dynamic b) {
+  (double, int)? parse(dynamic v) {
+    final m = RegExp(r'^(\d+)/(\d+)$').firstMatch('${v ?? ''}');
+    if (m == null) return null;
+    final x = int.parse(m.group(1)!), y = int.parse(m.group(2)!);
+    return (y == 0 ? 1.0 : x / y, y);
+  }
+
+  final pa = parse(a), pb = parse(b);
+  if (pa == null || pb == null) return pa == null ? (pb == null ? 0 : 1) : -1;
+  final c = pa.$1.compareTo(pb.$1);
+  return c != 0 ? c : pb.$2.compareTo(pa.$2);
 }
