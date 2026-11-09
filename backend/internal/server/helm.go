@@ -34,6 +34,7 @@ func (m *helmModule) Routes(r httpx.Router, d Deps) {
 	r.HandleFunc("POST /api/helm/upgrade", m.handleHelmUpgrade)
 	r.HandleFunc("POST /api/helm/install", m.handleHelmInstall)
 	r.HandleFunc("GET /api/helm/chart-versions", m.handleHelmChartVersions)
+	r.HandleFunc("GET /api/helm/oci/versions", m.handleHelmOCIVersions)
 }
 
 // config builds a Helm action configuration on the active context.
@@ -120,6 +121,20 @@ func (m *helmModule) handleHelmChartVersions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"versions": v})
+}
+
+func (m *helmModule) handleHelmOCIVersions(w http.ResponseWriter, r *http.Request) {
+	ref := r.URL.Query().Get("ref")
+	if ref == "" {
+		writeErr(w, httpx.BadRequest("ref is required"))
+		return
+	}
+	v, err := helm.ListOCIVersions(ref)
+	if err != nil {
+		writeHelmErr(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, v)
 }
 
 func (m *helmModule) handleHelmReleases(w http.ResponseWriter, r *http.Request) {
