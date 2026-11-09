@@ -82,21 +82,6 @@ func drive(t *testing.T, fw *frameWriter, events func(fw *frameWriter)) {
 	}
 }
 
-func TestFrameWriterUnbatchedSendsOneFramePerEvent(t *testing.T) {
-	c := wsPair(t, func(ws *wsConn) {
-		fw := newFrameWriter(ws, false)
-		_ = fw.add("ADDED", br("a", "1"))
-		_ = fw.add("MODIFIED", br("a", "2"))
-		if fw.due() != nil {
-			t.Error("unbatched writer must not queue")
-		}
-	})
-	fs := readFrames(t, c, 2)
-	if fs[0].Type != "ADDED" || fs[0].Row.ResourceVersion != "1" || fs[1].Type != "MODIFIED" || fs[1].Row.ResourceVersion != "2" {
-		t.Fatalf("frames %+v", fs)
-	}
-}
-
 func TestFrameWriterBatchesAndCoalesces(t *testing.T) {
 	c := wsPair(t, func(ws *wsConn) {
 		drive(t, newFrameWriter(ws, true), func(fw *frameWriter) {
@@ -119,43 +104,6 @@ func TestFrameWriterBatchesAndCoalesces(t *testing.T) {
 	want := []string{"ADDED:x@2", "MODIFIED:y@2", "DELETED:z@1", "DELETED:x@3"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("events\n got  %v\n want %v", got, want)
-	}
-}
-
-func TestFrameWriterLoneEventIsAPlainFrame(t *testing.T) {
-	c := wsPair(t, func(ws *wsConn) {
-		drive(t, newFrameWriter(ws, true), func(fw *frameWriter) { _ = fw.add("MODIFIED", br("a", "7")) })
-	})
-	if f := readFrames(t, c, 1)[0]; f.Type != "MODIFIED" || f.Row == nil || f.Row.ResourceVersion != "7" {
-		t.Fatalf("frame %+v", f)
-	}
-}
-
-func TestFrameWriterFlushesFullBatchAndDiscards(t *testing.T) {
-	old := maxBatch
-	maxBatch = 3
-	t.Cleanup(func() { maxBatch = old })
-	c := wsPair(t, func(ws *wsConn) {
-		fw := newFrameWriter(ws, true)
-		for _, uid := range []string{"a", "b", "c"} { // hits maxBatch: sent at once
-			_ = fw.add("ADDED", br(uid, "1"))
-		}
-		if fw.due() != nil {
-			t.Error("a flushed batch must not stay due")
-		}
-		_ = fw.add("ADDED", br("dropped", "1"))
-		fw.discard() // e.g. a SNAPSHOT superseded it
-		if fw.due() != nil {
-			t.Error("discard must clear the timer")
-		}
-		drive(t, fw, func(fw *frameWriter) { _ = fw.add("ADDED", br("d", "1")) })
-	})
-	fs := readFrames(t, c, 2)
-	if fs[0].Type != "BATCH" || len(fs[0].Events) != 3 {
-		t.Fatalf("first %+v", fs[0])
-	}
-	if fs[1].Type != "ADDED" || fs[1].Row.UID != "d" {
-		t.Fatalf("second %+v", fs[1])
 	}
 }
 

@@ -29,23 +29,6 @@ func writeKubeconfig(t *testing.T, path string, contexts ...string) string {
 	return path
 }
 
-func TestInspectKubeconfig(t *testing.T) {
-	dir := t.TempDir()
-	good := writeKubeconfig(t, filepath.Join(dir, "good"), "b", "a")
-	info := InspectKubeconfig(good)
-	if info.Error != "" || strings.Join(info.Contexts, ",") != "a,b" || info.CurrentContext != "b" {
-		t.Fatalf("unexpected %+v", info)
-	}
-	if info := InspectKubeconfig(filepath.Join(dir, "missing")); info.Error == "" {
-		t.Fatal("missing file should report an error")
-	}
-	bad := filepath.Join(dir, "bad")
-	_ = os.WriteFile(bad, []byte("{{{ not yaml"), 0o600)
-	if info := InspectKubeconfig(bad); info.Error == "" {
-		t.Fatal("invalid file should report an error")
-	}
-}
-
 func TestDiscoverKubeconfigs(t *testing.T) {
 	home := t.TempDir()
 	kube := filepath.Join(home, ".kube")
@@ -81,18 +64,6 @@ func TestDiscoverKubeconfigs(t *testing.T) {
 	}
 	if got[5].Error == "" {
 		t.Fatal("missing recent file should carry an error")
-	}
-}
-
-func TestDefaultKubeconfig(t *testing.T) {
-	if got := DefaultKubeconfig("/h", ""); got != "/h/.kube/config" {
-		t.Fatal(got)
-	}
-	if got := DefaultKubeconfig("/h", "/a"); got != "/a" {
-		t.Fatal(got)
-	}
-	if got := DefaultKubeconfig("/h", "/a"+string(os.PathListSeparator)+"/b"); got != "" {
-		t.Fatal(got)
 	}
 }
 

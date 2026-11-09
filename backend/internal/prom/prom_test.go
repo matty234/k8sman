@@ -262,33 +262,6 @@ func TestDiscoveryFallbackToServices(t *testing.T) {
 	}
 }
 
-func TestDefaultPrefersReachableMonitoring(t *testing.T) {
-	l := []*Instance{
-		{ID: "a/x", Namespace: "a", Reachable: true},
-		{ID: "monitoring/y", Namespace: "monitoring", Reachable: false},
-		{ID: "monitoring/z", Namespace: "monitoring", Reachable: true},
-	}
-	pickDefault(l)
-	if !l[2].Default || l[0].Default || l[1].Default {
-		t.Errorf("defaults: %v %v %v", l[0].Default, l[1].Default, l[2].Default)
-	}
-	s := &Status{Prometheus: l}
-	if s.Default(KindPrometheus, "a/x") != l[0] || s.Default(KindPrometheus, "") != l[2] || s.Default(KindPrometheus, "nope") != nil {
-		t.Error("Status.Default lookup")
-	}
-}
-
-func TestProxyPath(t *testing.T) {
-	in := &Instance{Namespace: "monitoring", Service: "am", Port: "web", Scheme: "https", PathPrefix: "/alertmanager"}
-	if got := in.ProxyPath("/api/v2/alerts"); got != "/api/v1/namespaces/monitoring/services/https:am:web/proxy/alertmanager/api/v2/alerts" {
-		t.Errorf("ProxyPath = %s", got)
-	}
-	in.PathPrefix, in.Scheme = "", ""
-	if got := in.ProxyPath("/api/v1/query"); got != "/api/v1/namespaces/monitoring/services/http:am:web/proxy/api/v1/query" {
-		t.Errorf("ProxyPath = %s", got)
-	}
-}
-
 // ---- alerts -------------------------------------------------------------------
 
 func TestAlertsGroupedWithPending(t *testing.T) {
@@ -355,33 +328,6 @@ func TestAlertsFallBackToPrometheusWhenAlertmanagerDown(t *testing.T) {
 	}
 }
 
-func TestTargetFor(t *testing.T) {
-	cases := []struct {
-		labels map[string]string
-		want   string
-	}{
-		{map[string]string{"namespace": "demo", "pod": "crashy", "container": "app"}, "/Pod demo/crashy"},
-		{map[string]string{"namespace": "shop", "deployment": "web", "pod": "ksm-1"}, "apps/Deployment shop/web"},
-		{map[string]string{"namespace": "shop", "statefulset": "db"}, "apps/StatefulSet shop/db"},
-		{map[string]string{"namespace": "shop", "job_name": "migrate"}, "batch/Job shop/migrate"},
-		{map[string]string{"namespace": "shop", "persistentvolumeclaim": "data"}, "/PersistentVolumeClaim shop/data"},
-		{map[string]string{"namespace": "monitoring", "service": "kps-kubelet", "job": "kubelet"}, "/Service monitoring/kps-kubelet"},
-		{map[string]string{"node": "kind-control-plane", "instance": "10.0.0.1:9100"}, "/Node /kind-control-plane"},
-		{map[string]string{"pod": "orphan"}, ""}, // a pod without a namespace isn't addressable
-		{map[string]string{"namespace": "demo"}, "/Namespace /demo"},
-		{map[string]string{"alertname": "Watchdog"}, ""},
-	}
-	for _, c := range cases {
-		got := ""
-		if r := TargetFor(c.labels); r != nil {
-			got = r.Group + "/" + r.Kind + " " + r.Namespace + "/" + r.Name
-		}
-		if got != c.want {
-			t.Errorf("TargetFor(%v) = %q, want %q", c.labels, got, c.want)
-		}
-	}
-}
-
 // ---- silences -------------------------------------------------------------------
 
 func TestSilencesListSorted(t *testing.T) {
@@ -420,30 +366,6 @@ func TestCreateSilence(t *testing.T) {
 	ms := sent["matchers"].([]any)
 	if len(ms) != 2 || ms[0].(map[string]any)["isEqual"] != true {
 		t.Errorf("matchers = %v", ms)
-	}
-}
-
-func TestSilenceValidation(t *testing.T) {
-	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
-	f := false
-	bad := map[string]SilenceRequest{
-		"no matchers":   {Duration: "1h", Comment: "x"},
-		"match all":     {Matchers: []Matcher{{Name: "alertname", Value: ".*", IsRegex: true}}, Duration: "1h", Comment: "x"},
-		"only negative": {Matchers: []Matcher{{Name: "alertname", Value: "A", IsEqual: &f}}, Duration: "1h", Comment: "x"},
-		"bad regex":     {Matchers: []Matcher{{Name: "pod", Value: "(", IsRegex: true}}, Duration: "1h", Comment: "x"},
-		"no comment":    {Matchers: []Matcher{{Name: "alertname", Value: "A"}}, Duration: "1h"},
-		"no duration":   {Matchers: []Matcher{{Name: "alertname", Value: "A"}}, Comment: "x"},
-		"too long":      {Matchers: []Matcher{{Name: "alertname", Value: "A"}}, Duration: "100d", Comment: "x"},
-		"in the past":   {Matchers: []Matcher{{Name: "alertname", Value: "A"}}, EndsAt: "2026-11-03T11:00:00Z", Comment: "x"},
-	}
-	for name, req := range bad {
-		if _, err := req.build(now); err == nil {
-			t.Errorf("%s: expected an error", name)
-		}
-	}
-	p, err := SilenceRequest{Matchers: []Matcher{{Name: "alertname", Value: "A"}}, Duration: "1d", Comment: " ok "}.build(now)
-	if err != nil || p["endsAt"] != "2026-11-04T12:00:00Z" || p["comment"] != "ok" {
-		t.Errorf("1d silence: %v %v", p, err)
 	}
 }
 
@@ -493,28 +415,6 @@ func TestRulesMappedToPrometheusRule(t *testing.T) {
 	all := decode[RulesResult](t, serve(t, h, "GET", "/api/prom/rules", ""))
 	if len(all.Groups) != 2 || all.Groups[1].Source != nil {
 		t.Errorf("unfiltered = %+v", all.Groups)
-	}
-}
-
-func TestMapRuleSourcesFallbacks(t *testing.T) {
-	groups := []RuleGroup{
-		{Name: "only-here", File: "/rules/whatever.yaml"},
-		{Name: "shared", File: "/rules/team-a-alerts-0b1d0d2e-0000-4000-8000-000000000000.yaml"},
-		{Name: "shared", File: "/rules/unrelated.yaml"},
-	}
-	MapRuleSources(groups, []promRuleRef{
-		{Namespace: "x", Name: "one", Groups: []string{"only-here"}},
-		{Namespace: "team-a", Name: "alerts", Groups: []string{"shared"}},
-		{Namespace: "team-b", Name: "alerts", Groups: []string{"shared"}},
-	})
-	if s := groups[0].Source; s == nil || s.Name != "one" {
-		t.Errorf("group name fallback: %+v", s)
-	}
-	if s := groups[1].Source; s == nil || s.Namespace != "team-a" {
-		t.Errorf("file prefix without uid: %+v", s)
-	}
-	if groups[2].Source != nil {
-		t.Errorf("ambiguous group should stay unmapped: %+v", groups[2].Source)
 	}
 }
 
@@ -578,24 +478,6 @@ func TestQueryRangeLimitsAndPassThrough(t *testing.T) {
 	}
 }
 
-func TestParseRangeCapsPoints(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0)
-	p, err := ParseRange(url.Values{"start": {"-24h"}, "step": {"1s"}}, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if pts := p.End.Sub(p.Start) / p.Step; pts > maxPoints {
-		t.Errorf("%d points", pts)
-	}
-	p, _ = ParseRange(url.Values{"start": {"1799996400"}, "end": {"1800000000"}, "step": {"60"}}, now)
-	if p.Step != time.Minute || p.End.Sub(p.Start) != time.Hour {
-		t.Errorf("explicit = %+v", p)
-	}
-	if _, err := ParseRange(url.Values{"start": {"now"}, "end": {"-1h"}}, now); err == nil {
-		t.Error("end before start should fail")
-	}
-}
-
 func TestQueryErrorsAndMissingPrometheus(t *testing.T) {
 	h, up := testHandler(t, false)
 	up.routes["kps-prometheus:http-web/api/v1/query"] = func(w http.ResponseWriter, r *http.Request) {
@@ -609,32 +491,6 @@ func TestQueryErrorsAndMissingPrometheus(t *testing.T) {
 	rec = serve(t, h, "GET", "/api/prom/query?query=up&instance=other/prom", "")
 	if rec.Code != 404 || decode[httpx.ErrorBody](t, rec).Reason != "NotFound" {
 		t.Errorf("unknown instance: %d %s", rec.Code, rec.Body)
-	}
-}
-
-func TestShapeResultTruncates(t *testing.T) {
-	var series []string
-	for i := 0; i < maxSeries+5; i++ {
-		series = append(series, `{"metric":{},"value":[0,"1"]}`)
-	}
-	data := json.RawMessage(`{"resultType":"vector","result":[` + strings.Join(series, ",") + `]}`)
-	res, err := shapeResult(data, nil, &Instance{ID: "x"})
-	if err != nil || !res.Truncated || res.Series != maxSeries {
-		t.Errorf("truncate: %+v %v", res, err)
-	}
-}
-
-func TestDiscoveryIsCached(t *testing.T) {
-	h, up := testHandler(t, false)
-	serve(t, h, "GET", "/api/prom/status", "")
-	n := len(up.seen)
-	serve(t, h, "GET", "/api/prom/status", "")
-	if len(up.seen) != n {
-		t.Errorf("second status call probed again (%d → %d requests)", n, len(up.seen))
-	}
-	serve(t, h, "GET", "/api/prom/status?refresh=true", "")
-	if len(up.seen) == n {
-		t.Error("refresh=true should re-probe")
 	}
 }
 

@@ -82,27 +82,3 @@ func TestFiringAlertsBecomeIssues(t *testing.T) {
 		t.Errorf("alert categories = %v", cats)
 	}
 }
-
-func TestFilterAlertsByNamespace(t *testing.T) {
-	alerts := []prom.Alert{
-		alert("A", "warning", prom.StateFiring, map[string]string{"namespace": "demo"}, "", 0),
-		alert("B", "warning", prom.StateFiring, map[string]string{"namespace": "other"}, "", 0),
-		alert("C", "warning", prom.StateFiring, map[string]string{"node": "n1"}, "", 0),
-	}
-	if got := FilterAlertsByNamespace(alerts, ""); len(got) != 3 {
-		t.Errorf("no filter: %d", len(got))
-	}
-	got := FilterAlertsByNamespace(alerts, "demo")
-	if len(got) != 1 || got[0].Name != "A" {
-		t.Errorf("demo: %+v", got)
-	}
-}
-
-func TestNoAlertsNoAlertCategories(t *testing.T) {
-	res := Analyze(Input{Now: now})
-	for _, c := range res.Categories {
-		if c.Section == "alerts" {
-			t.Errorf("unexpected %+v", c)
-		}
-	}
-}

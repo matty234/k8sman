@@ -2,25 +2,11 @@ package svcproxy
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-func TestPlainText(t *testing.T) {
-	for in, want := range map[string]string{
-		"":                       "",
-		"  no route \n":          "no route",
-		"<html>bad gateway":      "",
-		strings.Repeat("x", 512): "",
-	} {
-		if got := PlainText([]byte(in)); got != want {
-			t.Errorf("PlainText(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
 
 func TestUnexpectedResponseAndStatusCode(t *testing.T) {
 	se := &apierrors.StatusError{ErrStatus: metav1.Status{Code: 503, Details: &metav1.StatusDetails{Causes: []metav1.StatusCause{

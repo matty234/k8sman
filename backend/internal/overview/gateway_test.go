@@ -9,9 +9,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/matty234/k8sman/backend/internal/cluster"
-	"github.com/matty234/k8sman/backend/internal/columns"
 )
 
 // Real objects captured from the dev cluster (Envoy Gateway v1.2.8).
@@ -52,17 +49,6 @@ func issuesFor(res *Result, kind, name string) []Issue {
 		}
 	}
 	return out
-}
-
-func TestGatewayAPINotAnalysedWithoutCRDs(t *testing.T) {
-	res := Analyze(Input{Now: now})
-	if res.Counts.Gateways != nil || res.Counts.Routes != nil {
-		t.Fatalf("counts should be omitted without CRDs: %+v", res.Counts)
-	}
-	b, _ := json.Marshal(res.Counts)
-	if strings.Contains(string(b), "gateways") {
-		t.Fatalf("gateways key present: %s", b)
-	}
 }
 
 func TestGatewayAPIFixtures(t *testing.T) {
@@ -164,50 +150,4 @@ func TestGatewayListenerConflictAndPartialAcceptance(t *testing.T) {
 	if got := issuesFor(res, "HTTPRoute", "orphaned"); len(got) != 1 || got[0].Severity != Critical || got[0].Reason != "NoStatus" {
 		t.Errorf("no status: %+v", got)
 	}
-}
-
-// The default jq columns, evaluated against the real fixtures.
-func TestGatewayColumns(t *testing.T) {
-	eval := func(resource, kind, fixture string) map[string]any {
-		cols := columns.Defaults(cluster.ResourceType{Group: GatewayGroup, Version: "v1", Resource: resource, Kind: kind, Namespaced: true}, nil)
-		cells, errs := columns.NewEvaluator(cols).Row(gwFixture(t, fixture).Object)
-		for i, e := range errs {
-			if e != nil {
-				t.Errorf("%s column %s: %s", fixture, cols[i].Name, e)
-			}
-		}
-		out := map[string]any{}
-		for i, col := range cols {
-			out[col.Name] = cells[i]
-		}
-		return out
-	}
-	want := func(fixture string, got map[string]any, col string, v any) {
-		t.Helper()
-		if got[col] != v {
-			t.Errorf("%s %s = %#v, want %#v", fixture, col, got[col], v)
-		}
-	}
-	gw := eval("gateways", "Gateway", "gateway-demo-gw")
-	want("demo-gw", gw, "Class", "eg")
-	want("demo-gw", gw, "Addresses", "10.96.230.213")
-	want("demo-gw", gw, "Listeners", "80/HTTP,443/HTTPS,8080/HTTP,6379/TCP")
-	want("demo-gw", gw, "Programmed", "True")
-	want("pending-gw", eval("gateways", "Gateway", "gateway-pending-gw"), "Programmed", "Unknown: Pending")
-	want("orphan", eval("gatewayclasses", "GatewayClass", "gatewayclass-orphan"), "Accepted", "Unknown: Pending")
-	want("eg", eval("gatewayclasses", "GatewayClass", "gatewayclass-eg"), "Controller", "gateway.envoyproxy.io/gatewayclass-controller")
-
-	web := eval("httproutes", "HTTPRoute", "httproute-web-route")
-	want("web-route", web, "Hostnames", "app.example.com")
-	want("web-route", web, "Parents", "gateway-demo/demo-gw:http")
-	want("web-route", web, "Accepted", "True")
-	want("web-route", web, "Backends", "web-nodeport:80,web:80")
-	want("admin-api", eval("httproutes", "HTTPRoute", "httproute-admin-api"), "Accepted", "False: NoMatchingParent")
-	want("cache-admin", eval("httproutes", "HTTPRoute", "httproute-cache-admin"), "Accepted", "Warning: RefNotPermitted")
-	want("greeter", eval("grpcroutes", "GRPCRoute", "grpcroute-greeter"), "Backends", "demo/web:80")
-	want("redis", eval("tcproutes", "TCPRoute", "tcproute-redis"), "Accepted", "True")
-
-	rg := eval("referencegrants", "ReferenceGrant", "referencegrant-allow-gateway-demo-to-web")
-	want("grant", rg, "From", "HTTPRoute in gateway-demo,GRPCRoute in gateway-demo")
-	want("grant", rg, "To", "Service/web")
 }

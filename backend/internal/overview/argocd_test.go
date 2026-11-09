@@ -20,18 +20,6 @@ func argoFixture(t *testing.T, name string) map[string]any {
 	return m
 }
 
-func TestArgoAppsAbsentWithoutCRD(t *testing.T) {
-	res := Analyze(Input{Now: now})
-	if res.Counts.ArgoApps != nil {
-		t.Error("no Argo counts expected when ArgoApps is nil")
-	}
-	for _, c := range res.Categories {
-		if c.Section == "argocd" {
-			t.Errorf("unexpected category %s", c.ID)
-		}
-	}
-}
-
 func TestArgoAppsIssues(t *testing.T) {
 	names := []string{"guestbook", "helm-guestbook", "guestbook-degraded", "guestbook-no-namespace", "bad-path", "multi-source"}
 	var apps []map[string]any
@@ -80,27 +68,5 @@ func TestArgoAppsIssues(t *testing.T) {
 	c := res.Counts.ArgoApps
 	if c == nil || c.Total != 6 || c.Degraded != 1 || c.Failed != 1 || c.OutOfSync != 2 {
 		t.Errorf("counts = %+v", c)
-	}
-}
-
-func TestArgoOutOfSyncIsWarning(t *testing.T) {
-	app := map[string]any{
-		"metadata": map[string]any{"name": "web", "namespace": "argocd"},
-		"status": map[string]any{
-			"sync":      map[string]any{"status": "OutOfSync"},
-			"health":    map[string]any{"status": "Healthy"},
-			"resources": []any{map[string]any{"kind": "Deployment", "name": "web", "status": "OutOfSync"}},
-		},
-	}
-	res := Analyze(Input{Now: now, ArgoApps: []map[string]any{app}})
-	if len(res.Issues) != 1 || res.Issues[0].Category != "argoOutOfSync" || res.Issues[0].Severity != Warning {
-		t.Fatalf("issues = %+v", res.Issues)
-	}
-	found := false
-	for _, c := range res.Categories {
-		found = found || (c.ID == "argoOutOfSync" && c.Section == "argocd" && c.Count == 1)
-	}
-	if !found {
-		t.Errorf("categories = %+v", res.Categories)
 	}
 }

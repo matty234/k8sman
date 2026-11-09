@@ -10,6 +10,10 @@
 package observer
 
 import (
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
+
 	flow "github.com/matty234/k8sman/backend/internal/hubble/pb/flow"
 	relay "github.com/matty234/k8sman/backend/internal/hubble/pb/relay"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -18,9 +22,6 @@ import (
 	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
 )
 
 const (

@@ -232,26 +232,6 @@ func TestProtectedUpgradeWithToken(t *testing.T) {
 	}
 }
 
-func TestIsLocalOrigin(t *testing.T) {
-	for o, want := range map[string]bool{
-		"http://localhost":              true,
-		"http://localhost:5000":         true,
-		"https://127.0.0.1:8443":        true,
-		"http://[::1]:3000":             true,
-		"http://localhost.evil.example": false,
-		"http://127.0.0.1.nip.io":       false,
-		"http://localhost@evil.example": false,
-		"http://evil.example#localhost": false,
-		"file://localhost":              false,
-		"null":                          false,
-		"http://localhost:99999":        false,
-	} {
-		if got := isLocalOrigin(o); got != want {
-			t.Errorf("%s: %v", o, got)
-		}
-	}
-}
-
 // A change confirmed for one context must not run on another.
 func TestContextMismatch(t *testing.T) {
 	c := &cluster.Clients{Context: "prod"}

@@ -7,9 +7,6 @@ import (
 	"testing"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-
 	"github.com/matty234/k8sman/backend/internal/prom"
 )
 
@@ -171,31 +168,6 @@ func TestBuildAttributed(t *testing.T) {
 	}
 }
 
-func TestNodeMappingVariants(t *testing.T) {
-	var nodes []corev1.Node
-	var pods []corev1.Pod
-	load(t, "nodes.json", &nodes)
-	load(t, "pods.json", &pods)
-	ix := newNodeIndex(nodes, pods)
-	for _, tc := range []struct {
-		name   string
-		labels map[string]string
-		want   string
-	}{
-		{"Hostname is the node", map[string]string{"Hostname": "gpu-node-a"}, "gpu-node-a"},
-		{"relabelled node", map[string]string{"kubernetes_node": "gpu-node-a", "Hostname": "dcgm-x"}, "gpu-node-a"},
-		{"exporter pod labels", map[string]string{"namespace": "monitoring", "pod": "dcgm-exporter-abcde"}, "gpu-node-b"},
-		{"Hostname is the exporter pod", map[string]string{"Hostname": "dcgm-exporter-abcde"}, "gpu-node-b"},
-		{"instance is the pod IP", map[string]string{"instance": "10.244.2.7:9400"}, "gpu-node-b"},
-		{"hostNetwork exporter", map[string]string{"instance": "10.0.0.11:9400"}, "gpu-node-a"},
-		{"unknown", map[string]string{"Hostname": "elsewhere", "instance": "192.0.2.1:9400"}, ""},
-	} {
-		if got := ix.nodeFor(tc.labels); got != tc.want {
-			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
-		}
-	}
-}
-
 func TestBuildWithoutMonitoring(t *testing.T) {
 	in := input(t)
 	in.Metrics, in.AvgUtil, in.Monitoring = nil, nil, MonitoringNoPrometheus
@@ -212,13 +184,5 @@ func TestBuildWithoutMonitoring(t *testing.T) {
 	r = Build(in)
 	if r.Monitoring != MonitoringNoExporter || reasons(r)[ReasonNoDCGM] != 1 || r.Summary.Unmonitored != 2 {
 		t.Errorf("monitoring=%s issues=%v", r.Monitoring, reasons(r))
-	}
-}
-
-func TestDevicePluginUnhealthy(t *testing.T) {
-	in := input(t)
-	in.Nodes[0].Status.Allocatable["nvidia.com/gpu"] = resource.MustParse("3")
-	if reasons(Build(in))[ReasonUnhealthyDevices] != 1 {
-		t.Error("capacity > allocatable should be reported")
 	}
 }

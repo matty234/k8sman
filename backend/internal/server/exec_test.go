@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +8,6 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,23 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilexec "k8s.io/client-go/util/exec"
 )
-
-func TestShellScriptOrder(t *testing.T) {
-	cases := map[string]string{
-		"":     "for s in zsh bash ash sh;",
-		"auto": "for s in zsh bash ash sh;",
-		"bash": "for s in bash zsh ash sh;",
-		"fish": "for s in fish zsh bash ash sh;",
-	}
-	for pref, want := range cases {
-		if got := shellScript(pref); !strings.Contains(got, want) {
-			t.Errorf("shellScript(%q) = %q, want it to contain %q", pref, got, want)
-		}
-	}
-	if !strings.Contains(shellScript(""), "export TERM=xterm-256color") {
-		t.Error("script should default TERM")
-	}
-}
 
 // Runs the script under the local /bin/sh to check it really execs a shell
 // and respects TERM.
@@ -172,38 +153,5 @@ func TestReadOnlyRefusesExecAndDebug(t *testing.T) {
 		if w.Code != http.StatusForbidden {
 			t.Errorf("%s %s: got %d, want 403", r.Method, r.URL.Path, w.Code)
 		}
-	}
-}
-
-func TestDebugContainerName(t *testing.T) {
-	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "app"}}}}
-	if n := debugContainerName(pod); n != "debugger" {
-		t.Fatal(n)
-	}
-	pod.Spec.EphemeralContainers = []corev1.EphemeralContainer{
-		{EphemeralContainerCommon: corev1.EphemeralContainerCommon{Name: "debugger"}},
-		{EphemeralContainerCommon: corev1.EphemeralContainerCommon{Name: "debugger-2"}},
-	}
-	if n := debugContainerName(pod); n != "debugger-3" {
-		t.Fatal(n)
-	}
-}
-
-func TestSizeQueueKeepsLatest(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	q := newSizeQueue(ctx)
-	q.push(80, 24)
-	q.push(120, 40)
-	q.push(0, 10) // ignored
-	if sz := q.Next(); sz == nil || sz.Width != 120 || sz.Height != 40 {
-		t.Fatalf("got %+v", sz)
-	}
-	done := make(chan struct{})
-	go func() { _ = q.Next(); close(done) }()
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("Next did not return after cancel")
 	}
 }

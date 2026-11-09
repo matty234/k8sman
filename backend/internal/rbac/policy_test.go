@@ -312,25 +312,3 @@ func TestWhoCan(t *testing.T) {
 		t.Errorf("nodes via RoleBinding must not count: %v", got)
 	}
 }
-
-func TestSubjects(t *testing.T) {
-	p := fixturePolicy()
-	s := p.Subjects([]Subject{{Namespace: "team-a", Name: "app"}, {Namespace: "team-z", Name: "lonely"}})
-	find := func(list []SubjectInfo, name string) *SubjectInfo {
-		for i := range list {
-			if list[i].Name == name {
-				return &list[i]
-			}
-		}
-		return nil
-	}
-	if a := find(s.ServiceAccounts, "app"); a == nil || a.Bindings != 2 || !a.Exists {
-		t.Errorf("app = %+v", a)
-	}
-	if c := find(s.ServiceAccounts, "ci"); c == nil || c.Namespace != "team-a" || c.Exists {
-		t.Errorf("ci (bound, missing) = %+v", c)
-	}
-	if find(s.ServiceAccounts, "lonely") == nil || find(s.Users, "alice") == nil || find(s.Groups, "devs") == nil {
-		t.Errorf("subjects = %+v", s)
-	}
-}

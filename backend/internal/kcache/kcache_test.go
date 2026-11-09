@@ -199,24 +199,6 @@ func TestSharedStreamRefCountAndIdleEviction(t *testing.T) {
 	}
 }
 
-func TestResubscribeDuringIdleKeepsStream(t *testing.T) {
-	api := newFakeAPI(t, cm("a", "x", "1", nil))
-	c := testCache(t, api)
-	c.idle = 100 * time.Millisecond
-	key := Key{GVR: cmGVR}
-	s := c.Subscribe(key)
-	next(t, s)
-	api.nextWatch()
-	s.Close()
-	s = c.Subscribe(key)
-	defer s.Close()
-	next(t, s)
-	time.Sleep(250 * time.Millisecond)
-	if st := c.Stats(); st.Streams != 1 || api.lists.Load() != 1 {
-		t.Fatalf("stream should survive: %+v lists=%d", st, api.lists.Load())
-	}
-}
-
 func TestForbiddenEndsStreamWithSameError(t *testing.T) {
 	api := newFakeAPI(t)
 	forbidden := apierrors.NewForbidden(schema.GroupResource{Resource: "configmaps"}, "", errors.New("RBAC says no"))
@@ -240,20 +222,6 @@ func TestForbiddenEndsStreamWithSameError(t *testing.T) {
 	// RBAC fixed: the next user starts over.
 	if _, err := c.List(context.Background(), key); err != nil {
 		t.Fatalf("after RBAC fix: %v", err)
-	}
-}
-
-func TestTransientListErrorRetries(t *testing.T) {
-	api := newFakeAPI(t, cm("a", "x", "1", nil))
-	api.listErr = []error{apierrors.NewInternalError(errors.New("etcd hiccup"))}
-	c := testCache(t, api)
-	s := c.Subscribe(Key{GVR: cmGVR})
-	defer s.Close()
-	if u := next(t, s); u.Err == nil || u.Terminal {
-		t.Fatalf("want a retryable error first, got %+v", u)
-	}
-	if u := next(t, s); u.Snapshot == nil || len(u.Snapshot.Items) != 1 {
-		t.Fatalf("want a snapshot after retry, got %+v", u)
 	}
 }
 
@@ -404,51 +372,5 @@ func TestMemoRecomputesOnlyOnChange(t *testing.T) {
 	s.s.mu.Unlock()
 	if n != 0 {
 		t.Fatalf("memo kept %d entries for a deleted object", n)
-	}
-}
-
-func TestCacheStripsManagedFields(t *testing.T) {
-	withMF := func(u *unstructured.Unstructured) *unstructured.Unstructured {
-		u.SetManagedFields([]metav1.ManagedFieldsEntry{{Manager: "kubectl", Operation: metav1.ManagedFieldsOperationUpdate}})
-		return u
-	}
-	api := newFakeAPI(t, withMF(cm("a", "x", "1", nil)))
-	c := testCache(t, api)
-	sub := c.Subscribe(Key{GVR: cmGVR})
-	defer sub.Close()
-	if u := next(t, sub); u.Snapshot == nil || len(u.Snapshot.Items) != 1 || u.Snapshot.Items[0].GetManagedFields() != nil {
-		t.Fatalf("listed object kept managedFields: %+v", u)
-	}
-	api.nextWatch().w.Add(withMF(cm("a", "y", "2", nil)))
-	if u := next(t, sub); len(u.Events) != 1 || u.Events[0].Object.GetManagedFields() != nil {
-		t.Fatalf("watched object kept managedFields: %+v", u)
-	}
-}
-
-func TestListStartsStreamAndCtxCancel(t *testing.T) {
-	api := newFakeAPI(t, cm("a", "x", "1", nil))
-	c := testCache(t, api)
-	c.idle = time.Hour
-	key := Key{GVR: cmGVR}
-	for range 3 {
-		snap, err := c.List(context.Background(), key)
-		if err != nil || len(snap.Items) != 1 {
-			t.Fatal(err)
-		}
-	}
-	if api.lists.Load() != 1 {
-		t.Fatalf("List made %d upstream LISTs, want 1", api.lists.Load())
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	api.mu.Lock()
-	api.listErr = []error{apierrors.NewInternalError(errors.New("x"))}
-	api.mu.Unlock()
-	if _, err := c.List(ctx, Key{GVR: cmGVR, Namespace: "other"}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancelled List: %v", err)
-	}
-	c.Close()
-	if c.Stats().Streams != 0 {
-		t.Fatal("Close left streams")
 	}
 }

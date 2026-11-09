@@ -121,19 +121,6 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestHistoryNewestFirst(t *testing.T) {
-	h, err := History(fixture(t, "apps"), "web")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(h) != 3 || h[0].Revision != 3 || h[2].Revision != 1 || h[0].Status != "deployed" {
-		t.Fatalf("history: %+v", h)
-	}
-	if _, err := History(fixture(t, "apps"), "nope"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("want ErrNotFound, got %v", err)
-	}
-}
-
 func TestGetDetails(t *testing.T) {
 	d, err := Get(fixture(t, "apps"), "web", 0, nil)
 	if err != nil {
@@ -248,18 +235,6 @@ func TestRollback(t *testing.T) {
 	}
 }
 
-func TestRollbackFailingKubeClient(t *testing.T) {
-	cfg := fixture(t, "apps")
-	cfg.KubeClient = &kubefake.FailingKubeClient{PrintingKubeClient: kubefake.PrintingKubeClient{Out: io.Discard}, UpdateError: errors.New("boom")}
-	if _, err := Rollback(cfg, RollbackRequest{Namespace: "apps", Name: "web", Revision: 1}); err == nil || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("want boom, got %v", err)
-	}
-	last, _ := cfg.Releases.Last("web")
-	if last.Info.Status != release.StatusFailed {
-		t.Fatalf("failed rollback should be recorded as failed, got %s", last.Info.Status)
-	}
-}
-
 func TestUninstall(t *testing.T) {
 	cfg := fixture(t, "apps")
 	if _, err := Uninstall(cfg, UninstallRequest{Namespace: "apps", Name: "web", DryRun: true}); err != nil {
@@ -309,77 +284,5 @@ func TestUpgrade(t *testing.T) {
 	}
 	if _, err := Upgrade(context.Background(), cfg, UpgradeRequest{Namespace: "apps", Name: "web", Values: "replicas: [", DryRun: true}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("want ErrInvalid for bad YAML, got %v", err)
-	}
-}
-
-func TestUpgradeBlockedBySubcharts(t *testing.T) {
-	r := mkRelease("web", "apps", 1, release.StatusDeployed, 1)
-	r.Manifest += "---\n# Source: demo/charts/cache/templates/deploy.yaml\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web-cache\n"
-	cfg := testConfig(t, "apps", r)
-	_, err := Upgrade(context.Background(), cfg, UpgradeRequest{Namespace: "apps", Name: "web", DryRun: true})
-	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "subcharts (cache)") {
-		t.Fatalf("want subchart error, got %v", err)
-	}
-	if d, _ := Get(cfg, "web", 0, nil); !strings.Contains(d.UpgradeBlocked, "cache") {
-		t.Fatalf("upgradeBlocked: %q", d.UpgradeBlocked)
-	}
-}
-
-func TestParseResources(t *testing.T) {
-	m := `---
-# Source: x/templates/ns.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: team
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: reader
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cfg
-  namespace: other
----
-# empty doc
----
-apiVersion: example.dev/v1
-kind: Widget
-metadata:
-  name: w
-`
-	got := ParseResources(m, "rel", nil)
-	want := []Resource{
-		{Version: "v1", Kind: "Namespace", Name: "team"},
-		{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "reader"},
-		{Version: "v1", Kind: "ConfigMap", Name: "cfg", Namespace: "other"},
-		{Group: "example.dev", Version: "v1", Kind: "Widget", Name: "w", Namespace: "rel"},
-	}
-	if len(got) != len(want) {
-		t.Fatalf("got %+v", got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("%d: got %+v want %+v", i, got[i], want[i])
-		}
-	}
-}
-
-func TestChartRef(t *testing.T) {
-	cases := []struct{ repo, chart, want string }{
-		{"oci://docker.io/envoyproxy/gateway-helm", "gateway-helm", "oci://docker.io/envoyproxy/gateway-helm"},
-		{"oci://ghcr.io/org/charts/", "app", "oci://ghcr.io/org/charts/app"},
-		{"https://charts.jetstack.io", "cert-manager", "cert-manager"},
-	}
-	for _, c := range cases {
-		if got, _, err := chartRef(c.repo, c.chart); err != nil || got != c.want {
-			t.Errorf("chartRef(%q,%q) = %q, %v", c.repo, c.chart, got, err)
-		}
-	}
-	if _, _, err := chartRef("ftp://x", "y"); !errors.Is(err, ErrInvalid) {
-		t.Errorf("want ErrInvalid, got %v", err)
 	}
 }

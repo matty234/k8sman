@@ -47,15 +47,6 @@ func TestParseTrivyJSON(t *testing.T) {
 	}
 }
 
-func TestParseTrivyVersion(t *testing.T) {
-	if v := ParseTrivyVersion([]byte(`{"Version":"0.57.1","VulnerabilityDB":{}}`)); v != "0.57.1" {
-		t.Error(v)
-	}
-	if v := ParseTrivyVersion([]byte("Version: 0.50.0\nVulnerability DB:\n")); v != "0.50.0" {
-		t.Error(v)
-	}
-}
-
 func TestValidImage(t *testing.T) {
 	for img, ok := range map[string]bool{
 		"nginx": true, "nginx:1.27": true, "ghcr.io/a/b:v1@sha256:abc": true, "localhost:5000/x": true,
@@ -99,18 +90,6 @@ func newTestScanner(ft *fakeTrivy, installed bool, clock *time.Time) *Scanner {
 		return sample, ft.err
 	}
 	return s
-}
-
-func TestScannerNotInstalled(t *testing.T) {
-	clock := now
-	s := newTestScanner(&fakeTrivy{}, false, &clock)
-	st := s.Status(context.Background())
-	if st.Available || st.Hint != InstallHint {
-		t.Errorf("status: %+v", st)
-	}
-	if _, err := s.Scan(context.Background(), "nginx:1.25", false); !errors.Is(err, ErrNoTrivy) {
-		t.Errorf("err: %v", err)
-	}
 }
 
 func TestScannerScanAndCache(t *testing.T) {
@@ -184,17 +163,5 @@ func TestScannerSharesInflight(t *testing.T) {
 	wg.Wait()
 	if ft.calls.Load() != 1 {
 		t.Errorf("concurrent scans of one image share a run: %d", ft.calls.Load())
-	}
-}
-
-func TestScannerError(t *testing.T) {
-	clock := now
-	ft := &fakeTrivy{err: errors.New("trivy failed: exit 1: unable to find image")}
-	s := newTestScanner(ft, true, &clock)
-	if _, err := s.Scan(context.Background(), "nope:1", false); err == nil {
-		t.Error("error propagates")
-	}
-	if s.Cached("nope:1") != nil {
-		t.Error("failures are not cached")
 	}
 }

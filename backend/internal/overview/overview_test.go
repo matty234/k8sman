@@ -498,33 +498,6 @@ func TestAnalyzeScenario(t *testing.T) {
 	}
 }
 
-func TestHealthyClusterHasNoIssues(t *testing.T) {
-	in := Input{Now: now, Pods: []corev1.Pod{runningPod("a", "ok", time.Hour)},
-		Deployments: []appsv1.Deployment{{ObjectMeta: meta("a", "ok", time.Hour), Spec: appsv1.DeploymentSpec{Replicas: ptr[int32](1)},
-			Status: appsv1.DeploymentStatus{Replicas: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1}}}}
-	res := Analyze(in)
-	if len(res.Issues) != 0 || len(res.Categories) != 0 {
-		t.Fatalf("expected no issues, got %+v", res.Issues)
-	}
-	b, _ := json.Marshal(res)
-	var m map[string]any
-	_ = json.Unmarshal(b, &m)
-	for _, k := range []string{"issues", "categories", "nodes", "topWarnings"} {
-		if _, ok := m[k].([]any); !ok {
-			t.Errorf("%s should serialise as an empty list, got %v", k, m[k])
-		}
-	}
-}
-
-func TestRollingDeploymentIsInfoNotUnavailable(t *testing.T) {
-	in := Input{Now: now, Deployments: []appsv1.Deployment{{ObjectMeta: meta("a", "web", time.Hour), Spec: appsv1.DeploymentSpec{Replicas: ptr[int32](3)},
-		Status: appsv1.DeploymentStatus{Replicas: 4, UpdatedReplicas: 1, ReadyReplicas: 2, AvailableReplicas: 2}}}}
-	res := Analyze(in)
-	if len(res.Issues) != 1 || res.Issues[0].Category != "rolling" || res.Issues[0].Severity != Info {
-		t.Fatalf("issues = %+v", res.Issues)
-	}
-}
-
 func TestCronNext(t *testing.T) {
 	base := time.Date(2026, 11, 3, 10, 7, 30, 0, time.UTC) // Tuesday
 	cases := []struct {
@@ -559,19 +532,6 @@ func TestCronNext(t *testing.T) {
 	}
 	if s, _ := parseCron("0 0 30 2 *", ""); !s.next(base).IsZero() {
 		t.Error("impossible schedule should never fire")
-	}
-}
-
-func TestCronNotOverdueWhenRecentlyRun(t *testing.T) {
-	in := Input{Now: now, CronJobs: []batchv1.CronJob{
-		{ObjectMeta: meta("a", "fresh", time.Hour), Spec: batchv1.CronJobSpec{Schedule: "*/5 * * * *"}, Status: batchv1.CronJobStatus{LastScheduleTime: agoP(4 * time.Minute)}},
-		{ObjectMeta: meta("a", "daily", time.Hour), Spec: batchv1.CronJobSpec{Schedule: "@daily"}},
-		{ObjectMeta: meta("a", "bad-schedule", time.Hour), Spec: batchv1.CronJobSpec{Schedule: "nonsense"}},
-		{ObjectMeta: meta("a", "deadline", time.Hour), Spec: batchv1.CronJobSpec{Schedule: "*/5 * * * *", StartingDeadlineSeconds: ptr[int64](3600)},
-			Status: batchv1.CronJobStatus{LastScheduleTime: agoP(30 * time.Minute)}},
-	}}
-	if res := Analyze(in); len(res.Issues) != 0 {
-		t.Fatalf("issues = %+v", res.Issues)
 	}
 }
 

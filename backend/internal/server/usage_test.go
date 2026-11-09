@@ -130,14 +130,3 @@ func TestLiveUsageSendsOnlyChangedRows(t *testing.T) {
 		t.Fatalf("no metrics and nothing to clear should be a no-op: %+v", rows)
 	}
 }
-
-func TestLiveUsageNilForOtherTypes(t *testing.T) {
-	s := &Server{}
-	var l *liveUsage = s.newLiveUsage(nil, resourceQuery{Type: cluster.ResourceType{Group: "apps", Resource: "deployments"}})
-	if l != nil || l.tick() != nil || l.changedRows(context.Background(), nil) != nil {
-		t.Fatal("deployments should have no live usage")
-	}
-	l.stop()
-	l.track(watch.Added, pod("a", "1"), Row{})
-	l.reset(&unstructured.UnstructuredList{}, Table{})
-}

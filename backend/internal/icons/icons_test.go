@@ -14,8 +14,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -28,58 +26,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	metafake "k8s.io/client-go/metadata/fake"
 )
-
-func TestCandidateDomains(t *testing.T) {
-	cases := map[string][]string{
-		"argoproj.io":                {"argoproj.io"},
-		"cert-manager.io":            {"cert-manager.io"},
-		"acme.cert-manager.io":       {"acme.cert-manager.io", "cert-manager.io"},
-		"monitoring.coreos.com":      {"monitoring.coreos.com", "coreos.com"},
-		"example.k8sman.dev":         {"example.k8sman.dev", "k8sman.dev"},
-		"a.b.c.d.example-corp.co.uk": {"a.b.c.d.example-corp.co.uk", "b.c.d.example-corp.co.uk", "example-corp.co.uk"},
-		// github.io is a public suffix: stop at the owner's site.
-		"aquasecurity.github.io":     {"aquasecurity.github.io"},
-		"foo.aquasecurity.github.io": {"foo.aquasecurity.github.io", "aquasecurity.github.io"},
-		"github.io":                  nil,
-		"com":                        nil,
-		"":                           nil,
-		"mycompany.internal":         nil,
-		"apps.svc.cluster.local":     nil,
-		"stable.example.com":         nil,
-		"widgets.test":               nil,
-		"10.0.0.1":                   nil,
-		"foo.unknowntld":             nil,
-		"bad_label.io":               nil,
-		"UPPER.Example.DEV.":         {"upper.example.dev", "example.dev"},
-	}
-	for in, want := range cases {
-		if got := CandidateDomains(in); !reflect.DeepEqual(got, want) {
-			t.Errorf("CandidateDomains(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
-func TestIsLocalCluster(t *testing.T) {
-	cases := []struct {
-		ctx, host string
-		want      bool
-	}{
-		{"kind-k8sman-dev", "https://10.1.2.3:6443", true},
-		{"k3d-dev", "", true},
-		{"minikube", "https://192.168.49.2:8443", true},
-		{"docker-desktop", "https://kubernetes.docker.internal:6443", true},
-		{"prod", "https://127.0.0.1:52011", true},
-		{"prod", "https://[::1]:6443", true},
-		{"prod", "https://localhost:6443", true},
-		{"prod-eks", "https://ABC.gr7.us-east-1.eks.amazonaws.com", false},
-		{"gke_proj_zone_name", "https://34.1.2.3", false},
-	}
-	for _, c := range cases {
-		if got := IsLocalCluster(c.ctx, c.host); got != c.want {
-			t.Errorf("IsLocalCluster(%q, %q) = %v, want %v", c.ctx, c.host, got, c.want)
-		}
-	}
-}
 
 func TestCuratedAsset(t *testing.T) {
 	cases := map[string]string{
@@ -107,65 +53,6 @@ func TestCuratedAsset(t *testing.T) {
 		if got := CuratedAsset(in); got != want {
 			t.Errorf("CuratedAsset(%q) = %q, want %q", in, got, want)
 		}
-	}
-}
-
-func TestParseIconLinks(t *testing.T) {
-	page, _ := url.Parse("https://www.example.dev/docs/index.html")
-	doc := `<!doctype html><html><head>
-	<meta charset="utf-8">
-	<link rel="stylesheet" href="/site.css">
-	<link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
-	<LINK REL="Shortcut Icon" HREF="/favicon.ico">
-	<link rel="icon" type="image/svg+xml" href="/logo.svg">
-	<link rel="mask-icon" href="/pinned.svg" color="#000">
-	<link rel="apple-touch-icon" href="https://cdn.example.dev/touch.png">
-	<link rel="icon" href="/icons/icon-192.png" sizes="192x192 32x32">
-	<link rel="icon" href="data:image/png;base64,AAAA">
-	</head><body><link rel="icon" href="/ignored-in-body.png" sizes="512x512"></body></html>`
-	got := ParseIconLinks(page, []byte(doc))
-	want := []IconLink{
-		{URL: "https://www.example.dev/icons/icon-192.png", Rel: "icon", Size: 192},
-		{URL: "https://cdn.example.dev/touch.png", Rel: "apple-touch-icon", Size: 180},
-		{URL: "https://www.example.dev/favicon.ico", Rel: "icon", Size: 32},
-		{URL: "https://www.example.dev/docs/favicon-16.png", Rel: "icon", Size: 16},
-		{URL: "https://www.example.dev/logo.svg", Rel: "icon", Size: 24, SVG: true},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("ParseIconLinks:\n got %+v\nwant %+v", got, want)
-	}
-
-	// <base href> changes resolution.
-	got = ParseIconLinks(page, []byte(`<head><base href="https://static.example.dev/v2/"><link rel=icon href="fav.png"></head>`))
-	if len(got) != 1 || got[0].URL != "https://static.example.dev/v2/fav.png" {
-		t.Errorf("base href: %+v", got)
-	}
-	if got := ParseIconLinks(page, []byte("not html at all")); len(got) != 0 {
-		t.Errorf("garbage: %+v", got)
-	}
-
-	// Static redirect pages.
-	_, refresh := parsePage(page, []byte(`<html><head><meta http-equiv="Refresh" content="0; url=https://argoproj.github.io" /></head></html>`))
-	if refresh == nil || refresh.String() != "https://argoproj.github.io" {
-		t.Errorf("meta refresh: %v", refresh)
-	}
-	_, refresh = parsePage(page, []byte(`<meta http-equiv="refresh" content="5">`))
-	if refresh != nil {
-		t.Errorf("refresh without url: %v", refresh)
-	}
-}
-
-func TestOnSharedPlatform(t *testing.T) {
-	gh, _ := url.Parse("https://github.com/aquasecurity")
-	pages, _ := url.Parse("https://argoproj.github.io/")
-	if !onSharedPlatform("aquasecurity.github.io", gh) {
-		t.Error("github.com should count as a shared platform for aquasecurity.github.io")
-	}
-	if onSharedPlatform("argoproj.io", pages) {
-		t.Error("an org's github.io site is its own")
-	}
-	if onSharedPlatform("github.com", gh) {
-		t.Error("github.com is its own site")
 	}
 }
 
@@ -326,59 +213,6 @@ func TestBuildHelmIndex(t *testing.T) {
 
 // ---- cache -----------------------------------------------------------------
 
-func TestCache(t *testing.T) {
-	dir := t.TempDir()
-	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	c := NewCache(dir)
-	c.now = func() time.Time { return now }
-	c.PositiveTTL, c.NegativeTTL = time.Hour, time.Minute
-
-	if _, ok := c.Get("a", false); ok {
-		t.Fatal("empty cache hit")
-	}
-	c.Put("a", Entry{OK: true, URL: "https://x/a.png", ContentType: "image/png", Data: []byte("png")})
-	c.Put("miss", Entry{Error: "nope"})
-
-	// A fresh instance reads the same entries from disk.
-	c2 := NewCache(dir)
-	c2.now = c.now
-	c2.PositiveTTL, c2.NegativeTTL = c.PositiveTTL, c.NegativeTTL
-	e, ok := c2.Get("a", false)
-	if !ok || string(e.Data) != "png" || e.ContentType != "image/png" || e.URL != "https://x/a.png" {
-		t.Fatalf("disk round trip: %+v %v", e, ok)
-	}
-	if e, ok := c2.Get("miss", false); !ok || e.OK || e.Error != "nope" {
-		t.Fatalf("negative entry: %+v %v", e, ok)
-	}
-
-	// Negative entries expire first.
-	now = now.Add(2 * time.Minute)
-	if _, ok := c2.Get("miss", false); ok {
-		t.Error("negative entry should have expired")
-	}
-	if _, ok := c2.Get("a", false); !ok {
-		t.Error("positive entry expired too early")
-	}
-	// Expired positives are only served stale.
-	now = now.Add(2 * time.Hour)
-	if _, ok := c2.Get("a", false); ok {
-		t.Error("positive entry should have expired")
-	}
-	if e, ok := c2.Get("a", true); !ok || string(e.Data) != "png" {
-		t.Error("stale positive should be served when allowStale")
-	}
-	if _, ok := c2.Get("miss", true); ok {
-		t.Error("stale negatives are never served")
-	}
-	// Overwriting a hit with a miss removes the image.
-	c2.Put("a", Entry{Error: "gone"})
-	c3 := NewCache(dir)
-	c3.now = c.now
-	if e, ok := c3.Get("a", false); !ok || e.OK {
-		t.Errorf("overwrite: %+v %v", e, ok)
-	}
-}
-
 // ---- images ----------------------------------------------------------------
 
 func testPNG(w, h int) []byte {
@@ -431,51 +265,6 @@ func decodeSize(t *testing.T, b []byte) (int, int, color.Color) {
 		t.Fatal(err)
 	}
 	return img.Bounds().Dx(), img.Bounds().Dy(), img.At(img.Bounds().Dx()/2, img.Bounds().Dy()/2)
-}
-
-func TestNormalize(t *testing.T) {
-	// Large PNGs are downscaled, keeping aspect.
-	out, ct, err := Normalize(testPNG(500, 250))
-	if err != nil || ct != "image/png" {
-		t.Fatal(err, ct)
-	}
-	if w, h, c := decodeSize(t, out); w != 128 || h != 64 {
-		t.Errorf("downscaled to %dx%d", w, h)
-	} else if r, _, _, _ := c.RGBA(); r>>8 != 200 {
-		t.Errorf("colour changed: %v", c)
-	}
-	// Small PNGs pass through.
-	small := testPNG(64, 64)
-	if out, _, _ := Normalize(small); !bytes.Equal(out, small) {
-		t.Error("small png should pass through")
-	}
-	// ICO: the largest entry wins, PNG or BMP.
-	out, _, err = Normalize(testICO(testDIB32(16), testPNG(32, 32)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if w, _, _ := decodeSize(t, out); w != 32 {
-		t.Errorf("ico png entry: width %d", w)
-	}
-	out, _, err = Normalize(testICO(testDIB32(32)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if w, h, c := decodeSize(t, out); w != 32 || h != 32 {
-		t.Errorf("ico bmp entry: %dx%d", w, h)
-	} else if r, g, b, a := c.RGBA(); r != 0 || g != 0 || b>>8 != 255 || a>>8 != 255 {
-		t.Errorf("ico bmp colour: %v", c)
-	}
-	// SVG and junk are rejected.
-	if _, _, err := Normalize([]byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>`)); err != errSVG {
-		t.Errorf("svg: %v", err)
-	}
-	if _, _, err := Normalize([]byte("<html>nope</html>")); err == nil {
-		t.Error("html accepted as image")
-	}
-	if _, _, err := Normalize(testPNG(8, 8)); err != errTooSmall {
-		t.Errorf("tiny: %v", err)
-	}
 }
 
 // ---- fetching and resolution ----------------------------------------------

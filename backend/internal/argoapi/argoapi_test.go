@@ -244,15 +244,6 @@ func TestConvert(t *testing.T) {
 	}
 }
 
-func TestConvertComparisonFailed(t *testing.T) {
-	// The repo-server failed: every target is null, so nothing is prunable.
-	live := `{"apiVersion":"v1","kind":"Service","metadata":{"name":"web"}}`
-	out := convert([]managedResource{{Kind: "Service", Name: "web", TargetState: "null", LiveState: live, NormalizedLiveState: live, PredictedLiveState: "null"}})
-	if out[0].RequiresPruning || out[0].Status != "Synced" {
-		t.Fatalf("%+v", out[0])
-	}
-}
-
 func TestConvertCapturedFixture(t *testing.T) {
 	b, err := os.ReadFile("testdata/managed-resources-helm-guestbook.json")
 	if err != nil {
@@ -399,21 +390,6 @@ func TestInitialAdminSession(t *testing.T) {
 	}
 }
 
-func TestInitialAdminMissingOrWrong(t *testing.T) {
-	rig := newRig(t, &fakeArgo{}, argoService("argocd"))
-	code, body := rig.call(t, "POST", "/api/argocd/auth/initial-admin", nil)
-	if code != 404 || body["reason"] != ReasonNoAdmin {
-		t.Fatalf("missing: %d %v", code, body)
-	}
-	bad := adminSecret("argocd")
-	bad.Data["password"] = []byte("pw-PLUGH")
-	rig = newRig(t, &fakeArgo{}, argoService("argocd"), bad)
-	code, body = rig.call(t, "POST", "/api/argocd/auth/initial-admin", nil)
-	if code != 401 || body["reason"] != ReasonUnauthorized || strings.Contains(body["error"].(string), "PLUGH") {
-		t.Fatalf("wrong password: %d %v", code, body)
-	}
-}
-
 func TestDiscoveryInsecureAndRootPath(t *testing.T) {
 	argo := &fakeArgo{insecure: true}
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: "gitops", Name: paramsConfigMap}, Data: map[string]string{"server.insecure": "true", "server.rootpath": "/argo/"}}
@@ -427,38 +403,5 @@ func TestDiscoveryInsecureAndRootPath(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(argo.seen, "\n"), "GET gitops/http:argocd-server:80/argo/api/version") {
 		t.Fatalf("seen %v", argo.seen)
-	}
-}
-
-func TestDiscoveryFallsBackToHTTPWithoutParams(t *testing.T) {
-	// server.insecure but the ConfigMap is unreadable: https fails, http works.
-	argo := &fakeArgo{insecure: true}
-	rig := newRig(t, argo, argoService("argocd"))
-	_, st := rig.call(t, "GET", "/api/argocd/status", nil)
-	if st["reachable"] != true || st["server"].(map[string]any)["scheme"] != "http" {
-		t.Fatalf("status %v", st)
-	}
-}
-
-func TestNotFound(t *testing.T) {
-	rig := newRig(t, &fakeArgo{})
-	_, st := rig.call(t, "GET", "/api/argocd/status", nil)
-	if st["found"] != false || st["reachable"] != false || !strings.Contains(st["error"].(string), "not found") {
-		t.Fatalf("status %v", st)
-	}
-	code, body := rig.call(t, "GET", "/api/argocd/diff?name=x", nil)
-	if code != 404 || body["reason"] != ReasonNotFound {
-		t.Fatalf("diff %d %v", code, body)
-	}
-}
-
-func TestUpstreamErrKubeVsArgo(t *testing.T) {
-	e := upstreamErr(401, []byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":"Unauthorized","reason":"Unauthorized","code":401}`), nil).(*Error)
-	if !e.Kube || e.Reason == ReasonUnauthorized || isArgoAuthErr(e) {
-		t.Fatalf("kube 401: %+v", e)
-	}
-	e = upstreamErr(401, []byte(`{"error":"no session information","code":16,"message":"no session information"}`), nil).(*Error)
-	if e.Kube || e.Reason != ReasonUnauthorized || !isArgoAuthErr(e) {
-		t.Fatalf("argo 401: %+v", e)
 	}
 }

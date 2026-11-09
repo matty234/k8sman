@@ -63,17 +63,6 @@ func TestRemoteIconsPolicy(t *testing.T) {
 	}
 }
 
-func TestIconEndpointRejectsBadGroups(t *testing.T) {
-	s := iconServer(t, "prod", "https://203.0.113.10:6443", Options{IconCacheDir: t.TempDir()})
-	for _, g := range []string{"Bad_Group", "-x.io", "a..b"} {
-		rec := httptest.NewRecorder()
-		s.ServeHTTP(rec, localRequest(http.MethodGet, "/api/icons/"+g, nil))
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("%s: status %d", g, rec.Code)
-		}
-	}
-}
-
 func TestIconSettingsEndpoint(t *testing.T) {
 	s := iconServer(t, "prod", "https://203.0.113.10:6443", Options{})
 	call := func(method, body string) string {

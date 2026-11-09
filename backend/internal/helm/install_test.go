@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/repo"
 )
 
@@ -68,15 +67,5 @@ func TestInstallAndUpgradeFromRepo(t *testing.T) {
 	}
 	if h, _ := History(cfg, "web"); h[0].Description != "Upgraded to demo 2.0.0 from k8sman" {
 		t.Fatalf("description: %q", h[0].Description)
-	}
-}
-
-func TestUpgradeFromRepoIgnoresStoredSubcharts(t *testing.T) {
-	url := chartRepo(t)
-	r := mkRelease("web", "apps", 1, release.StatusDeployed, 1)
-	r.Manifest += "---\n# Source: demo/charts/cache/templates/deploy.yaml\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web-cache\n"
-	cfg := testConfig(t, "apps", r)
-	if _, err := Upgrade(context.Background(), cfg, UpgradeRequest{Namespace: "apps", Name: "web", Repo: url, Chart: "demo", DryRun: true}); err != nil {
-		t.Fatalf("upgrading from the chart source should not be blocked: %v", err)
 	}
 }

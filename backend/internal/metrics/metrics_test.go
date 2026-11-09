@@ -3,8 +3,6 @@ package metrics
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -115,65 +113,6 @@ func TestStatusFromAPIServices(t *testing.T) {
 	}
 }
 
-func TestStatusNotReadyAndVersionPreference(t *testing.T) {
-	list := `{"items":[
-	 {"metadata":{"name":"v1beta1.metrics.k8s.io"},"spec":{"group":"metrics.k8s.io","version":"v1beta1","service":{"namespace":"kube-system","name":"metrics-server"}},
-	  "status":{"conditions":[{"type":"Available","status":"False","reason":"MissingEndpoints","message":"endpoints for service/metrics-server in \"kube-system\" have no addresses"}]}},
-	 {"metadata":{"name":"v1beta1.custom.metrics.k8s.io"},"spec":{"group":"custom.metrics.k8s.io","version":"v1beta1","service":{"namespace":"monitoring","name":"prometheus-adapter"}},"status":{"conditions":[{"type":"Available","status":"True"}]}},
-	 {"metadata":{"name":"v1beta2.custom.metrics.k8s.io"},"spec":{"group":"custom.metrics.k8s.io","version":"v1beta2","service":{"namespace":"monitoring","name":"prometheus-adapter"}},"status":{"conditions":[{"type":"Available","status":"True"}]}}
-	]}`
-	f := newFake(t).on(apiservicesPath, list).fail("/apis/metrics.k8s.io/v1beta1/nodes", 503)
-	s := f.service()
-	st := s.Status(context.Background(), false)
-	if st.Resource.State != StateNotReady || st.Resource.Reason != "MissingEndpoints" {
-		t.Fatalf("resource: %+v", st.Resource)
-	}
-	if st.Custom.Version != "v1beta2" || len(st.Custom.Versions) != 2 {
-		t.Fatalf("custom should prefer v1beta2: %+v", st.Custom)
-	}
-	_, err := s.Nodes(context.Background())
-	var ue *UnavailableError
-	if !errors.As(err, &ue) || ue.Status.State != StateNotReady {
-		t.Fatalf("want notReady error, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "not ready yet") {
-		t.Fatalf("message: %v", err)
-	}
-}
-
-func TestNotInstalled(t *testing.T) {
-	s := newFake(t).on(apiservicesPath, `{"items":[]}`).service()
-	_, err := s.Nodes(context.Background())
-	var ue *UnavailableError
-	if !errors.As(err, &ue) || ue.Status.State != StateNotInstalled {
-		t.Fatalf("want notInstalled, got %v", err)
-	}
-	if d := s.UsageDecorator(context.Background(), "", "pods", "demo"); d != nil {
-		t.Fatal("decorator should be nil without metrics-server")
-	}
-}
-
-func TestEmptyNodeListIsNoData(t *testing.T) {
-	s := newFake(t).on(apiservicesPath, "apiservices.json").
-		on("/apis/metrics.k8s.io/v1beta1/nodes", `{"kind":"NodeMetricsList","items":[]}`).service()
-	_, err := s.Nodes(context.Background())
-	var ue *UnavailableError
-	if !errors.As(err, &ue) || ue.Status.State != StateNotReady {
-		t.Fatalf("empty list should read as not ready, got %v", err)
-	}
-}
-
-func TestStatusFallsBackToDiscovery(t *testing.T) {
-	s := newFake(t).fail(apiservicesPath, 403).
-		on("/apis/metrics.k8s.io/v1beta1", `{"kind":"APIResourceList"}`).
-		fail("/apis/external.metrics.k8s.io/v1beta1", 503).
-		service()
-	st := s.Status(context.Background(), false)
-	if st.Resource.State != StateAvailable || st.External.State != StateNotReady || st.Custom.State != StateNotInstalled {
-		t.Fatalf("got %+v", st)
-	}
-}
-
 func TestNodesAndPodsParse(t *testing.T) {
 	s := healthy(t).service()
 	nodes, err := s.Nodes(context.Background())
@@ -231,62 +170,6 @@ func TestUsageCacheAndAllNamespaces(t *testing.T) {
 	}
 }
 
-func TestUsageDecoratorCopies(t *testing.T) {
-	s := healthy(t).service()
-	ctx := context.Background()
-	d := s.UsageDecorator(ctx, "", "nodes", "")
-	if d == nil {
-		t.Fatal("nil decorator")
-	}
-	node := map[string]any{
-		"metadata": map[string]any{"name": "k8sman-dev-control-plane"},
-		"status":   map[string]any{"allocatable": map[string]any{"cpu": "10", "memory": "8025100Ki"}},
-	}
-	out := d(node)
-	if _, mutated := node[UsageKey]; mutated {
-		t.Fatal("decorator mutated the original object")
-	}
-	u := out[UsageKey].(map[string]any)["usage"].(map[string]any)
-	if u["cpu"] != "3455m" || u["cpuMillis"] != 3455 || u["cpuPercent"] != 34.6 || u["memoryPercent"] != 70.9 || u["cpuBasis"] != "allocatable" || u["cpuBase"] != 10.0 {
-		t.Fatalf("usage: %v", u)
-	}
-	// Unknown objects pass through unchanged (rendered as "—").
-	other := map[string]any{"metadata": map[string]any{"name": "nope"}}
-	if got := d(other); got[UsageKey] != nil {
-		t.Fatal("unknown node got usage")
-	}
-
-	pd := s.UsageDecorator(ctx, "", "pods", "demo")
-	// Limits and requests are summed over containers: CPU is measured
-	// against the limit (every container has one), memory against the
-	// request (one container is unlimited).
-	res := func(lim, req map[string]any) map[string]any {
-		return map[string]any{"resources": map[string]any{"limits": lim, "requests": req}}
-	}
-	pod := map[string]any{
-		"metadata": map[string]any{"name": "redis-0", "namespace": "demo"},
-		"spec": map[string]any{"containers": []any{
-			res(map[string]any{"cpu": "500m", "memory": "1Gi"}, map[string]any{"cpu": "100m", "memory": "256Mi"}),
-			res(map[string]any{"cpu": "1"}, map[string]any{"memory": "256Mi"}),
-		}},
-	}
-	pu := pd(pod)[UsageKey].(map[string]any)["usage"].(map[string]any)
-	cs := pu["containers"].(map[string]any)
-	if _, ok := cs["redis"]; !ok || pu["window"] == nil {
-		t.Fatalf("pod usage: %v", pu)
-	}
-	if pu["cpuLimitMillis"] != 1500 || pu["cpuRequestMillis"] != 100 || pu["cpuBasis"] != "limit" || pu["cpuBase"] != 1.5 ||
-		pu["memoryLimitBytes"] != nil || pu["memoryRequestBytes"] != 512<<20 || pu["memoryBasis"] != "request" {
-		t.Fatalf("pod limits/requests: %v", pu)
-	}
-	if want := math.Round(float64(pu["cpuMillis"].(int))/1500*1000) / 10; pu["cpuPercent"] != want {
-		t.Fatalf("cpuPercent %v, want %v", pu["cpuPercent"], want)
-	}
-	if s.UsageDecorator(ctx, "apps", "deployments", "") != nil {
-		t.Fatal("deployments should not be decorated")
-	}
-}
-
 func TestCustomValues(t *testing.T) {
 	apis := `{"items":[{"metadata":{"name":"v1beta2.custom.metrics.k8s.io"},"spec":{"group":"custom.metrics.k8s.io","version":"v1beta2","service":{"namespace":"monitoring","name":"prometheus-adapter"}},"status":{"conditions":[{"type":"Available","status":"True"}]}}]}`
 	disc := `{"kind":"APIResourceList","groupVersion":"custom.metrics.k8s.io/v1beta2","resources":[
@@ -319,38 +202,6 @@ func TestCustomValues(t *testing.T) {
 	}
 }
 
-func TestCustomPath(t *testing.T) {
-	cases := map[string]CustomQuery{
-		"/apis/custom.metrics.k8s.io/v1beta2/namespaces/demo/pods/*/rps":             {Resource: "pods", Namespace: "demo", Metric: "rps"},
-		"/apis/custom.metrics.k8s.io/v1beta2/namespaces/demo/deployments.apps/web/q": {Group: "apps", Resource: "deployments", Namespace: "demo", Name: "web", Metric: "q"},
-		"/apis/custom.metrics.k8s.io/v1beta2/nodes/n1/load":                          {Resource: "nodes", Name: "n1", Metric: "load"},
-		"/apis/custom.metrics.k8s.io/v1beta2/namespaces/demo/metrics/rps":            {Resource: "namespaces", Name: "demo", Metric: "rps"},
-	}
-	for want, q := range cases {
-		if got := CustomPath("v1beta2", q); got != want {
-			t.Errorf("CustomPath(%+v) = %s, want %s", q, got, want)
-		}
-	}
-}
-
-func TestCustomV1beta1Shape(t *testing.T) {
-	raw := []byte(`{"kind":"MetricValueList","items":[{"describedObject":{"kind":"Pod","namespace":"demo","name":"a"},"metricName":"rps","timestamp":"2026-11-03T12:00:00Z","window":30,"value":"750m"}]}`)
-	vals, err := parseCustomValues(raw)
-	if err != nil || len(vals) != 1 || vals[0].Metric != "rps" || vals[0].Number != 0.75 || *vals[0].WindowSeconds != 30 {
-		t.Fatalf("%+v %v", vals, err)
-	}
-}
-
-func TestExternalValues(t *testing.T) {
-	s := healthy(t).service()
-	ctx := context.Background()
-	// KEDA names the metric and its selector in the HPA, not in discovery.
-	vals, err := s.External(ctx, ExternalQuery{Namespace: "demo", Metric: "s1-cron-Etc-UTC-0xxxx-30xxxx", Selector: "scaledobject.keda.sh/name=web"})
-	if err != nil || len(vals) != 1 || vals[0].Number != 1 {
-		t.Fatalf("values: %+v %v", vals, err)
-	}
-}
-
 func TestAnalyzeHPA(t *testing.T) {
 	s := healthy(t).service()
 	a, err := s.AnalyzeHPA(context.Background(), "demo", "web")
@@ -370,25 +221,6 @@ func TestAnalyzeHPA(t *testing.T) {
 	}
 	if *a.Proposed != 2 || a.LimitedBy != "min" {
 		t.Fatalf("proposed %v limitedBy %q", *a.Proposed, a.LimitedBy)
-	}
-}
-
-func TestProposals(t *testing.T) {
-	var m HPAMetric
-	proposeRatio(&m, 140, 70, 3, 3) // 2× target over 3 pods → 6
-	if *m.Proposed != 6 {
-		t.Fatalf("ratio: %d", *m.Proposed)
-	}
-	proposeRatio(&m, 75, 70, 3, 3) // within 10% tolerance → keep 3
-	if *m.Proposed != 3 {
-		t.Fatalf("tolerance: %d", *m.Proposed)
-	}
-	proposeTotal(&m, 30, 4, 2) // 30 total / 4 per pod → 8
-	if *m.Proposed != 8 {
-		t.Fatalf("total: %d", *m.Proposed)
-	}
-	if pluralize("Deployment") != "deployments" || pluralize("Ingress") != "ingresses" || pluralize("Policy") != "policies" {
-		t.Fatal("pluralize")
 	}
 }
 

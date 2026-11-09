@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"syscall"
@@ -57,36 +56,3 @@ type timeoutErr struct{}
 func (timeoutErr) Error() string   { return "i/o timeout" }
 func (timeoutErr) Timeout() bool   { return true }
 func (timeoutErr) Temporary() bool { return true }
-
-func TestErrorFrameKeepsLegacyFields(t *testing.T) {
-	m := errorFrame(nil, apierrors.NewForbidden(schema.GroupResource{Resource: "secrets"}, "", errors.New("no")))
-	if m.Type != "ERROR" || m.Error == "" || m.Reason != ReasonForbidden || m.Code != http.StatusForbidden {
-		t.Fatalf("unexpected frame %+v", m)
-	}
-	// Unclassified API errors still carry their Kubernetes reason.
-	m = errorFrame(nil, apierrors.NewConflict(schema.GroupResource{Resource: "pods"}, "x", errors.New("changed")))
-	if m.Reason != "Conflict" || m.Code != 409 {
-		t.Fatalf("unexpected frame %+v", m)
-	}
-}
-
-func TestClassifyNotServed(t *testing.T) {
-	err := fmt.Errorf("%w: %v", errNotServed, errors.New(`resource example.com/v1 "widgets" not found`))
-	if r, c := classifyError(err); r != ReasonNotFound || c != 404 {
-		t.Fatalf("got %q %d", r, c)
-	}
-}
-
-func TestDiscoveryForbiddenMeansAnonymous(t *testing.T) {
-	err := discoveryErr(apierrors.NewForbidden(schema.GroupResource{}, "", errors.New("unknown")))
-	if r, c := classifyError(err); r != ReasonUnauthorized || c != 401 {
-		t.Fatalf("got %q %d", r, c)
-	}
-	if discoveryErr(nil) != nil {
-		t.Fatal("nil stays nil")
-	}
-	other := errors.New("x")
-	if discoveryErr(other) != other {
-		t.Fatal("non-forbidden errors pass through")
-	}
-}

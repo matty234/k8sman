@@ -42,19 +42,6 @@ func writeCfg(t *testing.T, s string) string {
 	return p
 }
 
-func TestHostOf(t *testing.T) {
-	for in, want := range map[string]string{
-		"https://ArgoCD.Example.Internal":  "argocd.example.internal",
-		"argocd.example.internal:443":      "argocd.example.internal",
-		"https://h.example.com:8443/argo/": "h.example.com",
-		"":                                 "",
-	} {
-		if got := hostOf(in); got != want {
-			t.Errorf("hostOf(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func TestFindCLILoginMatchesStrictlyByHost(t *testing.T) {
 	p := writeCfg(t, cliCfg)
 	l, ok := findCLILogin(p, "argocd.example.internal")

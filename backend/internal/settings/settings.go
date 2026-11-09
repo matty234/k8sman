@@ -8,13 +8,14 @@ package settings
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/matty234/k8sman/backend/internal/security"
 	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"sync"
+
+	"github.com/matty234/k8sman/backend/internal/security"
 )
 
 // MaxRecent is how many recently used kubeconfig paths are kept.

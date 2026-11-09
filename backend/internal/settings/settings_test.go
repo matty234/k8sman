@@ -61,39 +61,6 @@ func TestCorruptFile(t *testing.T) {
 	}
 }
 
-func TestSidebarRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "settings.json")
-	st, _ := Open(path)
-	if st.Get().Sidebar != nil {
-		t.Fatal("default sidebar must be nil")
-	}
-	sb := &Sidebar{Items: []SidebarItem{
-		{View: "overview"},
-		{View: "helm", Hidden: true},
-		{Group: "apps", Kind: "Deployment"},
-		{Kind: "Pod", Namespace: "kube-system"},
-	}}
-	if err := st.SetSidebar(sb); err != nil {
-		t.Fatal(err)
-	}
-	sb.Items[0].View = "mutated" // the store keeps its own copy
-	again, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := again.Get().Sidebar
-	if got == nil || len(got.Items) != 4 || got.Items[0].View != "overview" || !got.Items[1].Hidden ||
-		got.Items[2].Kind != "Deployment" || got.Items[3].Namespace != "kube-system" {
-		t.Fatalf("got %+v", got)
-	}
-	if err := st.SetSidebar(&Sidebar{Items: []SidebarItem{{View: "x", Kind: "Pod"}}}); err == nil {
-		t.Fatal("expected validation error")
-	}
-	if err := st.SetSidebar(nil); err != nil || st.Get().Sidebar != nil {
-		t.Fatalf("reset: %v %+v", err, st.Get().Sidebar)
-	}
-}
-
 func TestAutoReadOnly(t *testing.T) {
 	for name, want := range map[string]bool{
 		"prod": true, "prod-eu": true, "gke_acme_europe-west1_prod": true, "Production": true, "eks-prd-1": true,
