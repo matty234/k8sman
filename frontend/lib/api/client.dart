@@ -356,6 +356,16 @@ class ApiClient {
 
   Future<void> putAppLinks(bool v) => _send('PUT', 'settings/links', const {}, {'appLinks': v});
 
+  /// Remembered link mappings: cluster fingerprint → local context.
+  Future<Map<String, String>> getLinkClusterMap() async {
+    final m = (await _get('settings/link-clusters') as Json)['linkClusterMap'] as Map? ?? const {};
+    return {for (final e in m.entries) '${e.key}': '${e.value}'};
+  }
+
+  /// Remembers (or with [context] '' forgets) where links for [fingerprint] open.
+  Future<void> putLinkCluster(String fingerprint, String context) =>
+      _send('PUT', 'settings/link-clusters', const {}, {'fingerprint': fingerprint, 'context': context});
+
   Future<Set<String>> getDisabledModules() async {
     final j = await _get('settings/modules') as Json;
     return {for (final id in (j['disabled'] as List? ?? const [])) '$id'};

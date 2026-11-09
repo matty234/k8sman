@@ -1167,13 +1167,26 @@ class AppState extends ChangeNotifier {
   bool appLinks = false;
   Future<void> _linkSaves = Future.value();
 
+  /// "Always open links for this cluster here": cluster fingerprint (a
+  /// link's `c`) → local context name.
+  Map<String, String> linkClusterMap = const {};
+
   Future<void> loadLinkPrefs() async {
     try {
       appLinks = await api.getAppLinks();
+      linkClusterMap = await api.getLinkClusterMap();
       notifyListeners();
     } catch (e) {
       debugPrint('link preferences: $e');
     }
+  }
+
+  /// Remembers [context] for links to [fingerprint]; '' forgets it.
+  void setLinkCluster(String fingerprint, String context) {
+    linkClusterMap = {...linkClusterMap}..remove(fingerprint);
+    if (context.isNotEmpty) linkClusterMap[fingerprint] = context;
+    notifyListeners();
+    _linkSaves = _linkSaves.then((_) => api.putLinkCluster(fingerprint, context)).catchError((Object e) => debugPrint('save link mapping: $e'));
   }
 
   void setAppLinks(bool v) {

@@ -260,14 +260,19 @@ class ContextInfo {
   /// Exec credential plugin or auth provider, e.g. "kubelogin", "aws"; null
   /// for static credentials. Such plugins may wait for a browser login.
   final String? auth;
-  const ContextInfo({required this.name, required this.cluster, required this.user, this.namespace, this.server, this.auth});
+
+  /// Identifies the cluster in shareable links: 12 hex characters of
+  /// SHA-256 over the normalised server URL (computed by the backend).
+  final String? fingerprint;
+  const ContextInfo({required this.name, required this.cluster, required this.user, this.namespace, this.server, this.auth, this.fingerprint});
   factory ContextInfo.fromJson(Json j) => ContextInfo(
       name: j['name'] ?? '',
       cluster: j['cluster'] ?? '',
       user: j['user'] ?? '',
       namespace: j['namespace'],
       server: j['server'],
-      auth: j['auth']);
+      auth: j['auth'],
+      fingerprint: j['fingerprint']);
 }
 
 class ColumnsConfig {

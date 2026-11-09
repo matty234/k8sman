@@ -3,14 +3,19 @@ import 'package:flutter/foundation.dart';
 /// A shareable link to a place in k8sman: a context, optionally a page, a
 /// kind's table (optionally in one namespace) or one object.
 ///
-/// Two spellings of the same query:
+/// Two spellings:
 ///
-///     k8sman://open?ctx=<context>&ns=<ns>&kind=<Kind>&group=<group>&name=<name>
-///     https://k8sman.dev/o/?ctx=…&ns=…&kind=…&group=…&name=…
+///     https://k8sman.dev/o/?kind=<Kind>&group=<group>&ns=<ns>&name=<name>#c=<fp>&ctx=<context>
+///     k8sman://open?kind=…&group=…&ns=…&name=…&c=<fp>&ctx=<context>
 ///
 /// `group` is omitted for core kinds and `ns` for cluster-scoped ones.
-/// `view=<page>` (with `ctx`) names a page instead of a kind. A link only
-/// ever carries these names: no server URLs, no credentials.
+/// `view=<page>` names a page instead of a kind. `c` is the cluster
+/// fingerprint (`ContextInfo.fingerprint`: a hash of the API server URL)
+/// and `ctx` the sender's context name. On the web form they ride in the
+/// fragment, which browsers never send to k8sman.dev; the `k8sman://` form
+/// accepts them in the query or the fragment. Older links with `ctx` in the
+/// query of either form still parse. A link only ever carries these names
+/// and the hash: no server URLs, no credentials.
 ///
 /// Every parameter is untrusted: [AppLink.parse] rejects anything outside
 /// the rules below rather than trying to clean it up.
@@ -27,7 +32,10 @@ class AppLink {
   /// A page id (`MainView.name`, e.g. `overview`, `nodes`, `helm`).
   final String? view;
 
-  const AppLink({required this.context, this.namespace, this.kind, this.group = '', this.name, this.view});
+  /// The cluster fingerprint (`c`); null on older links.
+  final String? cluster;
+
+  const AppLink({required this.context, this.cluster, this.namespace, this.kind, this.group = '', this.name, this.view});
 
   static const scheme = 'k8sman';
   static const webBase = 'https://k8sman.dev/o/';
@@ -54,6 +62,9 @@ class AppLink {
   /// Page ids.
   static final _view = RegExp(r'^[A-Za-z][A-Za-z0-9_-]{0,63}$');
 
+  /// Cluster fingerprints: 12 lowercase hex characters.
+  static final _cluster = RegExp(r'^[0-9a-f]{12}$');
+
   /// Parses a `k8sman://open?…` or `https://k8sman.dev/o/?…` link. Null
   /// when it isn't one, or when any parameter breaks the rules above or the
   /// combination makes no sense (a name without a kind, a page and a kind).
@@ -65,10 +76,11 @@ class AppLink {
         (uri.host == 'k8sman.dev' || uri.host == 'www.k8sman.dev') &&
         (uri.path == '/o' || uri.path == '/o/');
     if (!isApp && !isWeb) return null;
-    final Map<String, String> q;
+    final Map<String, String> q, frag;
     try {
       // Decodes %-escapes; a malformed escape throws.
       q = uri.queryParameters;
+      frag = uri.hasFragment ? Uri.splitQueryString(uri.fragment) : const {};
     } catch (_) {
       return null;
     }
@@ -77,8 +89,17 @@ class AppLink {
       return v == null || v.isEmpty ? null : v;
     }
 
-    final ctx = opt('ctx'), ns = opt('ns'), kind = opt('kind'), group = opt('group'), name = opt('name'), view = opt('view');
+    // The cluster's identity: from the fragment (new links), else the query
+    // (the k8sman:// form, and older links).
+    String? id(String k) {
+      final v = frag[k];
+      return v == null || v.isEmpty ? opt(k) : v;
+    }
+
+    final ctx = id('ctx'), c = id('c');
+    final ns = opt('ns'), kind = opt('kind'), group = opt('group'), name = opt('name'), view = opt('view');
     if (ctx == null || !_context.hasMatch(ctx)) return null;
+    if (c != null && !_cluster.hasMatch(c)) return null;
     if (ns != null && !_namespace.hasMatch(ns)) return null;
     if (kind != null && !_kind.hasMatch(kind)) return null;
     if (group != null && !_group.hasMatch(group)) return null;
@@ -87,28 +108,32 @@ class AppLink {
     if (view != null && (kind != null || name != null || ns != null)) return null;
     if ((name != null || group != null) && kind == null) return null;
     if (ns != null && kind == null) return null;
-    return AppLink(context: ctx, namespace: ns, kind: kind, group: group ?? '', name: name, view: view);
+    return AppLink(context: ctx, cluster: c, namespace: ns, kind: kind, group: group ?? '', name: name, view: view);
   }
 
-  /// The query in a fixed order, %-encoded (spaces as %20, not +).
-  String get _query {
-    final parts = <(String, String?)>[
-      ('ctx', context),
-      ('view', view),
-      ('ns', namespace),
-      ('kind', kind),
-      ('group', group.isEmpty ? null : group),
-      ('name', name),
-    ];
-    return [for (final (k, v) in parts) if (v != null) '$k=${Uri.encodeComponent(v)}'].join('&');
-  }
+  /// Parameters in a fixed order, %-encoded (spaces as %20, not +).
+  static String _encode(List<(String, String?)> parts) =>
+      [for (final (k, v) in parts) if (v != null) '$k=${Uri.encodeComponent(v)}'].join('&');
 
-  /// `k8sman://open?…`: opens the app directly.
-  String get appUrl => '$scheme://open?$_query';
+  /// What the link points at.
+  String get _what => _encode([
+        ('view', view),
+        ('kind', kind),
+        ('group', group.isEmpty ? null : group),
+        ('ns', namespace),
+        ('name', name),
+      ]);
 
-  /// `https://k8sman.dev/o/?…`: a page that opens the app, or offers to
-  /// download it.
-  String get webUrl => '$webBase?$_query';
+  /// Which cluster.
+  String get _where => _encode([('c', cluster), ('ctx', context)]);
+
+  /// `k8sman://open?…&c=…&ctx=…`: opens the app directly.
+  String get appUrl => '$scheme://open?${[_what, _where].where((s) => s.isNotEmpty).join('&')}';
+
+  /// `https://k8sman.dev/o/?…#c=…&ctx=…`: a page that opens the app, or
+  /// offers to download it. The cluster stays in the fragment, so the
+  /// k8sman.dev server never sees it.
+  String get webUrl => '$webBase${_what.isEmpty ? '' : '?$_what'}#$_where';
 
   /// "Deployment shop/api", "Nodes table", "the Overview"-style label for
   /// prompts (without the context).
@@ -123,6 +148,7 @@ class AppLink {
   bool operator ==(Object other) =>
       other is AppLink &&
       other.context == context &&
+      other.cluster == cluster &&
       other.namespace == namespace &&
       other.kind == kind &&
       other.group == group &&
@@ -130,7 +156,7 @@ class AppLink {
       other.view == view;
 
   @override
-  int get hashCode => Object.hash(context, namespace, kind, group, name, view);
+  int get hashCode => Object.hash(context, cluster, namespace, kind, group, name, view);
 
   @override
   String toString() => appUrl;

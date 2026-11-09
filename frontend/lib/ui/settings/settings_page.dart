@@ -339,7 +339,8 @@ class _SettingsPageState extends State<SettingsPage> {
           group: 'Links',
           label: 'Use links that open the app directly (k8sman://)',
           description: 'Copy link (on an object, a table\'s kind or a page) copies a k8sman.dev link that opens the same place in a '
-              'colleague\'s k8sman, or offers the download. A link only names the context, namespace, kind and object, and '
+              'colleague\'s k8sman, or offers the download. A link only names the context, a hash of the cluster\'s address, '
+              'the namespace, kind and object, and '
               'opening one only navigates: switching context asks first. Hold ⌥ while choosing Copy link for the k8sman:// form.',
           keywords: const ['link', 'links', 'share', 'url', 'deep link', 'k8sman.dev', 'scheme', 'copy link'],
           trailing: (context) => SettingSwitch(

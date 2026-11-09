@@ -55,13 +55,25 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   the first remembered one, else `default`.
 - **Links**: Copy link (row menu, inspector ⋯, a kind's or a page's
   right-click menu in the sidebar or table header) copies
-  `https://k8sman.dev/o/?ctx=…&ns=…&kind=…&group=…&name=…`, which opens the
-  same object, table or page in a colleague's k8sman or offers the
+  `https://k8sman.dev/o/?kind=…&group=…&ns=…&name=…#c=…&ctx=…`, which opens
+  the same object, table or page in a colleague's k8sman or offers the
   download. Hold ⌥ (or turn on Settings > General > Links) for the
-  `k8sman://open?…` form, registered on macOS, Windows (installer) and
-  Linux (`.desktop`). A link carries only the context, namespace, kind and
-  name; opening one only navigates, asks before switching context, and
-  says so when the context isn't in your kubeconfig.
+  `k8sman://open?…&c=…&ctx=…` form, registered on macOS, Windows
+  (installer) and Linux (`.desktop`). `c` is the cluster's fingerprint (12
+  hex characters of SHA-256 over its normalised API server URL), so a link
+  finds the cluster even when your context for it has another name; `ctx`
+  is the sender's context name. On the web form both sit in the `#`
+  fragment, which browsers don't send to k8sman.dev. A link carries only
+  that hash, the context name, namespace, kind and name, never the server
+  address. The hash isn't secret, though: someone who knows or guesses a
+  server address can check whether a link is for it. Opening a link only
+  navigates (read-only contexts stay read-only) and finds the context by a
+  remembered choice for that cluster, then by fingerprint (several matches:
+  the current context, then the one named like `ctx`, else a chooser), then
+  by name (said in the prompt); a switch asks first. A cluster you don't
+  have offers "Choose a context…", with "Always open links for this cluster
+  here". Settings > Clusters > Links shows each context's fingerprint and
+  the remembered choices. Older links with `ctx` in the query still open.
 
 ## Saved views
 

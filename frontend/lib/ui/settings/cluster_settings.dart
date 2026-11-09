@@ -37,6 +37,15 @@ List<SettingItem> clusterSettings() => [
         keywords: const ['read-only', 'readonly', 'lock', 'locked', 'production', 'prod', 'safe', 'context'],
         child: (_) => const _ReadOnlyContexts(),
       ),
+      SettingItem.row(
+        key: const ValueKey('settings-link-clusters'),
+        group: 'Links',
+        label: 'Cluster fingerprints',
+        description: 'Shared links name a cluster by this hash of its API server address, so they open in the right context '
+            'whatever it is called here. Click one to copy it.',
+        keywords: const ['links', 'share', 'fingerprint', 'hash', 'cluster', 'mapping', 'always open'],
+        child: (_) => const _LinkClusters(),
+      ),
       SettingItem(
         key: const ValueKey('settings-remote-icons'),
         group: 'Icons',
@@ -162,6 +171,49 @@ class _ReadOnlyContexts extends StatelessWidget {
             ),
           ]),
         ),
+    ]);
+  }
+}
+
+/// Each context's link fingerprint, then the remembered "always open links
+/// for this cluster here" mappings with a remove button each.
+class _LinkClusters extends StatelessWidget {
+  const _LinkClusters();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final theme = Theme.of(context);
+    final faint = theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).faint);
+    final mapped = app.linkClusterMap.entries.toList()..sort((a, b) => a.value.compareTo(b.value));
+    if (app.contexts.isEmpty && mapped.isEmpty) return const SettingsEmpty('No contexts in this kubeconfig.');
+    Widget row(List<Widget> children) => SizedBox(height: 30, child: Row(children: children));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final c in app.contexts)
+        row([
+          Expanded(child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium)),
+          if (c.fingerprint case final fp?) Chipish(text: fp, copyValue: fp) else Text('no server', style: faint),
+        ]),
+      if (mapped.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        Text('Remembered for links', style: faint),
+        for (final e in mapped)
+          row([
+            Chipish(text: e.key, copyValue: e.key),
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text('→', style: faint)),
+            Expanded(child: Text(e.value, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium)),
+            Tooltip(
+              message: 'Forget',
+              child: IconButton(
+                key: ValueKey('forget-link-cluster-${e.key}'),
+                visualDensity: VisualDensity.compact,
+                iconSize: 14,
+                icon: const Icon(Icons.close),
+                onPressed: () => app.setLinkCluster(e.key, ''),
+              ),
+            ),
+          ]),
+      ],
     ]);
   }
 }

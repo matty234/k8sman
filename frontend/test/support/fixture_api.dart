@@ -77,6 +77,9 @@ class FixtureApi extends ApiClient {
   Future<bool> getAppLinks() async => false;
 
   @override
+  Future<Map<String, String>> getLinkClusterMap() async => const {};
+
+  @override
   Future<void> putDisabledModules(Set<String> ids) async => disabledModules = {...ids};
 
   @override
