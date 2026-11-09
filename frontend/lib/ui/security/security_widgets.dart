@@ -491,7 +491,10 @@ class _GrantRow extends StatelessWidget {
             child: Row(children: [
               SevDot(sev, size: 7),
               const SizedBox(width: 6),
-              Text('${g.score}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: const [FontFeature.tabularFigures()])),
+              Flexible(
+                child: Text('${g.score}',
+                    maxLines: 1, softWrap: false, overflow: TextOverflow.clip, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: const [FontFeature.tabularFigures()])),
+              ),
             ]),
           ),
         ),
