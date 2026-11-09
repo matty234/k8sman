@@ -324,57 +324,58 @@ func (s *Settings) migrateArgoCD() bool {
 	return true
 }
 
+// clone deep-copies every map and slice, so a new field needs adding only here.
+func (s Settings) clone() Settings {
+	out := s
+	out.RecentKubeconfigs = slices.Clone(s.RecentKubeconfigs)
+	out.LastContext = maps.Clone(s.LastContext)
+	out.ArgoCDTokens = maps.Clone(s.ArgoCDTokens)
+	out.ArgoCDUseCLI = maps.Clone(s.ArgoCDUseCLI)
+	out.Sidebar = cloneSidebar(s.Sidebar)
+	out.ReadOnlyContexts = maps.Clone(s.ReadOnlyContexts)
+	out.ContextAppearance = maps.Clone(s.ContextAppearance)
+	out.LinkClusterMap = maps.Clone(s.LinkClusterMap)
+	out.SecurityIgnores = cloneIgnores(s.SecurityIgnores)
+	out.Tables = cloneTables(s.Tables)
+	out.DisabledModules = slices.Clone(s.DisabledModules)
+	out.Views = slices.Clone(s.Views)
+	out.ModuleSettings = cloneModuleSettings(s.ModuleSettings)
+	out.Namespaces = cloneNamespaces(s.Namespaces)
+	out.FavouriteNamespaces = cloneNamespaces(s.FavouriteNamespaces)
+	return out
+}
+
+// setOrForget deletes key (niling the map once empty) when forget, otherwise
+// assigns v, making the map lazily.
+func setOrForget[V any](m *map[string]V, key string, v V, forget bool) {
+	if forget {
+		delete(*m, key)
+		if len(*m) == 0 {
+			*m = nil
+		}
+		return
+	}
+	if *m == nil {
+		*m = map[string]V{}
+	}
+	(*m)[key] = v
+}
+
 // Get returns a copy of the current settings.
 func (st *Store) Get() Settings {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	out := st.s
-	out.RecentKubeconfigs = slices.Clone(st.s.RecentKubeconfigs)
-	if st.s.LastContext != nil {
-		out.LastContext = make(map[string]string, len(st.s.LastContext))
-		for k, v := range st.s.LastContext {
-			out.LastContext[k] = v
-		}
-	}
-	out.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
-	out.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
-	out.Sidebar = cloneSidebar(st.s.Sidebar)
-	out.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
-	out.ContextAppearance = maps.Clone(st.s.ContextAppearance)
-	out.LinkClusterMap = maps.Clone(st.s.LinkClusterMap)
-	out.SecurityIgnores = cloneIgnores(st.s.SecurityIgnores)
-	out.Tables = cloneTables(st.s.Tables)
-	out.DisabledModules = slices.Clone(st.s.DisabledModules)
-	out.Views = slices.Clone(st.s.Views)
-	out.ModuleSettings = cloneModuleSettings(st.s.ModuleSettings)
-	out.Namespaces = cloneNamespaces(st.s.Namespaces)
-	out.FavouriteNamespaces = cloneNamespaces(st.s.FavouriteNamespaces)
-	return out
+	return st.s.clone()
 }
 
 // Update applies fn and saves the result atomically.
 func (st *Store) Update(fn func(*Settings)) error {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	next := st.s
-	next.RecentKubeconfigs = slices.Clone(st.s.RecentKubeconfigs)
-	next.LastContext = map[string]string{}
-	for k, v := range st.s.LastContext {
-		next.LastContext[k] = v
+	next := st.s.clone()
+	if next.LastContext == nil {
+		next.LastContext = map[string]string{}
 	}
-	next.ArgoCDTokens = maps.Clone(st.s.ArgoCDTokens)
-	next.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
-	next.Sidebar = cloneSidebar(st.s.Sidebar)
-	next.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
-	next.ContextAppearance = maps.Clone(st.s.ContextAppearance)
-	next.LinkClusterMap = maps.Clone(st.s.LinkClusterMap)
-	next.SecurityIgnores = cloneIgnores(st.s.SecurityIgnores)
-	next.Tables = cloneTables(st.s.Tables)
-	next.DisabledModules = slices.Clone(st.s.DisabledModules)
-	next.Views = slices.Clone(st.s.Views)
-	next.ModuleSettings = cloneModuleSettings(st.s.ModuleSettings)
-	next.Namespaces = cloneNamespaces(st.s.Namespaces)
-	next.FavouriteNamespaces = cloneNamespaces(st.s.FavouriteNamespaces)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -411,17 +412,7 @@ func (st *Store) ContextReadOnly(context string) (readOnly, chosen bool) {
 // to automatic).
 func (st *Store) SetContextReadOnly(context string, readOnly *bool) error {
 	return st.Update(func(s *Settings) {
-		if readOnly == nil {
-			delete(s.ReadOnlyContexts, context)
-			if len(s.ReadOnlyContexts) == 0 {
-				s.ReadOnlyContexts = nil
-			}
-			return
-		}
-		if s.ReadOnlyContexts == nil {
-			s.ReadOnlyContexts = map[string]bool{}
-		}
-		s.ReadOnlyContexts[context] = *readOnly
+		setOrForget(&s.ReadOnlyContexts, context, readOnly != nil && *readOnly, readOnly == nil)
 	})
 }
 
@@ -437,17 +428,7 @@ type Appearance struct {
 // SetContextAppearance saves a context's badge; an empty one forgets it.
 func (st *Store) SetContextAppearance(context string, a Appearance) error {
 	return st.Update(func(s *Settings) {
-		if a == (Appearance{}) {
-			delete(s.ContextAppearance, context)
-			if len(s.ContextAppearance) == 0 {
-				s.ContextAppearance = nil
-			}
-			return
-		}
-		if s.ContextAppearance == nil {
-			s.ContextAppearance = map[string]Appearance{}
-		}
-		s.ContextAppearance[context] = a
+		setOrForget(&s.ContextAppearance, context, a, a == (Appearance{}))
 	})
 }
 
@@ -455,16 +436,13 @@ func (st *Store) SetContextAppearance(context string, a Appearance) error {
 func (st *Store) SetTablePrefs(kind string, p *TablePrefs) error {
 	return st.Update(func(s *Settings) {
 		if p == nil {
-			delete(s.Tables, kind)
+			setOrForget(&s.Tables, kind, TablePrefs{}, true)
 			return
-		}
-		if s.Tables == nil {
-			s.Tables = map[string]TablePrefs{}
 		}
 		if _, ok := s.Tables[kind]; !ok && len(s.Tables) >= MaxTables {
 			return
 		}
-		s.Tables[kind] = TablePrefs{SortColumn: p.SortColumn, SortDescending: p.SortDescending, Widths: maps.Clone(p.Widths), Filter: p.Filter, Mode: p.Mode}
+		setOrForget(&s.Tables, kind, TablePrefs{SortColumn: p.SortColumn, SortDescending: p.SortDescending, Widths: maps.Clone(p.Widths), Filter: p.Filter, Mode: p.Mode}, false)
 	})
 }
 
@@ -735,17 +713,7 @@ func (st *Store) SecurityIgnores(context string) []security.IgnoreRule {
 // SetSecurityIgnores saves a context's ignore rules (empty forgets them).
 func (st *Store) SetSecurityIgnores(context string, rules []security.IgnoreRule) error {
 	return st.Update(func(s *Settings) {
-		if len(rules) == 0 {
-			delete(s.SecurityIgnores, context)
-			if len(s.SecurityIgnores) == 0 {
-				s.SecurityIgnores = nil
-			}
-			return
-		}
-		if s.SecurityIgnores == nil {
-			s.SecurityIgnores = map[string][]security.IgnoreRule{}
-		}
-		s.SecurityIgnores[context] = slices.Clone(rules)
+		setOrForget(&s.SecurityIgnores, context, slices.Clone(rules), len(rules) == 0)
 	})
 }
 
@@ -764,17 +732,7 @@ func cloneNamespaces(m map[string][]string) map[string][]string {
 // (empty forgets them).
 func (st *Store) SetNamespaces(context string, namespaces []string) error {
 	return st.Update(func(s *Settings) {
-		if len(namespaces) == 0 {
-			delete(s.Namespaces, context)
-			if len(s.Namespaces) == 0 {
-				s.Namespaces = nil
-			}
-			return
-		}
-		if s.Namespaces == nil {
-			s.Namespaces = map[string][]string{}
-		}
-		s.Namespaces[context] = slices.Clone(namespaces)
+		setOrForget(&s.Namespaces, context, slices.Clone(namespaces), len(namespaces) == 0)
 	})
 }
 
@@ -782,16 +740,6 @@ func (st *Store) SetNamespaces(context string, namespaces []string) error {
 // (empty forgets them).
 func (st *Store) SetFavouriteNamespaces(context string, namespaces []string) error {
 	return st.Update(func(s *Settings) {
-		if len(namespaces) == 0 {
-			delete(s.FavouriteNamespaces, context)
-			if len(s.FavouriteNamespaces) == 0 {
-				s.FavouriteNamespaces = nil
-			}
-			return
-		}
-		if s.FavouriteNamespaces == nil {
-			s.FavouriteNamespaces = map[string][]string{}
-		}
-		s.FavouriteNamespaces[context] = slices.Clone(namespaces)
+		setOrForget(&s.FavouriteNamespaces, context, slices.Clone(namespaces), len(namespaces) == 0)
 	})
 }
