@@ -265,11 +265,14 @@ ThemeData buildTheme(Brightness b) {
     ),
     iconButtonTheme: IconButtonThemeData(
       style: ButtonStyle(
-        visualDensity: VisualDensity.compact,
+        // A fixed square, whatever density a call site asks for: compact
+        // density squashed the height (26×18) into a flat hover rectangle.
+        visualDensity: VisualDensity.standard,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         iconSize: const WidgetStatePropertyAll(16),
         minimumSize: const WidgetStatePropertyAll(Size(26, 26)),
-        padding: const WidgetStatePropertyAll(EdgeInsets.all(5)),
+        fixedSize: const WidgetStatePropertyAll(Size.square(26)),
+        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
         shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: radius6)),
         foregroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.disabled) ? colors.faint : secondaryText),
         splashFactory: NoSplash.splashFactory,
