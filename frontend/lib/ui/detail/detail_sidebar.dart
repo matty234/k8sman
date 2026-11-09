@@ -143,7 +143,7 @@ class _LiveObjectState extends State<_LiveObject> {
     final keptTab = _openTab?.gk == t.type.gk ? tabLabels.indexOf(_openTab!.label) : -1;
 
     final actions = ctx == null || _deleted ? const <ResourceAction>[] : _actionsFor(app, t, panel, ctx);
-    final primary = actions.where((a) => !a.destructive).take(3).toList();
+    final primary = actions.where((a) => !a.destructive && !a.advanced).take(3).toList();
     final others = actions.where((a) => !primary.contains(a)).toList();
     // "Copy kubectl command…" sits after the other safe actions.
     final rest = obj == null || _deleted

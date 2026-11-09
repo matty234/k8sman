@@ -163,7 +163,7 @@ List<PaletteItem> paletteItems(BuildContext context) {
         aliases: const ['edit', 'yaml'],
         run: () => openResourceEditor(context, d),
       ),
-    if (app.detail case final d? when !app.readOnly && d.type.hasSubresource('status') && d.type.can('update'))
+    if (app.detail case final d? when !app.readOnly && d.type.custom && d.type.hasSubresource('status') && d.type.can('update'))
       PaletteItem(
         group: PaletteGroup.actions,
         title: 'Edit Status…',

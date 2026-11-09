@@ -35,9 +35,13 @@ class ResourceAction {
   final String label;
   final IconData icon;
   final bool destructive;
+
+  /// A rarely needed tool (e.g. editing status by hand): kept out of the
+  /// inspector's action bar, offered in the ⋯ and right-click menus.
+  final bool advanced;
   final String? tooltip;
   final Future<void> Function(BuildContext context) run;
-  const ResourceAction({required this.id, required this.label, required this.icon, required this.run, this.destructive = false, this.tooltip});
+  const ResourceAction({required this.id, required this.label, required this.icon, required this.run, this.destructive = false, this.advanced = false, this.tooltip});
 }
 
 /// Runs a backend action against the object in [ctx]:
@@ -395,12 +399,16 @@ List<ResourceAction> standardActions(PanelContext ctx) {
   if (gk == '/Pod' && ownerRefs(ctx.object).isNotEmpty) {
     out.add(simple('delete', 'Restart pod', Icons.refresh, 'Delete pod $name so its controller recreates it?', destructive: true));
   }
-  if (ctx.type.hasSubresource('status') && ctx.type.can('update')) {
+  // Custom resources only: an operator stuck on a bad .status can be
+  // scaled down, its status fixed by hand, and brought back. Built-in kinds'
+  // status is rewritten by the kubelet or a controller within seconds.
+  if (ctx.type.custom && ctx.type.hasSubresource('status') && ctx.type.can('update')) {
     out.add(ResourceAction(
       id: 'edit-status',
       label: 'Edit status…',
       icon: Icons.edit_note,
-      tooltip: 'Edit .status through the status subresource',
+      advanced: true,
+      tooltip: 'Edit .status through the status subresource (operator recovery)',
       run: (c) => openResourceEditor(c, DetailTarget(type: ctx.type, name: name, namespace: ctx.namespace), statusMode: true),
     ));
   }
