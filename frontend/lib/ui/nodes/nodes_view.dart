@@ -730,6 +730,18 @@ class _NodeRow extends StatelessWidget {
     final metaLineHeight = (TextPainter(text: TextSpan(text: 'x', style: info), textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout()).height;
     final taints = n.taints.map((t) => '${t['key']}${t['value'] == null ? '' : '=${t['value']}'}:${t['effect']}').join('\n');
 
+    Widget mini(IconData icon, String text, String tooltip) => Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Tooltip(
+            message: tooltip,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 12, color: theme.hintColor),
+              const SizedBox(width: 3),
+              Text(text, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()])),
+            ]),
+          ),
+        );
+
     Widget chip(String text, Severity severity, {String? tooltip}) {
       final c = StatusBadge(text, severity: severity, dense: true);
       return Padding(padding: const EdgeInsets.only(left: 8), child: tooltip == null ? c : Tooltip(message: tooltip, child: c));
@@ -791,8 +803,10 @@ class _NodeRow extends StatelessWidget {
                         if (!n.ready) chip('NotReady', Severity.error),
                         for (final p in n.pressures) chip(p, Severity.error),
                         if (n.cordoned) chip('Cordoned', Severity.warn),
-                        if (n.taints.isNotEmpty) chip('${n.taints.length} taint${n.taints.length == 1 ? '' : 's'}', Severity.neutral, tooltip: taints),
-                        if (n.gpuAlloc > 0) chip('GPU ${n.gpuUsed}/${n.gpuAlloc}', Severity.neutral, tooltip: 'NVIDIA GPUs requested by pods / allocatable'),
+                        // Routine facts as compact icon + count, so they fit
+                        // beside long names; the details are in the tooltips.
+                        if (n.taints.isNotEmpty) mini(Icons.block, '${n.taints.length}', '${n.taints.length} taint${n.taints.length == 1 ? '' : 's'}\n$taints'),
+                        if (n.gpuAlloc > 0) mini(Icons.memory, '${n.gpuUsed}/${n.gpuAlloc}', 'NVIDIA GPUs requested by pods / allocatable'),
                       ]),
                     ),
                   ),
