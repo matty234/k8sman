@@ -14,6 +14,7 @@ import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import 'alerts_widgets.dart';
 import 'silence_dialog.dart';
 import 'silences_tab.dart';
@@ -292,7 +293,12 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
         const InlineMessage('No Alertmanager found: showing alerts straight from Prometheus. Silences need an Alertmanager.'),
     ];
 
-    final children = <Widget>[tabs, const SizedBox(height: 10)];
+    final children = <Widget>[
+      // The page's headline, as on the Overview (not in the narrow dock).
+      if (!widget.docked) ...[_statusLine(context, scoped), const SizedBox(height: 18)],
+      tabs,
+      const SizedBox(height: 10),
+    ];
     for (final m in messages) {
       children.addAll([m, const SizedBox(height: 8)]);
     }
@@ -348,6 +354,32 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
 
     return Scrollbar(
       child: ListView(padding: widget.docked ? const EdgeInsets.fromLTRB(12, 8, 12, 12) : const EdgeInsets.fromLTRB(20, 12, 20, 24), children: children),
+    );
+  }
+
+  /// "Firing · 1 critical · 17 warnings", or "Nothing firing", with a mark
+  /// in the worst firing severity.
+  Widget _statusLine(BuildContext context, List<PromAlert> scoped) {
+    final firing = scoped.where((a) => a.state == AlertState.firing).toList();
+    int count(AlertSeverity s) => firing.where((a) => a.severity == s).length;
+    final crit = count(AlertSeverity.critical), warn = count(AlertSeverity.warning), info = count(AlertSeverity.info);
+    final pending = scoped.where((a) => a.state == AlertState.pending).length;
+    final mark = crit > 0 ? Severity.error : (warn > 0 ? Severity.warn : Severity.ok);
+    final parts = <InlineSpan>[
+      if (crit > 0) TextSpan(text: '$crit critical', style: TextStyle(color: alertSeverityColor(context, AlertSeverity.critical))),
+      if (warn > 0) TextSpan(text: '$warn warning${warn == 1 ? '' : 's'}', style: TextStyle(color: alertSeverityColor(context, AlertSeverity.warning))),
+      if (info > 0) TextSpan(text: '$info info'),
+      if (pending > 0) TextSpan(text: '$pending about to fire'),
+    ];
+    return StatusLine(
+      key: const ValueKey('alerts-status'),
+      mark: StatusMark(severity: mark),
+      headline: crit + warn > 0 ? 'Firing' : 'Nothing serious firing',
+      detail: parts.isEmpty
+          ? null
+          : Text.rich(TextSpan(children: [
+              for (final (i, p) in parts.indexed) ...[if (i > 0) const TextSpan(text: '  ·  '), p],
+            ])),
     );
   }
 
