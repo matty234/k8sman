@@ -709,7 +709,9 @@ class _Toolbar extends StatelessWidget {
                         textBaseline: TextBaseline.alphabetic,
                         children: [
                           if (session != null) ...[
-                            Icon(Icons.bookmark, size: 16, color: theme.colorScheme.primary),
+                            // On the title's baseline the glyph rides high; drop it
+                            // to centre on the capitals (checked at 3x).
+                            Transform.translate(offset: const Offset(0, 2.5), child: Icon(Icons.bookmark, size: 16, color: theme.colorScheme.primary)),
                             const SizedBox(width: 6),
                           ] else if (t.custom) ...[GroupIcon(group: t.group, size: 18), const SizedBox(width: 8)],
                           Flexible(
