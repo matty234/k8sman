@@ -432,7 +432,9 @@ class DiffView extends StatelessWidget {
     final add = severityColor(context, Severity.ok), del = severityColor(context, Severity.error);
     final box = Container(
       decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLowest, borderRadius: BorderRadius.circular(6), border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
-      child: ListView.builder(
+      // Inline (shrink-wrapped) in a scrolling panel: hand scrolling past
+      // the diff's ends to the panel.
+      child: (shrinkWrap ? (Widget w) => ScrollChain(child: w) : (Widget w) => w)(ListView.builder(
         shrinkWrap: shrinkWrap,
         padding: const EdgeInsets.symmetric(vertical: 6),
         itemCount: items.length,
@@ -458,7 +460,7 @@ class DiffView extends StatelessWidget {
             ]),
           );
         },
-      ),
+      )),
     );
     return shrinkWrap ? ConstrainedBox(constraints: BoxConstraints(maxHeight: maxHeight), child: box) : box;
   }

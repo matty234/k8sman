@@ -774,3 +774,28 @@ Future<void> openUrl(String url) async {
   final uri = Uri.tryParse(url);
   if (uri != null) await launchUrl(uri);
 }
+
+/// Passes scrolling an inner list can't use on to the scrollable around it.
+///
+/// A trackpad gesture over a nested list (a diff in an inspector panel)
+/// belongs to that list for its whole length, and Flutter doesn't chain: once
+/// the list is at its top or bottom the rest of the gesture is lost and the
+/// panel won't move. Wrap the inner list in this: its overscroll (the part
+/// of a drag or fling past its ends) scrolls the enclosing scrollable instead.
+class ScrollChain extends StatelessWidget {
+  final Widget child;
+  const ScrollChain({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) => NotificationListener<OverscrollNotification>(
+        onNotification: (n) {
+          if (n.depth != 0 || n.metrics.axis != Axis.vertical) return false;
+          final outer = Scrollable.maybeOf(context)?.position;
+          if (outer == null) return false;
+          final to = (outer.pixels + n.overscroll).clamp(outer.minScrollExtent, outer.maxScrollExtent);
+          if (to != outer.pixels) outer.jumpTo(to);
+          return true;
+        },
+        child: child,
+      );
+}
