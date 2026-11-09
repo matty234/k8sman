@@ -426,13 +426,15 @@ class _StatBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onTap = item.onTap;
-    if (item.pending || onTap == null) return _block(context, hovered: false);
-    final block = Hoverable(
-      key: item.key ?? ValueKey('stat-${item.label}'),
-      onTap: onTap,
-      builder: (hovered) => _block(context, hovered: hovered),
-    );
-    return item.tooltip == null ? block : Tooltip(message: item.tooltip!, waitDuration: const Duration(milliseconds: 600), child: block);
+    final block = item.pending || onTap == null
+        ? _block(context, hovered: false)
+        : Hoverable(
+            key: item.key ?? ValueKey('stat-${item.label}'),
+            onTap: onTap,
+            builder: (hovered) => _block(context, hovered: hovered),
+          );
+    if (item.pending || item.tooltip == null) return block;
+    return Tooltip(message: item.tooltip!, waitDuration: const Duration(milliseconds: 600), child: block);
   }
 
   Widget _block(BuildContext context, {required bool hovered}) {

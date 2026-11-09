@@ -10,8 +10,8 @@ import '../api/client.dart';
 import '../metrics/quantity.dart';
 import '../prometheus/prom_api.dart';
 import '../state/poller.dart';
-import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
+import '../ui/widgets/editorial.dart';
 import '../util/k8s.dart';
 import 'gpu_api.dart';
 import 'gpu_table.dart';
@@ -112,10 +112,10 @@ class _GpusViewState extends State<GpusView> with PollingState {
       }
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _Summary(inv),
-            if (inv.issues.isNotEmpty) ...[const SizedBox(height: 10), _Issues(inv.issues)],
+            if (inv.issues.isNotEmpty) EditorialSection(title: 'Needs attention', top: 16, collapsible: false, trailing: Text('${inv.issues.length}'), child: _Issues(inv.issues)),
           ]),
         ),
         GpuHeaderRow(layout: layout, sort: _sort, ascending: _ascending, onSort: _sortBy),
@@ -167,6 +167,9 @@ class _GpusViewState extends State<GpusView> with PollingState {
   }
 }
 
+/// Allocation and health at a glance: large figures divided by hairlines,
+/// coloured only when something needs a look, with where the live stats
+/// come from under them.
 class _Summary extends StatelessWidget {
   final GpuInventory inv;
   const _Summary(this.inv);
@@ -175,7 +178,6 @@ class _Summary extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final s = inv.summary;
-    final small = theme.textTheme.bodySmall;
     final note = switch (inv.monitoring) {
       GpuMonitoring.dcgm => 'Live stats from DCGM via ${inv.prometheus ?? 'Prometheus'}${inv.attribution || inv.summary.allocated == 0 ? '' : ' · devices not attributed to pods'}',
       GpuMonitoring.noExporter => 'No DCGM exporter metrics in Prometheus: allocation only',
@@ -183,24 +185,26 @@ class _Summary extends StatelessWidget {
       GpuMonitoring.error => 'GPU metrics unavailable: ${inv.errors['prometheus'] ?? 'query failed'}',
       GpuMonitoring.skipped => '',
     };
-    return Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      Text(
-        [
-          '${s.allocated} of ${s.allocatable} allocated',
-          if (s.avgUtil != null) '${formatPercent(s.avgUtil)} average utilisation now',
-        ].join(' · '),
-        style: small,
-      ),
-      if (s.idle > 0) StatusBadge('${s.idle} idle allocated', severity: Severity.warn, dense: true),
-      if (s.unhealthy > 0)
-        StatusBadge('${s.unhealthy} unhealthy', severity: inv.issues.any((i) => i.severity == 'critical') ? Severity.error : Severity.warn, dense: true),
-      if (s.unmonitored > 0 && inv.monitoring == GpuMonitoring.dcgm) StatusBadge('${s.unmonitored} node${s.unmonitored == 1 ? '' : 's'} unmonitored', severity: Severity.warn, dense: true),
-      if (s.pendingPods > 0) StatusBadge('${s.pendingPods} pod${s.pendingPods == 1 ? '' : 's'} waiting', severity: Severity.warn, dense: true),
-      if (note.isNotEmpty) Text(note, style: small?.copyWith(color: theme.hintColor)),
+    final util = s.avgUtil;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      StatStrip(minCell: 116, maxCell: 180, items: [
+        StatItem('allocated', '${s.allocated}', of: '/ ${s.allocatable}'),
+        if (util != null) StatItem('utilisation now', formatPercent(util), tooltip: 'Average across monitored GPUs'),
+        if (s.idle > 0) StatItem('idle allocated', '${s.idle}', tone: Severity.warn),
+        if (s.unhealthy > 0) StatItem('unhealthy', '${s.unhealthy}', tone: inv.issues.any((i) => i.severity == 'critical') ? Severity.error : Severity.warn),
+        if (s.unmonitored > 0 && inv.monitoring == GpuMonitoring.dcgm) StatItem('unmonitored', '${s.unmonitored}', tone: Severity.warn, tooltip: 'Nodes with GPUs but no DCGM exporter metrics'),
+        if (s.pendingPods > 0) StatItem(s.pendingPods == 1 ? 'pod waiting' : 'pods waiting', '${s.pendingPods}', tone: Severity.warn),
+      ]),
+      if (note.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(note, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+        ),
     ]);
   }
 }
 
+/// What needs a look, one line each behind a small severity bar.
 class _Issues extends StatelessWidget {
   final List<GpuIssue> issues;
   const _Issues(this.issues);
@@ -211,15 +215,11 @@ class _Issues extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final i in issues)
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(
-              i.level == Severity.error ? Icons.error_outline : (i.level == Severity.warn ? Icons.warning_amber : Icons.info_outline),
-              size: 15,
-              color: severityColor(context, i.level),
-            ),
-            const SizedBox(width: 6),
-            Expanded(child: Text(i.message, style: theme.textTheme.bodySmall)),
+            Padding(padding: const EdgeInsets.only(top: 2), child: SeverityBar(severity: i.level)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(i.message, style: theme.textTheme.bodySmall?.copyWith(fontSize: 12.5))),
           ]),
         ),
     ]);
