@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/matty234/k8sman/backend/internal/ttlcache"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -87,60 +89,23 @@ type env struct {
 
 // discoverer caches discovery per kube context.
 type discoverer struct {
-	mu    sync.Mutex
-	cache map[string]*cacheEntry
-	now   func() time.Time
-}
-
-type cacheEntry struct {
-	at     time.Time
-	ttl    time.Duration
-	status *Status
-	wait   chan struct{}
+	cache ttlcache.Cache[string, *Status]
 }
 
 func newDiscoverer() *discoverer {
-	return &discoverer{cache: map[string]*cacheEntry{}, now: time.Now}
+	return &discoverer{cache: ttlcache.Cache[string, *Status]{OK: discoveryCacheTTL, Fail: failedDiscoveryTTL, Timeout: 12 * time.Second}}
 }
 
 // get returns cached discovery for e, running it when stale (or refresh).
 // Concurrent callers share one discovery run.
 func (d *discoverer) get(ctx context.Context, e env, refresh bool) *Status {
-	d.mu.Lock()
-	ce := d.cache[e.key]
-	if ce != nil && ce.wait != nil {
-		w := ce.wait
-		d.mu.Unlock()
-		select {
-		case <-w:
-		case <-ctx.Done():
-			return &Status{Errors: map[string]string{"discovery": ctx.Err().Error()}}
-		}
-		d.mu.Lock()
-		ce = d.cache[e.key]
+	s, err := d.cache.Get(ctx, e.key, refresh, func(ctx context.Context) (*Status, bool) {
+		s := discover(ctx, e)
+		return s, len(s.Prometheus)+len(s.Alertmanager) > 0 && len(s.Errors) == 0
+	})
+	if err != nil {
+		return &Status{Errors: map[string]string{"discovery": err.Error()}}
 	}
-	if ce != nil && ce.status != nil && !refresh && d.now().Sub(ce.at) < ce.ttl {
-		s := ce.status
-		d.mu.Unlock()
-		return s
-	}
-	wait := make(chan struct{})
-	d.cache[e.key] = &cacheEntry{wait: wait}
-	d.mu.Unlock()
-
-	// Detach from the request so a cancelled caller doesn't poison the cache.
-	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 12*time.Second)
-	s := discover(dctx, e)
-	cancel()
-
-	ttl := discoveryCacheTTL
-	if len(s.Prometheus)+len(s.Alertmanager) == 0 || len(s.Errors) > 0 {
-		ttl = failedDiscoveryTTL
-	}
-	d.mu.Lock()
-	d.cache[e.key] = &cacheEntry{at: d.now(), ttl: ttl, status: s}
-	d.mu.Unlock()
-	close(wait)
 	return s
 }
 

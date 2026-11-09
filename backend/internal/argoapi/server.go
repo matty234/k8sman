@@ -24,8 +24,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/matty234/k8sman/backend/internal/ttlcache"
 
 	"github.com/matty234/k8sman/backend/internal/svcproxy"
 	corev1 "k8s.io/api/core/v1"
@@ -169,37 +170,24 @@ type discovery struct {
 	reachable    bool
 	initialAdmin bool
 	err          string
-	at           time.Time
-	ttl          time.Duration
 }
 
 type discoverer struct {
-	mu    sync.Mutex
-	cache map[string]*discovery
-	now   func() time.Time
+	cache ttlcache.Cache[string, *discovery]
 }
 
-func newDiscoverer() *discoverer { return &discoverer{cache: map[string]*discovery{}, now: time.Now} }
+func newDiscoverer() *discoverer {
+	return &discoverer{cache: ttlcache.Cache[string, *discovery]{OK: discoveryTTL, Fail: failedDiscoveryTT, Timeout: 12 * time.Second}}
+}
 
 func (d *discoverer) get(ctx context.Context, e env, appNs string, refresh bool) *discovery {
-	key := e.context + "\x00" + appNs
-	d.mu.Lock()
-	c := d.cache[key]
-	d.mu.Unlock()
-	if c != nil && !refresh && d.now().Sub(c.at) < c.ttl {
-		return c
+	c, err := d.cache.Get(ctx, e.context+"\x00"+appNs, refresh, func(ctx context.Context) (*discovery, bool) {
+		c := discover(ctx, e, appNs)
+		return c, c.server != nil && c.reachable
+	})
+	if err != nil {
+		return &discovery{err: err.Error()}
 	}
-	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 12*time.Second)
-	defer cancel()
-	c = discover(dctx, e, appNs)
-	c.at = d.now()
-	c.ttl = discoveryTTL
-	if c.server == nil || !c.reachable {
-		c.ttl = failedDiscoveryTT
-	}
-	d.mu.Lock()
-	d.cache[key] = c
-	d.mu.Unlock()
 	return c
 }
 

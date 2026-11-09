@@ -10,8 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/matty234/k8sman/backend/internal/ttlcache"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -215,36 +216,24 @@ type discovery struct {
 	status Status
 	server *Server
 	token  string // client mode only; never serialised
-	at     time.Time
-	ttl    time.Duration
 }
 
 type discoverer struct {
-	mu    sync.Mutex
-	cache map[string]*discovery
-	now   func() time.Time
+	cache ttlcache.Cache[string, *discovery]
 }
 
-func newDiscoverer() *discoverer { return &discoverer{cache: map[string]*discovery{}, now: time.Now} }
+func newDiscoverer() *discoverer {
+	return &discoverer{cache: ttlcache.Cache[string, *discovery]{OK: discoveryTTL, Fail: failedTTL, Timeout: 15 * time.Second}}
+}
 
 func (d *discoverer) get(ctx context.Context, e env, refresh bool) *discovery {
-	d.mu.Lock()
-	c := d.cache[e.context]
-	d.mu.Unlock()
-	if c != nil && !refresh && d.now().Sub(c.at) < c.ttl {
-		return c
+	c, err := d.cache.Get(ctx, e.context, refresh, func(ctx context.Context) (*discovery, bool) {
+		c := discover(ctx, e)
+		return c, c.status.Available
+	})
+	if err != nil {
+		return &discovery{status: Status{Error: err.Error()}}
 	}
-	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-	defer cancel()
-	c = discover(dctx, e)
-	c.at = d.now()
-	c.ttl = discoveryTTL
-	if !c.status.Available {
-		c.ttl = failedTTL
-	}
-	d.mu.Lock()
-	d.cache[e.context] = c
-	d.mu.Unlock()
 	return c
 }
 
