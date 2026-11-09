@@ -148,28 +148,44 @@ const overviewReuse = time.Second
 // the same slow sources again.
 type overviewRuns struct {
 	mu sync.Mutex
-	m  map[string]*OverviewLists
+	m  map[string]*overviewRun
 }
 
-// get returns the run for key, calling start (under the lock, so only one
+// overviewRun is one key's run; ready closes once start has returned, so
+// start runs outside the map lock (a slow first start only holds up
+// requests for the same key).
+type overviewRun struct {
+	ready chan struct{}
+	l     *OverviewLists
+}
+
+// get returns the run for key, calling start (once per key, so only one
 // request starts it) when there is none or the last one is over.
 func (o *overviewRuns) get(key string, start func() *OverviewLists) *OverviewLists {
 	o.mu.Lock()
-	defer o.mu.Unlock()
 	if o.m == nil {
-		o.m = map[string]*OverviewLists{}
+		o.m = map[string]*overviewRun{}
 	}
-	for k, l := range o.m {
-		if l.expired() {
-			delete(o.m, k)
+	for k, r := range o.m {
+		select {
+		case <-r.ready:
+			if r.l.expired() {
+				delete(o.m, k)
+			}
+		default: // still starting
 		}
 	}
-	if l := o.m[key]; l != nil {
-		return l
+	if r := o.m[key]; r != nil {
+		o.mu.Unlock()
+		<-r.ready
+		return r.l
 	}
-	l := start()
-	o.m[key] = l
-	return l
+	r := &overviewRun{ready: make(chan struct{})}
+	o.m[key] = r
+	o.mu.Unlock()
+	r.l = start()
+	close(r.ready)
+	return r.l
 }
 
 // expired: finished more than overviewReuse ago, or past the hard limit
