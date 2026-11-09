@@ -228,7 +228,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: LayoutBuilder(
               builder: (context, box) => Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 SizedBox(
-                  width: box.maxWidth < 760 ? 168 : 200,
+                  width: box.maxWidth < 760 ? 176 : 212,
                   child: _SectionList(
                     selected: searching ? null : _section,
                     counts: searching ? {for (final e in matches.entries) e.key: e.value.length} : null,
@@ -242,10 +242,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: Align(
                       alignment: Alignment.topLeft,
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 760),
+                        constraints: const BoxConstraints(maxWidth: 780),
                         child: Padding(
-                          padding: EdgeInsets.fromLTRB(box.maxWidth < 760 ? 20 : 28, 20, box.maxWidth < 760 ? 20 : 28, 32),
-                          child: searching ? _results(matches) : _sectionBody(_section),
+                          padding: EdgeInsets.fromLTRB(box.maxWidth < 760 ? 24 : 40, 28, box.maxWidth < 760 ? 24 : 40, 40),
+                          child: SettingsSearchTerms(terms: terms, child: searching ? _results(matches) : _sectionBody(_section)),
                         ),
                       ),
                     ),
@@ -262,10 +262,10 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _sectionBody(SettingsSection s) {
     final theme = Theme.of(context);
     return Column(key: ValueKey('settings-section-${s.name}'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(s.title, style: theme.textTheme.headlineSmall),
+      Text(s.title, style: theme.textTheme.headlineSmall?.copyWith(fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -0.3)),
       const SizedBox(height: 4),
-      Text(s.intro, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-      const SizedBox(height: 18),
+      Text(s.intro, style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor)),
+      const SizedBox(height: 28),
       SettingCards(_items(s)),
     ]);
   }
@@ -274,21 +274,31 @@ class _SettingsPageState extends State<SettingsPage> {
     final theme = Theme.of(context);
     final found = [for (final e in matches.entries) if (e.value.isNotEmpty) e];
     if (found.isEmpty) {
+      // A calm empty state, not an error.
       return Padding(
-        padding: const EdgeInsets.only(top: 40),
-        child: Center(child: Text('No settings match “${_search.text.trim()}”.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor))),
+        key: const ValueKey('settings-no-results'),
+        padding: const EdgeInsets.only(top: 64),
+        child: Column(children: [
+          Icon(Icons.search_off_rounded, size: 30, color: AppColors.of(context).faint),
+          const SizedBox(height: 12),
+          Text('No settings match “${_search.text.trim()}”', textAlign: TextAlign.center, style: theme.textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text('Try another word, or pick a section on the left.', textAlign: TextAlign.center, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+          const SizedBox(height: 10),
+          TextButton(onPressed: _clearSearch, child: const Text('Clear search')),
+        ]),
       );
     }
+    final total = found.fold<int>(0, (n, e) => n + e.value.length);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(total == 1 ? '1 setting' : '$total settings', style: theme.textTheme.headlineSmall?.copyWith(fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -0.3)),
+      const SizedBox(height: 4),
+      Text('Matching “${_search.text.trim()}”', style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor)),
+      const SizedBox(height: 28),
       for (final (i, e) in found.indexed) ...[
         if (i > 0) const SizedBox(height: 26),
-        Row(children: [
-          Icon(e.key.icon, size: 16, color: theme.hintColor),
-          const SizedBox(width: 8),
-          Text(e.key.title, style: theme.textTheme.titleMedium),
-        ]),
-        const SizedBox(height: 10),
-        SettingCards(e.value),
+        SettingsGroupTitle(e.key.title, trailing: Text('${e.value.length}')),
+        SettingCards(e.value, headings: false),
       ],
     ]);
   }
@@ -372,8 +382,9 @@ class _SettingsPageState extends State<SettingsPage> {
       ];
 }
 
-/// The section list on the left. While searching, [counts] dims the
-/// sections without matches.
+/// The section list on the left: an icon in a soft tile and the name per
+/// section, the current one on a soft pill. While searching, [counts]
+/// dims the sections without matches and counts the rest.
 class _SectionList extends StatelessWidget {
   final SettingsSection? selected;
   final Map<SettingsSection, int>? counts;
@@ -384,9 +395,10 @@ class _SectionList extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
+    final dark = theme.brightness == Brightness.dark;
     return ColoredBox(
       color: colors.inspector,
-      child: ListView(padding: const EdgeInsets.fromLTRB(8, 12, 8, 12), children: [
+      child: ListView(padding: const EdgeInsets.fromLTRB(10, 16, 10, 16), children: [
         for (final s in SettingsSection.values)
           Hoverable(
             key: ValueKey('settings-nav-${s.name}'),
@@ -396,20 +408,36 @@ class _SectionList extends StatelessWidget {
               final on = s == selected;
               final n = counts?[s];
               final dim = n == 0;
-              final fg = on ? theme.colorScheme.onSurface : (dim ? colors.faint : theme.colorScheme.onSurface);
+              final fg = dim ? colors.faint : theme.colorScheme.onSurface;
               return Container(
-                height: 30,
-                margin: const EdgeInsets.only(bottom: 1),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                height: 34,
+                margin: const EdgeInsets.only(bottom: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
                 decoration: BoxDecoration(
-                  color: on ? colors.selection : (h ? colors.hover : null),
-                  borderRadius: BorderRadius.circular(6),
+                  // A soft pill: a grey wash rather than the accent.
+                  color: on ? theme.colorScheme.onSurface.withValues(alpha: dark ? 0.09 : 0.07) : (h ? colors.hover : null),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(children: [
-                  Icon(s.icon, size: 16, color: on ? theme.colorScheme.primary : (dim ? colors.faint : theme.hintColor)),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(color: fg))),
-                  if (n != null && n > 0) Text('$n', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: on ? theme.colorScheme.primary.withValues(alpha: dark ? 0.22 : 0.14) : theme.colorScheme.onSurface.withValues(alpha: dim ? 0.03 : 0.06),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(s.icon, size: 14, color: on ? theme.colorScheme.primary : (dim ? colors.faint : theme.hintColor)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      s.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(color: fg, fontWeight: on ? FontWeight.w600 : FontWeight.w400),
+                    ),
+                  ),
+                  if (n != null && n > 0) Text('$n', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()])),
                 ]),
               );
             },

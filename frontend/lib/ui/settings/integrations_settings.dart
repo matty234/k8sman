@@ -43,10 +43,11 @@ List<SettingItem> integrationSettings(ModuleExpansion expansion) => [
         ),
     ];
 
-/// A module's row: an on/off switch, what it needs, its status on the
-/// current cluster, and (for modules with settings) a disclosure that
-/// opens its form below. Turning a module on or off applies and saves at
-/// once, for every cluster.
+/// A module's row: its icon, name and one line on what it adds, its status
+/// on the current cluster (a dot and a few words), and the on/off switch
+/// on the right. Modules with settings open their form inline under the
+/// row (the chevron, or a click on the row). Turning a module on or off
+/// applies and saves at once, for every cluster.
 class ModuleTile extends StatelessWidget {
   final AppModule module;
   final ModuleExpansion expansion;
@@ -73,71 +74,92 @@ class ModuleTile extends StatelessWidget {
     // Off while a module it needs is off (Add-ons needs Helm).
     final available = m.requires.every((r) => moduleEnabled(r, disabled));
     final settings = m.settingsBuilder;
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, height: 1.35);
+    final icon = m.pages.isNotEmpty ? m.pages.first.icon : (m.kindIcons.values.firstOrNull ?? Icons.extension_outlined);
     return ListenableBuilder(
       key: expansion.keyFor(m.id),
       listenable: Listenable.merge([moduleStatuses, expansion]),
       builder: (context, _) {
         final status = on ? _statusOf(context, m, app) : null;
-        final open = settings != null && on && expansion.isOpen(m.id);
+        final canOpen = settings != null && on;
+        final open = canOpen && expansion.isOpen(m.id);
+        final text = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Flexible(child: HighlightedText(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500, color: on ? null : theme.hintColor))),
+            if (m.requires.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                flex: 0,
+                child: Text('needs ${m.requires.map(_nameOf).join(', ')}', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: colors.faint)),
+              ),
+            ],
+          ]),
+          if (m.description.isNotEmpty) ...[const SizedBox(height: 2), HighlightedText(m.description, style: hint)],
+          if (status != null) Padding(padding: const EdgeInsets.only(top: 5), child: _StatusLine(status)),
+        ]);
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
-            child: Row(children: [
-              SizedBox(
-                width: 28,
-                child: settings == null
-                    ? null
-                    : IconButton(
-                        key: ValueKey('integration-expand-${m.id}'),
-                        tooltip: open ? 'Hide ${m.name} settings' : '${m.name} settings',
-                        iconSize: 18,
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                        onPressed: on ? () => expansion.toggle(m.id) : null,
-                        icon: AnimatedRotation(
-                          turns: open ? 0.25 : 0,
-                          duration: Duration.zero,
-                          child: const Icon(Icons.chevron_right),
+          Hoverable(
+            cursor: canOpen ? SystemMouseCursors.click : MouseCursor.defer,
+            onTap: canOpen ? () => expansion.toggle(m.id) : null,
+            builder: (hovered) => Padding(
+              padding: const EdgeInsets.fromLTRB(2, 12, 2, 12),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(icon, size: 18, color: on ? theme.hintColor : colors.faint),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: text),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 28,
+                  height: 24,
+                  child: settings == null
+                      ? null
+                      : IconButton(
+                          key: ValueKey('integration-expand-${m.id}'),
+                          tooltip: open ? 'Hide ${m.name} settings' : '${m.name} settings',
+                          iconSize: 18,
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 26, minHeight: 24),
+                          color: hovered || open ? theme.colorScheme.onSurface : theme.hintColor,
+                          onPressed: on ? () => expansion.toggle(m.id) : null,
+                          icon: AnimatedRotation(
+                            turns: open ? 0.25 : 0,
+                            duration: (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ? Duration.zero : const Duration(milliseconds: 160),
+                            child: const Icon(Icons.chevron_right),
+                          ),
                         ),
-                      ),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text.rich(
-                    TextSpan(children: [
-                      TextSpan(text: m.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-                      if (m.requires.isNotEmpty)
-                        TextSpan(text: '   needs ${m.requires.map(_nameOf).join(', ')}', style: theme.textTheme.bodySmall?.copyWith(color: colors.faint)),
-                    ]),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (m.description.isNotEmpty) Text(m.description, style: hint),
-                  if (status != null) Padding(padding: const EdgeInsets.only(top: 4), child: _StatusLine(status)),
-                ]),
-              ),
-              const SizedBox(width: 12),
-              SettingSwitch(
-                key: ValueKey('integration-${m.id}'),
-                value: on,
-                onChanged: available
-                    ? (v) {
-                        final next = {...disabled};
-                        v ? next.remove(m.id) : next.add(m.id);
-                        app.setDisabledModules(next);
-                      }
-                    : null,
-              ),
-            ]),
+                ),
+                const SizedBox(width: 8),
+                SettingSwitch(
+                  key: ValueKey('integration-${m.id}'),
+                  value: on,
+                  onChanged: available
+                      ? (v) {
+                          final next = {...disabled};
+                          v ? next.remove(m.id) : next.add(m.id);
+                          app.setDisabledModules(next);
+                        }
+                      : null,
+                ),
+              ]),
+            ),
           ),
-          if (open)
-            Container(
-              key: ValueKey('integration-form-${m.id}'),
-              padding: const EdgeInsets.fromLTRB(38, 2, 16, 14),
-              child: Builder(builder: settings),
+          if (settings != null)
+            SettingsReveal(
+              open: open,
+              child: Container(
+                key: open ? ValueKey('integration-form-${m.id}') : null,
+                margin: const EdgeInsets.fromLTRB(32, 0, 0, 18),
+                padding: const EdgeInsets.only(left: 16, top: 2, bottom: 2),
+                decoration: BoxDecoration(border: Border(left: BorderSide(color: colors.separator, width: 2))),
+                alignment: Alignment.topLeft,
+                // Fields keep one comfortable width rather than stretching
+                // across a wide window.
+                child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: Builder(builder: settings)),
+              ),
             ),
         ]);
       },
@@ -145,13 +167,15 @@ class ModuleTile extends StatelessWidget {
   }
 }
 
-/// "● connected · relay v1.18 · 13 nodes", "not on this cluster", …
+/// "● connected · relay v1.18 · 13 nodes", "○ not on this cluster", …
 class _StatusLine extends StatelessWidget {
   final ModuleStatus status;
   const _StatusLine(this.status);
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
     final s = status;
     final (sev, label) = switch (s.state) {
       ModuleState.checking => (Severity.info, 'checking…'),
@@ -160,9 +184,26 @@ class _StatusLine extends StatelessWidget {
       ModuleState.error => (Severity.error, 'error'),
     };
     final text = [label, if (s.message != null && s.message!.isNotEmpty && s.state != ModuleState.notInstalled) s.message!].join(' · ');
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Tooltip(message: s.message ?? '', child: StatusBadge(text, severity: sev, dense: true)),
+    final quiet = sev == Severity.neutral || sev == Severity.info;
+    final c = quiet ? colors.faint : severityColor(context, sev);
+    return Tooltip(
+      message: s.message ?? '',
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: quiet ? null : c, border: quiet ? Border.all(color: c, width: 1.2) : null),
+        ),
+        const SizedBox(width: 7),
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(color: sev == Severity.error ? c : theme.hintColor, fontSize: 11.5),
+          ),
+        ),
+      ]),
     );
   }
 }
