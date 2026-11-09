@@ -225,6 +225,7 @@ class AppState extends ChangeNotifier {
   /// Whether the user picked a scope since connecting to this context; if
   /// not, a reconnect opens in [defaultNamespaceScope] again.
   bool _scopeChosen = false;
+  bool get scopeChosen => _scopeChosen;
 
   /// "All namespaces", or with an allowlist "All allowed namespaces (n)".
   String get allNamespacesLabel => allowedNamespaces.isEmpty ? 'All namespaces' : 'All allowed namespaces (${allowedNamespaces.length})';
@@ -249,6 +250,9 @@ class AppState extends ChangeNotifier {
     await api.putDefaultNamespace(mode, namespaces, context: currentContext);
     defaultNamespaceMode = mode;
     defaultNamespaces = mode == 'namespaces' ? namespaces : const [];
+    // Applies at once unless the user picked a scope this session (then it
+    // waits for the next context switch). Not itself a choice.
+    if (!_scopeChosen) _namespaceScope = defaultNamespaceScope;
     notifyListeners();
   }
 

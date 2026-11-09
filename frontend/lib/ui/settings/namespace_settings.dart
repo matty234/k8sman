@@ -52,7 +52,8 @@ class _DefaultNamespace extends StatelessWidget {
     return SettingRow(
       label: 'Default namespace',
       description: 'Where ${app.currentContext.isEmpty ? 'the current context' : app.currentContext} opens, and where clearing a selection goes. '
-          'A namespace you pick in the toolbar still wins until you switch context.',
+          'A namespace you pick in the toolbar still wins until you switch context.'
+          '${app.scopeChosen ? " Applies next time; you've picked a namespace in this session." : ''}',
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         if (mode == 'namespaces') ...[
           SizedBox(

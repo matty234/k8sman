@@ -20,6 +20,9 @@ class _Api extends FixtureApi {
   Future<({String mode, List<String> namespaces})> getDefaultNamespace({String? context}) async => (mode: 'all', namespaces: const <String>[]);
 
   @override
+  Future<void> putDefaultNamespace(String mode, List<String> namespaces, {String? context}) async {}
+
+  @override
   Future<({List<String> namespaces, String? defaultNamespace, bool listed})> namespaces() async =>
       allowed.isEmpty ? super.namespaces() : (namespaces: [...allowed]..sort(), defaultNamespace: 'demo', listed: true);
 }
@@ -51,5 +54,17 @@ void main() {
     await tester.pump();
     expect(find.byKey(const ValueKey('allowed-namespace-team-a')), findsOneWidget);
     await saveScreenshot(tester, 'namespace-settings');
+  });
+
+  testWidgets('changing the default applies at once, unless a scope was picked this session', (tester) async {
+    final (app, _) = await pumpShell(tester, _Api(), size: const Size(1300, 850));
+    expect(app.namespaceScope.isAll, isTrue);
+    await app.setDefaultNamespace('namespaces', ['demo']);
+    expect(app.namespaceScope.namespaces, ['demo']);
+    expect(app.scopeChosen, isFalse);
+
+    app.setNamespace('other');
+    await app.setDefaultNamespace('all', const []);
+    expect(app.namespaceScope.namespaces, ['other']);
   });
 }
