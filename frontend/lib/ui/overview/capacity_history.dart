@@ -1,4 +1,4 @@
-/// The capacity strip's history charts: cluster CPU and memory in use over
+/// The Capacity section's history charts: cluster CPU and memory in use over
 /// time (Prometheus), with requests and allocatable as reference lines.
 /// Shows [fallback] (the plain bars) whenever Prometheus isn't there, the
 /// query fails or returns nothing.
@@ -17,8 +17,8 @@ import '../../prometheus/prom_api.dart';
 import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import 'overview_api.dart';
-import 'overview_cards.dart' show formatCores;
-import 'overview_widgets.dart' show SkeletonBar;
+import 'overview_cards.dart' show CapacityColumns, capacityFigure, capacityLabel, formatCores, requestedLine;
+import 'overview_widgets.dart' show OverviewSection, SkeletonBar;
 
 /// Remembered for the session.
 Duration? _rememberedRange;
@@ -68,7 +68,10 @@ class ClusterHistory extends StatefulWidget {
 
   /// What stands in without history (the CPU and memory bars).
   final Widget fallback;
-  const ClusterHistory({super.key, required this.capacity, required this.fallback});
+
+  /// Beside the section title ("across 3 nodes").
+  final String note;
+  const ClusterHistory({super.key, required this.capacity, required this.fallback, this.note = ''});
 
   @override
   State<ClusterHistory> createState() => _ClusterHistoryState();
@@ -154,15 +157,22 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final note = Text(widget.note);
+    Widget section(Widget body, {Widget? picker}) => OverviewSection(
+          title: 'Capacity',
+          collapsible: false,
+          trailing: picker == null ? note : Row(mainAxisSize: MainAxisSize.min, children: [note, const SizedBox(width: 14), picker]),
+          child: body,
+        );
     // While checking, reserve the charts' space if Prometheus was there
-    // last time, so the panel doesn't grow once the answer comes back.
-    if (_state == _State.unavailable || (_state == _State.checking && _prom?.knownHasPrometheus != true)) return widget.fallback;
+    // last time, so the section doesn't grow once the answer comes back.
+    if (_state == _State.unavailable || (_state == _State.checking && _prom?.knownHasPrometheus != true)) return section(widget.fallback);
     final c = widget.capacity;
     final ready = _state == _State.ready;
     final cpu = ready && _cpu != null
         ? _HistoryMeter(
             key: const ValueKey('history-cpu'),
-            trailing: RangePicker(value: _range, onChanged: _setRange),
             label: 'CPU',
             unit: MetricUnit.cores,
             lines: _cpu!,
@@ -170,7 +180,7 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
             requested: c.cpuRequests / 1000,
             allocatable: c.cpuAllocatable / 1000,
             amount: '${formatCores(c.cpuRequests)} / ${formatCores(c.cpuAllocatable)} cores',
-            usedText: (v) => '${formatCores(v * 1000)} cores',
+            figure: (v) => (formatCores(v * 1000), 'cores in use'),
           )
         : null;
     final mem = ready && _mem != null
@@ -183,38 +193,25 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
             requested: c.memoryRequests,
             allocatable: c.memoryAllocatable,
             amount: '${formatBytes(c.memoryRequests)} / ${formatBytes(c.memoryAllocatable)}',
-            usedText: formatBytes,
+            figure: (v) {
+              final t = formatBytes(v);
+              final i = t.lastIndexOf(' ');
+              return i < 0 ? (t, 'in use') : (t.substring(0, i), '${t.substring(i + 1)} in use');
+            },
           )
         : null;
     // Every cell (chart, skeleton or empty) is the chart's height, so
     // nothing below moves as data arrives.
     Widget cell(Widget? chart) => SizedBox(height: historyMeterHeight, child: chart ?? (ready ? null : const _ChartSkeleton()));
-    return LayoutBuilder(
-      builder: (context, box) {
-        final wide = box.maxWidth >= 620;
-        final cells = [cell(cpu), cell(mem)];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            wide
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: cells[0]),
-                      const SizedBox(width: 28),
-                      Expanded(child: cells[1]),
-                    ],
-                  )
-                : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [cells[0], const SizedBox(height: 12), cells[1]]),
-          ],
-        );
-      },
+    return section(
+      CapacityColumns(children: [cell(cpu), cell(mem)]),
+      picker: DefaultTextStyle.merge(style: TextStyle(color: theme.hintColor), child: RangePicker(value: _range, onChanged: _setRange)),
     );
   }
 }
 
-/// The height of one history meter (header, chart, key).
-const double historyMeterHeight = 156;
+/// The height of one history meter (caption, figures, chart, time axis).
+const double historyMeterHeight = 196;
 
 /// Placeholders the size of the two history meters, for while the
 /// capacity itself is still loading on a cluster with Prometheus.
@@ -222,13 +219,10 @@ class HistoryPlaceholder extends StatelessWidget {
   const HistoryPlaceholder({super.key});
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
-        const cell = SizedBox(height: historyMeterHeight, child: _ChartSkeleton());
-        if (box.maxWidth >= 620) {
-          return const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: cell), SizedBox(width: 28), Expanded(child: cell)]);
-        }
-        return const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [cell, SizedBox(height: 12), cell]);
-      });
+  Widget build(BuildContext context) => const CapacityColumns(children: [
+        SizedBox(height: historyMeterHeight, child: _ChartSkeleton()),
+        SizedBox(height: historyMeterHeight, child: _ChartSkeleton()),
+      ]);
 }
 
 class _ChartSkeleton extends StatelessWidget {
@@ -236,12 +230,28 @@ class _ChartSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SkeletonBar(width: 160, height: 12),
-        SizedBox(height: 12),
-        SkeletonBar(height: 92),
-        SizedBox(height: 10),
-        SkeletonBar(width: 120, height: 8),
+        Align(alignment: Alignment.centerLeft, child: SkeletonBar(width: 50, height: 10)),
+        SizedBox(height: 8),
+        Align(alignment: Alignment.centerLeft, child: SkeletonBar(width: 130, height: 24)),
+        SizedBox(height: 8),
+        Align(alignment: Alignment.centerLeft, child: SkeletonBar(width: 190, height: 10)),
+        SizedBox(height: 14),
+        Expanded(child: SkeletonBar()),
+        SizedBox(height: 16),
       ]);
+}
+
+/// How far above peak usage the requested line may sit and still be drawn;
+/// further up it would flatten usage into the floor, so it becomes a label.
+const requestsOnScaleWithin = 3.0;
+
+/// The top of a capacity chart's scale: fitted to usage (with headroom),
+/// stretched to take in requests only when they are within
+/// [requestsOnScaleWithin] times peak usage.
+double capacityScale(double peakUsage, double peakRequests) {
+  final onScale = peakUsage <= 0 || peakRequests <= peakUsage * requestsOnScaleWithin;
+  final top = onScale ? math.max(peakUsage, peakRequests) : peakUsage;
+  return (top > 0 ? top : 1) * 1.15;
 }
 
 class _HistoryMeter extends StatelessWidget {
@@ -252,13 +262,11 @@ class _HistoryMeter extends StatelessWidget {
   final double requested;
   final double allocatable;
   final String amount;
-  final String Function(double) usedText;
 
-  /// Sits beside the title (the range picker).
-  final Widget? trailing;
+  /// The current usage as a big figure and its unit ("1.8", "cores in use").
+  final (String, String) Function(double) figure;
   const _HistoryMeter({
     super.key,
-    this.trailing,
     required this.label,
     required this.unit,
     required this.lines,
@@ -266,15 +274,13 @@ class _HistoryMeter extends StatelessWidget {
     required this.requested,
     required this.allocatable,
     required this.amount,
-    required this.usedText,
+    required this.figure,
   });
 
   List<(DateTime, double)> _flat(double v) => [(lines.usage.first.$1, v), (lines.usage.last.$1, v)];
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]);
     final req = allocatable > 0 ? requested / allocatable : null;
     final now = lines.usage.last.$2;
     final use = allocatable > 0 ? now / allocatable : null;
@@ -282,93 +288,35 @@ class _HistoryMeter extends StatelessWidget {
     final reqPoints = lines.requests ?? _flat(requested);
     final allocPoints = lines.allocatable ?? _flat(allocatable);
     double peak(List<(DateTime, double)> p) => p.fold<double>(0, (a, b) => math.max(a, b.$2));
-    // The scale fits usage and requests; allocatable only shows when it is within reach.
-    final yMax = math.max(peak(lines.usage), peak(reqPoints)) * 1.25;
-    final showAlloc = allocPoints.isNotEmpty && peak(allocPoints) <= yMax;
+    // Scaled to usage: requests far above it (and allocatable above the
+    // scale) are labelled at the top right instead of drawn.
+    final yMax = capacityScale(peak(lines.usage), peak(reqPoints));
     final guides = [
       ChartGuide(lines.requests == null ? 'requested (now)' : 'requested', reqPoints, dashed: true),
-      if (showAlloc) ChartGuide(lines.allocatable == null ? 'allocatable (now)' : 'allocatable', allocPoints, faint: true),
+      if (peak(allocPoints) <= yMax) ChartGuide(lines.allocatable == null ? 'allocatable (now)' : 'allocatable', allocPoints, faint: true),
     ];
+    final (value, unitText) = figure(now);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(label, style: theme.textTheme.titleSmall),
-            if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-            const SizedBox(width: 10),
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: amount,
-                        style: TextStyle(color: theme.colorScheme.onSurface),
-                      ),
-                      const TextSpan(text: ' requested'),
-                      if (req != null) ...[
-                        const TextSpan(text: ' · '),
-                        TextSpan(
-                          text: formatPercent(req),
-                          style: TextStyle(color: percentColor(context, req) ?? theme.colorScheme.onSurface, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                      TextSpan(text: '   ${usedText(now)} in use${use == null ? '' : ' · ${formatPercent(use)}'}'),
-                    ],
-                  ),
-                  textAlign: TextAlign.right,
-                  style: hint,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        AreaChart(series: [MetricSeries(const {}, lines.usage)], guides: guides, unit: unit, range: range, height: 92, seriesName: 'in use', yMax: yMax),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            _Key(color: seriesColors(context)[0], text: 'in use'),
-            const SizedBox(width: 12),
-            _Key(color: theme.hintColor, text: guides[0].name, dashed: true),
-            const SizedBox(width: 12),
-            if (guides.length > 1) _Key(color: theme.hintColor.withValues(alpha: 0.5), text: guides[1].name),
-          ],
+        capacityLabel(context, label),
+        const SizedBox(height: 2),
+        capacityFigure(context, value, unitText, suffix: use == null ? null : '${formatPercent(use)} of allocatable', color: percentColor(context, use)),
+        const SizedBox(height: 2),
+        requestedLine(context, amount, req),
+        const SizedBox(height: 12),
+        AreaChart(
+          series: [MetricSeries(const {}, lines.usage)],
+          guides: guides,
+          labelGuides: true,
+          unit: unit,
+          range: range,
+          height: 100,
+          seriesName: 'in use',
+          yMax: yMax,
         ),
       ],
     );
   }
 }
 
-class _Key extends StatelessWidget {
-  final Color color;
-  final String text;
-  final bool dashed;
-  const _Key({required this.color, required this.text, this.dashed = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        dashed
-            ? Row(
-                children: [
-                  Container(width: 3, height: 2, color: color),
-                  const SizedBox(width: 2),
-                  Container(width: 3, height: 2, color: color),
-                ],
-              )
-            : Container(width: 8, height: 2, color: color),
-        const SizedBox(width: 4),
-        Text(text, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontSize: 10)),
-      ],
-    );
-  }
-}

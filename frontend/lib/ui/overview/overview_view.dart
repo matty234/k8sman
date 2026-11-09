@@ -143,7 +143,6 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
       });
     }
     final data = _data;
-    final theme = Theme.of(context);
 
     final header = OverviewHeader(
       namespace: _ns,
@@ -207,58 +206,55 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
             controller: _scroll,
             child: SingleChildScrollView(
               controller: _scroll,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              padding: const EdgeInsets.only(bottom: 32),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                StatBlocks(data: data, scope: _ns),
-                if (_error != null) ...[
-                  const SizedBox(height: 8),
-                  InlineMessage('Refresh failed: ${_errorText(_error!)}. Showing the last result.', isError: true),
-                ],
-                for (final e in data.errors.entries) ...[
-                  const SizedBox(height: 8),
-                  InlineMessage('Could not list ${e.key}: ${e.value}', icon: Icons.lock_outline),
-                ],
-                // Requests only cover the pods in scope, so cluster capacity
-                // is shown for all namespaces only.
-                if (_ns.isAll && (data.isPending('nodes') || (data.capacity?.known ?? false))) ...[
-                  const SizedBox(height: 10),
-                  CapacityStrip(capacity: data.isPending('nodes') ? null : data.capacity, usage: _usage, nodes: data.nodes.length),
-                ],
-                const SizedBox(height: 16),
-                AreaCards(data: data, scope: _ns, selected: _filter, checkedAt: _updatedAt, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
-                const SizedBox(height: 16),
-                if (issues.isNotEmpty || _filter != null || data.loadingSections.isNotEmpty)
-                  DetailSection(
-                    title: 'Issues',
-                    icon: Icons.report_gmailerrorred,
-                    trailing: _issuesTrailing(context, data, issues.length),
-                    child: IssueList(
-                      issues: issues,
-                      onChanged: _refresh,
-                      emptyText: _filter == null ? 'Nothing needs attention.' : 'No issues in this category.',
-                      loading: data.loadingSections.isNotEmpty,
-                      // The cards above summarise everything; a filter shows
-                      // its category in full.
-                      preview: _filter == null ? 8 : null,
+                // Full width, so its wash (when something is critical)
+                // runs edge to edge; everything else is inset.
+                OverviewHero(data: data, scope: _ns, checkedAt: _updatedAt, inset: _inset),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: _inset),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      InlineMessage('Refresh failed: ${_errorText(_error!)}. Showing the last result.', isError: true),
+                    ],
+                    for (final e in data.errors.entries) ...[
+                      const SizedBox(height: 8),
+                      InlineMessage('Could not list ${e.key}: ${e.value}', icon: Icons.lock_outline),
+                    ],
+                    AreaCards(data: data, scope: _ns, selected: _filter, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
+                    // Requests only cover the pods in scope, so cluster capacity
+                    // is shown for all namespaces only.
+                    if (_ns.isAll && (data.isPending('nodes') || (data.capacity?.known ?? false)))
+                      CapacityStrip(capacity: data.isPending('nodes') ? null : data.capacity, usage: _usage, nodes: data.nodes.length),
+                    if (issues.isNotEmpty || _filter != null || data.loadingSections.isNotEmpty)
+                      OverviewSection(
+                        title: 'Issues',
+                        trailing: _issuesTrailing(context, data, issues.length),
+                        child: IssueList(
+                          issues: issues,
+                          onChanged: _refresh,
+                          emptyText: _filter == null ? 'Nothing needs attention.' : 'No issues in this category.',
+                          loading: data.loadingSections.isNotEmpty,
+                          // The areas above summarise everything; a filter
+                          // shows its category in full.
+                          preview: _filter == null ? 8 : null,
+                        ),
+                      ),
+                    if (data.isPending('nodes'))
+                      const OverviewSection(title: 'Nodes', child: PendingRows())
+                    else if (data.nodes.isNotEmpty)
+                      OverviewSection(
+                        title: 'Nodes',
+                        trailing: Text('${data.count('nodes', 'ready')}/${data.count('nodes', 'total')} ready'),
+                        child: NodeCards(nodes: data.nodes, showRequests: _ns.isAll),
+                      ),
+                    OverviewSection(
+                      title: 'Top warning events',
+                      trailing: const Text('last hour'),
+                      child: data.isPending('events') ? const PendingRows(rows: 2) : WarningEventList(reasons: data.topWarnings),
                     ),
-                  ),
-                if (data.isPending('nodes'))
-                  const DetailSection(title: 'Nodes', icon: Icons.dns_outlined, child: PendingRows())
-                else if (data.nodes.isNotEmpty)
-                  DetailSection(
-                    title: 'Nodes',
-                    icon: Icons.dns_outlined,
-                    trailing: Text(
-                      '${data.count('nodes', 'ready')}/${data.count('nodes', 'total')} ready',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
-                    ),
-                    child: NodeCards(nodes: data.nodes, showRequests: _ns.isAll),
-                  ),
-                DetailSection(
-                  title: 'Top warning events',
-                  icon: Icons.notifications_active_outlined,
-                  trailing: Text('last hour', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-                  child: data.isPending('events') ? const PendingRows(rows: 2) : WarningEventList(reasons: data.topWarnings),
+                  ]),
                 ),
               ]),
             ),
@@ -267,6 +263,8 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
       ],
     );
   }
+
+  static const _inset = 24.0;
 
   Widget _issuesTrailing(BuildContext context, OverviewData data, int shown) {
     final theme = Theme.of(context);

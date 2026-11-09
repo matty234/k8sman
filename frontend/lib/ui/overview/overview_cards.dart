@@ -1,5 +1,6 @@
-/// The Overview's summary blocks: stat blocks, cluster capacity, problem
-/// cards per area, the all-healthy banner and node cards.
+/// The Overview's summary blocks: the hero (status line and inventory
+/// strip), cluster capacity, the "Needs attention" list per area and nodes.
+/// Laid out open, with hairlines rather than boxes.
 library;
 
 import 'package:flutter/material.dart';
@@ -20,29 +21,20 @@ import '../../modules/modules.dart' show enabledPages;
 import 'capacity_history.dart';
 import 'overview_api.dart';
 import 'overview_nav.dart';
-import 'overview_widgets.dart' show SkeletonBar, issueColor, issueIcon, openObject;
-
-const _gap = 10.0;
-
-/// The quiet container every Overview card uses.
-BoxDecoration _panel(BuildContext context) => BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: AppColors.of(context).separator),
-    );
+import 'overview_widgets.dart' show OverviewSection, SkeletonBar, issueColor, openObject;
 
 const _tabular = [FontFeature.tabularFigures()];
 
 /// Lays [children] out in rows of [cols] equal-width cells, each row as tall
 /// as its tallest cell.
-Widget _grid(List<Widget> children, int cols) {
+Widget _grid(List<Widget> children, int cols, {double gap = 10, double runGap = 10}) {
   return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
     for (var r = 0; r < children.length; r += cols) ...[
-      if (r > 0) const SizedBox(height: _gap),
+      if (r > 0) SizedBox(height: runGap),
       IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           for (var c = 0; c < cols; c++) ...[
-            if (c > 0) const SizedBox(width: _gap),
+            if (c > 0) SizedBox(width: gap),
             Expanded(child: r + c < children.length ? children[r + c] : const SizedBox.shrink()),
           ],
         ]),
@@ -62,7 +54,7 @@ class _Bar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final track = Theme.of(context).colorScheme.surfaceContainerHighest;
+    final track = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
     Widget fill(double f, Color c) => FractionallySizedBox(
           alignment: Alignment.centerLeft,
           widthFactor: f.clamp(0.0, 1.0),
@@ -83,7 +75,219 @@ class _Bar extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Stat blocks: ready/total per type
+// Hero: one status line over the inventory strip
+// ---------------------------------------------------------------------------
+
+/// Problem totals behind the status line.
+class _Tally {
+  int critical = 0, warning = 0;
+  final areas = <String>{};
+  _Tally(OverviewData data) {
+    for (final c in data.categories) {
+      if (c.severity == IssueSeverity.info) continue;
+      c.severity == IssueSeverity.critical ? critical += c.count : warning += c.count;
+      areas.add(c.section);
+    }
+  }
+  int get problems => critical + warning;
+}
+
+/// Never "All healthy" while a source is loading: its problems are unknown.
+bool _allHealthy(OverviewData data) => data.loadingSections.isEmpty && _Tally(data).problems == 0;
+
+/// The top of the page: how the cluster is ("All healthy", "Needs
+/// attention · 13 critical · 17 warnings in 6 areas") over the inventory.
+/// A faint wash of red sits behind it while anything is critical.
+class OverviewHero extends StatelessWidget {
+  final OverviewData data;
+  final NamespaceScope scope;
+  final DateTime? checkedAt;
+
+  /// Horizontal inset of the content (the wash runs edge to edge).
+  final double inset;
+  const OverviewHero({super.key, required this.data, this.scope = NamespaceScope.all, this.checkedAt, this.inset = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final tally = _Tally(data);
+    final crit = issueColor(context, IssueSeverity.critical);
+    return Container(
+      key: const ValueKey('overview-hero'),
+      decoration: tally.critical == 0
+          ? null
+          : BoxDecoration(
+              // A wide, low glow from the top left that has faded out
+              // by the hero's bottom edge.
+              gradient: RadialGradient(
+                center: _washCenter,
+                radius: 1.1,
+                colors: [crit.withValues(alpha: dark ? 0.09 : 0.06), crit.withValues(alpha: 0)],
+                transform: const _StretchX(4),
+              ),
+            ),
+      padding: EdgeInsets.fromLTRB(inset, 22, inset, 4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _StatusLine(data: data, tally: tally, checkedAt: checkedAt),
+        const SizedBox(height: 22),
+        StatBlocks(data: data, scope: scope),
+      ]),
+    );
+  }
+}
+
+const _washCenter = Alignment(-0.8, -1.2);
+
+/// Widens a gradient horizontally about the wash's centre (a radial glow
+/// into an ellipse).
+class _StretchX extends GradientTransform {
+  final double factor;
+  const _StretchX(this.factor);
+
+  @override
+  Matrix4 transform(Rect bounds, {TextDirection? textDirection}) {
+    final c = _washCenter.withinRect(bounds);
+    return Matrix4.identity()
+      ..translateByDouble(c.dx, c.dy, 0, 1)
+      ..scaleByDouble(factor, 1, 1, 1)
+      ..translateByDouble(-c.dx, -c.dy, 0, 1);
+  }
+}
+
+class _StatusLine extends StatelessWidget {
+  final OverviewData data;
+  final _Tally tally;
+  final DateTime? checkedAt;
+  const _StatusLine({required this.data, required this.tally, required this.checkedAt});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hint = theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor, fontFeatures: _tabular);
+    final loading = data.loadingSections;
+    final healthy = loading.isEmpty && tally.problems == 0;
+    final headline = healthy ? 'All healthy' : (tally.problems > 0 ? 'Needs attention' : 'Checking…');
+    final mark = healthy
+        ? IssueSeverity.info
+        : tally.critical > 0
+            ? IssueSeverity.critical
+            : IssueSeverity.warning;
+    final title = theme.textTheme.titleLarge?.copyWith(fontSize: 19, fontWeight: FontWeight.w600, letterSpacing: -0.2, height: 1.2);
+    Widget detail;
+    if (healthy) {
+      detail = Row(mainAxisSize: MainAxisSize.min, children: [
+        if (checkedAt != null) ...[
+          Text('checked ', style: hint),
+          DefaultTextStyle.merge(style: hint, child: AgeText(checkedAt!.toUtc().toIso8601String(), suffix: ' ago')),
+        ],
+      ]);
+    } else {
+      final n = tally.areas.length;
+      detail = Text.rich(
+        TextSpan(children: [
+          if (tally.critical > 0) TextSpan(text: '${tally.critical} critical', style: TextStyle(color: issueColor(context, IssueSeverity.critical))),
+          if (tally.critical > 0 && tally.warning > 0) const TextSpan(text: '  ·  '),
+          if (tally.warning > 0) TextSpan(text: plural(tally.warning, 'warning'), style: TextStyle(color: issueColor(context, IssueSeverity.warning))),
+          if (n > 0) TextSpan(text: n == 1 ? ' in 1 area' : ' across $n areas'),
+          if (loading.isNotEmpty) TextSpan(text: '${tally.problems > 0 ? '  ·  ' : ''}still checking ${plural(loading.length, 'source')}'),
+        ]),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: hint,
+      );
+    }
+    final lines = healthy ? _healthyLines(data) : const <String>[];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        SizedBox(width: 22, child: Align(alignment: Alignment.centerLeft, child: _StatusMark(severity: healthy ? null : (tally.problems > 0 ? mark : IssueSeverity.info)))),
+        Text(headline, style: title),
+        const SizedBox(width: 14),
+        Flexible(child: Padding(padding: const EdgeInsets.only(top: 2), child: detail)),
+      ]),
+      if (lines.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(left: 22, top: 4),
+          child: Text(lines.join(' · '), style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+        ),
+    ]);
+  }
+}
+
+/// A check when healthy; a dot in the worst severity otherwise. A critical
+/// dot sends out a few slow rings when it appears (none with reduced
+/// motion), then rests: nothing animates on an idle page.
+class _StatusMark extends StatefulWidget {
+  /// Null: healthy. Info: still checking.
+  final IssueSeverity? severity;
+  const _StatusMark({required this.severity});
+
+  @override
+  State<_StatusMark> createState() => _StatusMarkState();
+}
+
+class _StatusMarkState extends State<_StatusMark> with SingleTickerProviderStateMixin {
+  static const _rings = 3;
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800 * _rings));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _maybePulse(null);
+  }
+
+  @override
+  void didUpdateWidget(_StatusMark old) {
+    super.didUpdateWidget(old);
+    _maybePulse(old.severity);
+  }
+
+  void _maybePulse(IssueSeverity? before) {
+    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (widget.severity == IssueSeverity.critical && before != IssueSeverity.critical && !reduce && !_c.isAnimating) _c.forward(from: 0);
+    if (widget.severity != IssueSeverity.critical) _c.stop();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.severity;
+    if (s == null) return Icon(Icons.check_circle, size: 16, color: severityColor(context, Severity.ok));
+    final color = s == IssueSeverity.info ? Theme.of(context).hintColor : issueColor(context, s);
+    final dot = Container(width: 9, height: 9, decoration: BoxDecoration(color: s == IssueSeverity.info ? null : color, shape: BoxShape.circle, border: s == IssueSeverity.info ? Border.all(color: color, width: 1.5) : null));
+    if (s != IssueSeverity.critical) return dot;
+    return SizedBox(
+      width: 9,
+      height: 9,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, child) {
+          final t = _c.isAnimating ? (_c.value * _rings) % 1 : 0.0;
+          return Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+            if (t > 0)
+              Positioned(
+                left: -6 * t,
+                top: -6 * t,
+                right: -6 * t,
+                bottom: -6 * t,
+                child: DecoratedBox(decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.35 * (1 - t)))),
+              ),
+            child!,
+          ]);
+        },
+        child: dot,
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Inventory strip: ready/total per type
 // ---------------------------------------------------------------------------
 
 class _Stat {
@@ -102,6 +306,9 @@ class _Stat {
   bool get pending => total == null;
 }
 
+/// One row of large numerals with small labels, divided by hairlines. A
+/// healthy type shows its plain count; a shortfall shows good/total in
+/// amber (red when none are good) with a short bar under it.
 class StatBlocks extends StatelessWidget {
   final OverviewData data;
   final NamespaceScope scope;
@@ -144,17 +351,38 @@ class StatBlocks extends StatelessWidget {
     return out;
   }
 
+  static const _minCell = 124.0;
+  static const _maxCell = 200.0;
+
   @override
   Widget build(BuildContext context) {
     final stats = _stats();
     if (stats.isEmpty) return const SizedBox.shrink();
+    final separator = AppColors.of(context).separator;
     return LayoutBuilder(builder: (context, box) {
-      final fit = ((box.maxWidth + _gap) / (128 + _gap)).floor().clamp(1, 8);
       final n = stats.length;
-      // A few blocks stay small and left-aligned rather than stretching;
-      // more than fit spread evenly over the rows.
-      final cols = n <= fit ? (n >= fit - 2 ? n : fit) : (n / (n / fit).ceil()).ceil();
-      return _grid([for (final s in stats) _StatBlock(stat: s, scope: scope)], cols);
+      final fit = (box.maxWidth / _minCell).floor().clamp(1, 8);
+      // More than fit: spread evenly over the rows. Fewer: each keeps a
+      // comfortable width, left-aligned, rather than stretching apart.
+      final rows = (n / fit).ceil();
+      final cols = (n / rows).ceil();
+      final width = rows > 1 ? box.maxWidth / cols : (box.maxWidth / n).clamp(_minCell, _maxCell);
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (var r = 0; r < n; r += cols) ...[
+          if (r > 0) const SizedBox(height: 14),
+          IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (var i = r; i < r + cols && i < n; i++)
+                Container(
+                  width: width,
+                  padding: EdgeInsets.only(left: i == r ? 0 : 16, right: 8),
+                  decoration: i == r ? null : BoxDecoration(border: Border(left: BorderSide(color: separator))),
+                  child: _StatBlock(stat: stats[i], scope: scope),
+                ),
+            ]),
+          ),
+        ],
+      ]);
     });
   }
 }
@@ -166,62 +394,70 @@ class _StatBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final good = stat.good ?? 0;
-    final total = stat.total ?? 0;
-    final frac = total == 0 ? 1.0 : good / total;
-    // Red only when none are ready/bound/succeeded (an outage); partly
-    // ready is amber, so a busy cluster isn't a wall of red.
-    final color = !stat.bad ? theme.colorScheme.onSurface.withValues(alpha: 0.28) : issueColor(context, good == 0 && total > 0 ? IssueSeverity.critical : IssueSeverity.warning);
     final target = stat.target;
-    if (stat.pending || target == null) return _block(context, color, frac, hovered: false);
+    if (stat.pending || target == null) return _block(context, hovered: false);
     return Hoverable(
       key: ValueKey('stat-${stat.label}'),
       onTap: () => openOverviewTarget(context, target, scope),
-      builder: (hovered) => _block(context, color, frac, hovered: hovered),
+      builder: (hovered) => _block(context, hovered: hovered),
     );
   }
 
-  Widget _block(BuildContext context, Color color, double frac, {required bool hovered}) {
+  Widget _block(BuildContext context, {required bool hovered}) {
     final theme = Theme.of(context);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    final faint = AppColors.of(context).faint;
+    final colors = AppColors.of(context);
     final good = stat.good ?? 0;
     final total = stat.total ?? 0;
-    return Container(
+    // Red only when none are ready/bound/succeeded (an outage); partly
+    // ready is amber, so a busy cluster isn't a wall of red.
+    final color = issueColor(context, good == 0 && total > 0 ? IssueSeverity.critical : IssueSeverity.warning);
+    final big = theme.textTheme.headlineMedium?.copyWith(
+      fontSize: 30,
+      height: 1.1,
+      fontWeight: FontWeight.w300,
+      letterSpacing: -0.5,
+      fontFeatures: _tabular,
+      color: stat.bad ? color : theme.colorScheme.onSurface,
+    );
+    final label = theme.textTheme.bodySmall?.copyWith(
+      color: hovered ? theme.colorScheme.onSurface : theme.hintColor,
+      decoration: hovered ? TextDecoration.underline : null,
+      decorationColor: theme.hintColor,
+    );
+    return Column(
       key: stat.pending ? ValueKey('pending-inventory-${stat.label}') : null,
-      decoration: hovered ? _panel(context).copyWith(color: AppColors.of(context).hover) : _panel(context),
-      padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
         SizedBox(
-          height: 24,
+          height: 34,
           child: stat.pending
-              ? const Align(alignment: Alignment.centerLeft, child: SkeletonBar(width: 40, height: 16))
+              ? const Align(alignment: Alignment.centerLeft, child: SkeletonBar(width: 44, height: 22))
               : Text.rich(
                   TextSpan(children: [
-                    TextSpan(
-                      text: '$good',
-                      style: theme.textTheme.headlineSmall?.copyWith(fontFeatures: _tabular, color: stat.bad ? color : null, height: 1.25),
-                    ),
-                    TextSpan(text: '/$total', style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor, fontFeatures: _tabular)),
+                    TextSpan(text: '$good', style: big),
+                    if (stat.bad) TextSpan(text: ' / $total', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w400, color: theme.hintColor, fontFeatures: _tabular)),
                   ]),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text.rich(
           TextSpan(children: [
             TextSpan(text: stat.label),
-            if (stat.note != null) TextSpan(text: ' · ${stat.note}', style: TextStyle(color: faint)),
+            if (stat.note != null) TextSpan(text: ' · ${stat.note}', style: TextStyle(color: stat.bad && stat.label.startsWith('jobs') ? color : colors.faint, decoration: TextDecoration.none)),
           ]),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: hint,
+          style: label,
         ),
-        const SizedBox(height: 7),
-        stat.pending ? const SkeletonBar(height: 3) : _Bar(frac: frac, color: color),
-      ]),
+        // Only a shortfall gets a bar: healthy is the plain number.
+        if (stat.bad && total > 0) ...[
+          const SizedBox(height: 7),
+          SizedBox(width: 56, child: _Bar(frac: good / total, color: color, height: 2.5)),
+        ],
+      ],
     );
   }
 }
@@ -237,6 +473,8 @@ String formatCores(double millis) {
   return c < 10 ? c.toStringAsFixed(c < 1 ? 2 : 1) : c.toStringAsFixed(1);
 }
 
+/// The Capacity section: CPU and memory history (Prometheus), or plain
+/// bars of requests (and live usage) against allocatable without it.
 class CapacityStrip extends StatelessWidget {
   /// Null while nodes are pending: a placeholder stands in.
   final ResourceTotals? capacity;
@@ -273,29 +511,35 @@ class CapacityStrip extends StatelessWidget {
             usedText: u == null ? null : formatBytes(u.memoryBytes),
             where: where,
           );
-    final bars = LayoutBuilder(builder: (context, box) {
-      final wide = box.maxWidth >= 620;
-      final children = [cpu ?? const _PendingMeter(), mem ?? const _PendingMeter()];
-      if (wide) {
-        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: children[0]),
-          const SizedBox(width: 28),
-          Expanded(child: children[1]),
-        ]);
-      }
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [children[0], const SizedBox(height: 10), children[1]]);
-    });
-    return Container(
-      key: c == null ? const ValueKey('pending-capacity') : null,
-      decoration: _panel(context),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-      // Pending on a cluster where Prometheus was found before: hold the
-      // charts' height rather than the bars', so the page doesn't jump.
-      child: c == null
-          ? (PromApi.of(context.read<ApiClient>()).knownHasPrometheus == true ? const HistoryPlaceholder() : bars)
-          : ClusterHistory(capacity: c, fallback: bars),
+    final bars = CapacityColumns(children: [cpu ?? const _PendingMeter(), mem ?? const _PendingMeter()]);
+    if (c != null) return ClusterHistory(capacity: c, fallback: bars, note: where);
+    // Pending on a cluster where Prometheus was found before: hold the
+    // charts' height rather than the bars', so the page doesn't jump.
+    return OverviewSection(
+      key: const ValueKey('pending-capacity'),
+      title: 'Capacity',
+      collapsible: false,
+      child: PromApi.of(context.read<ApiClient>()).knownHasPrometheus == true ? const HistoryPlaceholder() : bars,
     );
   }
+}
+
+/// CPU and memory side by side, or stacked when narrow.
+class CapacityColumns extends StatelessWidget {
+  final List<Widget> children;
+  const CapacityColumns({super.key, required this.children});
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        if (box.maxWidth >= 620) {
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: children[0]),
+            const SizedBox(width: 48),
+            Expanded(child: children[1]),
+          ]);
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [children[0], const SizedBox(height: 22), children[1]]);
+      });
 }
 
 class _PendingMeter extends StatelessWidget {
@@ -303,10 +547,57 @@ class _PendingMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SkeletonBar(width: 160, height: 12),
-        SizedBox(height: 9),
-        SkeletonBar(height: 5),
+        SkeletonBar(width: 50, height: 10),
+        SizedBox(height: 8),
+        SkeletonBar(width: 110, height: 24),
+        SizedBox(height: 8),
+        SkeletonBar(width: 180, height: 10),
+        SizedBox(height: 10),
+        SkeletonBar(height: 4),
       ]);
+}
+
+/// The big figure of a capacity column: "29%" or "1.8" with its unit
+/// after it in small type.
+Widget capacityFigure(BuildContext context, String value, String unit, {String? suffix, Color? color}) {
+  final theme = Theme.of(context);
+  final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: _tabular);
+  return Text.rich(
+    TextSpan(children: [
+      TextSpan(
+        text: value,
+        style: theme.textTheme.headlineSmall?.copyWith(fontSize: 26, height: 1.15, fontWeight: FontWeight.w300, letterSpacing: -0.4, fontFeatures: _tabular, color: color),
+      ),
+      TextSpan(text: ' $unit', style: hint?.copyWith(fontSize: 12.5)),
+      if (suffix != null) TextSpan(text: '  ·  $suffix', style: hint?.copyWith(fontSize: 12.5)),
+    ]),
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+  );
+}
+
+/// The small caption over a capacity column ("CPU", "Memory").
+Widget capacityLabel(BuildContext context, String label) {
+  final theme = Theme.of(context);
+  return Text(label, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600, letterSpacing: 0.3));
+}
+
+/// "3.5 / 12 cores requested · 29%".
+Widget requestedLine(BuildContext context, String amount, double? frac) {
+  final theme = Theme.of(context);
+  return Text.rich(
+    TextSpan(children: [
+      TextSpan(text: amount, style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.85))),
+      const TextSpan(text: ' requested'),
+      if (frac != null) ...[
+        const TextSpan(text: ' · '),
+        TextSpan(text: formatPercent(frac), style: TextStyle(color: percentColor(context, frac) ?? theme.colorScheme.onSurface, fontWeight: FontWeight.w600)),
+      ],
+    ]),
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: _tabular),
+  );
 }
 
 class _Meter extends StatelessWidget {
@@ -329,12 +620,11 @@ class _Meter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: _tabular);
     final req = allocatable > 0 ? requested / allocatable : null;
     final use = allocatable > 0 && used != null ? used! / allocatable : null;
     // Colour follows the larger of the two (thresholds only; neutral below).
     final color = meterColor(context, [req ?? 0, use ?? 0].reduce((a, b) => a > b ? a : b));
+    final free = allocatable - requested;
     return Tooltip(
       message: [
         '$label requested $where: $amount${req == null ? '' : ' (${formatPercent(req)})'}',
@@ -342,36 +632,24 @@ class _Meter extends StatelessWidget {
       ].join('\n'),
       waitDuration: const Duration(milliseconds: 400),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-          Text(label, style: theme.textTheme.titleSmall),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text.rich(
-              TextSpan(children: [
-                TextSpan(text: amount, style: TextStyle(color: theme.colorScheme.onSurface)),
-                const TextSpan(text: ' requested'),
-                if (req != null) ...[
-                  const TextSpan(text: ' · '),
-                  TextSpan(text: formatPercent(req), style: TextStyle(color: percentColor(context, req) ?? theme.colorScheme.onSurface, fontWeight: FontWeight.w600)),
-                ],
-                if (usedText != null) TextSpan(text: '   $usedText in use${use == null ? '' : ' · ${formatPercent(use)}'}'),
-              ]),
-              textAlign: TextAlign.right,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: hint,
-            ),
-          ),
-        ]),
-        const SizedBox(height: 7),
-        _Bar(frac: use ?? req ?? 0, under: use == null ? null : req, color: color, height: 5),
+        capacityLabel(context, label),
+        const SizedBox(height: 2),
+        // Live usage when metrics-server has it, else what is left to
+        // schedule (the line below says what is requested).
+        use != null
+            ? capacityFigure(context, formatPercent(use), 'in use', suffix: usedText, color: percentColor(context, use))
+            : capacityFigure(context, label == 'CPU' ? formatCores(free) : formatBytes(free), label == 'CPU' ? 'cores free to schedule' : 'free to schedule'),
+        const SizedBox(height: 2),
+        requestedLine(context, amount, req),
+        const SizedBox(height: 10),
+        _Bar(frac: use ?? req ?? 0, under: use == null ? null : req, color: color, height: 4),
       ]),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Problem cards per area
+// Needs attention: problems per area
 // ---------------------------------------------------------------------------
 
 const _areaOrder = ['pods', 'workloads', 'jobs', 'nodes', 'storage', 'network', 'argocd', 'alerts'];
@@ -431,6 +709,18 @@ String? _healthyLine(OverviewData d, String section) {
   return null;
 }
 
+/// Areas in display order: the built-in ones, then modules' and loading ones.
+List<String> _sections(OverviewData data) => [
+      ..._areaOrder,
+      ...{for (final c in data.categories) c.section, ...data.loadingSections}.where((s) => !_areaOrder.contains(s)).toList()..sort(),
+    ];
+
+/// The lines of every problem-free, loaded area ("All 7 workloads healthy").
+List<String> _healthyLines(OverviewData data) => [
+      for (final s in _sections(data))
+        if (!data.categories.any((c) => c.section == s) && !data.loadingSections.contains(s)) ?_healthyLine(data, s),
+    ];
+
 /// The issues behind a category, in words: "4 pods, 2 workloads".
 String categorySublabel(OverviewData data, OverviewCategory c) {
   final issues = data.issues.where((i) => i.category == c.id).toList();
@@ -450,143 +740,127 @@ String categorySublabel(OverviewData data, OverviewCategory c) {
   return '${issues.length} ${(kind.endsWith('s') ? '${kind}es' : '${kind}s').toLowerCase()}';
 }
 
-/// One card per area (Pods, Workloads, Jobs, Nodes, Storage, then modules)
-/// that has problems or is still loading; problem-free areas fold into one
-/// quiet line. With nothing wrong and nothing loading, a calm banner.
+/// "Needs attention": one group per area (Pods, Workloads, Jobs, Nodes,
+/// Storage, then modules) that has problems or is still loading, its name
+/// in a narrow gutter and its problems beside it, hairlines between areas.
+/// Wide pages flow the groups into two columns. Problem-free areas fold
+/// into one quiet line; with nothing wrong at all there is no section (the
+/// hero says so).
 class AreaCards extends StatelessWidget {
   final OverviewData data;
   final String? selected;
   final ValueChanged<String> onSelect;
-  final DateTime? checkedAt;
 
-  /// The Overview's namespaces: tables opened from a card show these.
+  /// The Overview's namespaces: tables opened from a row show these.
   final NamespaceScope scope;
-  const AreaCards({super.key, required this.data, required this.selected, required this.onSelect, this.checkedAt, this.scope = NamespaceScope.all});
+  const AreaCards({super.key, required this.data, required this.selected, required this.onSelect, this.scope = NamespaceScope.all});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final loading = data.loadingSections;
-    final sections = <String>[
-      ..._areaOrder,
-      ...{for (final c in data.categories) c.section, ...loading}.where((s) => !_areaOrder.contains(s)).toList()..sort(),
-    ];
-    final cards = <Widget>[];
-    final healthy = <String>[];
-    for (final s in sections) {
+    final groups = <(Widget, int)>[];
+    for (final s in _sections(data)) {
       final cats = data.categories.where((c) => c.section == s).toList();
       final pending = loading.contains(s);
-      if (cats.isEmpty && !pending) {
-        final line = _healthyLine(data, s);
-        if (line != null) healthy.add(line);
-        continue;
-      }
-      cards.add(_AreaCard(
-        section: s,
-        problems: [for (final c in cats) if (c.severity != IssueSeverity.info) c],
-        info: [for (final c in cats) if (c.severity == IssueSeverity.info) c],
-        pending: pending,
-        healthyLine: _healthyLine(data, s),
-        data: data,
-        selected: selected,
-        onSelect: onSelect,
-        scope: scope,
+      if (cats.isEmpty && !pending) continue;
+      groups.add((
+        _AreaGroup(
+          section: s,
+          problems: [for (final c in cats) if (c.severity != IssueSeverity.info) c],
+          info: [for (final c in cats) if (c.severity == IssueSeverity.info) c],
+          pending: pending,
+          data: data,
+          selected: selected,
+          onSelect: onSelect,
+          scope: scope,
+        ),
+        cats.length + (pending ? 1 : 0) + 1,
       ));
     }
-    // Never "All healthy" while a source is loading: its problems are unknown.
-    final allHealthy = loading.isEmpty && !data.categories.any((c) => c.severity != IssueSeverity.info);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (allHealthy) ...[
-        _HealthyBanner(checkedAt: checkedAt, lines: healthy),
-        if (cards.isNotEmpty) const SizedBox(height: _gap),
-      ],
-      if (cards.isNotEmpty)
+    if (groups.isEmpty) return const SizedBox.shrink();
+    final allHealthy = _allHealthy(data);
+    final healthy = allHealthy ? const <String>[] : _healthyLines(data);
+    final tally = _Tally(data);
+    return OverviewSection(
+      title: allHealthy ? 'Worth a look' : 'Needs attention',
+      collapsible: false,
+      trailing: tally.problems == 0 ? null : Text(plural(tally.problems, 'problem')),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         LayoutBuilder(builder: (context, box) {
-          // At least two columns where they fit, so a lone card takes half
-          // the width rather than stretching across the page.
-          final fit = (box.maxWidth / 300).floor().clamp(1, 4);
-          final cols = fit >= 2 ? cards.length.clamp(2, fit) : 1;
-          return _grid(cards, cols);
+          final cols = box.maxWidth >= 1040 && groups.length > 1 ? 2 : 1;
+          // Masonry: each group goes to the shorter column, in order.
+          final columns = List.generate(cols, (_) => <Widget>[]);
+          final heights = List.filled(cols, 0);
+          for (final (w, h) in groups) {
+            var c = 0;
+            for (var i = 1; i < cols; i++) {
+              if (heights[i] < heights[c]) c = i;
+            }
+            columns[c].add(w);
+            heights[c] += h;
+          }
+          Widget column(List<Widget> items) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                for (final (i, w) in items.indexed) ...[
+                  if (i > 0) Divider(height: 1, thickness: 1, color: AppColors.of(context).separator.withValues(alpha: 0.6)),
+                  w,
+                ],
+              ]);
+          if (cols == 1) return column(columns[0]);
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: column(columns[0])),
+            const SizedBox(width: 48),
+            Expanded(child: column(columns[1])),
+          ]);
         }),
-      if (!allHealthy && healthy.isNotEmpty) ...[
-        const SizedBox(height: 10),
-        _HealthyLines(lines: healthy),
-      ],
-    ]);
-  }
-}
-
-class _HealthyLines extends StatelessWidget {
-  final List<String> lines;
-  const _HealthyLines({required this.lines});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final ok = severityColor(context, Severity.ok).withValues(alpha: 0.8);
-    return Wrap(spacing: 18, runSpacing: 4, children: [
-      for (final l in lines)
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.check, size: 13, color: ok),
-          const SizedBox(width: 5),
-          Text(l, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-        ]),
-    ]);
-  }
-}
-
-class _HealthyBanner extends StatelessWidget {
-  final DateTime? checkedAt;
-  final List<String> lines;
-  const _HealthyBanner({required this.checkedAt, required this.lines});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final ok = severityColor(context, Severity.ok);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-      decoration: BoxDecoration(
-        color: ok.withValues(alpha: theme.brightness == Brightness.dark ? 0.07 : 0.05),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: ok.withValues(alpha: 0.22)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.check_circle, size: 16, color: ok),
-          const SizedBox(width: 8),
-          Text('All healthy', style: theme.textTheme.titleSmall),
-          if (checkedAt != null) ...[
-            Text(' · checked ', style: hint),
-            AgeText(checkedAt!.toUtc().toIso8601String(), suffix: ' ago'),
-          ],
-        ]),
-        if (lines.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(left: 24, top: 3),
-            child: Text(lines.join(' · '), style: hint),
-          ),
+        if (healthy.isNotEmpty) ...[
+          Divider(height: 1, thickness: 1, color: AppColors.of(context).separator.withValues(alpha: 0.6)),
+          Padding(padding: const EdgeInsets.only(top: 12), child: _HealthyLines(lines: healthy, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
+        ],
       ]),
     );
   }
 }
 
-class _AreaCard extends StatelessWidget {
+/// "✓ All 7 workloads healthy · No failing jobs".
+class _HealthyLines extends StatelessWidget {
+  final List<String> lines;
+  final TextStyle? style;
+  const _HealthyLines({required this.lines, this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    final ok = severityColor(context, Severity.ok).withValues(alpha: 0.85);
+    final faint = AppColors.of(context).faint;
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(padding: const EdgeInsets.only(top: 2), child: Icon(Icons.check, size: 13, color: ok)),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Wrap(runSpacing: 2, children: [
+          for (final (i, l) in lines.indexed) ...[
+            if (i > 0) Text('  ·  ', style: style?.copyWith(color: faint)),
+            Text(l, style: style),
+          ],
+        ]),
+      ),
+    ]);
+  }
+}
+
+class _AreaGroup extends StatelessWidget {
   final String section;
   final List<OverviewCategory> problems;
   final List<OverviewCategory> info;
   final bool pending;
-  final String? healthyLine;
   final OverviewData data;
   final String? selected;
   final ValueChanged<String> onSelect;
   final NamespaceScope scope;
-  const _AreaCard({
+  const _AreaGroup({
     required this.section,
     required this.problems,
     required this.info,
     required this.pending,
-    required this.healthyLine,
     required this.data,
     required this.selected,
     required this.onSelect,
@@ -605,85 +879,102 @@ class _AreaCard extends StatelessWidget {
     );
   }
 
+  Widget _title(BuildContext context, OverviewTarget? title) {
+    final theme = Theme.of(context);
+    Widget row(bool hovered) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(_sectionIcon(section), size: 14, color: hovered ? theme.colorScheme.onSurface : theme.hintColor),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              sectionLabel(section),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontSize: 13,
+                decoration: hovered ? TextDecoration.underline : null,
+                decorationColor: theme.hintColor,
+              ),
+            ),
+          ),
+        ]);
+    if (title == null) return row(false);
+    return Hoverable(
+      key: ValueKey('area-title-$section'),
+      onTap: () => openOverviewTarget(context, title, scope),
+      builder: (hovered) => Tooltip(message: 'Open ${sectionLabel(section)}', waitDuration: const Duration(milliseconds: 600), child: row(hovered)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final worst = problems.isEmpty ? null : problems.map((c) => c.severity).reduce((a, b) => a.index <= b.index ? a : b);
     final total = problems.fold<int>(0, (n, c) => n + c.count);
-    final ok = severityColor(context, Severity.ok).withValues(alpha: 0.8);
     final page = enabledPages(context.read<AppState>()).any((p) => p.view.name == section) ? OverviewTarget.page(MainView(section)) : null;
     final title = titleTarget(data, section) ?? page;
-    final titleRow = Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(_sectionIcon(section), size: 15, color: theme.hintColor),
-      const SizedBox(width: 7),
-      Flexible(child: Text(sectionLabel(section), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall)),
-    ]);
-    return Container(
-      key: ValueKey('area-$section'),
-      decoration: _panel(context),
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final healthyLine = _healthyLine(data, section);
+    final count = worst == null
+        ? null
+        : Text(
+            '$total',
+            style: theme.textTheme.titleLarge?.copyWith(fontSize: 20, height: 1.1, fontWeight: FontWeight.w300, color: issueColor(context, worst), fontFeatures: _tabular),
+          );
+    final rows = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (problems.isEmpty && !pending && healthyLine != null)
         Padding(
-          padding: const EdgeInsets.fromLTRB(6, 0, 4, 4),
+          padding: const EdgeInsets.fromLTRB(8, 4, 6, 4),
+          child: _HealthyLines(lines: [healthyLine], style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+        ),
+      for (final c in problems) _row(context, c),
+      if (pending)
+        Padding(
+          key: ValueKey('pending-tile-$section'),
+          padding: const EdgeInsets.fromLTRB(8, 5, 6, 5),
           child: Row(children: [
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: title == null
-                    ? titleRow
-                    : Hoverable(
-                        key: ValueKey('area-title-$section'),
-                        onTap: () => openOverviewTarget(context, title, scope),
-                        builder: (hovered) => Tooltip(
-                          message: 'Open ${sectionLabel(section)}',
-                          waitDuration: const Duration(milliseconds: 600),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Flexible(
-                              child: DefaultTextStyle.merge(
-                                style: TextStyle(decoration: hovered ? TextDecoration.underline : null, decorationColor: theme.hintColor),
-                                child: titleRow,
-                              ),
-                            ),
-                            Icon(Icons.chevron_right, size: 15, color: hovered ? theme.hintColor : Colors.transparent),
-                          ]),
-                        ),
-                      ),
-              ),
-            ),
-            if (worst != null) ...[
-              Icon(issueIcon(worst), size: 14, color: issueColor(context, worst)),
-              const SizedBox(width: 4),
-              Text('$total', style: theme.textTheme.labelLarge?.copyWith(color: issueColor(context, worst), fontWeight: FontWeight.w600, fontFeatures: _tabular)),
-            ],
+            const SkeletonBar(width: 90, height: 10),
+            const SizedBox(width: 8),
+            Text('Checking…', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
           ]),
         ),
-        if (problems.isEmpty && !pending && healthyLine != null)
+      for (final c in info) _row(context, c),
+    ]);
+    return Padding(
+      key: ValueKey('area-$section'),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: LayoutBuilder(builder: (context, box) {
+        // A narrow gutter with the area's name and total beside its rows;
+        // when there isn't room, the name sits on top.
+        if (box.maxWidth >= 420) {
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+              width: 128,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 3, right: 12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _title(context, title),
+                  if (count != null) ...[const SizedBox(height: 4), Padding(padding: const EdgeInsets.only(left: 21), child: count)],
+                ]),
+              ),
+            ),
+            Expanded(child: rows),
+          ]);
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 3, 6, 3),
+            padding: const EdgeInsets.only(bottom: 4),
             child: Row(children: [
-              Icon(Icons.check, size: 13, color: ok),
-              const SizedBox(width: 6),
-              Expanded(child: Text(healthyLine!, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
+              Expanded(child: Align(alignment: Alignment.centerLeft, child: _title(context, title))),
+              ?count,
             ]),
           ),
-        for (final c in problems) _row(context, c),
-        if (pending)
-          Padding(
-            key: ValueKey('pending-tile-$section'),
-            padding: const EdgeInsets.fromLTRB(6, 5, 6, 5),
-            child: Row(children: [
-              const SkeletonBar(width: 90, height: 10),
-              const SizedBox(width: 8),
-              Text('Checking…', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-            ]),
-          ),
-        for (final c in info) _row(context, c),
-      ]),
+          rows,
+        ]);
+      }),
     );
   }
 }
 
-/// "● 4  CrashLoopBackOff · 4 pods, 2 workloads". Click goes to what the row
+/// "▎4  CrashLoopBackOff · 4 pods, 2 workloads". Click goes to what the row
 /// names ([onOpen]); the count filters the Issues list ([onFilter]), as does
 /// the whole row when it has nowhere to go.
 class _AreaRow extends StatelessWidget {
@@ -703,7 +994,6 @@ class _AreaRow extends StatelessWidget {
     final hint = theme.textTheme.bodySmall?.copyWith(color: info ? colors.faint : theme.hintColor);
     final count = Text(
       '${category.count}',
-      textAlign: TextAlign.right,
       style: theme.textTheme.bodySmall?.copyWith(
         fontWeight: FontWeight.w600,
         fontFeatures: _tabular,
@@ -714,22 +1004,23 @@ class _AreaRow extends StatelessWidget {
       key: ValueKey('area-row-${category.id}'),
       onTap: onOpen ?? onFilter,
       builder: (hovered) => Container(
-        padding: const EdgeInsets.fromLTRB(6, 3, 6, 3),
+        padding: const EdgeInsets.fromLTRB(8, 4, 6, 4),
         decoration: BoxDecoration(
           color: selected ? colors.selection : (hovered ? colors.hover : null),
           borderRadius: BorderRadius.circular(5),
         ),
         child: Row(children: [
+          // The severity marker: a short bar, hollow for info.
           Container(
-            width: 6,
-            height: 6,
+            width: 3,
+            height: 13,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(2),
               color: info ? null : c,
               border: info ? Border.all(color: colors.faint) : null,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           SizedBox(
             width: 22,
             child: onOpen == null
@@ -740,7 +1031,7 @@ class _AreaRow extends StatelessWidget {
                     child: GestureDetector(key: ValueKey('area-count-${category.id}'), behavior: HitTestBehavior.opaque, onTap: onFilter, child: count),
                   ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           // One line: the detail is what an ellipsis cuts first.
           Expanded(
             child: Text.rich(
@@ -750,7 +1041,7 @@ class _AreaRow extends StatelessWidget {
               ]),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall,
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 12.5),
             ),
           ),
           if (onOpen != null) Icon(Icons.chevron_right, size: 14, color: hovered ? theme.hintColor : Colors.transparent),
@@ -785,8 +1076,8 @@ class NodeCards extends StatelessWidget {
     final theme = Theme.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       LayoutBuilder(builder: (context, box) {
-        final cols = (box.maxWidth / 230).floor().clamp(1, 6);
-        return _grid([for (final n in shown) _NodeCard(node: n, showRequests: showRequests)], cols);
+        final cols = (box.maxWidth / 240).floor().clamp(1, 6);
+        return _grid([for (final n in shown) _NodeCard(node: n, showRequests: showRequests)], cols, gap: 28, runGap: 14);
       }),
       if (more > 0)
         Align(
@@ -818,36 +1109,33 @@ class _NodeCard extends StatelessWidget {
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     final status = [if (!node.ready) 'NotReady', ...node.pressure, if (node.cordoned) 'Cordoned'];
     final r = node.resources;
+    // Unboxed: a hairline down the left, in the node's colour when it
+    // isn't plainly ready.
     return Material(
-      color: theme.colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: colors.separator)),
-      clipBehavior: Clip.antiAlias,
+      type: MaterialType.transparency,
       child: InkWell(
         onTap: () => openObject(context, ObjectRef(kind: 'Node', name: node.name)),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+        hoverColor: colors.hover,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          decoration: BoxDecoration(border: Border(left: BorderSide(color: sev == Severity.ok ? colors.separator : c, width: 2))),
+          padding: const EdgeInsets.fromLTRB(12, 4, 6, 6),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              Tooltip(
-                message: status.isEmpty ? 'Ready' : status.join(', '),
-                child: Container(width: 7, height: 7, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: Text(node.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
-            ]),
+            Tooltip(
+              message: status.isEmpty ? 'Ready' : status.join(', '),
+              waitDuration: const Duration(milliseconds: 600),
+              child: Text(node.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            ),
             const SizedBox(height: 2),
-            Padding(
-              padding: const EdgeInsets.only(left: 15),
-              child: Text.rich(
-                TextSpan(children: [
-                  if (status.isNotEmpty) TextSpan(text: '${status.join(', ')} · ', style: TextStyle(color: c)),
-                  if (node.roles.isNotEmpty) TextSpan(text: '${node.roles.join(', ')} · '),
-                  TextSpan(text: plural(node.pods, 'pod')),
-                ]),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: hint,
-              ),
+            Text.rich(
+              TextSpan(children: [
+                if (status.isNotEmpty) TextSpan(text: '${status.join(', ')} · ', style: TextStyle(color: c)),
+                if (node.roles.isNotEmpty) TextSpan(text: '${node.roles.join(', ')} · '),
+                TextSpan(text: plural(node.pods, 'pod')),
+              ]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: hint,
             ),
             if (showRequests && r.known) ...[
               const SizedBox(height: 8),

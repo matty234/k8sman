@@ -90,6 +90,84 @@ class OverviewHeader extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Sections
+// ---------------------------------------------------------------------------
+
+/// The Overview's section heading: a small semibold label, a hairline
+/// running to [trailing], nothing boxed.
+class OverviewSectionHeader extends StatelessWidget {
+  final String title;
+  final Widget? trailing;
+
+  /// Shows a chevron on hover (and when collapsed).
+  final bool? expanded;
+  final bool hovered;
+  const OverviewSectionHeader({super.key, required this.title, this.trailing, this.expanded, this.hovered = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    return SizedBox(
+      height: 26,
+      child: Row(children: [
+        Text(
+          title,
+          maxLines: 1,
+          style: theme.textTheme.labelLarge?.copyWith(fontSize: 12.5, fontWeight: FontWeight.w600, letterSpacing: 0.2, color: theme.colorScheme.onSurface.withValues(alpha: 0.86)),
+        ),
+        if (expanded != null)
+          AnimatedRotation(
+            turns: expanded! ? 0.25 : 0,
+            duration: const Duration(milliseconds: 120),
+            child: Icon(Icons.chevron_right, size: 15, color: hovered || !expanded! ? theme.hintColor : Colors.transparent),
+          ),
+        const SizedBox(width: 10),
+        Expanded(child: Container(height: 1, color: colors.separator.withValues(alpha: 0.75))),
+        if (trailing != null) ...[
+          const SizedBox(width: 12),
+          DefaultTextStyle.merge(style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]), child: trailing!),
+        ],
+      ]),
+    );
+  }
+}
+
+/// A titled block of the Overview: [OverviewSectionHeader] over [child],
+/// collapsible from the header when [collapsible].
+class OverviewSection extends StatefulWidget {
+  final String title;
+  final Widget? trailing;
+  final Widget child;
+  final bool collapsible;
+  const OverviewSection({super.key, required this.title, required this.child, this.trailing, this.collapsible = true});
+
+  @override
+  State<OverviewSection> createState() => _OverviewSectionState();
+}
+
+class _OverviewSectionState extends State<OverviewSection> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final header = widget.collapsible
+        ? Hoverable(
+            onTap: () => setState(() => _expanded = !_expanded),
+            builder: (h) => OverviewSectionHeader(title: widget.title, trailing: widget.trailing, expanded: _expanded, hovered: h),
+          )
+        : OverviewSectionHeader(title: widget.title, trailing: widget.trailing);
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        header,
+        if (_expanded) Padding(padding: const EdgeInsets.only(top: 8), child: widget.child),
+      ]),
+    );
+  }
+}
+
 /// A quiet grey bar standing in for a value that is still loading.
 class SkeletonBar extends StatelessWidget {
   final double? width;
