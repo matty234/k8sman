@@ -7,6 +7,8 @@ import '../../api/client.dart';
 import '../../metrics/cache.dart';
 import '../../metrics/metrics_api.dart';
 import '../../state/poller.dart';
+import '../../app/window_chrome.dart' show toolbarRowHeight;
+import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/editorial.dart';
 import 'overview_api.dart';
@@ -194,11 +196,15 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
     }
 
     final issues = _filter == null ? data.issues : data.issues.where((i) => i.category == _filter).toList();
-    return Column(
+    // While anything is critical, the wash runs from the window's top edge
+    // under the (transparent) header down into the hero, and the header's
+    // divider fades to a faint hairline so it reads as one wash.
+    final wash = overviewWashes(data);
+    final page = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         header,
-        const Divider(),
+        if (wash) Divider(color: AppColors.of(context).separator.withValues(alpha: 0.3)) else const Divider(),
         if (data.partialErrors.isNotEmpty) PartialBanner(errors: data.partialErrors),
         Expanded(
           // Laid out in full (not a lazy ListView), so the scrollbar keeps
@@ -211,7 +217,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 // Full width, so its wash (when something is critical)
                 // runs edge to edge; everything else is inset.
-                OverviewHero(data: data, scope: _ns, checkedAt: _updatedAt, inset: _inset),
+                OverviewHero(data: data, scope: _ns, checkedAt: _updatedAt, inset: _inset, wash: false),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: _inset),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -263,6 +269,13 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
         ),
       ],
     );
+    if (!wash) return page;
+    // Fixed behind the header and the top of the page: about the hero's
+    // depth below the header, so it has faded by the stat strip's foot.
+    return Stack(children: [
+      Positioned(top: 0, left: 0, right: 0, height: toolbarRowHeight(context) + 200, child: const OverviewWash()),
+      page,
+    ]);
   }
 
   static const _inset = 24.0;

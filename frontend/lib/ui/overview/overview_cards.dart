@@ -57,28 +57,18 @@ class OverviewHero extends StatelessWidget {
 
   /// Horizontal inset of the content (the wash runs edge to edge).
   final double inset;
-  const OverviewHero({super.key, required this.data, this.scope = NamespaceScope.all, this.checkedAt, this.inset = 24});
+
+  /// Paint the wash behind the hero itself. Off when the page paints it
+  /// ([OverviewWash]) behind its header and the hero together.
+  final bool wash;
+  const OverviewHero({super.key, required this.data, this.scope = NamespaceScope.all, this.checkedAt, this.inset = 24, this.wash = true});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
     final tally = _Tally(data);
-    final crit = issueColor(context, IssueSeverity.critical);
     return Container(
       key: const ValueKey('overview-hero'),
-      decoration: tally.critical == 0
-          ? null
-          : BoxDecoration(
-              // A wide, low glow from the top left that has faded out
-              // by the hero's bottom edge.
-              gradient: RadialGradient(
-                center: _washCenter,
-                radius: 1.1,
-                colors: [crit.withValues(alpha: dark ? 0.09 : 0.06), crit.withValues(alpha: 0)],
-                transform: const _StretchX(4),
-              ),
-            ),
+      decoration: !wash || tally.critical == 0 ? null : overviewWashDecoration(context),
       padding: EdgeInsets.fromLTRB(inset, 22, inset, 4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _StatusLine(data: data, tally: tally, checkedAt: checkedAt),
@@ -87,6 +77,33 @@ class OverviewHero extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// Whether the Overview shows its red wash: while anything is critical.
+bool overviewWashes(OverviewData data) => _Tally(data).critical > 0;
+
+/// A wide, low glow from the top left that has faded out by the box's
+/// bottom edge.
+BoxDecoration overviewWashDecoration(BuildContext context) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  final crit = issueColor(context, IssueSeverity.critical);
+  return BoxDecoration(
+    gradient: RadialGradient(
+      center: _washCenter,
+      radius: 1.1,
+      colors: [crit.withValues(alpha: dark ? 0.09 : 0.06), crit.withValues(alpha: 0)],
+      transform: const _StretchX(4),
+    ),
+  );
+}
+
+/// The wash on its own, for painting behind the page header and the hero
+/// as one (static: a gradient, no animation).
+class OverviewWash extends StatelessWidget {
+  const OverviewWash({super.key});
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(child: DecoratedBox(key: const ValueKey('overview-wash'), decoration: overviewWashDecoration(context)));
 }
 
 const _washCenter = Alignment(-0.8, -1.2);
