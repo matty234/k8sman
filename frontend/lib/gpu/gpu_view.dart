@@ -179,7 +179,8 @@ class _Summary extends StatelessWidget {
     final theme = Theme.of(context);
     final s = inv.summary;
     final note = switch (inv.monitoring) {
-      GpuMonitoring.dcgm => 'Live stats from DCGM via ${inv.prometheus ?? 'Prometheus'}${inv.attribution || inv.summary.allocated == 0 ? '' : ' · devices not attributed to pods'}',
+      // Working as expected: say nothing, unless devices can't be tied to pods.
+      GpuMonitoring.dcgm => inv.attribution || inv.summary.allocated == 0 ? '' : 'GPU devices are not attributed to pods',
       GpuMonitoring.noExporter => 'No DCGM exporter metrics in Prometheus: allocation only',
       GpuMonitoring.noPrometheus => 'No Prometheus: allocation only',
       GpuMonitoring.error => 'GPU metrics unavailable: ${inv.errors['prometheus'] ?? 'query failed'}',

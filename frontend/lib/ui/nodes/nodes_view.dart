@@ -719,6 +719,8 @@ class _NodeRow extends StatelessWidget {
       n.zone,
       n.instanceType,
     ].whereType<String>().join(' · ');
+    // The IP line's height, to line the chevron up with the name above it.
+    final metaLineHeight = (TextPainter(text: TextSpan(text: 'x', style: info), textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout()).height;
     final taints = n.taints.map((t) => '${t['key']}${t['value'] == null ? '' : '=${t['value']}'}:${t['effect']}').join('\n');
 
     Widget chip(String text, Severity severity, {String? tooltip}) {
@@ -747,11 +749,15 @@ class _NodeRow extends StatelessWidget {
             width: NodeLayout.chevronW,
             child: n.pods.isEmpty
                 ? null
-                : InkResponse(
-                    key: ValueKey('expand:${n.name}'),
-                    onTap: onToggle,
-                    radius: 12,
-                    child: Icon(expanded ? Icons.expand_more : Icons.chevron_right, size: 18, color: theme.hintColor),
+                : Padding(
+                    // Line up with the name, not the middle of name + IP.
+                    padding: EdgeInsets.only(bottom: meta.isNotEmpty ? metaLineHeight : 0),
+                    child: InkResponse(
+                      key: ValueKey('expand:${n.name}'),
+                      onTap: onToggle,
+                      radius: 12,
+                      child: Icon(expanded ? Icons.expand_more : Icons.chevron_right, size: 18, color: theme.hintColor),
+                    ),
                   ),
           ),
           Expanded(
