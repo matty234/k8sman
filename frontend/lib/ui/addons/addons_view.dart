@@ -188,7 +188,7 @@ class _AddonsViewState extends State<AddonsView> {
                       onUpgrade: () => _upgrade(a),
                       onUninstall: () => _uninstall(a),
                     );
-                return ListView(padding: const EdgeInsets.fromLTRB(pad, 14, pad, 24), children: [
+                return PageScroll(padding: const EdgeInsets.fromLTRB(pad, 14, pad, 24), children: [
                   if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: InlineMessage(_error!, isError: true)),
                   if (app.readOnly)
                     InlineMessage('Read-only mode: k8sman was started with --read-only, so add-ons can\'t be installed, upgraded or removed here.', icon: Icons.lock_outline)

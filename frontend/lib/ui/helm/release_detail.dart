@@ -7,6 +7,7 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart' show PageScroll;
 import 'helm_actions.dart';
 import 'helm_api.dart';
 import 'yaml_view.dart';
@@ -343,7 +344,7 @@ class _OverviewTab extends StatelessWidget {
     for (final o in detail.resources) {
       byKind.putIfAbsent(o.kind, () => []).add(o);
     }
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
+    return PageScroll(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
       DetailSection(
         title: 'Release',
         divider: false,
@@ -561,7 +562,7 @@ class _HooksTab extends StatelessWidget {
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     if (detail.hooks.isEmpty) return Center(child: Text('This chart has no hooks', style: TextStyle(color: theme.hintColor)));
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
+    return PageScroll(padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
       for (final h in detail.hooks)
         DetailSection(
           title: '${h.kind} ${h.name}',

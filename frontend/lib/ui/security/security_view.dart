@@ -7,6 +7,7 @@ import '../../api/client.dart';
 import '../../state/app_state.dart';
 import '../access/access_view.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart' show PageScroll;
 import 'ai_summary.dart';
 import 'security_api.dart';
 import 'security_widgets.dart';
@@ -163,12 +164,7 @@ class _SecurityViewState extends State<SecurityView> {
       const Divider(),
       if (data.partialErrors.isNotEmpty) PartialBanner(errors: data.partialErrors),
       Expanded(
-        child: Scrollbar(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            children: _body(context, data),
-          ),
-        ),
+        child: PageScroll(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: _body(context, data)),
       ),
     ]);
   }

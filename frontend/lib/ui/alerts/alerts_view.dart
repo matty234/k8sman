@@ -352,9 +352,7 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
       }
     }
 
-    return Scrollbar(
-      child: ListView(padding: widget.docked ? const EdgeInsets.fromLTRB(12, 8, 12, 12) : const EdgeInsets.fromLTRB(20, 12, 20, 24), children: children),
-    );
+    return PageScroll(padding: widget.docked ? const EdgeInsets.fromLTRB(12, 8, 12, 12) : const EdgeInsets.fromLTRB(20, 12, 20, 24), children: children);
   }
 
   /// "Firing · 1 critical · 17 warnings", or "Nothing firing", with a mark

@@ -880,3 +880,35 @@ class _TitleRuleLayout extends MultiChildLayoutDelegate {
   @override
   bool shouldRelayout(_TitleRuleLayout oldDelegate) => false;
 }
+
+/// A page-level scroll of a few tall, mixed sections: built at once (not
+/// lazily), so the scrollbar knows the full height and its thumb doesn't
+/// resize while scrolling. Long homogeneous lists should stay lazy.
+class PageScroll extends StatefulWidget {
+  final List<Widget> children;
+  final EdgeInsetsGeometry padding;
+  const PageScroll({super.key, required this.children, this.padding = EdgeInsets.zero});
+
+  @override
+  State<PageScroll> createState() => _PageScrollState();
+}
+
+class _PageScrollState extends State<PageScroll> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scrollbar(
+        controller: _controller,
+        child: SingleChildScrollView(
+          controller: _controller,
+          padding: widget.padding,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.children),
+        ),
+      );
+}
