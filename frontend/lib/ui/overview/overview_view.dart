@@ -61,6 +61,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
   /// (the last repeats) instead of waiting for the normal interval.
   static const _quickDelays = [Duration(milliseconds: 700), Duration(milliseconds: 1500), Duration(seconds: 3)];
   Timer? _quick;
+  final _scroll = ScrollController();
   int _quickStep = 0;
 
   void _scheduleQuick(OverviewData data) {
@@ -80,6 +81,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
   @override
   void dispose() {
     _quick?.cancel();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -196,10 +198,14 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
         const Divider(),
         if (data.partialErrors.isNotEmpty) PartialBanner(errors: data.partialErrors),
         Expanded(
+          // Laid out in full (not a lazy ListView), so the scrollbar keeps
+          // one size instead of re-estimating as sections scroll in.
           child: Scrollbar(
-            child: ListView(
+            controller: _scroll,
+            child: SingleChildScrollView(
+              controller: _scroll,
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              children: [
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 StatBlocks(data: data),
                 if (_error != null) ...[
                   const SizedBox(height: 8),
@@ -248,7 +254,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                   trailing: Text('last hour', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
                   child: data.isPending('events') ? const PendingRows(rows: 2) : WarningEventList(reasons: data.topWarnings),
                 ),
-              ],
+              ]),
             ),
           ),
         ),

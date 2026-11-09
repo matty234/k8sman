@@ -154,12 +154,15 @@ void main() {
     await saveScreenshot(tester, 'overview-scenario-1500');
 
     // Three crashlooping pods of deployment web collapse into one row.
+    // (The page is built in full, so web-5c-b may also appear further down,
+    // e.g. in warning events: compare counts rather than expect none.)
     expect(find.text('3 pods'), findsOneWidget);
-    expect(find.text('web-5c-b'), findsNothing);
+    final before = find.text('web-5c-b').evaluate().length;
+    final beforeD = find.text('web-5c-d').evaluate().length;
     await tester.tap(find.text('3 pods'));
     await tester.pump();
-    expect(find.text('web-5c-b'), findsOneWidget);
-    expect(find.text('web-5c-d'), findsOneWidget);
+    expect(find.text('web-5c-b').evaluate().length, before + 1);
+    expect(find.text('web-5c-d').evaluate().length, beforeD + 1);
     await saveScreenshot(tester, 'overview-scenario-expanded');
 
     // Filter by the "Stuck terminating" row of the Pods card.

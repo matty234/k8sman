@@ -155,7 +155,9 @@ class _StatBlock extends StatelessWidget {
     final good = stat.good ?? 0;
     final total = stat.total ?? 0;
     final frac = total == 0 ? 1.0 : good / total;
-    final color = !stat.bad ? theme.colorScheme.onSurface.withValues(alpha: 0.28) : issueColor(context, frac < 0.75 ? IssueSeverity.critical : IssueSeverity.warning);
+    // Red only when none are ready/bound/succeeded (an outage); partly
+    // ready is amber, so a busy cluster isn't a wall of red.
+    final color = !stat.bad ? theme.colorScheme.onSurface.withValues(alpha: 0.28) : issueColor(context, good == 0 && total > 0 ? IssueSeverity.critical : IssueSeverity.warning);
     return Container(
       key: stat.pending ? ValueKey('pending-inventory-${stat.label}') : null,
       decoration: _panel(context),
@@ -460,7 +462,10 @@ class AreaCards extends StatelessWidget {
       ],
       if (cards.isNotEmpty)
         LayoutBuilder(builder: (context, box) {
-          final cols = (box.maxWidth / 300).floor().clamp(1, 4).clamp(1, cards.length);
+          // At least two columns where they fit, so a lone card takes half
+          // the width rather than stretching across the page.
+          final fit = (box.maxWidth / 300).floor().clamp(1, 4);
+          final cols = fit >= 2 ? cards.length.clamp(2, fit) : 1;
           return _grid(cards, cols);
         }),
       if (!allHealthy && healthy.isNotEmpty) ...[
