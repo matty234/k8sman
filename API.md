@@ -211,7 +211,8 @@ The actions are:
 | `trigger` | CronJobs | creates a Job now; `created` points at it |
 | `cordon` / `uncordon` | Nodes | sets `spec.unschedulable` |
 | (drain) | Nodes | see **Node drain** below |
-| `delete` | anything with the delete verb | deletes the object |
+| `delete` | anything with the delete verb | deletes the object. `{gracePeriodSeconds?: 0 = force, propagation?}` |
+| `finalize` | anything with the patch verb | clears `metadata.finalizers` of an object that is already terminating (400 otherwise). Same guards as every action (read-only, context). Resources the finalizers protected may be left behind |
 | `argocd-refresh` | Argo CD Applications | annotates `argocd.argoproj.io/refresh: normal`, or `hard` with `{hard: true}` |
 | `argocd-sync` | Argo CD Applications | sets `.operation.sync` like the Argo CD API server. Body: `{prune?, syncDryRun?, targetRevision?, syncOptions?, force?}`. 409 when an operation is pending or running unless `force` (which replaces it). `syncDryRun` is Argo's dry run; `dryRun` stays a kube dry run of the patch |
 | `argocd-terminate` | Argo CD Applications | sets `status.operationState.phase: Terminating` on a running operation, as `argocd app terminate-op` does |

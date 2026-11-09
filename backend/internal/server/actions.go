@@ -71,6 +71,8 @@ var actionTargets = map[string][]string{
 	"cordon":    {"/nodes"},
 	"uncordon":  {"/nodes"},
 	"delete":    {"*"},
+	// Clears metadata.finalizers of an object that is already terminating.
+	"finalize": {"*patch"},
 }
 
 func (s *Server) actionRoutes() {
@@ -119,6 +121,7 @@ func (s *Server) availableActions(c *cluster.Clients, rt cluster.ResourceType) [
 		for _, t := range targets {
 			ok := t == gr ||
 				(t == "*" && slices.Contains(rt.Verbs, "delete")) ||
+				(t == "*patch" && slices.Contains(rt.Verbs, "patch")) ||
 				(t == "*scale" && rt.Custom && hasScaleSubresource(c, rt))
 			if ok {
 				out = append(out, action)
@@ -225,6 +228,18 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		var rev int64
 		rev, err = rollbackDeployment(ctx, c, rq.Namespace, name, req.Revision, dry)
 		res.Message = fmt.Sprintf("Rolled %s back to revision %d", name, rev)
+	case "finalize":
+		// Only for objects already being deleted: removing finalizers from a
+		// live object would skip cleanup it never asked to skip.
+		var obj *unstructured.Unstructured
+		if obj, err = ri.Get(ctx, name, metav1.GetOptions{}); err == nil {
+			if obj.GetDeletionTimestamp() == nil {
+				writeErr(w, httpx.BadRequest("%s is not being deleted; delete it first", name))
+				return
+			}
+			err = merge(map[string]any{"metadata": map[string]any{"finalizers": nil}})
+		}
+		res.Message = "Removed finalizers from " + name
 	case "delete":
 		opts := metav1.DeleteOptions{DryRun: dry, GracePeriodSeconds: req.GracePeriodSeconds}
 		if req.Propagation != "" {

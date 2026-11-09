@@ -51,6 +51,9 @@ class BulkAction {
 
   /// Ask first. Off for actions that change nothing (Argo CD refresh).
   final bool confirm;
+
+  /// Offer "Force (no grace period)" under Advanced (deleting pods).
+  final bool offerForce;
   const BulkAction({
     required this.action,
     required this.label,
@@ -62,7 +65,22 @@ class BulkAction {
     this.message,
     this.body = const {},
     this.confirm = true,
+    this.offerForce = false,
   });
+
+  BulkAction withBody(Json b) => BulkAction(
+        action: action,
+        label: label,
+        verb: verb,
+        icon: icon,
+        doing: doing,
+        done: done,
+        destructive: destructive,
+        message: message,
+        body: b,
+        confirm: confirm,
+        offerForce: offerForce,
+      );
 }
 
 const _restartable = {'apps/Deployment', 'apps/StatefulSet', 'apps/DaemonSet'};
@@ -102,6 +120,7 @@ List<BulkAction> bulkActionsFor(AppState app, ResourceType type, List<TableRowDa
     out.add(BulkAction(
       action: 'delete',
       label: isPod ? 'Delete pods' : 'Delete',
+      offerForce: isPod,
       verb: 'Delete',
       icon: Icons.delete_outline,
       doing: 'Deleting',
@@ -178,6 +197,11 @@ Future<BulkResult?> runBulkAction(
   final n = targets.length;
   final kind = targets.first.type.kind;
   final what = n == 1 ? kind : _plural(kind);
+  final choice = ValueNotifier(const DeleteChoice());
+  final look = ValueNotifier(ConfirmLook('${action.verb} $n', action.destructive));
+  if (action.offerForce) {
+    choice.addListener(() => look.value = ConfirmLook(choice.value.force ? 'Force delete $n' : '${action.verb} $n', true));
+  }
   final ok = !action.confirm || await confirmAction(
     context,
     title: '${action.verb} $n $what?',
@@ -186,9 +210,17 @@ Future<BulkResult?> runBulkAction(
     objectName: '$n $what',
     destructive: action.destructive,
     confirmLabel: '${action.verb} $n',
-    extra: Padding(padding: const EdgeInsets.only(bottom: 12), child: BulkTargetList(targets)),
+    confirmLook: look,
+    extra: Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        BulkTargetList(targets),
+        if (action.offerForce) DeleteAdvanced(choice: choice, offerForce: true),
+      ]),
+    ),
   ) == true;
   if (!ok || !context.mounted) return null;
+  if (choice.value.force) action = action.withBody({...action.body, 'gracePeriodSeconds': 0});
 
   final messenger = ScaffoldMessenger.maybeOf(context);
   final notifier = progress ?? ValueNotifier<BulkProgress?>(null);

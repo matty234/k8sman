@@ -322,6 +322,13 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 - Scale, restart, pause and resume rollouts, roll back Deployments, suspend
   and resume Jobs and CronJobs, run a CronJob now, cordon and uncordon, delete,
   and edit YAML.
+- The delete dialog has a collapsed **Advanced** section, nothing ticked by
+  default. **Force (no grace period)** (pods only, also in bulk delete) sets
+  `gracePeriodSeconds=0`; **Remove finalizers** (only when the object is already
+  terminating and has finalizers) clears them, naming each and warning that what
+  they protect may be left behind. Either turns the button into **Force
+  delete**. Deleting an object that is already terminating explains what it is
+  waiting on. Hidden in read-only mode.
 - Argo CD sync, refresh, hard refresh and terminate.
 - Helm rollback, upgrade and uninstall.
 - Every mutating action asks for confirmation and names the target context.

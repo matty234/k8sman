@@ -5,6 +5,7 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../api/client.dart';
@@ -97,6 +98,13 @@ void showActionError(BuildContext context, String message) {
   ));
 }
 
+/// The confirm button's label and whether it uses the destructive style.
+class ConfirmLook {
+  final String label;
+  final bool destructive;
+  const ConfirmLook(this.label, this.destructive);
+}
+
 /// Confirmation dialog shared by all mutations.
 Future<bool?> confirmAction(
   BuildContext context, {
@@ -110,6 +118,10 @@ Future<bool?> confirmAction(
   String? confirmLabel,
   Widget? extra,
   double width = 460,
+
+  /// Changes the confirm button's label and style while the dialog is open
+  /// (the delete dialog's "Force delete").
+  ValueListenable<ConfirmLook>? confirmLook,
 }) {
   final local = isLocalContext(kubeContext);
   return showDialog<bool>(
@@ -121,7 +133,7 @@ Future<bool?> confirmAction(
         title: Text(title),
         content: SizedBox(
           width: width,
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (message != null) ...[Text(message), const SizedBox(height: 12)],
             ?extra,
             if (local)
@@ -156,15 +168,18 @@ Future<bool?> confirmAction(
                   ),
                 ]),
               ),
-          ]),
+          ])),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            autofocus: true, // Return confirms, Esc cancels.
-            style: destructive ? destructiveButtonStyle(context) : null,
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(confirmLabel ?? 'Confirm'),
+          ValueListenableBuilder<ConfirmLook>(
+            valueListenable: confirmLook ?? ValueNotifier(ConfirmLook(confirmLabel ?? 'Confirm', destructive)),
+            builder: (context, look, _) => FilledButton(
+              autofocus: true, // Return confirms, Esc cancels.
+              style: look.destructive ? destructiveButtonStyle(context) : null,
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(look.label),
+            ),
           ),
         ],
       );
@@ -394,10 +409,126 @@ List<ResourceAction> standardActions(PanelContext ctx) {
     out.add(ResourceAction(id: 'scale-sub', label: 'Scale…', icon: Icons.unfold_more, run: (c) => showSubresourceScaleDialog(c, ctx)));
   }
   if (ctx.type.can('delete')) {
-    out.add(simple('delete', 'Delete', Icons.delete_outline, 'Delete $kind $name?',
-        message: 'Dependents are garbage-collected in the background.', destructive: true));
+    out.add(ResourceAction(id: 'delete', label: 'Delete', icon: Icons.delete_outline, destructive: true, run: (c) => showDeleteDialog(c, ctx)));
   }
   return out;
+}
+
+/// What the delete dialog's Advanced section has ticked.
+class DeleteChoice {
+  final bool force;
+  final bool removeFinalizers;
+  const DeleteChoice({this.force = false, this.removeFinalizers = false});
+}
+
+/// The delete dialog's collapsed "Advanced" disclosure: force (pods only) and,
+/// for an object already terminating with [finalizers], removing them.
+class DeleteAdvanced extends StatelessWidget {
+  final ValueNotifier<DeleteChoice> choice;
+  final bool offerForce;
+  final List<String> finalizers;
+  const DeleteAdvanced({super.key, required this.choice, this.offerForce = false, this.finalizers = const []});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final warn = severityColor(context, Severity.warn);
+    return Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: const Key('delete-advanced'),
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        dense: true,
+        title: Text('Advanced', style: theme.textTheme.bodyMedium),
+        children: [
+          ValueListenableBuilder<DeleteChoice>(
+            valueListenable: choice,
+            builder: (context, c, _) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (offerForce)
+                CheckboxListTile(
+                  key: const Key('delete-force'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: c.force,
+                  onChanged: (v) => choice.value = DeleteChoice(force: v ?? false, removeFinalizers: c.removeFinalizers),
+                  title: const Text('Force (no grace period)'),
+                  subtitle: const Text('Removes the pod from the API immediately. The container may keep running on its node until the kubelet notices.'),
+                ),
+              if (finalizers.isNotEmpty)
+                CheckboxListTile(
+                  key: const Key('delete-finalizers'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: c.removeFinalizers,
+                  onChanged: (v) => choice.value = DeleteChoice(force: c.force, removeFinalizers: v ?? false),
+                  title: const Text('Remove finalizers'),
+                  subtitle: Text(c.removeFinalizers
+                      ? 'This clears ${finalizers.join(', ')} without letting what owns them finish its cleanup. '
+                          'The resources they protect (for example cloud volumes or load balancers) may be left behind.'
+                      : 'Clears the finalizers holding this object: ${finalizers.join(', ')}.'),
+                  secondary: c.removeFinalizers ? Icon(Icons.warning_amber_rounded, size: 18, color: warn) : null,
+                ),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Delete confirmation. An Advanced section (collapsed, nothing ticked)
+/// offers force delete for pods and, for an object already being deleted that
+/// is held by finalizers, removing them.
+Future<void> showDeleteDialog(BuildContext context, PanelContext ctx) async {
+  if (ctx.app.readOnly) return;
+  final kind = ctx.type.kind, name = ctx.name;
+  final meta = asMap(ctx.object['metadata']);
+  final terminating = meta['deletionTimestamp'] != null;
+  final finalizers = [for (final f in (meta['finalizers'] as List? ?? const [])) '$f'];
+  final isPod = ctx.type.gk == '/Pod';
+  final canFinalize = terminating && finalizers.isNotEmpty && ctx.type.can('patch');
+  final choice = ValueNotifier(const DeleteChoice());
+  final look = ValueNotifier(const ConfirmLook('Delete', true));
+  choice.addListener(() {
+    final c = choice.value;
+    look.value = c.removeFinalizers
+        ? const ConfirmLook('Remove finalizers', true)
+        : c.force
+            ? const ConfirmLook('Force delete', true)
+            : const ConfirmLook('Delete', true);
+  });
+  final String message;
+  if (!terminating) {
+    message = 'Dependents are garbage-collected in the background.';
+  } else if (finalizers.isNotEmpty) {
+    message = '$kind $name is already being deleted. It is waiting on ${finalizers.join(', ')}, so deleting it again changes nothing.'
+        '${canFinalize ? ' Open Advanced to remove the finalizers if whatever owns them is gone.' : ''}';
+  } else if (isPod) {
+    message = 'Pod $name is already being deleted. Open Advanced to force it out of the API now.';
+  } else {
+    message = '$kind $name is already being deleted.';
+  }
+  final ok = await confirmAction(
+    context,
+    title: terminating ? '$kind $name is already terminating' : 'Delete $kind $name?',
+    message: message,
+    kubeContext: ctx.app.currentContext,
+    objectName: name,
+    destructive: true,
+    confirmLabel: 'Delete',
+    confirmLook: look,
+    extra: isPod || canFinalize ? DeleteAdvanced(choice: choice, offerForce: isPod, finalizers: canFinalize ? finalizers : const []) : null,
+  );
+  final picked = choice.value;
+  if (ok != true || !context.mounted) return;
+  if (picked.removeFinalizers) {
+    await runResourceAction(context, ctx, 'finalize', confirm: false, title: 'Remove finalizers');
+  } else {
+    await runResourceAction(context, ctx, 'delete', confirm: false, title: 'Delete', body: picked.force ? const {'gracePeriodSeconds': 0} : const {});
+  }
 }
 
 Future<void> showScaleDialog(BuildContext context, PanelContext ctx) async {
