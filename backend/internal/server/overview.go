@@ -14,7 +14,6 @@ import (
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/kcache"
-	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/overview"
 )
 
@@ -40,7 +39,7 @@ const (
 // that they fill the watch cache for the next poll. Pods are the exception:
 // nothing renders without them, so they are waited for up to the limit.
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
-	scope, err := kube.ParseNamespaces(r.URL.Query())
+	scope, err := s.parseScope(r.URL.Query())
 	if err != nil {
 		writeErr(w, httpx.BadRequest("%v", err))
 		return

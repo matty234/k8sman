@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
@@ -14,10 +15,13 @@ import (
 
 // Register adds the /api/metrics/* routes. Each request uses the active kube
 // context's Service.
-func Register(mux *http.ServeMux, mgr *cluster.Manager) {
+// allowed, when set, is the namespace allowlist that "all namespaces"
+// narrows to (nil = every namespace).
+func Register(mux *http.ServeMux, mgr *cluster.Manager, allowed func() kube.Namespaces) {
 	h := &handlers{
-		svc:  func() *Service { return For(mgr.Clients()) },
-		prom: func() PromQuery { return PromQueryFor(mgr.Clients()) },
+		allowed: allowed,
+		svc:     func() *Service { return For(mgr.Clients()) },
+		prom:    func() PromQuery { return PromQueryFor(mgr.Clients()) },
 	}
 	h.register(mux)
 }
@@ -36,8 +40,18 @@ func PromQueryFor(c *cluster.Clients) PromQuery {
 }
 
 type handlers struct {
-	svc  func() *Service
-	prom func() PromQuery
+	svc     func() *Service
+	prom    func() PromQuery
+	allowed func() kube.Namespaces
+}
+
+// scope parses the request's namespaces; "all" narrows to the allowlist.
+func (h *handlers) scope(q url.Values) (kube.Namespaces, error) {
+	scope, err := kube.ParseNamespaces(q)
+	if err == nil && scope.All() && h.allowed != nil {
+		scope = h.allowed()
+	}
+	return scope, err
 }
 
 func (h *handlers) register(mux *http.ServeMux) {
@@ -92,7 +106,7 @@ func (h *handlers) nodes(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) pods(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	scope, err := kube.ParseNamespaces(q)
+	scope, err := h.scope(q)
 	if err != nil {
 		writeErr(w, errors.Join(httpx.ErrBadRequest, err))
 		return
@@ -166,7 +180,7 @@ func (h *handlers) summary(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	scope, err := kube.ParseNamespaces(q)
+	scope, err := h.scope(q)
 	if err != nil {
 		writeErr(w, errors.Join(httpx.ErrBadRequest, err))
 		return
@@ -180,7 +194,7 @@ func (h *handlers) volumes(w http.ResponseWriter, r *http.Request) {
 	if h.prom != nil {
 		q = h.prom()
 	}
-	scope, err := kube.ParseNamespaces(r.URL.Query())
+	scope, err := h.scope(r.URL.Query())
 	if err != nil {
 		writeErr(w, errors.Join(httpx.ErrBadRequest, err))
 		return

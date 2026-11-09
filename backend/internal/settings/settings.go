@@ -82,6 +82,20 @@ type Settings struct {
 
 	// LogsNewestFirst shows log lines newest first in every log view.
 	LogsNewestFirst bool `json:"logsNewestFirst,omitempty"`
+
+	// DefaultNamespace maps kube context → the namespace scope the app
+	// opens in. Absent = all namespaces.
+	DefaultNamespace map[string]DefaultNamespace `json:"defaultNamespace,omitempty"`
+	// AllowedNamespaces maps kube context → the only namespaces the app
+	// shows and lists (multi-tenant clusters). Absent = every namespace.
+	AllowedNamespaces map[string][]string `json:"allowedNamespaces,omitempty"`
+}
+
+// DefaultNamespace is where a context opens: the kubeconfig context's own
+// namespace, or the given namespaces. Neither = all namespaces.
+type DefaultNamespace struct {
+	FromKubeconfig bool     `json:"fromKubeconfig,omitempty"`
+	Namespaces     []string `json:"namespaces,omitempty"`
 }
 
 // ViewVersion is the view record version this build writes.
@@ -342,6 +356,13 @@ func (s Settings) clone() Settings {
 	out.ModuleSettings = cloneModuleSettings(s.ModuleSettings)
 	out.Namespaces = cloneNamespaces(s.Namespaces)
 	out.FavouriteNamespaces = cloneNamespaces(s.FavouriteNamespaces)
+	out.AllowedNamespaces = cloneNamespaces(s.AllowedNamespaces)
+	if s.DefaultNamespace != nil {
+		out.DefaultNamespace = make(map[string]DefaultNamespace, len(s.DefaultNamespace))
+		for k, v := range s.DefaultNamespace {
+			out.DefaultNamespace[k] = DefaultNamespace{FromKubeconfig: v.FromKubeconfig, Namespaces: slices.Clone(v.Namespaces)}
+		}
+	}
 	return out
 }
 
@@ -742,4 +763,33 @@ func (st *Store) SetFavouriteNamespaces(context string, namespaces []string) err
 	return st.Update(func(s *Settings) {
 		setOrForget(&s.FavouriteNamespaces, context, slices.Clone(namespaces), len(namespaces) == 0)
 	})
+}
+
+// SetDefaultNamespace saves where a kube context opens (nil, or neither
+// field set, forgets it: all namespaces).
+func (st *Store) SetDefaultNamespace(context string, d *DefaultNamespace) error {
+	return st.Update(func(s *Settings) {
+		forget := d == nil || (!d.FromKubeconfig && len(d.Namespaces) == 0)
+		var v DefaultNamespace
+		if !forget {
+			v = DefaultNamespace{FromKubeconfig: d.FromKubeconfig, Namespaces: slices.Clone(d.Namespaces)}
+		}
+		setOrForget(&s.DefaultNamespace, context, v, forget)
+	})
+}
+
+// SetAllowedNamespaces saves the only namespaces a kube context shows
+// (empty forgets them: every namespace).
+func (st *Store) SetAllowedNamespaces(context string, namespaces []string) error {
+	return st.Update(func(s *Settings) {
+		setOrForget(&s.AllowedNamespaces, context, slices.Clone(namespaces), len(namespaces) == 0)
+	})
+}
+
+// AllowedNamespaces is a kube context's namespace allowlist (nil = every
+// namespace).
+func (st *Store) AllowedNamespaces(context string) []string {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return slices.Clone(st.s.AllowedNamespaces[context])
 }

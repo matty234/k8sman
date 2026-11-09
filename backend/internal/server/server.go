@@ -92,7 +92,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.localShellRoutes()
 	s.securityRoutes()
 	s.rbacRoutes()
-	metrics.Register(s.mux, mgr)
+	metrics.Register(s.mux, mgr, s.allowedNamespaces)
 	s.iconRoutes(opts)
 	// Integrations (Argo CD, Helm, GPUs, …): see module.go.
 	s.modules = builtinModules()
@@ -240,6 +240,10 @@ func (s *Server) parseResource(ctx context.Context, r *http.Request) (*cluster.C
 	scope, err := kube.ParseNamespaces(q)
 	if err != nil {
 		return c, resourceQuery{}, httpx.BadRequest("%v", err)
+	}
+	if scope.All() && rt.Namespaced && r.Method == http.MethodGet {
+		// Reads of "all namespaces" fan out over the allowlist, if any.
+		scope = s.allowedNamespaces()
 	}
 	rq := resourceQuery{
 		Type:          rt,
@@ -642,6 +646,12 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 	c := s.mgr.Clients()
+	if allowed := s.allowedNamespaces(); len(allowed) > 0 {
+		// The allowlist stands in for the cluster's list (which a tenant
+		// usually may not read).
+		httpx.WriteJSON(w, 200, map[string]any{"namespaces": allowed, "default": c.Namespace, "listed": true, "restricted": true})
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), namespacesTimeout)
 	defer cancel()
 	list, err := c.Typed.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})

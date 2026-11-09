@@ -193,6 +193,39 @@ class ApiClient {
     await _send('PUT', 'settings/favourite-namespaces', const {}, {'context': ?context, 'namespaces': namespaces});
   }
 
+  /// The only namespaces [context] shows (empty = every namespace).
+  Future<List<String>> getAllowedNamespaces({String? context}) async {
+    final j = await _get('settings/allowed-namespaces', {'context': context}) as Json;
+    return [for (final n in (j['namespaces'] as List? ?? const [])) '$n'];
+  }
+
+  /// Replaces [context]'s allowlist (empty removes the restriction).
+  Future<void> putAllowedNamespaces(List<String> namespaces, {String? context}) async {
+    await _send('PUT', 'settings/allowed-namespaces', const {}, {'context': ?context, 'namespaces': namespaces});
+  }
+
+  /// Namespaces where the current credentials may list pods, of those
+  /// k8sman knows for the current context. Read-only.
+  Future<({List<String> namespaces, int checked, bool listed})> suggestAllowedNamespaces() async {
+    final j = await _get('settings/allowed-namespaces/suggest') as Json;
+    return (
+      namespaces: [for (final n in (j['namespaces'] as List? ?? const [])) '$n'],
+      checked: (j['checked'] as num?)?.toInt() ?? 0,
+      listed: j['listed'] == true,
+    );
+  }
+
+  /// Where [context] opens: mode `all`, `kubeconfig` or `namespaces`.
+  Future<({String mode, List<String> namespaces})> getDefaultNamespace({String? context}) async {
+    final j = await _get('settings/default-namespace', {'context': context}) as Json;
+    return (mode: j['mode'] as String? ?? 'all', namespaces: [for (final n in (j['namespaces'] as List? ?? const [])) '$n']);
+  }
+
+  /// Saves where [context] opens.
+  Future<void> putDefaultNamespace(String mode, List<String> namespaces, {String? context}) async {
+    await _send('PUT', 'settings/default-namespace', const {}, {'context': ?context, 'mode': mode, 'namespaces': namespaces});
+  }
+
   /// The Security findings ignored in [context] (default: the current one).
   Future<List<Json>> getSecurityIgnores({String? context}) async {
     final j = await _get('settings/security-ignores', {'context': context}) as Json;

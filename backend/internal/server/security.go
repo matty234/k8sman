@@ -63,7 +63,7 @@ type securityLists = sourceRun[security.Input]
 // analysis time.
 func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
 	q := r.URL.Query()
-	scope, err := kube.ParseNamespaces(q)
+	scope, err := s.parseScope(q)
 	if err != nil {
 		writeErr(w, httpx.BadRequest("%v", err))
 		return
@@ -76,7 +76,13 @@ func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *secu
 	ns := scope.String() // "" = all, "a" or a set "a,b" (see listScope)
 	c := s.mgr.Clients()
 
-	l := s.securityRuns.get(fmt.Sprintf("%p|%s", c, ns), func() *securityLists { return startSecurity(c, ns) })
+	// With an allowlist, RBAC is read in the allowed namespaces too: a
+	// tenant may not list Roles cluster-wide.
+	rbacNS := ""
+	if len(s.allowedNamespaces()) > 0 {
+		rbacNS = ns
+	}
+	l := s.securityRuns.get(fmt.Sprintf("%p|%s|%s", c, ns, rbacNS), func() *securityLists { return startSecurity(c, ns, rbacNS) })
 	if !l.await(r.Context(), wait) {
 		return
 	}
@@ -152,7 +158,7 @@ func securityList[T any](l *securityLists, kc *kcache.Cache, name string, gvr sc
 // startSecurity starts every list the analysis needs, under its own context
 // (the hard limit), not the request's, so the lists survive a request that
 // answered early.
-func startSecurity(c *cluster.Clients, ns string) *securityLists {
+func startSecurity(c *cluster.Clients, ns, rbacNS string) *securityLists {
 	ctx, cancel := context.WithTimeout(context.Background(), securityHardWait)
 	l := newSourceRun[security.Input](ctx, "pods", nil, securityHardWait, securityReuse)
 	// Lists go through the shared watch cache (see listTyped).
@@ -162,20 +168,26 @@ func startSecurity(c *cluster.Clients, ns string) *securityLists {
 	l.Go("namespaces", func() (func(*security.Input), error) {
 		var out []corev1.Namespace
 		if ns != "" {
-			// From a warm namespaces watch when there is one (no round trip),
-			// else a GET (listing every namespace may be forbidden).
-			if snap, ok := kc.Cached(kcache.Key{GVR: gvrNamespaces, FieldSelector: "metadata.name=" + ns}); ok && len(snap.Items) == 1 {
-				var n corev1.Namespace
-				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(snap.Items[0].Object, &n); err != nil {
-					return nil, err
+			// Each namespace of the scope from a warm namespaces watch when
+			// there is one (no round trip), else a GET (listing every
+			// namespace may be forbidden). A set skips the ones it can't read.
+			set := kube.SplitNamespaces(ns)
+			var firstErr error
+			for _, name := range set {
+				if snap, ok := kc.Cached(kcache.Key{GVR: gvrNamespaces, FieldSelector: "metadata.name=" + name}); ok && len(snap.Items) == 1 {
+					var n corev1.Namespace
+					if err := runtime.DefaultUnstructuredConverter.FromUnstructured(snap.Items[0].Object, &n); err != nil {
+						return nil, err
+					}
+					out = append(out, n)
+				} else if n, err := c.Typed.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{}); err == nil {
+					out = append(out, *n)
+				} else if firstErr == nil {
+					firstErr = err
 				}
-				out = append(out, n)
-			} else {
-				n, err := c.Typed.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, *n)
+			}
+			if len(out) == 0 && firstErr != nil {
+				return nil, firstErr
 			}
 		} else {
 			var err error
@@ -197,8 +209,8 @@ func startSecurity(c *cluster.Clients, ns string) *securityLists {
 	securityList(l, kc, "networkpolicies", gvrNetworkPolicies, ns, func(in *security.Input, v []networkingv1.NetworkPolicy) { in.NetworkPolicies = v })
 	// RBAC is listed cluster-wide: whether a role is bound, or a
 	// ClusterRoleBinding names a ServiceAccount in ns, needs every binding.
-	securityList(l, kc, "roles", gvrRoles, "", func(in *security.Input, v []rbacv1.Role) { in.Roles = v })
-	securityList(l, kc, "rolebindings", gvrRoleBindings, "", func(in *security.Input, v []rbacv1.RoleBinding) { in.RoleBindings = v })
+	securityList(l, kc, "roles", gvrRoles, rbacNS, func(in *security.Input, v []rbacv1.Role) { in.Roles = v })
+	securityList(l, kc, "rolebindings", gvrRoleBindings, rbacNS, func(in *security.Input, v []rbacv1.RoleBinding) { in.RoleBindings = v })
 	securityList(l, kc, "clusterroles", gvrClusterRoles, "", func(in *security.Input, v []rbacv1.ClusterRole) { in.ClusterRoles = v })
 	securityList(l, kc, "clusterrolebindings", gvrClusterRoleBindings, "", func(in *security.Input, v []rbacv1.ClusterRoleBinding) { in.ClusterRoleBindings = v })
 

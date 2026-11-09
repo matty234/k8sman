@@ -163,3 +163,62 @@ func TestViewOrderRestoreAndKubeconfigKeys(t *testing.T) {
 		t.Fatalf("reorder: %q", ids)
 	}
 }
+
+// With a namespace allowlist, "all namespaces" fans out over the allowed
+// namespaces (no cluster-wide LIST, which a tenant may not do), and
+// /api/namespaces answers with the allowlist.
+func TestAllowedNamespacesNarrowAllNamespaces(t *testing.T) {
+	gvr := schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
+	obj := func(ns, name string) *unstructured.Unstructured {
+		u := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "v1", "kind": "ConfigMap"}}
+		u.SetNamespace(ns)
+		u.SetName(name)
+		return u
+	}
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{gvr: "ConfigMapList",
+		{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}: "CustomResourceDefinitionList"},
+		obj("team-a", "web"), obj("team-b", "api"), obj("other", "hidden"))
+	dyn.PrependReactor("list", "configmaps", func(a clienttesting.Action) (bool, runtime.Object, error) {
+		if a.GetNamespace() == "" {
+			return true, nil, apierrors.NewForbidden(gvr.GroupResource(), "", errors.New("cluster-wide list"))
+		}
+		return false, nil, nil
+	})
+	cs := fake.NewSimpleClientset()
+	cs.Resources = []*metav1.APIResourceList{{GroupVersion: "v1", APIResources: []metav1.APIResource{
+		{Name: "configmaps", Kind: "ConfigMap", Namespaced: true, Verbs: []string{"get", "list", "watch"}},
+	}}}
+	c := &cluster.Clients{Context: "tenant", Typed: cs, Dynamic: dyn, Discovery: memory.NewMemCacheClient(cs.Discovery())}
+	s, _, _ := newTestServer(t, cluster.NewStatic(c))
+
+	if rec, _ := do(t, s, "PUT", "/api/settings/allowed-namespaces", `{"namespaces":["team-b","team-a"]}`); rec.Code != 204 {
+		t.Fatalf("put allowlist: %d %s", rec.Code, rec.Body)
+	}
+	rec, _ := do(t, s, "GET", "/api/namespaces", "")
+	if !strings.Contains(rec.Body.String(), `"namespaces":["team-a","team-b"]`) || !strings.Contains(rec.Body.String(), `"restricted":true`) {
+		t.Fatalf("namespaces: %s", rec.Body)
+	}
+	rec, _ = do(t, s, "GET", "/api/items?version=v1&resource=configmaps", "")
+	var got struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); rec.Code != 200 || err != nil {
+		t.Fatalf("items: %d %s", rec.Code, rec.Body)
+	}
+	var names []string
+	for _, it := range got.Items {
+		names = append(names, it["metadata"].(map[string]any)["name"].(string))
+	}
+	sort.Strings(names)
+	if strings.Join(names, ",") != "api,web" {
+		t.Fatalf("items %v", names)
+	}
+
+	// The default namespace round-trips.
+	if rec, _ := do(t, s, "PUT", "/api/settings/default-namespace", `{"mode":"namespaces","namespaces":["team-b"]}`); rec.Code != 204 {
+		t.Fatalf("put default: %d %s", rec.Code, rec.Body)
+	}
+	if rec, _ := do(t, s, "GET", "/api/settings/default-namespace", ""); !strings.Contains(rec.Body.String(), `"mode":"namespaces","namespaces":["team-b"]`) {
+		t.Fatalf("default: %s", rec.Body)
+	}
+}

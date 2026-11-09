@@ -211,13 +211,61 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// The scope to fall back to when a selection is cleared: the kubeconfig
-  /// namespace if it sets one (what the app opens in), else all namespaces,
-  /// or, where they can't be listed, a remembered one or `default`.
-  NamespaceScope get defaultNamespaceScope =>
-      kubeconfigNamespace != null
-          ? NamespaceScope.single(kubeconfigNamespace)
-          : (namespacesListed ? NamespaceScope.all : NamespaceScope.single(rememberedNamespaces.firstOrNull ?? 'default'));
+  /// The only namespaces this context shows (saved in settings.json; empty =
+  /// every namespace). When set, [namespaces] is this list and "All
+  /// namespaces" means all of these: the backend fans out over them.
+  List<String> allowedNamespaces = const [];
+
+  /// Where this context opens (Settings ▸ Clusters): `all` (the default),
+  /// `kubeconfig` (the context's own namespace) or `namespaces`
+  /// ([defaultNamespaces]).
+  String defaultNamespaceMode = 'all';
+  List<String> defaultNamespaces = const [];
+
+  /// Whether the user picked a scope since connecting to this context; if
+  /// not, a reconnect opens in [defaultNamespaceScope] again.
+  bool _scopeChosen = false;
+
+  /// "All namespaces", or with an allowlist "All allowed namespaces (n)".
+  String get allNamespacesLabel => allowedNamespaces.isEmpty ? 'All namespaces' : 'All allowed namespaces (${allowedNamespaces.length})';
+
+  /// The scope the app opens in, and falls back to when a selection is
+  /// cleared: the Default namespace setting (all namespaces unless changed).
+  /// Where namespaces can't be listed (and there's no allowlist), all
+  /// namespaces would be refused: the kubeconfig's namespace, else a
+  /// remembered one, else `default`.
+  NamespaceScope get defaultNamespaceScope {
+    final configured = switch (defaultNamespaceMode) {
+      'kubeconfig' => NamespaceScope.single(kubeconfigNamespace),
+      'namespaces' => NamespaceScope.of(defaultNamespaces),
+      _ => NamespaceScope.all,
+    };
+    if (!configured.isAll || namespacesListed) return configured;
+    return NamespaceScope.single(kubeconfigNamespace ?? rememberedNamespaces.firstOrNull ?? 'default');
+  }
+
+  /// Saves the Default namespace setting for the current context.
+  Future<void> setDefaultNamespace(String mode, List<String> namespaces) async {
+    await api.putDefaultNamespace(mode, namespaces, context: currentContext);
+    defaultNamespaceMode = mode;
+    defaultNamespaces = mode == 'namespaces' ? namespaces : const [];
+    notifyListeners();
+  }
+
+  /// Saves the current context's allowlist (empty removes it), then
+  /// reloads its namespaces and reopens the tables in the new scope.
+  Future<void> setAllowedNamespaces(List<String> allowed) async {
+    await api.putAllowedNamespaces(allowed, context: currentContext);
+    allowedNamespaces = [...allowed]..sort();
+    try {
+      final ns = await api.namespaces();
+      namespaces = ns.namespaces;
+      namespacesListed = ns.listed;
+    } catch (_) {
+      if (allowedNamespaces.isNotEmpty) namespaces = allowedNamespaces;
+    }
+    columnsChanged();
+  }
 
   /// The kubeconfig context's own namespace, if it sets one.
   String? kubeconfigNamespace;
@@ -247,8 +295,22 @@ class AppState extends ChangeNotifier {
   }
 
   /// The namespaces tables show: all, one, or a set. Overview, Security,
-  /// Alerts and Metrics keep their own scope (see PageScope).
-  NamespaceScope namespaceScope = NamespaceScope.all;
+  /// Alerts and Metrics keep their own scope (see PageScope). Setting it
+  /// counts as the user's choice (see [_scopeChosen]).
+  NamespaceScope get namespaceScope => _namespaceScope;
+  set namespaceScope(NamespaceScope s) {
+    _namespaceScope = s;
+    _scopeChosen = true;
+  }
+
+  NamespaceScope _namespaceScope = NamespaceScope.all;
+
+  /// Back to all namespaces for a new context, not yet chosen: the next
+  /// connect opens in its Default namespace.
+  void _resetScope() {
+    _namespaceScope = NamespaceScope.all;
+    _scopeChosen = false;
+  }
 
   /// The selected namespace when exactly one is selected; null for all
   /// namespaces *and* for a set of several. For call sites that need one
@@ -478,13 +540,23 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         favouriteNamespaces = const [];
       }
-      if (stale()) return;
-      if (namespaceScope.isAll) {
-        // Can't list namespaces: all namespaces would be refused, so open in
-        // the kubeconfig's namespace, else a remembered one, else `default`.
-        final first = kubeconfigNamespace ?? (ns.listed ? null : (rememberedNamespaces.firstOrNull ?? 'default'));
-        if (first != null) namespaceScope = NamespaceScope.single(first);
+      try {
+        allowedNamespaces = [...await api.getAllowedNamespaces(context: currentContext)]..sort();
+      } catch (_) {
+        allowedNamespaces = const [];
       }
+      try {
+        final d = await api.getDefaultNamespace(context: currentContext);
+        defaultNamespaceMode = d.mode;
+        defaultNamespaces = d.namespaces;
+      } catch (_) {
+        defaultNamespaceMode = 'all';
+        defaultNamespaces = const [];
+      }
+      if (stale()) return;
+      // Open in the Default namespace setting, unless the user picked a
+      // scope in this context already (a reconnect keeps it).
+      if (!_scopeChosen) _namespaceScope = defaultNamespaceScope;
       selectedType ??= typeFor('', 'Pod');
       _previous = null;
     } catch (e) {
@@ -574,7 +646,7 @@ class AppState extends ChangeNotifier {
     _detailStack.clear();
     recentDetails.clear();
     history.clear();
-    namespaceScope = NamespaceScope.all;
+    _resetScope();
     selectedType = null;
     _endViewSession();
     // Drop the old cluster's kinds so a failure shows the error screen.
@@ -1299,7 +1371,7 @@ class AppState extends ChangeNotifier {
     _detailStack.clear();
     recentDetails.clear();
     history.clear();
-    namespaceScope = NamespaceScope.all;
+    _resetScope();
     selectedType = null;
     _endViewSession();
     types = const [];

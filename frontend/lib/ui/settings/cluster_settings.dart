@@ -10,9 +10,10 @@ import '../resource_nav.dart' show lockContext;
 import '../theme.dart';
 import '../security/security_api.dart';
 import '../widgets/common.dart';
+import 'namespace_settings.dart';
 import 'settings_widgets.dart';
 
-/// Settings ▸ Clusters: the kubeconfig, read-only contexts and icons.
+/// Settings ▸ Clusters: the kubeconfig, read-only contexts, namespaces and icons.
 List<SettingItem> clusterSettings() => [
       SettingItem.row(
         key: const ValueKey('settings-kubeconfig'),
@@ -38,6 +39,7 @@ List<SettingItem> clusterSettings() => [
         keywords: const ['read-only', 'readonly', 'lock', 'locked', 'production', 'prod', 'safe', 'context'],
         child: (_) => const _ReadOnlyContexts(),
       ),
+      ...namespaceSettings(),
       SettingItem.row(
         key: const ValueKey('settings-link-clusters'),
         group: 'Links',

@@ -60,7 +60,7 @@ class NamespacePicker extends StatelessWidget {
                 : Row(children: [
                     Icon(scope.isMulti ? Icons.folder_copy_outlined : Icons.folder_outlined, size: 14, color: theme.hintColor),
                     const SizedBox(width: 6),
-                    Expanded(child: Text(scope.isMulti ? '${scope.namespaces.length} namespaces' : scope.label, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodyMedium)),
+                    Expanded(child: Text(scope.isMulti ? '${scope.namespaces.length} namespaces' : (scope.isAll ? app.allNamespacesLabel : scope.label), overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodyMedium)),
                     Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
                   ]),
           ),
@@ -89,6 +89,7 @@ Future<void> showNamespacePopover(
   final nav = Navigator.of(anchorContext);
   final overlay = nav.overlay?.context.findRenderObject() as RenderBox?;
   if (box == null || overlay == null) return Future.value();
+  final restricted = app.allowedNamespaces.isNotEmpty;
   final anchor = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
   return showGeneralDialog<void>(
     context: anchorContext,
@@ -102,11 +103,13 @@ Future<void> showNamespacePopover(
       width: math.max(width, anchor.width),
       namespaces: app.namespaces,
       listed: app.namespacesListed,
-      remembered: app.rememberedNamespaces,
-      kubeNamespace: app.kubeconfigNamespace,
+      // With an allowlist, only the allowed namespaces (app.namespaces) are offered.
+      remembered: restricted ? const [] : app.rememberedNamespaces,
+      kubeNamespace: restricted && !app.allowedNamespaces.contains(app.kubeconfigNamespace) ? null : app.kubeconfigNamespace,
       onRemember: app.rememberNamespace,
       onForget: app.forgetNamespace,
-      favourites: app.favouriteNamespaces,
+      favourites: [for (final f in app.favouriteNamespaces) if (!restricted || app.allowedNamespaces.contains(f)) f],
+      allLabel: app.allNamespacesLabel,
       onFavourite: app.toggleFavouriteNamespace,
       fallback: app.defaultNamespaceScope,
       recents: [for (final r in app.recentNamespaces) if (r != value) r],
@@ -124,7 +127,8 @@ sealed class _Row {
 }
 
 class _AllRow extends _Row {
-  const _AllRow();
+  final String label;
+  const _AllRow([this.label = 'All namespaces']);
 }
 
 class _RecentRow extends _Row {
@@ -159,6 +163,9 @@ class _NamespacePopover extends StatefulWidget {
   final List<String> favourites;
   final Future<void> Function(String) onFavourite;
 
+  /// The "All namespaces" row's text.
+  final String allLabel;
+
   /// Where removing the last chip (or Clear) goes.
   final NamespaceScope fallback;
   final List<NamespaceScope> recents;
@@ -177,6 +184,7 @@ class _NamespacePopover extends StatefulWidget {
     required this.favourites,
     required this.onFavourite,
     required this.fallback,
+    this.allLabel = 'All namespaces',
     required this.recents,
     required this.value,
     required this.onChanged,
@@ -245,7 +253,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
   List<_Row> _buildHeader() {
     final favs = _favRows;
     _favCount = favs.length;
-    return [const _AllRow(), ...favs, if (_q.isEmpty) ...[for (final r in widget.recents) _RecentRow(r)]];
+    return [_AllRow(widget.allLabel), ...favs, if (_q.isEmpty) ...[for (final r in widget.recents) _RecentRow(r)]];
   }
 
   int get _count => _header.length + _matches.length;
@@ -578,7 +586,7 @@ class _PickerRowState extends State<_PickerRow> {
     final base = theme.textTheme.bodyMedium!.copyWith(color: fg);
     final selected = widget.selected;
     final (String label, bool missing) = switch (row) {
-      _AllRow() => ('All namespaces', false),
+      _AllRow(:final label) => (label, false),
       _RecentRow(:final scope) => (scope.label, false),
       _NsRow(:final name, :final missing, :final add) => (add ? 'Use namespace “$name”' : name, missing),
     };
