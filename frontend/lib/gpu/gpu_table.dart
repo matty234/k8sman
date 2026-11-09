@@ -150,16 +150,17 @@ class GpuHeaderRow extends StatelessWidget {
   }
 }
 
-/// A usage cell like [UsageCell]: [lead] (the value, or a sparkline) in a
-/// right-aligned slot [leadW] wide on every row of the column, a thin bar
-/// for [frac] and the percentage. Narrower than [usageBarMinWidth] it keeps
-/// only the lead, else the percentage.
+/// A usage cell like [UsageCell]: [lead] (the value) in a right-aligned
+/// slot [leadW] wide on every row of the column, a thin bar for [frac] (or
+/// [chart], a sparkline, in the bar's place) and the percentage. Narrower
+/// than [usageBarMinWidth] it keeps only the lead, else the percentage.
 class _Meter extends StatelessWidget {
   final Widget? lead;
   final double leadW;
   final double? frac;
+  final Widget? chart;
   final String? tooltip;
-  const _Meter({this.lead, required this.leadW, required this.frac, this.tooltip});
+  const _Meter({this.lead, required this.leadW, required this.frac, this.chart, this.tooltip});
 
   static const _pctW = 38.0;
 
@@ -174,7 +175,7 @@ class _Meter extends StatelessWidget {
       return Row(children: [
         SizedBox(width: leadW, child: Align(alignment: Alignment.centerRight, child: lead)),
         const SizedBox(width: 6),
-        Expanded(child: f == null ? const SizedBox.shrink() : UsageBar(frac: f, color: theme.colorScheme.onSurface.withValues(alpha: 0.42))),
+        Expanded(child: chart ?? (f == null ? const SizedBox.shrink() : UsageBar(frac: f, color: theme.colorScheme.onSurface.withValues(alpha: 0.42)))),
         const SizedBox(width: 6),
         SizedBox(width: _pctW, child: pct),
       ]);
@@ -446,7 +447,8 @@ class GpuDeviceRow extends StatelessWidget {
                 ? _none(context)
                 : _Meter(
                     leadW: _utilLeadW,
-                    lead: hasSpark ? Tooltip(message: 'Utilisation, last hour', child: SizedBox(width: _utilLeadW, height: 14, child: Sparkline(history!, color: seriesColors(context).first))) : null,
+                    // The last hour's sparkline in place of the bar, not beside it.
+                    chart: hasSpark ? Tooltip(message: 'Utilisation, last hour', child: SizedBox(height: 14, child: Sparkline(history!, color: seriesColors(context).first))) : null,
                     frac: d.util,
                   ),
           ),
