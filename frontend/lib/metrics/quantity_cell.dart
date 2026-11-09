@@ -75,7 +75,9 @@ class UsageCell extends StatelessWidget {
           child: p == null
               ? null
               : Text(
-                  formatPercent(p / 100),
+                  // 10× and over reads as a multiplier ("13×"): four-digit
+                  // percentages don't fit, and "1300%" says less at a glance.
+                  p >= 1000 ? '${(p / 100).round()}×' : formatPercent(p / 100),
                   textAlign: TextAlign.right,
                   maxLines: 1,
                   style: style?.copyWith(color: alert ?? theme.hintColor),
