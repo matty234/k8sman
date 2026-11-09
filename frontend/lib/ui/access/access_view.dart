@@ -20,6 +20,7 @@ import 'access_widgets.dart';
 import 'grant_dialog.dart';
 import 'permission_matrix.dart';
 import 'role_editor.dart';
+import '../widgets/resizable_split.dart';
 
 /// A request to show something in the Access workspace (from inspector
 /// panels and the Security page).
@@ -232,6 +233,9 @@ class _ExplorerTab extends StatefulWidget {
 }
 
 class _ExplorerTabState extends State<_ExplorerTab> {
+  // Panel widths while the app runs (null = default); not persisted.
+  double? _listWidth;
+  double? _sideWidth;
   SubjectList? _subjects;
   Object? _subjectsError;
   RbacSubject? subject;
@@ -360,11 +364,12 @@ class _ExplorerTabState extends State<_ExplorerTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(width: 230, child: _subjectList(context)),
-      VerticalDivider(width: 1, color: AppColors.of(context).separator),
-      Expanded(child: subject == null ? _empty(context) : _main(context)),
-    ]);
+    return ResizableSplit(
+      start: _subjectList(context),
+      startWidth: _listWidth,
+      onStartChanged: (w) => setState(() => _listWidth = w),
+      center: subject == null ? _empty(context) : _main(context),
+    );
   }
 
   Widget _empty(BuildContext context) {
@@ -530,35 +535,31 @@ class _ExplorerTabState extends State<_ExplorerTab> {
       Expanded(
         child: d == null
             ? (_error == null ? const Center(child: CircularProgressIndicator()) : const SizedBox.shrink())
-            : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 4, 4, 0),
-                    child: PermissionMatrix(
-                      data: d,
-                      filter: _filter,
-                      hideEmpty: _hideEmpty,
-                      selected: _cell == null ? null : (_cell!.$1.key, _cell!.$2),
-                      onSelect: (row, verb) => setState(() => _cell = (row, verb)),
-                    ),
+            : ResizableSplit(
+                endWidth: _sideWidth,
+                onEndChanged: (w) => setState(() => _sideWidth = w),
+                center: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 4, 4, 0),
+                  child: PermissionMatrix(
+                    data: d,
+                    filter: _filter,
+                    hideEmpty: _hideEmpty,
+                    selected: _cell == null ? null : (_cell!.$1.key, _cell!.$2),
+                    onSelect: (row, verb) => setState(() => _cell = (row, verb)),
                   ),
                 ),
-                VerticalDivider(width: 1, color: AppColors.of(context).separator),
-                SizedBox(
-                  width: 310,
-                  child: _cell != null
-                      ? CellExplanation(
-                          data: d,
-                          row: _cell!.$1,
-                          verb: _cell!.$2,
-                          subject: s,
-                          groups: _groups,
-                          api: widget.api,
-                          onClose: () => setState(() => _cell = null),
-                        )
-                      : _summary(context, d),
-                ),
-              ]),
+                end: _cell != null
+                    ? CellExplanation(
+                        data: d,
+                        row: _cell!.$1,
+                        verb: _cell!.$2,
+                        subject: s,
+                        groups: _groups,
+                        api: widget.api,
+                        onClose: () => setState(() => _cell = null),
+                      )
+                    : _summary(context, d),
+              ),
       ),
     ]);
   }

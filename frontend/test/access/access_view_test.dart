@@ -125,6 +125,27 @@ void main() {
     await saveScreenshot(tester, 'access-explorer');
   });
 
+  testWidgets('explorer: dividers resize panels within their minimum; double-click resets', (tester) async {
+    await pumpAccess(tester);
+    // The divider sits right after the list, so its left edge is the list's width.
+    double width() => tester.getTopLeft(find.byKey(const ValueKey('split-start'))).dx;
+    final before = width();
+    expect(before, 230);
+    await tester.drag(find.byKey(const ValueKey('split-start')), const Offset(80, 0));
+    await tester.pump();
+    expect(width(), greaterThan(before));
+    await tester.drag(find.byKey(const ValueKey('split-start')), const Offset(-600, 0));
+    await tester.pump();
+    expect(width(), 220);
+    final h = tester.getCenter(find.byKey(const ValueKey('split-start')));
+    await tester.tapAt(h);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(h);
+    await tester.pump();
+    expect(width(), before);
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   testWidgets('who can and can I tabs', (tester) async {
     await loadRealFonts();
     await pumpAccess(tester);
