@@ -288,8 +288,17 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   mode; a saved view of nodes, or a filtered link such as the Overview's
   "nodes not ready", opens the Table; a link to one node opens it in the
   inspector. Switching modes replaces the history entry rather than adding
-  one. The Overview is a sortable list grouped by role, with health, allocation and live
-  usage, plus cordon/uncordon and **drain**. Drain works like `kubectl drain
+  one. The Overview is a sortable table like the GPUs page's: a row per node
+  (ready dot, name, roles, kubelet version, age, CPU and memory usage cells,
+  pods used of capacity, chips for NotReady, pressure, cordoned, taints and
+  GPUs), grouped under a header with totals per node pool when nodes carry
+  a pool label (`eks.amazonaws.com/nodegroup`,
+  `cloud.google.com/gke-nodepool`, `karpenter.sh/nodepool`,
+  `kubernetes.azure.com/agentpool`), else a flat list. Expand a node to see
+  its pods: problem pods (not running or ready, restarting) first, then the
+  busiest, with namespace, status, restarts, age and usage against their
+  limit or request; **Show all N** past 15; click one to inspect it. Nodes
+  also have cordon/uncordon and **drain** in their ⋮ menu. Drain works like `kubectl drain
   --ignore-daemonsets`. It first shows the pods it will evict, what it skips
   (DaemonSet and mirror pods), and anything blocking it. Options cover
   emptyDir data and pods without a controller. Evictions respect

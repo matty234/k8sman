@@ -12,6 +12,7 @@ import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../support/harness.dart';
+import '../metrics/metrics_fakes.dart';
 import '../support/screenshot.dart';
 
 Json _node() => jsonDecode(File('../dev/fixtures/node-k8sman-dev-control-plane.json').readAsStringSync());
@@ -40,11 +41,11 @@ void main() {
     expect(cp.roles, contains('control-plane'));
   });
 
-  test('sortNodes and groupNodesByRole', () {
-    Json node(String name, {String? role, String cpu = '4'}) => {
+  test('sortNodes and groupNodesByPool', () {
+    Json node(String name, {String? pool, String cpu = '4'}) => {
           'metadata': {
             'name': name,
-            'labels': {if (role != null) 'node-role.kubernetes.io/$role': ''},
+            'labels': {'karpenter.sh/nodepool': ?pool},
           },
           'status': {
             'allocatable': {'cpu': cpu, 'memory': '8Gi', 'pods': '110'},
@@ -53,7 +54,7 @@ void main() {
             ],
           },
         };
-    final s = summarizeNodes([node('w-b', cpu: '2'), node('w-a'), node('cp', role: 'control-plane'), node('gpu-1', role: 'gpu')], const []);
+    final s = summarizeNodes([node('w-b', cpu: '2', pool: 'general'), node('w-a', pool: 'general'), node('cp'), node('gpu-1', pool: 'gpu')], const []);
     final usage = {
       'w-a': const NodeUsage('w-a', Usage(3000, 0)), // 75%
       'w-b': const NodeUsage('w-b', Usage(1000, 0)), // 50%
@@ -61,9 +62,11 @@ void main() {
     };
     expect(sortNodes(s, NodeSort.cpu, ascending: false, usage: usage).map((n) => n.name), ['w-a', 'w-b', 'cp', 'gpu-1']);
     expect(sortNodes(s, NodeSort.name, ascending: false).map((n) => n.name), ['w-b', 'w-a', 'gpu-1', 'cp']);
-    final groups = groupNodesByRole(sortNodes(s, NodeSort.name));
-    expect(groups.map((g) => g.$1), ['control-plane', 'gpu', 'worker']);
-    expect(groups.last.$2.map((n) => n.name), ['w-a', 'w-b']);
+    final groups = groupNodesByPool(sortNodes(s, NodeSort.name));
+    expect(groups.map((g) => g.$1), ['general', 'gpu', null]);
+    expect(groups.first.$2.map((n) => n.name), ['w-a', 'w-b']);
+    // No pool labels: a flat list.
+    expect(groupNodesByPool(summarizeNodes([node('a'), node('b')], const [])), isEmpty);
   });
 
   testWidgets('nodes view renders rows without overflow', (tester) async {
@@ -100,6 +103,47 @@ void main() {
     await tester.tap(find.text('Show details'));
     await tester.pump();
     expect(app.detail?.name, 'worker-sick');
+    await tester.pumpWidget(const SizedBox()); // dispose the poll timer
+  });
+
+  testWidgets('a node expands into its pods, problem pods first, grouped by pool', (tester) async {
+    await loadRealFonts();
+    // Three nodes in two pools; all the pods are on the control plane.
+    final nodes = _nodes();
+    final spare = _node()..['metadata']['name'] = 'worker-2';
+    nodes.add(spare);
+    for (final (n, pool) in [(nodes[0], 'system'), (nodes[1], 'general'), (spare, 'general')]) {
+      (n['metadata']['labels'] as Map)['eks.amazonaws.com/nodegroup'] = pool;
+    }
+    final api = MetricsFakeApi(items: {'nodes': nodes, 'pods': _pods()});
+    final app = AppState(api)
+      ..types = testTypes
+      ..currentContext = 'kind-k8sman-dev';
+    tester.view.physicalSize = const Size(1400, 860);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+      child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(Brightness.dark), home: const Scaffold(body: NodesView())),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('general'), findsOneWidget);
+    expect(find.text('system'), findsOneWidget);
+    expect(find.text('crashy'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('expand:k8sman-dev-control-plane')));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    double y(String pod) => tester.getTopLeft(find.text(pod)).dy;
+    // bad-image (pending) and crashy (restarting) lead, the busy rest follow.
+    final firstHealthy = [for (final p in _pods()) p['metadata']['name'] as String].where((n) => n != 'bad-image' && n != 'crashy').map(y).reduce((a, b) => a < b ? a : b);
+    expect(y('bad-image'), lessThan(firstHealthy));
+    expect(y('crashy'), lessThan(firstHealthy));
+    await saveScreenshot(tester, 'nodes-overview');
+
+    await tester.tap(find.text('crashy'));
+    expect((app.detail?.type.kind, app.detail?.namespace, app.detail?.name), ('Pod', 'demo', 'crashy'));
     await tester.pumpWidget(const SizedBox()); // dispose the poll timer
   });
 }

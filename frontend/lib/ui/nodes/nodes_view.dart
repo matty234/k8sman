@@ -9,27 +9,40 @@ import '../../api/models.dart';
 import '../../metrics/cache.dart';
 import '../../metrics/metrics_api.dart';
 import '../../metrics/quantity.dart';
+import '../../metrics/quantity_cell.dart';
 import '../../metrics/widgets.dart';
 import '../../panels/cluster/logic.dart';
 import '../../panels/panel.dart';
 import '../../state/app_state.dart';
 import '../../state/poller.dart';
 import '../../util/k8s.dart';
+import '../../util/pod.dart';
 import '../theme.dart';
 import 'drain_dialog.dart';
 import '../widgets/common.dart';
 import '../widgets/editorial.dart';
 import '../widgets/page_mode_switch.dart';
 
-/// Cluster nodes as a sortable list, grouped by role: health, utilisation
-/// bars and a per-node menu (cordon / uncordon). Clicking a row opens the
-/// full Node panel in the sidebar.
+/// The Nodes page's Overview: the cluster at a glance, then a table of
+/// nodes (grouped by node pool where nodes carry a pool label) that expand
+/// into their pods, like the GPUs page. Clicking a node or a pod opens it in
+/// the inspector; the ⋮ menu cordons, uncordons and drains. The page's
+/// Table mode is the Node kind's table (see [PageModeSwitch]).
 class NodesView extends StatefulWidget {
   const NodesView({super.key});
 
   @override
   State<NodesView> createState() => _NodesViewState();
 }
+
+/// Labels naming a node's pool, in the order they are looked for (EKS,
+/// GKE, Karpenter, AKS). Instance types are not pools.
+const nodePoolLabels = [
+  'eks.amazonaws.com/nodegroup',
+  'cloud.google.com/gke-nodepool',
+  'karpenter.sh/nodepool',
+  'kubernetes.azure.com/agentpool',
+];
 
 /// One node plus the pods scheduled on it.
 ///
@@ -39,11 +52,15 @@ class NodesView extends StatefulWidget {
 class NodeSummary {
   final Json node;
   final NodeAllocation alloc;
-  NodeSummary(this.node, this.alloc);
+
+  /// The node's non-terminal pods.
+  final List<Json> pods;
+  NodeSummary(this.node, this.alloc, [this.pods = const []]);
 
   late final String name = dig<String>(node, ['metadata', 'name']) ?? '';
   late final Json labels = asMap(dig(node, ['metadata', 'labels']));
   late final Json allocatable = asMap(dig(node, ['status', 'allocatable']));
+  late final String? created = dig<String>(node, ['metadata', 'creationTimestamp']);
 
   late final List<Json> _conditions = asMapList(dig(node, ['status', 'conditions']));
   late final bool ready = _conditions.any((c) => c['type'] == 'Ready' && c['status'] == 'True');
@@ -63,15 +80,32 @@ class NodeSummary {
     return r.isEmpty ? const ['worker'] : r;
   }();
 
-  /// The role group this node is listed under ("control-plane", "worker",
-  /// or several roles joined).
-  String get roleGroup => roles.join(', ');
+  /// The node pool, from the first of [nodePoolLabels] it carries.
+  late final String? pool = () {
+    for (final k in nodePoolLabels) {
+      final v = labels[k];
+      if (v is String && v.isNotEmpty) return v;
+    }
+    return null;
+  }();
 
   late final List<Json> taints = asMapList(dig(node, ['spec', 'taints']));
 
   late final double cpuAlloc = parseCpuMillis(allocatable['cpu']) ?? 0;
   late final double memAlloc = parseBytes(allocatable['memory']) ?? 0;
   late final int podsAlloc = int.tryParse('${allocatable['pods'] ?? ''}') ?? 0;
+
+  /// NVIDIA GPUs: allocatable, and requested by the node's pods.
+  late final int gpuAlloc = int.tryParse('${allocatable['nvidia.com/gpu'] ?? ''}') ?? 0;
+  late final int gpuUsed = gpuAlloc == 0
+      ? 0
+      : pods.fold(0, (a, p) {
+          var n = 0;
+          for (final c in asMapList(dig(p, ['spec', 'containers']))) {
+            n += int.tryParse('${dig(c, ['resources', 'limits', 'nvidia.com/gpu']) ?? dig(c, ['resources', 'requests', 'nvidia.com/gpu']) ?? 0}') ?? 0;
+          }
+          return a + n;
+        });
 
   double get cpuFrac => cpuAlloc > 0 ? alloc.total.cpuRequest / cpuAlloc : 0;
   double get memFrac => memAlloc > 0 ? alloc.total.memRequest / memAlloc : 0;
@@ -99,7 +133,13 @@ List<NodeSummary> summarizeNodes(List<Json> nodes, List<Json> pods) {
     final n = dig<String>(p, ['spec', 'nodeName']);
     if (n != null) byNode.putIfAbsent(n, () => []).add(p);
   }
-  final out = [for (final n in nodes) NodeSummary(n, nodeAllocation(byNode[dig<String>(n, ['metadata', 'name'])] ?? const []))];
+  final out = [
+    for (final n in nodes)
+      () {
+        final on = byNode[dig<String>(n, ['metadata', 'name'])] ?? const <Json>[];
+        return NodeSummary(n, nodeAllocation(on), [for (final p in on) if (!isTerminalPod(p)) p]);
+      }(),
+  ];
   out.sort((a, b) => a.rank != b.rank ? a.rank.compareTo(b.rank) : a.name.compareTo(b.name));
   return out;
 }
@@ -134,16 +174,45 @@ List<NodeSummary> sortNodes(List<NodeSummary> nodes, NodeSort by, {bool ascendin
     });
 }
 
-/// Splits already-sorted [nodes] into role groups: control-plane first,
-/// then other roles alphabetically, plain workers last.
-List<(String, List<NodeSummary>)> groupNodesByRole(List<NodeSummary> nodes) {
-  final groups = <String, List<NodeSummary>>{};
+/// Splits already-sorted [nodes] into node pools, by name, with nodes
+/// outside any pool last (pool null). Empty when no node has a pool label:
+/// the list is then flat.
+List<(String?, List<NodeSummary>)> groupNodesByPool(List<NodeSummary> nodes) {
+  if (!nodes.any((n) => n.pool != null)) return const [];
+  final groups = <String?, List<NodeSummary>>{};
   for (final n in nodes) {
-    groups.putIfAbsent(n.roleGroup, () => []).add(n);
+    groups.putIfAbsent(n.pool, () => []).add(n);
   }
-  int weight(String g) => g.contains('control-plane') || g.contains('master') ? 0 : (g == 'worker' ? 2 : 1);
-  final keys = groups.keys.toList()..sort((a, b) => weight(a) != weight(b) ? weight(a).compareTo(weight(b)) : a.compareTo(b));
-  return [for (final k in keys) (k, groups[k]!)];
+  final keys = groups.keys.whereType<String>().toList()..sort();
+  return [for (final k in keys) (k, groups[k]!), if (groups.containsKey(null)) (null, groups[null]!)];
+}
+
+/// Whether [pod] needs a look: not running, not ready, or restarting.
+bool podHasProblem(Json pod) {
+  final status = podKubectlStatus(pod);
+  if (status != 'Running' && status != 'Succeeded' && status != 'Completed') return true;
+  return !podReady(pod) || podRestarts(pod) >= 5;
+}
+
+/// [pods] of [n] in display order: problem pods first, then the busiest
+/// (the larger of their CPU and memory share of the node, from [usage]
+/// keyed `namespace/name`, else their requests), then by name.
+List<Json> orderNodePods(NodeSummary n, List<Json> pods, Map<String, PodUsage>? usage) {
+  double load(Json p) {
+    final u = usage?['${dig(p, ['metadata', 'namespace'])}/${dig(p, ['metadata', 'name'])}']?.usage;
+    final r = podResources(p);
+    final cpu = n.cpuAlloc > 0 ? (u?.cpuMillis ?? r.cpuRequest) / n.cpuAlloc : 0.0;
+    final mem = n.memAlloc > 0 ? (u?.memoryBytes ?? r.memRequest) / n.memAlloc : 0.0;
+    return cpu > mem ? cpu : mem;
+  }
+
+  final keyed = [for (final p in pods) (p, podHasProblem(p), load(p), '${dig(p, ['metadata', 'name'])}')];
+  keyed.sort((a, b) {
+    if (a.$2 != b.$2) return a.$2 ? -1 : 1;
+    final l = b.$3.compareTo(a.$3);
+    return l != 0 ? l : a.$4.compareTo(b.$4);
+  });
+  return [for (final k in keyed) k.$1];
 }
 
 class _NodesViewState extends State<NodesView> with PollingState {
@@ -152,12 +221,20 @@ class _NodesViewState extends State<NodesView> with PollingState {
   String _filter = '';
   DateTime? _updated;
   Map<String, NodeUsage>? _usage;
+  Map<String, PodUsage>? _podUsage;
   Object? _metricsError;
 
   NodeSort _sort = NodeSort.status;
   bool _ascending = true;
   bool _grouped = true;
-  final _collapsed = <String>{};
+  final _collapsed = <String?>{};
+
+  /// Nodes showing their pods, and those showing all of them.
+  final _expanded = <String>{};
+  final _showAll = <String>{};
+
+  /// Pods listed under a node before "Show all".
+  static const podsShown = 15;
 
   ApiClient get _api => context.read<ApiClient>();
 
@@ -177,11 +254,14 @@ class _NodesViewState extends State<NodesView> with PollingState {
         _api.items(const ResourceRef(resource: 'nodes')),
         _api.items(const ResourceRef(resource: 'pods'), fieldSelector: 'status.phase!=Succeeded,status.phase!=Failed'),
       ]);
-      final usage = await MetricsCache.of(_api).nodes().then<Object>((v) => v, onError: (Object e) => e);
+      final metrics = MetricsCache.of(_api);
+      final usage = await metrics.nodes().then<Object>((v) => v, onError: (Object e) => e);
+      final podUsage = await metrics.pods(null).then<Object>((v) => v, onError: (Object e) => e);
       if (!mounted) return;
       setState(() {
         _usage = usage is List<NodeUsage> ? {for (final u in usage) u.name: u} : null;
         _metricsError = usage is List<NodeUsage> ? null : usage;
+        _podUsage = podUsage is List<PodUsage> ? {for (final u in podUsage) u.key: u} : null;
         _nodes = summarizeNodes(results[0], results[1]);
         _error = null;
         _updated = DateTime.now();
@@ -201,26 +281,45 @@ class _NodesViewState extends State<NodesView> with PollingState {
         }
       });
 
-  /// Flattened list items: group headers (String) and nodes.
+  /// Flattened list items: pool headers, nodes and, under expanded nodes,
+  /// their pods and a "Show all" line.
   List<Object> _items(List<NodeSummary> visible) {
     final sorted = sortNodes(visible, _sort, ascending: _ascending, usage: _usage);
-    if (!_grouped) return sorted;
-    final groups = groupNodesByRole(sorted);
-    if (groups.length < 2) return sorted;
-    return [
-      for (final (role, nodes) in groups) ...[
-        _Group(role, nodes),
-        if (!_collapsed.contains(role)) ...nodes,
-      ],
-    ];
+    final out = <Object>[];
+    void addNode(NodeSummary n) {
+      out.add(n);
+      if (!_expanded.contains(n.name) || n.pods.isEmpty) return;
+      final pods = orderNodePods(n, n.pods, _podUsage);
+      final all = _showAll.contains(n.name) || pods.length <= podsShown + 2;
+      for (final p in all ? pods : pods.take(podsShown)) {
+        out.add(_PodItem(n, p));
+      }
+      if (!all) out.add(_ShowAll(n, pods.length));
+    }
+
+    final groups = _grouped ? groupNodesByPool(sorted) : const <(String?, List<NodeSummary>)>[];
+    if (groups.isEmpty) {
+      sorted.forEach(addNode);
+      return out;
+    }
+    for (final (pool, nodes) in groups) {
+      out.add(_Group(pool, nodes));
+      if (!_collapsed.contains(pool)) nodes.forEach(addNode);
+    }
+    return out;
   }
+
+  void _toggle(NodeSummary n) => setState(() => _expanded.contains(n.name) ? _expanded.remove(n.name) : _expanded.add(n.name));
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final nodes = _nodes;
     final q = _filter.toLowerCase();
-    final visible = nodes?.where((n) => q.isEmpty || n.name.toLowerCase().contains(q) || n.roles.any((r) => r.contains(q))).toList();
+    final visible = nodes
+        ?.where((n) => q.isEmpty || n.name.toLowerCase().contains(q) || n.roles.any((r) => r.contains(q)) || (n.pool?.toLowerCase().contains(q) ?? false))
+        .toList();
+    final pools = nodes != null && nodes.any((n) => n.pool != null);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PageHeader(
@@ -230,20 +329,21 @@ class _NodesViewState extends State<NodesView> with PollingState {
         subtitle: nodes == null ? null : Text('${nodes.length} node${nodes.length == 1 ? '' : 's'}'),
         actions: [
           if (_updated != null) AgeText(_updated!.toUtc().toIso8601String(), suffix: ' ago'),
-          IconButton(
-            tooltip: _grouped ? 'Don\'t group by role' : 'Group by role',
-            iconSize: 18,
-            isSelected: _grouped,
-            icon: const Icon(Icons.workspaces_outline),
-            selectedIcon: const Icon(Icons.workspaces),
-            onPressed: () => setState(() => _grouped = !_grouped),
-          ),
+          if (pools)
+            IconButton(
+              tooltip: _grouped ? 'Don\'t group by node pool' : 'Group by node pool',
+              iconSize: 18,
+              isSelected: _grouped,
+              icon: const Icon(Icons.workspaces_outline),
+              selectedIcon: const Icon(Icons.workspaces),
+              onPressed: () => setState(() => _grouped = !_grouped),
+            ),
           IconButton(tooltip: 'Refresh', iconSize: 18, icon: const Icon(Icons.refresh), onPressed: _refresh),
           SizedBox(
             width: 180,
             height: 26,
             child: TextField(
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Filter nodes or roles'),
+              decoration: InputDecoration(prefixIcon: const Icon(Icons.search, size: 15), hintText: pools ? 'Filter nodes, roles or pools' : 'Filter nodes or roles'),
               style: theme.textTheme.bodyMedium,
               onChanged: (v) => setState(() => _filter = v.trim()),
             ),
@@ -252,7 +352,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
       ),
       const Divider(),
       // Cluster-wide summary strip (wraps on narrow widths).
-      if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 8), child: _Summary(nodes, _usage, _metricsError)),
+      if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 10), child: _Summary(nodes, _usage, _metricsError)),
       if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: InlineMessage(_error!, isError: true)),
       Expanded(
         child: visible == null
@@ -260,7 +360,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
             : visible.isEmpty
                 ? Center(child: Text('No nodes', style: TextStyle(color: theme.hintColor)))
                 : LayoutBuilder(builder: (context, box) {
-                    final layout = _Layout.forWidth(box.maxWidth);
+                    final layout = NodeLayout.forWidth(box.maxWidth);
                     final items = _items(visible);
                     final metrics = _usage != null;
                     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -271,18 +371,36 @@ class _NodesViewState extends State<NodesView> with PollingState {
                         child: ListView.builder(
                           padding: const EdgeInsets.only(bottom: 12),
                           itemCount: items.length,
-                          itemBuilder: (context, i) {
-                            final it = items[i];
-                            if (it is _Group) {
-                              return _GroupHeader(
-                                key: ValueKey('group:${it.role}'),
-                                group: it,
-                                collapsed: _collapsed.contains(it.role),
-                                onToggle: () => setState(() => _collapsed.contains(it.role) ? _collapsed.remove(it.role) : _collapsed.add(it.role)),
-                              );
-                            }
-                            final n = it as NodeSummary;
-                            return _NodeRow(n, key: ValueKey(n.name), layout: layout, usage: _usage?[n.name]?.usage, onChanged: _refresh);
+                          itemBuilder: (context, i) => switch (items[i]) {
+                            final _Group g => _GroupHeader(
+                                key: ValueKey('group:${g.pool}'),
+                                group: g,
+                                usage: _usage,
+                                collapsed: _collapsed.contains(g.pool),
+                                onToggle: () => setState(() => _collapsed.contains(g.pool) ? _collapsed.remove(g.pool) : _collapsed.add(g.pool)),
+                              ),
+                            final _PodItem p => _PodRow(
+                                key: ValueKey('pod:${p.node.name}/${dig(p.pod, ['metadata', 'namespace'])}/${dig(p.pod, ['metadata', 'name'])}'),
+                                pod: p.pod,
+                                node: p.node,
+                                layout: layout,
+                                usage: _podUsage?['${dig(p.pod, ['metadata', 'namespace'])}/${dig(p.pod, ['metadata', 'name'])}']?.usage,
+                              ),
+                            final _ShowAll s => _ShowAllRow(
+                                key: ValueKey('showall:${s.node.name}'),
+                                count: s.count,
+                                onTap: () => setState(() => _showAll.add(s.node.name)),
+                              ),
+                            final n as NodeSummary => _NodeRow(
+                                n,
+                                key: ValueKey(n.name),
+                                layout: layout,
+                                usage: _usage?[n.name]?.usage,
+                                metrics: _usage != null,
+                                expanded: _expanded.contains(n.name),
+                                onToggle: () => _toggle(n),
+                                onChanged: _refresh,
+                              ),
                           },
                         ),
                       ),
@@ -294,56 +412,69 @@ class _NodesViewState extends State<NodesView> with PollingState {
 }
 
 class _Group {
-  final String role;
+  final String? pool;
   final List<NodeSummary> nodes;
-  const _Group(this.role, this.nodes);
+  const _Group(this.pool, this.nodes);
 }
 
-/// Column widths for a given list width (shared by the header and rows).
-class _Layout {
+class _PodItem {
+  final NodeSummary node;
+  final Json pod;
+  const _PodItem(this.node, this.pod);
+}
+
+class _ShowAll {
+  final NodeSummary node;
+  final int count;
+  const _ShowAll(this.node, this.count);
+}
+
+/// Column widths for a given list width (shared by the header, node rows
+/// and pod rows). Columns drop in reverse priority as the width shrinks:
+/// CPU stays, then memory, pods, roles, age and version.
+class NodeLayout {
   static const hPad = 16.0;
+  static const chevronW = 22.0;
+  static const indent = 24.0;
   static const menuW = 32.0;
-  static const gap = 16.0;
+  static const nameMin = 220.0;
+  static const gap = 12.0;
 
-  /// Leading status dot (7) and its gap (8), shown without a Status column.
-  static const dotW = 15.0;
+  static const rolesW = 120.0, versionW = 92.0, ageW = 56.0, podsW = 78.0, usageW = 156.0;
 
-  final double statusW;
-  final double meterW;
+  final double cpuW;
+  final bool showMem, showPods, showRoles, showAge, showVersion;
+  const NodeLayout({required this.cpuW, this.showMem = false, this.showPods = false, this.showRoles = false, this.showAge = false, this.showVersion = false});
 
-  /// Meters shown: CPU, then memory, then pods as width allows.
-  final int meters;
-
-  /// Absolute values ("1.2 / 4") next to the bars when there's room.
-  final double valueW;
-
-  const _Layout({required this.statusW, required this.meterW, required this.meters, required this.valueW});
-
-  bool get showMemory => meters >= 2;
-  bool get showPods => meters >= 3;
-
-  factory _Layout.forWidth(double width) {
-    final inner = width - 2 * _Layout.hPad - _Layout.menuW;
-    // The Status column replaces the leading status dot when there's room.
-    final statusW = inner >= 700 ? 92.0 : 0.0;
-    final lead = statusW > 0 ? 0.0 : dotW;
-    const nameMin = 280.0;
-    var meters = 3;
-    var meterW = 0.0;
-    for (; meters > 1; meters--) {
-      meterW = ((inner - lead - statusW - nameMin) / meters - gap).clamp(0, 320);
-      if (meterW >= 150) break;
+  factory NodeLayout.forWidth(double width) {
+    var room = width - 2 * hPad - chevronW - menuW - nameMin;
+    // Narrow: CPU shares what is left with the name.
+    if (room < usageW + gap) {
+      final cpu = ((width - 2 * hPad - chevronW - menuW) / 2 - gap).clamp(60.0, usageW);
+      return NodeLayout(cpuW: cpu);
     }
-    // Narrow: CPU only, sharing the width evenly with the name.
-    if (meters == 1) meterW = ((inner - lead - statusW) / 2 - gap).clamp(90, 320);
-    // "used / allocatable" beside the bar only while the bar stays long.
-    final valueW = meterW >= 280 ? 112.0 : 0.0;
-    return _Layout(statusW: statusW, meterW: meterW, meters: meters, valueW: valueW);
+    room -= usageW + gap;
+    bool take(double w) {
+      if (room < w + gap) return false;
+      room -= w + gap;
+      return true;
+    }
+
+    final mem = take(usageW);
+    final pods = mem && take(podsW);
+    final roles = pods && take(rolesW);
+    final age = roles && take(ageW);
+    final version = age && take(versionW);
+    return NodeLayout(cpuW: usageW, showMem: mem, showPods: pods, showRoles: roles, showAge: age, showVersion: version);
   }
 }
 
+/// A fixed-width column with the gap before it.
+Widget _col(double w, Widget child, {Alignment align = Alignment.centerLeft}) =>
+    SizedBox(width: w + NodeLayout.gap, child: Padding(padding: const EdgeInsets.only(left: NodeLayout.gap), child: Align(alignment: align, child: child)));
+
 class _HeaderRow extends StatelessWidget {
-  final _Layout layout;
+  final NodeLayout layout;
   final NodeSort sort;
   final bool ascending;
   final bool metrics;
@@ -354,77 +485,90 @@ class _HeaderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final style = theme.textTheme.labelMedium?.copyWith(color: theme.hintColor);
-    Widget cell(String label, NodeSort s) => Hoverable(
-          cursor: SystemMouseCursors.basic,
-          onTap: () => onSort(s),
-          builder: (hovered) => Row(mainAxisSize: MainAxisSize.min, children: [
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: style?.copyWith(
-                  color: hovered || sort == s ? theme.colorScheme.onSurface : null,
-                  fontWeight: sort == s ? FontWeight.w600 : null,
-                ),
-              ),
+    Widget cell(String label, [NodeSort? s]) {
+      if (s == null) return Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+      return Hoverable(
+        cursor: SystemMouseCursors.basic,
+        onTap: () => onSort(s),
+        builder: (hovered) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style?.copyWith(color: hovered || sort == s ? theme.colorScheme.onSurface : null, fontWeight: sort == s ? FontWeight.w600 : null),
             ),
-            if (sort == s) ...[
-              const SizedBox(width: 2),
-              Icon(ascending ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 14, color: theme.hintColor),
-            ],
-          ]),
-        );
-    Widget meter(String label, NodeSort s) => SizedBox(
-          width: layout.meterW + _Layout.gap,
-          child: Padding(padding: const EdgeInsets.only(left: _Layout.gap), child: Align(alignment: Alignment.centerLeft, child: cell(label, s))),
-        );
+          ),
+          if (sort == s) ...[
+            const SizedBox(width: 2),
+            Icon(ascending ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 14, color: theme.hintColor),
+          ],
+        ]),
+      );
+    }
+
     return Container(
       height: 28,
-      padding: const EdgeInsets.symmetric(horizontal: _Layout.hPad),
+      padding: const EdgeInsets.symmetric(horizontal: NodeLayout.hPad),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.of(context).separator))),
       child: Row(children: [
-        if (layout.statusW == 0) const SizedBox(width: _Layout.dotW),
+        const SizedBox(width: NodeLayout.chevronW),
         Expanded(child: Align(alignment: Alignment.centerLeft, child: cell('Node', NodeSort.name))),
-        if (layout.statusW > 0) SizedBox(width: layout.statusW, child: Align(alignment: Alignment.centerLeft, child: cell('Status', NodeSort.status))),
-        meter(metrics ? 'CPU' : 'CPU requests', NodeSort.cpu),
-        if (layout.showMemory) meter(metrics ? 'Memory' : 'Memory requests', NodeSort.memory),
-        if (layout.showPods) meter('Pods', NodeSort.pods),
-        const SizedBox(width: _Layout.menuW),
+        if (layout.showRoles) _col(NodeLayout.rolesW, cell('Roles')),
+        if (layout.showVersion) _col(NodeLayout.versionW, cell('Version')),
+        if (layout.showAge) _col(NodeLayout.ageW, cell('Age')),
+        _col(layout.cpuW, cell(metrics ? 'CPU' : 'CPU requests', NodeSort.cpu)),
+        if (layout.showMem) _col(NodeLayout.usageW, cell(metrics ? 'Memory' : 'Memory requests', NodeSort.memory)),
+        if (layout.showPods) _col(NodeLayout.podsW, cell('Pods', NodeSort.pods), align: Alignment.centerRight),
+        const SizedBox(width: NodeLayout.menuW),
       ]),
     );
   }
 }
 
+/// A node pool's heading: the pool, a hairline, and its totals (nodes,
+/// trouble in its colour, CPU and memory in use) at the end.
 class _GroupHeader extends StatelessWidget {
   final _Group group;
+  final Map<String, NodeUsage>? usage;
   final bool collapsed;
   final VoidCallback onToggle;
-  const _GroupHeader({super.key, required this.group, required this.collapsed, required this.onToggle});
+  const _GroupHeader({super.key, required this.group, required this.usage, required this.collapsed, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final notReady = group.nodes.where((n) => !n.ready).length;
-    final cordoned = group.nodes.where((n) => n.cordoned).length;
-    // The app's section heading: the role, a hairline, the count (and any
-    // trouble, in its colour) at the end.
+    final nodes = group.nodes;
+    final notReady = nodes.where((n) => !n.ready).length;
+    final cordoned = nodes.where((n) => n.cordoned).length;
+    final cpuAll = nodes.fold<double>(0, (a, n) => a + n.cpuAlloc);
+    final memAll = nodes.fold<double>(0, (a, n) => a + n.memAlloc);
+    final u = usage;
+    String? pct(String what, double used, double of) => of <= 0 ? null : '$what ${formatPercent(used / of)}';
+    final totals = [
+      if (u != null) ...[
+        pct('CPU', nodes.fold(0.0, (a, n) => a + (u[n.name]?.usage.cpuMillis ?? 0)), cpuAll),
+        pct('memory', nodes.fold(0.0, (a, n) => a + (u[n.name]?.usage.memoryBytes ?? 0)), memAll),
+      ],
+      '${nodes.length} node${nodes.length == 1 ? '' : 's'}',
+    ].whereType<String>();
     return Hoverable(
       cursor: SystemMouseCursors.basic,
       onTap: onToggle,
       builder: (hovered) => Container(
         height: 34,
-        padding: const EdgeInsets.fromLTRB(_Layout.hPad - 4, 10, _Layout.hPad, 2),
+        padding: const EdgeInsets.fromLTRB(NodeLayout.hPad - 4, 10, NodeLayout.hPad, 2),
         child: TitleRule(
           title: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 16, color: hovered || collapsed ? theme.hintColor : AppColors.of(context).faint),
             const SizedBox(width: 3),
-            Flexible(child: Text(group.role, maxLines: 1, overflow: TextOverflow.ellipsis, style: sectionTitleStyle(context))),
+            Flexible(child: Text(group.pool ?? 'No pool', maxLines: 1, overflow: TextOverflow.ellipsis, style: sectionTitleStyle(context))),
           ]),
           trailing: Text.rich(
             TextSpan(children: [
               if (notReady > 0) TextSpan(text: '$notReady not ready  ·  ', style: TextStyle(color: severityColor(context, Severity.error))),
               if (cordoned > 0) TextSpan(text: '$cordoned cordoned  ·  ', style: TextStyle(color: severityColor(context, Severity.warn))),
-              TextSpan(text: '${group.nodes.length}'),
+              TextSpan(text: totals.join('  ·  ')),
             ]),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -488,14 +632,32 @@ class _Summary extends StatelessWidget {
   }
 }
 
+
+/// A usage cell's value: [used] of [base] (millicores when [cpu], else
+/// bytes), against [basis] ("allocatable", "limit", "request").
+UsageValue? _usage(double? used, double? base, String? basis, {required bool cpu}) {
+  if (used == null) return null;
+  final scale = cpu ? 1000 : 1;
+  final b = base != null && base > 0 ? base / scale : null;
+  return UsageValue(raw: used / scale, base: b, percent: b == null ? null : used / scale / b * 100, basis: b == null ? null : basis, unit: cpu ? 'cpu' : 'bytes');
+}
+
+TextStyle? _cellStyle(BuildContext context) => Theme.of(context).textTheme.bodySmall;
+
 class _NodeRow extends StatelessWidget {
   final NodeSummary n;
-  final _Layout layout;
+  final NodeLayout layout;
 
   /// Live usage from metrics-server; null when unavailable.
   final Usage? usage;
+
+  /// Metrics are available: a node without a sample shows "—" rather
+  /// than its requests.
+  final bool metrics;
+  final bool expanded;
+  final VoidCallback onToggle;
   final VoidCallback onChanged;
-  const _NodeRow(this.n, {super.key, required this.layout, this.usage, required this.onChanged});
+  const _NodeRow(this.n, {super.key, required this.layout, this.usage, this.metrics = false, required this.expanded, required this.onToggle, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -509,117 +671,213 @@ class _NodeRow extends StatelessWidget {
     final readOnly = context.select<AppState, bool>((a) => a.readOnly);
     final info = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     final problem = !n.ready || n.pressures.isNotEmpty;
+    final err = severityColor(context, Severity.error);
     final sev = problem ? Severity.error : (n.cordoned ? Severity.warn : Severity.ok);
     final u = usage;
     final req = n.alloc.total;
-    final cpuAlloc = n.cpuAlloc > 0 ? n.cpuAlloc : null;
-    final memAlloc = n.memAlloc > 0 ? n.memAlloc : null;
-    final podsAlloc = n.podsAlloc > 0 ? n.podsAlloc.toDouble() : null;
-
-    Widget meter({required double? used, double? requested, required double? scale, required String valueText, required String Function(double) format}) =>
-        Padding(
-          padding: const EdgeInsets.only(left: _Layout.gap),
-          child: SizedBox(
-            width: layout.meterW,
-            child: ResourceMeter(
-              label: '',
-              labelWidth: 0,
-              valueWidth: layout.valueW,
-              compact: true,
-              used: used,
-              requested: requested,
-              scale: scale,
-              percentBase: scale,
-              percentOf: 'allocatable',
-              valueText: valueText,
-              format: format,
-            ),
-          ),
-        );
+    final style = _cellStyle(context);
+    // Live usage, or requests without metrics-server.
+    final cpu = _usage(metrics ? u?.cpuMillis : req.cpuRequest, n.cpuAlloc, 'allocatable', cpu: true);
+    final mem = _usage(metrics ? u?.memoryBytes : req.memRequest, n.memAlloc, 'allocatable', cpu: false);
+    final podsSev = thresholdSeverity(n.podsAlloc > 0 ? n.podsFrac : null);
 
     final meta = [
-      n.kubeletVersion,
+      if (!layout.showRoles) n.roles.join(', '),
+      if (!layout.showVersion) n.kubeletVersion,
       n.internalIP,
       n.zone,
       n.instanceType,
-      if (n.taints.isNotEmpty) '${n.taints.length} taint${n.taints.length == 1 ? '' : 's'}',
     ].whereType<String>().join(' · ');
+    final taints = n.taints.map((t) => '${t['key']}${t['value'] == null ? '' : '=${t['value']}'}:${t['effect']}').join('\n');
+
+    Widget chip(String text, Severity severity, {String? tooltip}) {
+      final c = StatusBadge(text, severity: severity, dense: true);
+      return Padding(padding: const EdgeInsets.only(left: 8), child: tooltip == null ? c : Tooltip(message: tooltip, child: c));
+    }
 
     return Hoverable(
       cursor: SystemMouseCursors.basic,
       onTap: type == null ? null : () => app.openDetail(DetailTarget(type: type, name: n.name)),
       builder: (hovered) => Container(
         height: 44,
-        margin: const EdgeInsets.symmetric(horizontal: 6),
-        padding: const EdgeInsets.only(left: _Layout.hPad - 6, right: _Layout.hPad - 6),
+        margin: const EdgeInsets.fromLTRB(6, 2, 6, 0),
+        padding: const EdgeInsets.only(left: NodeLayout.hPad - 6, right: NodeLayout.hPad - 6),
         decoration: BoxDecoration(
           color: selected
               ? colors.selection
               : hovered
                   ? colors.hover
-                  : null,
+                  : (problem ? err.withValues(alpha: 0.06) : null),
+          border: problem ? Border(left: BorderSide(color: err, width: 3)) : null,
           borderRadius: BorderRadius.circular(5),
         ),
         child: Row(children: [
-          if (layout.statusW == 0) ...[
-            Container(width: 7, height: 7, decoration: BoxDecoration(color: severityColor(context, sev), shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-          ],
+          SizedBox(
+            width: NodeLayout.chevronW,
+            child: n.pods.isEmpty
+                ? null
+                : InkResponse(
+                    key: ValueKey('expand:${n.name}'),
+                    onTap: onToggle,
+                    radius: 12,
+                    child: Icon(expanded ? Icons.expand_more : Icons.chevron_right, size: 18, color: theme.hintColor),
+                  ),
+          ),
           Expanded(
             child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
+                Container(width: 7, height: 7, decoration: BoxDecoration(color: severityColor(context, sev), shape: BoxShape.circle)),
+                const SizedBox(width: 8),
                 Flexible(
                   flex: 3,
-                  child: Text(n.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+                  child: Text(n.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                 ),
-                // Without a Status column, NotReady / Cordoned ride along the name.
-                if (layout.statusW == 0 && (!n.ready || n.cordoned)) ...[const SizedBox(width: 10), Flexible(flex: 2, child: _statusBadge())],
-                for (final p in n.pressures) ...[const SizedBox(width: 10), Flexible(flex: 2, child: StatusBadge(p, severity: Severity.error, dense: true))],
+                // Chips: what is unusual about the node.
+                Flexible(
+                  flex: 2,
+                  child: ClipRect(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: Row(children: [
+                        if (!n.ready) chip('NotReady', Severity.error),
+                        for (final p in n.pressures) chip(p, Severity.error),
+                        if (n.cordoned) chip('Cordoned', Severity.warn),
+                        if (n.taints.isNotEmpty) chip('${n.taints.length} taint${n.taints.length == 1 ? '' : 's'}', Severity.neutral, tooltip: taints),
+                        if (n.gpuAlloc > 0) chip('GPU ${n.gpuUsed}/${n.gpuAlloc}', Severity.neutral, tooltip: 'NVIDIA GPUs requested by pods / allocatable'),
+                      ]),
+                    ),
+                  ),
+                ),
               ]),
-              if (meta.isNotEmpty) Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: info),
+              if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(left: 15), child: Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: info)),
             ]),
           ),
-          if (layout.statusW > 0) SizedBox(width: layout.statusW, child: Align(alignment: Alignment.centerLeft, child: _statusBadge())),
-          if (u != null)
-            meter(
-              used: u.cpuMillis,
-              requested: req.cpuRequest,
-              scale: cpuAlloc,
-              valueText: '${formatCpuUsage(u.cpuMillis)} / ${formatCpu(cpuAlloc)}',
-              format: formatCpuUsage,
-            )
-          else
-            meter(used: req.cpuRequest, scale: cpuAlloc, valueText: '${formatCpu(req.cpuRequest)} / ${formatCpu(cpuAlloc)}', format: formatCpu),
-          if (layout.showMemory)
-            if (u != null)
-              meter(
-                used: u.memoryBytes,
-                requested: req.memRequest,
-                scale: memAlloc,
-                valueText: '${formatBytes(u.memoryBytes)} / ${formatBytes(memAlloc)}',
-                format: formatBytes,
-              )
-            else
-              meter(used: req.memRequest, scale: memAlloc, valueText: '${formatBytes(req.memRequest)} / ${formatBytes(memAlloc)}', format: formatBytes),
+          if (layout.showRoles) _col(NodeLayout.rolesW, Text(n.roles.join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
+          if (layout.showVersion) _col(NodeLayout.versionW, Text(n.kubeletVersion ?? '–', maxLines: 1, overflow: TextOverflow.ellipsis, style: info)),
+          if (layout.showAge) _col(NodeLayout.ageW, n.created == null ? Text('–', style: info) : AgeText(n.created, style: info)),
+          _col(layout.cpuW, UsageCell(value: cpu, style: style)),
+          if (layout.showMem) _col(NodeLayout.usageW, UsageCell(value: mem, style: style)),
           if (layout.showPods)
-            meter(
-              used: n.alloc.activePods.toDouble(),
-              scale: podsAlloc,
-              valueText: '${n.alloc.activePods} / ${n.podsAlloc}',
-              format: (v) => v.toStringAsFixed(0),
+            _col(
+              NodeLayout.podsW,
+              Text(
+                '${n.alloc.activePods} / ${n.podsAlloc}',
+                maxLines: 1,
+                style: style?.copyWith(fontFeatures: tabularFigures, color: podsSev == Severity.neutral ? null : severityColor(context, podsSev)),
+              ),
+              align: Alignment.centerRight,
             ),
           SizedBox(
-            width: _Layout.menuW,
+            width: NodeLayout.menuW,
             child: type == null ? null : _NodeMenu(n: n, ctx: PanelContext(object: n.node, type: type, api: context.read<ApiClient>(), app: app), readOnly: readOnly, onChanged: onChanged),
           ),
         ]),
       ),
     );
   }
+}
 
-  Widget _statusBadge() => n.cordoned && n.ready
-      ? const StatusBadge('Cordoned', severity: Severity.warn, dense: true)
-      : StatusBadge(n.ready ? 'Ready' : 'NotReady', dense: true);
+/// One pod under an expanded node: its status, namespace and usage
+/// against its limit (else request). Clicking it opens it in the inspector.
+class _PodRow extends StatelessWidget {
+  final Json pod;
+  final NodeSummary node;
+  final NodeLayout layout;
+  final Usage? usage;
+  const _PodRow({super.key, required this.pod, required this.node, required this.layout, this.usage});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    final app = context.read<AppState>();
+    final name = dig<String>(pod, ['metadata', 'name']) ?? '';
+    final ns = dig<String>(pod, ['metadata', 'namespace']);
+    final type = context.select<AppState, ResourceType?>((a) => a.typeFor('', 'Pod'));
+    final selected = context.select<AppState, bool>((a) => a.detail?.type == type && a.detail?.name == name && a.detail?.namespace == ns);
+    final info = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    final style = _cellStyle(context);
+    final status = podKubectlStatus(pod);
+    final restarts = podRestarts(pod);
+    final problem = podHasProblem(pod);
+    final sev = !problem ? Severity.ok : (status == 'Pending' || status == 'ContainerCreating' || status == 'Terminating' || (status == 'Running' && podReady(pod)) ? Severity.warn : Severity.error);
+    final r = podResources(pod);
+    final u = usage;
+    final cpu = u == null ? null : _usage(u.cpuMillis, r.cpuLimit > 0 ? r.cpuLimit : r.cpuRequest, r.cpuLimit > 0 ? 'limit' : 'request', cpu: true);
+    final mem = u == null ? null : _usage(u.memoryBytes, r.memLimit > 0 ? r.memLimit : r.memRequest, r.memLimit > 0 ? 'limit' : 'request', cpu: false);
+    final statusText = Text(status, maxLines: 1, overflow: TextOverflow.ellipsis, style: style?.copyWith(color: sev == Severity.ok ? theme.hintColor : severityColor(context, sev)));
+
+    return Hoverable(
+      cursor: SystemMouseCursors.basic,
+      onTap: type == null ? null : () => app.openDetail(DetailTarget(type: type, name: name, namespace: ns)),
+      builder: (hovered) => Container(
+        height: 30,
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.only(left: NodeLayout.hPad - 6, right: NodeLayout.hPad - 6),
+        decoration: BoxDecoration(color: selected ? colors.selection : (hovered ? colors.hover : null), borderRadius: BorderRadius.circular(5)),
+        child: Row(children: [
+          const SizedBox(width: NodeLayout.chevronW),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: NodeLayout.indent),
+              child: Row(children: [
+                Container(width: 6, height: 6, decoration: BoxDecoration(color: severityColor(context, sev), shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                Flexible(
+                  flex: 3,
+                  child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.85))),
+                ),
+                if (ns != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(flex: 2, child: Text(ns, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: colors.faint))),
+                ],
+                // Without a Roles column, the status rides along the name.
+                if (!layout.showRoles && sev != Severity.ok) ...[const SizedBox(width: 8), Flexible(flex: 2, child: statusText)],
+              ]),
+            ),
+          ),
+          if (layout.showRoles) _col(NodeLayout.rolesW, statusText),
+          if (layout.showVersion)
+            _col(
+              NodeLayout.versionW,
+              restarts == 0
+                  ? const SizedBox.shrink()
+                  : Text('$restarts restart${restarts == 1 ? '' : 's'}',
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: info?.copyWith(color: restarts >= 5 ? severityColor(context, Severity.warn) : null)),
+            ),
+          if (layout.showAge) _col(NodeLayout.ageW, AgeText(dig(pod, ['metadata', 'creationTimestamp']), style: info)),
+          _col(layout.cpuW, UsageCell(value: cpu, style: style)),
+          if (layout.showMem) _col(NodeLayout.usageW, UsageCell(value: mem, style: style)),
+          if (layout.showPods) const SizedBox(width: NodeLayout.podsW + NodeLayout.gap),
+          const SizedBox(width: NodeLayout.menuW),
+        ]),
+      ),
+    );
+  }
+}
+
+class _ShowAllRow extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+  const _ShowAllRow({super.key, required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.only(left: NodeLayout.hPad + NodeLayout.chevronW + NodeLayout.indent + 8, right: NodeLayout.hPad),
+      alignment: Alignment.centerLeft,
+      child: Hoverable(
+        onTap: onTap,
+        builder: (hovered) => Text(
+          'Show all $count',
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary, decoration: hovered ? TextDecoration.underline : null),
+        ),
+      ),
+    );
+  }
 }
 
 /// Per-node actions behind a "⋮" button.
