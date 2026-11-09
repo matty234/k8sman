@@ -200,7 +200,9 @@ class PodUsageSummary extends StatelessWidget {
           runSpacing: 2,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text.rich(
+            Tooltip(
+              message: usage.timestamp == null ? '' : 'Sampled ${formatAge(parseTime(usage.timestamp))} ago',
+              child: Text.rich(
               TextSpan(
                 children: [
                   part(
@@ -219,8 +221,7 @@ class PodUsageSummary extends StatelessWidget {
                 ],
               ),
               style: small,
-            ),
-            if (usage.timestamp != null) Text('sampled ${formatAge(parseTime(usage.timestamp))} ago', style: hint?.copyWith(fontSize: 11)),
+            )),
           ],
         );
       },

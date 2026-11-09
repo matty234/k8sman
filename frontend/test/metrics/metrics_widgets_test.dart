@@ -85,7 +85,7 @@ void main() {
     await pumpPanel(tester, nodeFixture(), api: MetricsFakeApi(), size: const Size(560, 1600));
     expect(find.text('Usage'), findsOneWidget);
     expect(find.text('limit'), findsOneWidget, reason: 'legend shows the limit tick');
-    expect(find.textContaining('sampled'), findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is Tooltip && (w.message ?? '').startsWith('Sampled')), findsOneWidget);
     await saveScreenshot(tester, 'metrics-node-panel');
     expect(tester.takeException(), isNull);
   });

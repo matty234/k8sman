@@ -155,7 +155,6 @@ class NodeLiveUsage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return NodeUsagePoller(
       api: api,
       builder: (context, usage, error) {
@@ -186,9 +185,12 @@ class NodeLiveUsage extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Expanded(child: MeterLegend(showLimit: true)),
-                if (u.timestamp != null)
-                  Text('sampled ${formatAge(parseTime(u.timestamp))} ago', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
+                Expanded(
+                  child: Tooltip(
+                    message: u.timestamp == null ? '' : 'Sampled ${formatAge(parseTime(u.timestamp))} ago',
+                    child: const MeterLegend(showLimit: true),
+                  ),
+                ),
               ],
             ),
           ],
