@@ -28,7 +28,9 @@ type Column struct {
 	//   "quantity" (a Kubernetes quantity or percentage such as "250m",
 	//   "128Mi", "42%": right-aligned, sorted by value, "—" when empty),
 	//   "percent" (a number 0–100 drawn as a small bar, amber from 80 and
-	//   red from 90).
+	//   red from 90), "usage" (an object {raw, base?, percent?, basis?,
+	//   unit: "cpu"|"bytes"}: the value with a bar and percentage of base,
+	//   amber from 70 and red from 90, sorted by percent).
 	Type string `json:"type,omitempty"`
 }
 

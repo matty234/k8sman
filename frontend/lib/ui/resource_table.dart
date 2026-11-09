@@ -292,7 +292,8 @@ class _TableBodyState extends State<_TableBody> {
       final v = rows[r].cells.elementAtOrNull(col);
       final t = c.type == 'age' ? (parseTime(v) != null ? formatAge(parseTime(v)!) : cellText(v)) : cellText(v);
       if (t.isEmpty) continue;
-      best = math.max(best, measure(t, cellStyle) + (c.type == 'status' ? 20 : 0));
+      // Usage cells add the bar and percentage beside the value.
+      best = math.max(best, measure(t, cellStyle) + switch (c.type) { 'status' => 20, 'usage' => 78, _ => 0 });
     }
     final fit = (best + 14).clamp(_minColumnWidth, 600.0).ceilToDouble();
     if (widths[c.name] == fit) {
@@ -625,6 +626,8 @@ class _TableBodyState extends State<_TableBody> {
         return 90;
       case 'percent':
         return 120;
+      case 'usage':
+        return 160;
       case 'bool':
         return 80;
       case 'status':
@@ -1006,7 +1009,7 @@ class _HeaderState extends State<_Header> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: Row(
-        mainAxisAlignment: const {'number', 'quantity'}.contains(c.type) ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: const {'number', 'quantity', 'usage'}.contains(c.type) ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           Flexible(
             child: Text(
@@ -1336,6 +1339,7 @@ class TableCellView extends StatelessWidget {
     final v = value;
     if (column.type == 'quantity') return quantityCell(context, v, base);
     if (column.type == 'percent') return percentCell(context, v, base);
+    if (column.type == 'usage') return UsageCell(value: v, style: base);
     if (v == null) return const SizedBox.shrink();
     switch (column.type) {
       case 'age':

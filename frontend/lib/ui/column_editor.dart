@@ -24,7 +24,7 @@ Future<bool?> showColumnEditor(BuildContext context,
       ),
     );
 
-const _types = ['string', 'number', 'quantity', 'percent', 'age', 'status', 'bool', 'labels'];
+const _types = ['string', 'number', 'quantity', 'percent', 'usage', 'age', 'status', 'bool', 'labels'];
 
 class _EditableColumn {
   final TextEditingController name;

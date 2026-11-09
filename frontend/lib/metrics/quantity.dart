@@ -90,3 +90,84 @@ class Spread {
     return Spread(v.first, median, v.last);
   }
 }
+
+/// A `usage` table cell (pods' and nodes' CPU and Memory, PVCs' Used): the
+/// value in base units (cores or bytes) and, when known, what it's measured
+/// against (a limit, request, allocatable or capacity) as a percentage.
+class UsageValue {
+  final double raw;
+  final double? base;
+  final double? percent;
+
+  /// "limit", "request", "allocatable" or "capacity", or null.
+  final String? basis;
+
+  /// "cpu" (cores) or "bytes".
+  final String unit;
+  const UsageValue({required this.raw, this.base, this.percent, this.basis, this.unit = 'bytes'});
+
+  /// Parses the backend's `{raw, base?, percent?, basis?, unit}`; null for
+  /// anything else (an empty cell).
+  static UsageValue? of(dynamic v) {
+    if (v is UsageValue) return v;
+    if (v is! Map) return null;
+    final raw = parseQuantity(v['raw']);
+    if (raw == null) return null;
+    final base = parseQuantity(v['base']);
+    final percent = parseQuantity(v['percent']) ?? (base != null && base > 0 ? raw / base * 100 : null);
+    final basis = v['basis'];
+    return UsageValue(raw: raw, base: base, percent: percent, basis: basis is String ? basis : null, unit: '${v['unit'] ?? 'bytes'}');
+  }
+
+  bool get isCpu => unit == 'cpu';
+  String _fmt(double v) => isCpu ? formatCpuUsage(v * 1000) : formatBytes(v);
+
+  /// The value alone: "250m", "1.20", "7.2 MiB".
+  String get valueText => _fmt(raw);
+
+  /// What the cell shows as text: the value, or "12 / 50 Gi" for a
+  /// capacity (a PVC's used of its size).
+  String get text {
+    final b = base;
+    if (basis != 'capacity' || b == null || isCpu) return valueText;
+    var div = 1.0, i = 0;
+    const units = ['B', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi'];
+    while (b / div >= 1024 && i < units.length - 1) {
+      div *= 1024;
+      i++;
+    }
+    String n(double x) {
+      final v = x / div;
+      return v >= 10 || v == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+    }
+
+    return '${n(raw)} / ${n(b)} ${units[i]}';
+  }
+
+  /// "250m of 1.00 limit (25%)", for a tooltip.
+  String get detail {
+    final b = base, p = percent;
+    if (b == null || p == null || basis == null) return valueText;
+    return '$valueText of ${_fmt(b)} $basis (${formatPercent(p / 100)})';
+  }
+
+  /// Amber from 70% (80% of a capacity, like the Storage view), red from 90%.
+  Severity get severity {
+    final p = percent;
+    if (p == null) return Severity.neutral;
+    if (p >= critAt * 100) return Severity.error;
+    if (p >= (basis == 'capacity' ? 80 : warnAt * 100)) return Severity.warn;
+    return Severity.neutral;
+  }
+}
+
+/// Orders two `usage` cells by percentage (rows without one rank below any
+/// that have one), then by value. Empty cells sort last.
+int compareUsage(dynamic a, dynamic b) {
+  final x = UsageValue.of(a), y = UsageValue.of(b);
+  if (x == null || y == null) return x == null && y == null ? 0 : (x == null ? 1 : -1);
+  final px = x.percent, py = y.percent;
+  if ((px == null) != (py == null)) return px == null ? -1 : 1;
+  final c = px != null ? px.compareTo(py!) : 0;
+  return c != 0 ? c : x.raw.compareTo(y.raw);
+}

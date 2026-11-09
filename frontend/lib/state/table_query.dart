@@ -6,6 +6,9 @@
 ///   `status!=running`  … doesn't contain it
 ///   `restarts>0`       numbers and quantities compare by value (`>=`, `<`, `<=`)
 ///   `age<1h`           age columns compare durations (s, m, h, d)
+///   `cpu>500m`         usage columns (CPU, Memory, Used) compare the value;
+///   `cpu%>80`          … or the percentage of limit/request/capacity
+///                      (`cpu>80%` works too; PVC `used>80` is a percentage)
 ///   `"a b"`            quotes keep spaces in a term or value
 ///   `!nginx`           no cell contains "nginx" (`-nginx` too); `!status=x`
 ///                      negates a column term (same as `status!=x`)
@@ -33,7 +36,7 @@ class FilterField {
   final String type;
   const FilterField({required this.key, required this.label, required this.column, required this.type});
 
-  bool get comparable => type == 'number' || type == 'quantity' || type == 'percent' || type == 'age';
+  bool get comparable => type == 'number' || type == 'quantity' || type == 'percent' || type == 'usage' || type == 'age';
 }
 
 String fieldKey(String name) => name.toLowerCase().trim().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-|-$'), '');
@@ -117,7 +120,15 @@ Duration? parseAgeDuration(String s) {
   return Duration(milliseconds: ms.round());
 }
 
-String cellText(dynamic v) => v == null ? '' : (v is List ? v.join(', ') : '$v');
+String cellText(dynamic v) {
+  if (v == null) return '';
+  if (v is List) return v.join(', ');
+  if (v is Map) {
+    final u = UsageValue.of(v);
+    if (u != null) return u.text;
+  }
+  return '$v';
+}
 
 typedef _Pred = bool Function(TableRowData row, DateTime now);
 
@@ -200,7 +211,7 @@ class TableQuery {
         case '!=':
           preds.add((row, _) => !text(row).toLowerCase().contains(value));
         default:
-          final cmp = _comparison(f, op, rawValue);
+          final cmp = _comparison(f, op, rawValue, percent: split.$1.trim().endsWith('%'));
           preds.add(cmp == null ? (_, _) => false : (row, now) => cmp(f.column == null ? null : row.cells.elementAtOrNull(f.column!), now));
       }
     }
@@ -209,7 +220,7 @@ class TableQuery {
 
 /// `>`/`<` on ages (durations) and numbers/quantities; null when [raw]
 /// isn't a value of that kind.
-bool Function(dynamic cell, DateTime now)? _comparison(FilterField f, String op, String raw) {
+bool Function(dynamic cell, DateTime now)? _comparison(FilterField f, String op, String raw, {bool percent = false}) {
   bool test(num a, num b) => switch (op) { '>' => a > b, '>=' => a >= b, '<' => a < b, _ => a <= b };
   if (f.type == 'age') {
     final d = parseAgeDuration(raw);
@@ -221,6 +232,17 @@ bool Function(dynamic cell, DateTime now)? _comparison(FilterField f, String op,
   }
   final want = parseQuantity(raw);
   if (want == null) return null;
+  if (f.type == 'usage') {
+    // `cpu%>80` or `cpu>80%`: the percentage; otherwise the value.
+    // A bare number against a capacity (PVC Used: `used>80`) is a percentage too.
+    final bare = RegExp(r'^[0-9.]+$').hasMatch(raw.trim());
+    final pct = percent || raw.trim().endsWith('%');
+    return (cell, _) {
+      final u = UsageValue.of(cell);
+      final have = u == null ? null : (pct || (bare && u.basis == 'capacity') ? u.percent : u.raw);
+      return have != null && test(have, want);
+    };
+  }
   return (cell, _) {
     if (cell is num) return test(cell, want);
     final have = parseQuantity(cellText(cell));

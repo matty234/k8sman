@@ -74,11 +74,15 @@ void main() {
     expect(TableQuery.parse('/(/', cols).error, isNotNull);
     expect(TableQuery.parse('/a/', cols).error, isNull);
  
-    // PVC "Used" (percent): compares by value; claims without stats never match.
-    const used = [ColumnDef(name: 'Used', query: '.k8sman.usage.percent', type: 'percent')];
-    TableRowData pvc(String n, double? p) => TableRowData(uid: n, name: n, namespace: 'demo', resourceVersion: '1', cells: [p]);
-    final q = TableQuery.parse('used>80', used);
-    expect([for (final r in [pvc('a', 12), pvc('b', 85), pvc('c', null)]) if (q.matches(r, now: now)) r.name], ['b']);
+    // PVC "Used" (usage of capacity): a bare number is the percentage, a
+    // quantity the bytes; claims without stats never match.
+    const used = [ColumnDef(name: 'Used', query: '.k8sman.usage', type: 'usage')];
+    TableRowData pvc(String n, double? p) => TableRowData(
+        uid: n, name: n, namespace: 'demo', resourceVersion: '1', cells: [if (p == null) null else {'raw': p * 1e9, 'base': 100e9, 'percent': p, 'basis': 'capacity', 'unit': 'bytes'}]);
+    final pvcs = [pvc('a', 12), pvc('b', 85), pvc('c', null)];
+    List<String> usedMatching(String s) => [for (final r in pvcs) if (TableQuery.parse(s, used).matches(r, now: now)) r.name];
+    expect(usedMatching('used>80'), ['b']);
+    expect(usedMatching('used<20G'), ['a']);
   });
 
   test('suggestions: fields first, then values seen in the column', () {

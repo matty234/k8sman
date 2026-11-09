@@ -54,17 +54,29 @@ func colIndex(cols []columns.Column, name string) int {
 	return -1
 }
 
+// raw is a usage cell's value (cores or bytes), or -1.
+func raw(cell any) float64 {
+	m, _ := cell.(map[string]any)
+	switch v := m["raw"].(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	}
+	return -1
+}
+
 func TestBuiltinUsageColumns(t *testing.T) {
 	cols := columns.Defaults(podsType, nil)
 	cpu, mem := colIndex(cols, "CPU"), colIndex(cols, "Memory")
-	if cpu < 0 || mem < 0 || cols[cpu].Type != "quantity" {
+	if cpu < 0 || mem < 0 || cols[cpu].Type != "usage" {
 		t.Fatalf("pods columns: %+v", cols)
 	}
 	b := newTableBuilder(cols, true)
 	b.decorate = decorator(map[string]int64{"a": 12})
 	a, other := pod("a", "1"), pod("b", "2")
 	ra, rb := b.row(a), b.row(other)
-	if ra.Cells[cpu] != "12m" || ra.Cells[mem] != "64Mi" {
+	if raw(ra.Cells[cpu]) != 0.012 || raw(ra.Cells[mem]) != 64<<20 {
 		t.Fatalf("cells: %v", ra.Cells)
 	}
 	// No metrics for b → empty cell (UI shows "—"), and no column errors.
@@ -94,7 +106,7 @@ func TestLiveUsageSendsOnlyChangedRows(t *testing.T) {
 	}
 	cpu["b"] = 25
 	rows := lu.changedRows(context.Background(), b)
-	if len(rows) != 1 || rows[0].Name != "b" || rows[0].Cells[colIndex(cols, "CPU")] != "25m" {
+	if len(rows) != 1 || rows[0].Name != "b" || raw(rows[0].Cells[colIndex(cols, "CPU")]) != 0.025 {
 		t.Fatalf("want b only: %+v", rows)
 	}
 	// A watch event updates what was last sent.

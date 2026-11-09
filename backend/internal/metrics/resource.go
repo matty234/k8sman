@@ -254,11 +254,13 @@ func (s *Service) UsageDecorator(ctx context.Context, group, res, namespace stri
 			}
 			m := usageMap(u)
 			alloc, _ := nested(obj, "status", "allocatable").(map[string]any)
-			if p, ok := percentOf(float64(u.CPUMillis), alloc["cpu"], true); ok {
-				m["cpuPercent"] = p
+			if q, ok := quantityOf(alloc["cpu"]); ok {
+				m["cpuAllocatableMillis"] = int(q.MilliValue())
+				setBase(m, "cpu", "allocatable", float64(u.CPUMillis), float64(q.MilliValue()), 1000)
 			}
-			if p, ok := percentOf(float64(u.MemoryBytes), alloc["memory"], false); ok {
-				m["memoryPercent"] = p
+			if q, ok := quantityOf(alloc["memory"]); ok {
+				m["memoryAllocatableBytes"] = int(q.Value())
+				setBase(m, "memory", "allocatable", float64(u.MemoryBytes), float64(q.Value()), 1)
 			}
 			return withUsage(obj, m)
 		}
@@ -284,6 +286,7 @@ func (s *Service) UsageDecorator(ctx context.Context, group, res, namespace stri
 				cs[c.Name] = usageMap(c.Usage)
 			}
 			m["containers"] = cs
+			podBases(m, obj, p.Usage)
 			if p.Window != "" {
 				m["window"] = p.Window
 			}
@@ -330,23 +333,75 @@ func nested(obj map[string]any, path ...string) any {
 	return cur
 }
 
-// percentOf returns used/total*100 rounded to an int, where total is a
-// quantity (cpu → millicores, otherwise bytes).
-func percentOf(used float64, total any, cpu bool) (int, bool) {
-	s, ok := total.(string)
+func quantityOf(v any) (resource.Quantity, bool) {
+	s, ok := v.(string)
 	if !ok {
-		return 0, false
+		return resource.Quantity{}, false
 	}
 	q, err := resource.ParseQuantity(s)
-	if err != nil {
-		return 0, false
+	return q, err == nil
+}
+
+// setBase records what a usage figure is measured against (for the table's
+// usage cells): <res>Basis ("limit", "request" or "allocatable"), <res>Base
+// in display units (cores or bytes; total/div) and <res>Percent, used/total
+// as a percentage with one decimal.
+func setBase(m map[string]any, res, basis string, used, total, div float64) {
+	if total <= 0 {
+		return
 	}
-	t := float64(q.Value())
-	if cpu {
-		t = float64(q.MilliValue())
+	m[res+"Basis"] = basis
+	m[res+"Base"] = total / div
+	m[res+"Percent"] = math.Round(used/total*1000) / 10
+}
+
+// podBases adds the pod's summed container limits and requests
+// (cpuLimitMillis, cpuRequestMillis, memoryLimitBytes, memoryRequestBytes)
+// and measures usage against the limit, else the request. A limit counts
+// only when every container has one (otherwise the pod is unbounded); a
+// request is the sum of those set. Init containers are ignored.
+func podBases(m map[string]any, obj map[string]any, u Usage) {
+	cs, _ := nested(obj, "spec", "containers").([]any)
+	if len(cs) == 0 {
+		return
 	}
-	if t <= 0 {
-		return 0, false
+	type sum struct {
+		total int64
+		all   bool
 	}
-	return int(math.Round(used / t * 100)), true
+	lim := map[string]*sum{"cpu": {all: true}, "memory": {all: true}}
+	req := map[string]*sum{"cpu": {}, "memory": {}}
+	for _, c := range cs {
+		cm, _ := c.(map[string]any)
+		for kind, by := range map[string]map[string]*sum{"limits": lim, "requests": req} {
+			rs, _ := nested(cm, "resources", kind).(map[string]any)
+			for res, s := range by {
+				q, ok := quantityOf(rs[res])
+				if !ok {
+					s.all = false
+					continue
+				}
+				if res == "cpu" {
+					s.total += q.MilliValue()
+				} else {
+					s.total += q.Value()
+				}
+			}
+		}
+	}
+	used := map[string]float64{"cpu": float64(u.CPUMillis), "memory": float64(u.MemoryBytes)}
+	div := map[string]float64{"cpu": 1000, "memory": 1}
+	key := map[string][2]string{"cpu": {"cpuLimitMillis", "cpuRequestMillis"}, "memory": {"memoryLimitBytes", "memoryRequestBytes"}}
+	for _, res := range []string{"cpu", "memory"} {
+		l, r := lim[res], req[res]
+		if r.total > 0 {
+			m[key[res][1]] = int(r.total)
+		}
+		if l.all && l.total > 0 {
+			m[key[res][0]] = int(l.total)
+			setBase(m, res, "limit", used[res], float64(l.total), div[res])
+		} else if r.total > 0 {
+			setBase(m, res, "request", used[res], float64(r.total), div[res])
+		}
+	}
 }

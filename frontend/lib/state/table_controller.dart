@@ -384,7 +384,7 @@ class TableController extends ChangeNotifier {
     final sc = sortColumn;
     if (sc != null && sc < columns.length) {
       final isAge = columns[sc].type == 'age';
-      final compare = columns[sc].type == 'quantity' ? compareQuantities : _compare;
+      final compare = switch (columns[sc].type) { 'quantity' => compareQuantities, 'usage' => compareUsage, _ => _compare };
       bool empty(dynamic v) => v == null || (v is String && v.isEmpty);
       list.sort((a, b) {
         final x = a.cells.elementAtOrNull(sc), y = b.cells.elementAtOrNull(sc);

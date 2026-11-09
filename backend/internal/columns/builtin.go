@@ -103,7 +103,7 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Volume", Query: `.spec.volumeName`},
 		{Name: "Capacity", Query: `.status.capacity.storage`},
 		// Disk usage from Prometheus or the kubelets (see metrics.ClaimUsageDecorator).
-		{Name: "Used", Type: "percent", Query: `.k8sman.usage.percent`},
+		{Name: "Used", Type: "usage", Query: `.k8sman.usage // empty | {raw: .usedBytes, base: .capacityBytes, percent: .percent, basis: "capacity", unit: "bytes"}`},
 		{Name: "Access Modes", Query: `.spec.accessModes // [] | join(",")`},
 		{Name: "StorageClass", Query: `.spec.storageClassName`},
 		ageCol,
@@ -130,9 +130,7 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Version", Query: `.status.nodeInfo.kubeletVersion`},
 		{Name: "Internal-IP", Query: `[.status.addresses[]? | select(.type == "InternalIP") | .address] | first`},
 		usageCPU,
-		{Name: "CPU%", Type: "quantity", Query: `.k8sman.usage.cpuPercent // empty | tostring + "%"`},
 		usageMemory,
-		{Name: "Mem%", Type: "quantity", Query: `.k8sman.usage.memoryPercent // empty | tostring + "%"`},
 		{Name: "Alloc CPU", Type: "quantity", Query: `.status.allocatable.cpu`},
 		{Name: "Alloc Memory", Type: "quantity", Query: `.status.allocatable.memory | if test("Ki$") then (rtrimstr("Ki") | tonumber / 1024 | round | tostring) + "Mi" else . end`},
 		ageCol,
@@ -482,9 +480,11 @@ var (
 )
 
 // Live usage from metrics.k8s.io, merged into pods and nodes as
-// `.k8sman.usage` before evaluation (see internal/metrics). Empty (rendered
-// as "—") when metrics-server isn't installed or has no sample yet.
+// `.k8sman.usage` before evaluation (see internal/metrics), as "usage" cells:
+// the value (cores or bytes) and, when known, what it's measured against
+// (the pod's limit, else its request; the node's allocatable). Empty
+// (rendered as "—") when metrics-server isn't installed or has no sample yet.
 var (
-	usageCPU    = Column{Name: "CPU", Type: "quantity", Query: `.k8sman.usage.cpu`}
-	usageMemory = Column{Name: "Memory", Type: "quantity", Query: `.k8sman.usage.memoryBytes // empty | (. / 1048576 | round | tostring) + "Mi"`}
+	usageCPU    = Column{Name: "CPU", Type: "usage", Query: `.k8sman.usage // empty | {raw: (.cpuMillis / 1000), base: .cpuBase, percent: .cpuPercent, basis: .cpuBasis, unit: "cpu"}`}
+	usageMemory = Column{Name: "Memory", Type: "usage", Query: `.k8sman.usage // empty | {raw: .memoryBytes, base: .memoryBase, percent: .memoryPercent, basis: .memoryBasis, unit: "bytes"}`}
 )

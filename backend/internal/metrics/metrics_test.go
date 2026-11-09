@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -249,7 +250,7 @@ func TestUsageDecoratorCopies(t *testing.T) {
 		t.Fatal("decorator mutated the original object")
 	}
 	u := out[UsageKey].(map[string]any)["usage"].(map[string]any)
-	if u["cpu"] != "3455m" || u["cpuMillis"] != 3455 || u["cpuPercent"] != 35 || u["memoryPercent"] != 71 {
+	if u["cpu"] != "3455m" || u["cpuMillis"] != 3455 || u["cpuPercent"] != 34.6 || u["memoryPercent"] != 70.9 || u["cpuBasis"] != "allocatable" || u["cpuBase"] != 10.0 {
 		t.Fatalf("usage: %v", u)
 	}
 	// Unknown objects pass through unchanged (rendered as "—").
@@ -259,11 +260,30 @@ func TestUsageDecoratorCopies(t *testing.T) {
 	}
 
 	pd := s.UsageDecorator(ctx, "", "pods", "demo")
-	pod := map[string]any{"metadata": map[string]any{"name": "redis-0", "namespace": "demo"}}
+	// Limits and requests are summed over containers: CPU is measured
+	// against the limit (every container has one), memory against the
+	// request (one container is unlimited).
+	res := func(lim, req map[string]any) map[string]any {
+		return map[string]any{"resources": map[string]any{"limits": lim, "requests": req}}
+	}
+	pod := map[string]any{
+		"metadata": map[string]any{"name": "redis-0", "namespace": "demo"},
+		"spec": map[string]any{"containers": []any{
+			res(map[string]any{"cpu": "500m", "memory": "1Gi"}, map[string]any{"cpu": "100m", "memory": "256Mi"}),
+			res(map[string]any{"cpu": "1"}, map[string]any{"memory": "256Mi"}),
+		}},
+	}
 	pu := pd(pod)[UsageKey].(map[string]any)["usage"].(map[string]any)
 	cs := pu["containers"].(map[string]any)
 	if _, ok := cs["redis"]; !ok || pu["window"] == nil {
 		t.Fatalf("pod usage: %v", pu)
+	}
+	if pu["cpuLimitMillis"] != 1500 || pu["cpuRequestMillis"] != 100 || pu["cpuBasis"] != "limit" || pu["cpuBase"] != 1.5 ||
+		pu["memoryLimitBytes"] != nil || pu["memoryRequestBytes"] != 512<<20 || pu["memoryBasis"] != "request" {
+		t.Fatalf("pod limits/requests: %v", pu)
+	}
+	if want := math.Round(float64(pu["cpuMillis"].(int))/1500*1000) / 10; pu["cpuPercent"] != want {
+		t.Fatalf("cpuPercent %v, want %v", pu["cpuPercent"], want)
 	}
 	if s.UsageDecorator(ctx, "apps", "deployments", "") != nil {
 		t.Fatal("deployments should not be decorated")

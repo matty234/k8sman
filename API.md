@@ -322,11 +322,17 @@ endpoints return `{error, code, state, group}`: **404** with `state:
 **Usage in tables:** `/api/table`, `/api/watch` and `/api/columns/preview` for
 `pods` and `nodes` evaluate columns with `.k8sman.usage` merged into a copy of
 each object (`{cpu, memory, cpuMillis, memoryBytes}`; pods add `containers`,
-`window` and `timestamp`; nodes add `cpuPercent` and `memoryPercent` of
-allocatable). It's absent when there's no sample. `row.object` is never
-modified. Pod/node watches also re-send changed rows as `MODIFIED` every 15s
-as usage changes. The `quantity` column type renders values such as `250m`,
-`128Mi` and `42%` right-aligned, sorted by value, with "—" when empty.
+`window`, `timestamp` and their summed `cpuLimitMillis`, `cpuRequestMillis`,
+`memoryLimitBytes`, `memoryRequestBytes`; nodes add `cpuAllocatableMillis` and
+`memoryAllocatableBytes`; both add `cpuBasis`/`memoryBasis` (`limit`,
+`request` or `allocatable`), `cpuBase`/`memoryBase` (cores, bytes) and
+`cpuPercent`/`memoryPercent`). It's absent when there's no sample.
+`row.object` is never modified. Pod/node watches also re-send changed rows as
+`MODIFIED` every 15s as usage changes. The `quantity` column type renders
+values such as `250m`, `128Mi` and `42%` right-aligned, sorted by value, with
+"—" when empty. The `usage` type (default CPU/Memory and the PVC Used column)
+takes `{raw, base?, percent?, basis?, unit: "cpu"|"bytes"}` and renders the
+value, a bar and the percentage, sorted by percentage.
 
 ## Health overview
 
