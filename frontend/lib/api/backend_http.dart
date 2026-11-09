@@ -68,13 +68,32 @@ class BackendHttp {
   /// Sends [method] to [path] with an optional JSON [body]; throws
   /// [ApiException] on an error status. Always JSON-typed: the backend
   /// refuses mutations with any other Content-Type.
-  Future<http.Response> send(String method, String path, {Map<String, String?> query = const {}, Object? body}) async {
+  Future<http.Response> send(String method, String path, {Map<String, String?> query = const {}, Object? body}) =>
+      sendRaw(method, path, query: query, contentType: 'application/json', body: body == null ? null : jsonEncode(body));
+
+  /// Sends [method] to [path] with a pre-encoded [body] of [contentType]
+  /// (e.g. `application/yaml`); throws [ApiException] on an error status.
+  Future<http.Response> sendRaw(String method, String path, {Map<String, String?> query = const {}, required String contentType, String? body}) async {
     final req = http.Request(method, uri(path, query))
       ..headers.addAll(api.authHeaders)
-      ..headers['Content-Type'] = 'application/json';
-    if (body != null) req.body = jsonEncode(body);
+      ..headers['Content-Type'] = contentType;
+    if (body != null) req.body = body;
     final res = await http.Response.fromStream(await _http.send(req));
     throwIfFailed(res);
     return res;
   }
+}
+
+/// One lazily created [T] per [ApiClient] (one per backend connection, so
+/// per-client caches are shared across panels), e.g.
+/// `static final _of = PerApi(PromApi.new)`. Tests set [debugOverride] to
+/// serve a fake instead.
+class PerApi<T extends Object> {
+  final T Function(ApiClient api) _create;
+  final Expando<T> _byClient = Expando();
+  PerApi(this._create);
+
+  T Function(ApiClient api)? debugOverride;
+
+  T call(ApiClient api) => debugOverride?.call(api) ?? (_byClient[api] ??= _create(api));
 }

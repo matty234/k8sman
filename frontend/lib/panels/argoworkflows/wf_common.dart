@@ -164,9 +164,9 @@ class ArgoWFApi {
   ArgoWFApi(this.api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/argowf/', httpClient: httpClient);
 
   /// Tests replace this to serve a canned status.
-  static ArgoWFApi Function(ApiClient api)? debugOverride;
-  static final Expando<ArgoWFApi> _byClient = Expando('ArgoWFApi');
-  static ArgoWFApi of(ApiClient api) => debugOverride?.call(api) ?? (_byClient[api] ??= ArgoWFApi(api));
+  static final _of = PerApi(ArgoWFApi.new);
+  static set debugOverride(ArgoWFApi Function(ApiClient api)? f) => _of.debugOverride = f;
+  static ArgoWFApi of(ApiClient api) => _of(api);
 
   final Map<String, (DateTime, Future<ArgoWFStatus>)> _cache = {};
 

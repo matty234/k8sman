@@ -17,14 +17,9 @@ class PromApi {
   final BackendHttp _http;
   PromApi(this.api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/prom/', httpClient: httpClient);
 
-  /// Tests: replaces the instance [PromApi.of] hands out.
-  static PromApi Function(ApiClient api)? debugOverride;
-
-  static final Expando<PromApi> _byClient = Expando('PromApi');
-
-  /// The shared instance for [api] (one per backend connection, so the
-  /// availability check below is cached across panels).
-  static PromApi of(ApiClient api) => debugOverride?.call(api) ?? (_byClient[api] ??= PromApi(api));
+  static final _of = PerApi(PromApi.new);
+  static set debugOverride(PromApi Function(ApiClient api)? f) => _of.debugOverride = f;
+  static PromApi of(ApiClient api) => _of(api);
 
   Future<dynamic> getJson(String path, [Map<String, String?> query = const {}]) async => jsonBody(await _http.get(path, query));
 

@@ -316,9 +316,9 @@ class GpuApi {
   final BackendHttp _http;
   GpuApi(ApiClient api) : _http = BackendHttp(api, '/api/');
 
-  static GpuApi Function(ApiClient api)? debugOverride;
-  static final Expando<GpuApi> _byClient = Expando('GpuApi');
-  static GpuApi of(ApiClient api) => debugOverride?.call(api) ?? (_byClient[api] ??= GpuApi(api));
+  static final _of = PerApi(GpuApi.new);
+  static set debugOverride(GpuApi Function(ApiClient api)? f) => _of.debugOverride = f;
+  static GpuApi of(ApiClient api) => _of(api);
 
   /// The inventory; [live] false skips Prometheus (allocation only).
   Future<GpuInventory> inventory({bool live = true, bool refresh = false}) async =>

@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../api/backend_http.dart' show throwIfFailed;
 import '../../api/client.dart';
 
 /// Error reasons sent by the backend in `{type:"error", reason}`.
@@ -185,15 +186,14 @@ class WsExecTransport implements ExecTransport {
       headers: {...headers(), 'Content-Type': 'application/json'},
       body: jsonEncode({'namespace': namespace, 'pod': pod, 'targetContainer': ?targetContainer, 'image': image}),
     );
+    throwIfFailed(res);
     final Object? j;
     try {
       j = jsonDecode(res.body);
     } catch (_) {
       throw ApiException(res.statusCode, res.body);
     }
-    if (res.statusCode >= 400 || j is! Map) {
-      throw ApiException(res.statusCode, j is Map ? '${j['error']}' : res.body, reason: j is Map ? j['reason'] as String? : null);
-    }
+    if (j is! Map) throw ApiException(res.statusCode, res.body);
     return '${j['name']}';
   }
 }

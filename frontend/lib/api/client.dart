@@ -87,23 +87,15 @@ class ApiClient {
 
   Uri _uri(String path, [Map<String, String?> query = const {}]) => backendUri(base, '/api/$path', query);
 
-  Future<dynamic> _get(String path, [Map<String, String?> query = const {}]) async {
-    final res = await _http.get(_uri(path, query), headers: authHeaders);
-    return _decode(res);
-  }
+  late final BackendHttp _api = BackendHttp(this, '/api/', httpClient: _http);
 
-  Future<dynamic> _send(String method, String path, Map<String, String?> query, Object? body) async {
-    final req = http.Request(method, _uri(path, query))
-      ..headers.addAll(authHeaders)
-      // The backend requires a JSON Content-Type on every mutation (CSRF).
-      ..headers['Content-Type'] = 'application/json';
-    if (body != null) req.body = jsonEncode(body);
-    final res = await http.Response.fromStream(await _http.send(req));
-    return _decode(res);
-  }
+  Future<dynamic> _get(String path, [Map<String, String?> query = const {}]) async => _decode(await _api.get(path, query));
 
+  Future<dynamic> _send(String method, String path, Map<String, String?> query, Object? body) async =>
+      _decode(await _api.send(method, path, query: query, body: body));
+
+  /// The body of a non-error response: null when empty, JSON when typed so.
   dynamic _decode(http.Response res) {
-    throwIfFailed(res);
     if (res.statusCode == 204 || res.body.isEmpty) return null;
     if (res.headers['content-type']?.contains('json') ?? false) return jsonDecode(res.body);
     return res.body;
@@ -244,7 +236,7 @@ class ApiClient {
   /// cancels the probe in the backend.
   Future<void> probe(String step, {Future<void>? abortTrigger}) async {
     final req = http.AbortableRequest('GET', _uri('probe', {'step': step}), abortTrigger: abortTrigger)..headers.addAll(authHeaders);
-    _decode(await http.Response.fromStream(await _http.send(req)));
+    throwIfFailed(await http.Response.fromStream(await _http.send(req)));
   }
 
   Future<void> switchContext(String name) => _send('POST', 'contexts/current', const {}, {'name': name});
@@ -472,12 +464,11 @@ class ApiClient {
       _putObject(r, namespace: namespace, name: name, yaml: yaml, dryRun: dryRun, subresource: subresource);
 
   Future<UpdateResult> _putObject(ResourceRef r, {String? namespace, required String name, required String yaml, bool dryRun = false, String? subresource}) async {
-    final req = http.Request(
-        'PUT', _uri('object', {...r.toQuery(), 'namespace': namespace, 'name': name, 'dryRun': dryRun ? 'true' : null, 'subresource': subresource}))
-      ..headers.addAll(authHeaders)
-      ..headers['Content-Type'] = 'application/yaml'
-      ..body = yaml;
-    return UpdateResult.fromJson(_decode(await http.Response.fromStream(await _http.send(req))));
+    final res = await _api.sendRaw('PUT', 'object',
+        query: {...r.toQuery(), 'namespace': namespace, 'name': name, 'dryRun': dryRun ? 'true' : null, 'subresource': subresource},
+        contentType: 'application/yaml',
+        body: yaml);
+    return UpdateResult.fromJson(_decode(res));
   }
 
   /// Creates the objects in [yaml] (one or more `---` documents) with
@@ -485,11 +476,11 @@ class ApiClient {
   /// without one. [serverSide] uses server-side apply, which also updates
   /// existing objects. Per-object failures come back in the results.
   Future<ManifestResult> applyManifests(String yaml, {String? namespace, bool dryRun = false, bool serverSide = false}) async {
-    final req = http.Request('POST', _uri('apply', {'namespace': namespace, 'dryRun': dryRun ? 'true' : null, 'mode': serverSide ? 'apply' : null}))
-      ..headers.addAll(authHeaders)
-      ..headers['Content-Type'] = 'application/yaml'
-      ..body = yaml;
-    return ManifestResult.fromJson(_decode(await http.Response.fromStream(await _http.send(req))));
+    final res = await _api.sendRaw('POST', 'apply',
+        query: {'namespace': namespace, 'dryRun': dryRun ? 'true' : null, 'mode': serverSide ? 'apply' : null},
+        contentType: 'application/yaml',
+        body: yaml);
+    return ManifestResult.fromJson(_decode(res));
   }
 
   /// Action names supported for a type (scale, restart, delete, ...).
@@ -565,7 +556,7 @@ class ApiClient {
   Future<Uint8List?> groupIcon(String group) async {
     final res = await _http.get(_uri('icons/${Uri.encodeComponent(group)}'), headers: authHeaders);
     if (res.statusCode == 404) return null;
-    if (res.statusCode >= 400) _decode(res);
+    throwIfFailed(res);
     return res.bodyBytes;
   }
 

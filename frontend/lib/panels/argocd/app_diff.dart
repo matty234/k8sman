@@ -178,9 +178,9 @@ class ArgoDiffApi {
   final BackendHttp _http;
   ArgoDiffApi(this.api, {http.Client? httpClient}) : _http = BackendHttp(api, '/api/argocd/', httpClient: httpClient);
 
-  static ArgoDiffApi Function(ApiClient api)? debugOverride;
-  static final Expando<ArgoDiffApi> _byClient = Expando('ArgoDiffApi');
-  static ArgoDiffApi of(ApiClient api) => debugOverride?.call(api) ?? (_byClient[api] ??= ArgoDiffApi(api));
+  static final _of = PerApi(ArgoDiffApi.new);
+  static set debugOverride(ArgoDiffApi Function(ApiClient api)? f) => _of.debugOverride = f;
+  static ArgoDiffApi of(ApiClient api) => _of(api);
 
   Future<dynamic> send(String method, String path, {Map<String, String?> query = const {}, Object? body}) async =>
       jsonBody(await _http.send(method, path, query: query, body: body));

@@ -404,9 +404,9 @@ class HubbleApi {
   final BackendHttp _http;
   HubbleApi(this.api) : _http = BackendHttp(api, '/api/hubble/');
 
-  static HubbleApi Function(ApiClient api)? debugOverride;
-  static final Expando<HubbleApi> _byClient = Expando('HubbleApi');
-  static HubbleApi of(ApiClient api) => debugOverride?.call(api) ?? (_byClient[api] ??= HubbleApi(api));
+  static final _of = PerApi(HubbleApi.new);
+  static set debugOverride(HubbleApi Function(ApiClient api)? f) => _of.debugOverride = f;
+  static HubbleApi of(ApiClient api) => _of(api);
 
   Future<HubbleStatus> status({bool refresh = false}) async =>
       HubbleStatus.fromJson(jsonObjectBody(await _http.get('status', {'refresh': refresh ? 'true' : null})));

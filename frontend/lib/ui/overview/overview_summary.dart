@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import 'overview_api.dart';
 
@@ -31,8 +32,8 @@ class OverviewSummary extends ChangeNotifier {
   static const interval = Duration(seconds: 30);
   static const freshFor = Duration(seconds: 25);
 
-  static final Expando<OverviewSummary> _byClient = Expando('OverviewSummary');
-  static OverviewSummary of(ApiClient api) => _byClient[api] ??= OverviewSummary(OverviewApi(api));
+  static final _of = PerApi((ApiClient api) => OverviewSummary(OverviewApi(api)));
+  static OverviewSummary of(ApiClient api) => _of(api);
 
   final OverviewApi source;
   OverviewSummary(this.source);
