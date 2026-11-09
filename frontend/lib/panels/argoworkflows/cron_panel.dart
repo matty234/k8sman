@@ -6,7 +6,6 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../argocd/argo_common.dart' show Hint;
 import '../batch/batch_common.dart' show batchNow, formatRelative, formatSeconds, formatWall;
 import '../batch/cron.dart';
 import '../panel.dart';
@@ -14,6 +13,7 @@ import 'wf_actions.dart';
 import 'wf_common.dart';
 import 'wf_spec.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
+import '../../ui/widgets/atoms.dart';
 
 /// argoproj.io CronWorkflow: schedules with next runs, policy, active and
 /// recent workflows, and the workflow it runs.
@@ -159,7 +159,7 @@ class CronWorkflowSchedule extends StatelessWidget {
       Row(children: [
         Icon(Icons.public, size: 13, color: theme.hintColor),
         const SizedBox(width: 4),
-        Expanded(child: Hint('Time zone: $zoneLabel')),
+        Expanded(child: HintText('Time zone: $zoneLabel')),
       ]),
       if (spec['when'] != null) ...[
         const SizedBox(height: 4),

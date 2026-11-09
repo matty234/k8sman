@@ -4,8 +4,8 @@ import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'kyverno_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// PolicyReport and ClusterPolicyReport: the summary and the results,
 /// failures first, with a filter by result.
@@ -41,8 +41,8 @@ class PolicyReportPanel extends ResourcePanel {
       DetailSection(
         title: 'Results',
         icon: Icons.list_alt,
-        trailing: Hint('${results.length}'),
-        child: results.isEmpty ? const Hint('No results') : _Filtered(key: ValueKey('results-${ctx.uid}'), results: results),
+        trailing: HintText('${results.length}'),
+        child: results.isEmpty ? const HintText('No results') : _Filtered(key: ValueKey('results-${ctx.uid}'), results: results),
       ),
     ];
   }

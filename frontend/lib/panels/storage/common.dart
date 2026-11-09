@@ -86,15 +86,6 @@ class AccessModesView extends StatelessWidget {
   }
 }
 
-/// Monospace selectable value (paths, handles, provisioners).
-class MonoValue extends StatelessWidget {
-  final String text;
-  final Color? color;
-  const MonoValue(this.text, {super.key, this.color});
-  @override
-  Widget build(BuildContext context) => Text(text, style: monoStyle(context, size: 11.5, color: color));
-}
-
 /// Inline row of a badge/chip with explanatory hint text.
 class ValueWithHint extends StatelessWidget {
   final Widget value;
@@ -201,11 +192,3 @@ class NodeSelectorView extends StatelessWidget {
       };
 }
 
-/// Small "N" count pill for section headers.
-class CountPill extends StatelessWidget {
-  final String text;
-  final Severity severity;
-  const CountPill(this.text, {super.key, this.severity = Severity.neutral});
-  @override
-  Widget build(BuildContext context) => StatusBadge(text, severity: severity, dense: true);
-}

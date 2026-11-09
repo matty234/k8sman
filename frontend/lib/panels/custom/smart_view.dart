@@ -9,6 +9,7 @@ import '../../util/k8s.dart';
 import 'crd_schema.dart';
 import 'humanize.dart';
 import 'refs.dart';
+import '../../ui/widgets/atoms.dart';
 
 bool _isScalar(dynamic v) => v == null || v is String || v is num || v is bool;
 
@@ -331,38 +332,3 @@ class _CollapsibleState extends State<_Collapsible> {
   }
 }
 
-/// Dense table: header row + rows of widgets. Columns size to content and
-/// shrink (wrapping) when space is tight.
-class CompactTable extends StatelessWidget {
-  final List<Widget> headers;
-  final List<List<Widget>> rows;
-  const CompactTable({super.key, required this.headers, required this.rows});
-
-  /// Convenience for plain-string headers.
-  static List<Widget> textHeaders(BuildContext context, List<String> h) {
-    final theme = Theme.of(context);
-    return [
-      for (final s in h)
-        Text(s, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final line = BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45));
-    Widget pad(Widget w) => Padding(padding: const EdgeInsets.fromLTRB(0, 4, 12, 4), child: Align(alignment: Alignment.centerLeft, child: w));
-    return Table(
-      defaultColumnWidth: const IntrinsicColumnWidth(flex: 1),
-      defaultVerticalAlignment: TableCellVerticalAlignment.top,
-      children: [
-        TableRow(decoration: BoxDecoration(border: Border(bottom: line)), children: [for (final h in headers) pad(h)]),
-        for (var i = 0; i < rows.length; i++)
-          TableRow(
-            decoration: BoxDecoration(border: i == rows.length - 1 ? null : Border(bottom: line.copyWith(color: line.color.withValues(alpha: 0.2)))),
-            children: [for (final c in rows[i]) pad(c)],
-          ),
-      ],
-    );
-  }
-}

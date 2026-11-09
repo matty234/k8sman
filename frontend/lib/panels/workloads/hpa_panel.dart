@@ -12,6 +12,7 @@ import 'widgets/sections.dart';
 import 'widgets/status_header.dart';
 import 'widgets/util.dart';
 import '../../metrics/quantity.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// One HPA metric: what it measures, its target and current value.
 class HpaMetric {

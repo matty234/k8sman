@@ -7,6 +7,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'argo_common.dart';
 import 'sync_windows.dart';
+import '../../ui/widgets/atoms.dart';
 
 class AppProjectPanel extends ResourcePanel {
   const AppProjectPanel();
@@ -101,7 +102,7 @@ class ProjectSummary extends StatelessWidget {
         ('Sync windows', windows.isEmpty ? 'none' : '${windows.length} (${active.length} active now)'),
         if (spec['permitOnlyProjectScopedClusters'] == true) ('Clusters', 'project-scoped clusters only'),
         if ((spec['sourceNamespaces'] as List?)?.isNotEmpty == true)
-          ('App namespaces', Chips([for (final n in spec['sourceNamespaces'] as List) Chipish(text: '$n')])),
+          ('App namespaces', InlineWrap([for (final n in spec['sourceNamespaces'] as List) Chipish(text: '$n')])),
       ], keyWidth: 110),
     ]);
   }
@@ -116,7 +117,7 @@ class _SourceRepos extends StatelessWidget {
     final repos = [for (final r in (spec['sourceRepos'] as List? ?? const [])) '$r'];
     final keys = asMapList(spec['signatureKeys']);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (repos.isEmpty) const Hint('None: no application can deploy from this project'),
+      if (repos.isEmpty) const HintText('None: no application can deploy from this project'),
       for (final r in repos)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
@@ -129,8 +130,8 @@ class _SourceRepos extends StatelessWidget {
       if (keys.isNotEmpty) ...[
         const SizedBox(height: 4),
         Row(children: [
-          const Hint('Commits must be signed by  '),
-          Flexible(child: Chips([for (final k in keys) Chipish(text: '${k['keyID']}')])),
+          const HintText('Commits must be signed by  '),
+          Flexible(child: InlineWrap([for (final k in keys) Chipish(text: '${k['keyID']}')])),
         ]),
       ],
     ]);
@@ -145,7 +146,7 @@ class DestinationsTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (dests.isEmpty) return const Hint('None: no application can deploy from this project');
+    if (dests.isEmpty) return const HintText('None: no application can deploy from this project');
     final head = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600);
     return Table(
       columnWidths: const {0: FixedColumnWidth(22), 1: FlexColumnWidth(3), 2: FlexColumnWidth(2)},
@@ -224,7 +225,7 @@ class _RuleBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    Widget list(List<Json> rules, bool isDeny) => Chips([
+    Widget list(List<Json> rules, bool isDeny) => InlineWrap([
           for (final r in rules)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -239,8 +240,8 @@ class _RuleBlock extends StatelessWidget {
       Text(title, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600)),
       const SizedBox(height: 3),
       KeyValueTable([
-        ('Allow', allow.isEmpty ? Hint(emptyAllow) : list(allow, false)),
-        ('Deny', deny.isEmpty ? const Hint('nothing') : list(deny, true)),
+        ('Allow', allow.isEmpty ? HintText(emptyAllow) : list(allow, false)),
+        ('Deny', deny.isEmpty ? const HintText('nothing') : list(deny, true)),
       ], keyWidth: 60),
     ]);
   }
@@ -253,7 +254,7 @@ class SyncWindowsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (windows.isEmpty) return const Hint('No sync windows: syncs are allowed at any time');
+    if (windows.isEmpty) return const HintText('No sync windows: syncs are allowed at any time');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final w in windows)
         () {
@@ -317,7 +318,7 @@ class RolesView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (roles.isEmpty) return const Hint('No project roles');
+    if (roles.isEmpty) return const HintText('No project roles');
     final head = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final r in roles)
@@ -337,7 +338,7 @@ class RolesView extends StatelessWidget {
               ])),
               if (groups.isNotEmpty || tokens.isNotEmpty) ...[
                 const SizedBox(height: 3),
-                Chips([
+                InlineWrap([
                   for (final g in groups) Chipish(text: 'group $g'),
                   if (tokens.isNotEmpty) Chipish(text: '${tokens.length} token${tokens.length == 1 ? '' : 's'}'),
                 ]),
@@ -377,15 +378,15 @@ class _Orphaned extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (orphaned.isEmpty) return const Hint('Not monitored');
+    if (orphaned.isEmpty) return const HintText('Not monitored');
     final ignore = asMapList(orphaned['ignore']);
     return KeyValueTable([
       ('Monitoring', orphaned['warn'] == true ? 'on, apps get an OrphanedResourceWarning' : 'on (no warning condition)'),
       (
         'Ignored',
         ignore.isEmpty
-            ? const Hint('nothing')
-            : Chips([for (final i in ignore) Chipish(text: '${_gk({'group': i['group'] ?? '', 'kind': i['kind'] ?? '*'})}${i['name'] != null ? ' ${i['name']}' : ''}')]),
+            ? const HintText('nothing')
+            : InlineWrap([for (final i in ignore) Chipish(text: '${_gk({'group': i['group'] ?? '', 'kind': i['kind'] ?? '*'})}${i['name'] != null ? ' ${i['name']}' : ''}')]),
       ),
     ], keyWidth: 100);
   }
@@ -409,14 +410,14 @@ class _ProjectAppsState extends State<ProjectApps> {
   }
 
   @override
-  Widget build(BuildContext context) => KeptFuture<List<Json>>(
+  Widget build(BuildContext context) => KeepingAsync<List<Json>>(
         future: _future,
         builder: (context, apps) {
-          if (apps.isEmpty) return const Hint('No applications use this project');
+          if (apps.isEmpty) return const HintText('No applications use this project');
           final synced = apps.where((a) => dig(a, ['status', 'sync', 'status']) == 'Synced').length;
           final healthy = apps.where((a) => dig(a, ['status', 'health', 'status']) == 'Healthy').length;
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Hint('${apps.length} apps · $synced synced · $healthy healthy'),
+            HintText('${apps.length} apps · $synced synced · $healthy healthy'),
             const SizedBox(height: 4),
             for (final a in apps) AppRow(a),
           ]);

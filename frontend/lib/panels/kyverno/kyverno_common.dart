@@ -11,7 +11,7 @@ import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../pod/pod_widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 const kyvernoGroup = 'kyverno.io';
 const reportGroup = 'wgpolicyk8s.io';
@@ -219,7 +219,7 @@ class ResultsList extends StatelessWidget {
           ]),
         ),
       if (results.length > shown.length)
-        Padding(padding: const EdgeInsets.only(top: 4), child: Hint('and ${results.length - shown.length} more')),
+        Padding(padding: const EdgeInsets.only(top: 4), child: HintText('and ${results.length - shown.length} more')),
     ]);
   }
 }

@@ -12,6 +12,7 @@ import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'batch_common.dart';
 import '../../util/json.dart';
+import '../../ui/widgets/atoms.dart';
 
 
 class JobPanel extends ResourcePanel {
@@ -317,7 +318,7 @@ Widget _sevText(BuildContext context, String text, Severity? sev) => Text(text,
 
 Widget _timeWithAge(BuildContext context, DateTime t) => Wrap(spacing: 6, children: [
       Text(formatLocal(t), style: Theme.of(context).textTheme.bodySmall),
-      hint(context, '(${formatRelative(t)})'),
+      HintText('(${formatRelative(t)})'),
     ]);
 
 // ---------------------------------------------------------------------------

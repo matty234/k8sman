@@ -14,21 +14,6 @@ import 'usage.dart';
 const kCollapseLines = 30;
 const kCollapseChars = 3000;
 
-/// Small refresh button for section trailers.
-class RefreshButton extends StatelessWidget {
-  final VoidCallback onPressed;
-  const RefreshButton(this.onPressed, {super.key});
-
-  @override
-  Widget build(BuildContext context) => IconButton(
-        iconSize: 16,
-        visualDensity: VisualDensity.compact,
-        tooltip: 'Refresh',
-        icon: const Icon(Icons.refresh),
-        onPressed: onPressed,
-      );
-}
-
 /// A refresh icon small enough for a section header's summary.
 class HeaderRefresh extends StatelessWidget {
   final VoidCallback onTap;
@@ -36,19 +21,6 @@ class HeaderRefresh extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(left: 6), child: RowAction(icon: Icons.refresh, tooltip: 'Refresh', onTap: onTap));
-}
-
-/// Count pill for section trailers.
-class CountPill extends StatelessWidget {
-  final String text;
-  final Severity severity;
-  const CountPill(this.text, {super.key, this.severity = Severity.neutral});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(right: 4),
-        child: StatusBadge(text, dense: true, severity: severity),
-      );
 }
 
 /// Renders text segments where `true` parts are monospace.

@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../network/widgets.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'es_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// SecretStore and ClusterSecretStore: the provider and its settings,
 /// conditions and the ExternalSecrets that use the store.
@@ -68,9 +67,9 @@ class _UsedBy extends StatelessWidget {
           return DetailSection(
             title: 'ExternalSecrets using this store',
             icon: Icons.link,
-            trailing: snap.hasData ? Hint('${list.length}') : spinner,
+            trailing: snap.hasData ? HintText('${list.length}') : SectionSpinner(),
             child: list.isEmpty
-                ? const Hint('None')
+                ? const HintText('None')
                 : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     for (final es in list.take(_cap))
                       Padding(
@@ -86,7 +85,7 @@ class _UsedBy extends StatelessWidget {
                           StatusBadge(readyReason(asMap(es['status'])), dense: true),
                         ]),
                       ),
-                    if (list.length > _cap) Hint('and ${list.length - _cap} more'),
+                    if (list.length > _cap) HintText('and ${list.length - _cap} more'),
                   ]),
           );
         },

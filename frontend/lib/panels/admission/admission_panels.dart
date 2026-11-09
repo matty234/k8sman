@@ -11,7 +11,7 @@ import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 const admissionGroup = 'admissionregistration.k8s.io';
 
@@ -36,12 +36,12 @@ String ruleLine(Json r) {
 }
 
 Widget _rules(List<Json> rules) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (final r in rules) Padding(padding: const EdgeInsets.only(bottom: 2), child: MonoValue(ruleLine(r), size: 11)),
+      for (final r in rules) Padding(padding: const EdgeInsets.only(bottom: 2), child: MonoText(ruleLine(r), size: 11)),
     ]);
 
 Widget _selector(dynamic s) {
   final text = selectorToString(s);
-  return text.isEmpty ? const Hint('everything') : MonoValue(text, size: 11);
+  return text.isEmpty ? const HintText('everything') : MonoText(text, size: 11);
 }
 
 /// Match constraints (policy) or match resources (binding), webhook-style
@@ -52,7 +52,7 @@ Widget _match(Json m, {bool showEmpty = true}) {
   if (m.isEmpty && !showEmpty) return const SizedBox.shrink();
   return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
     if (rules.isEmpty && excluded.isEmpty && m['namespaceSelector'] == null && m['objectSelector'] == null)
-      const Hint('Matches every resource and namespace.'),
+      const HintText('Matches every resource and namespace.'),
     KeyValueTable([
       ('Rules', rules.isEmpty ? null : _rules(rules)),
       ('Excluded', excluded.isEmpty ? null : _rules(excluded)),
@@ -65,7 +65,7 @@ Widget _match(Json m, {bool showEmpty = true}) {
 
 /// A CEL expression in a mono block with a copy button, optionally titled.
 Widget _cel(String expression, {String? title}) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (title != null && title.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 2), child: MonoValue(title, size: 11)),
+      if (title != null && title.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 2), child: MonoText(title, size: 11)),
       CodeBlock(expression),
     ]);
 
@@ -81,7 +81,7 @@ Widget _paramKind(PanelContext ctx, Json pk) {
   final t = ctx.app.typeFor(group, kind);
   final text = '$apiVersion $kind'.trim();
   return InlineWrap([
-    MonoValue(text, size: 11),
+    MonoText(text, size: 11),
     if (t != null && t.custom) ResourceLink(ObjectRef(group: 'apiextensions.k8s.io', kind: 'CustomResourceDefinition', name: '${t.resource}.${t.group}'), label: 'CRD'),
   ]);
 }
@@ -120,36 +120,36 @@ class AdmissionPolicyPanel extends ResourcePanel {
         DetailSection(
           title: 'Match conditions',
           icon: Icons.rule,
-          trailing: Hint('${conditions.length}'),
+          trailing: HintText('${conditions.length}'),
           child: _stack([for (final c in conditions) _cel('${c['expression'] ?? ''}', title: c['name'] as String?)]),
         ),
       if (variables.isNotEmpty)
         DetailSection(
           title: 'Variables',
           icon: Icons.data_object,
-          trailing: Hint('${variables.length}'),
+          trailing: HintText('${variables.length}'),
           child: _stack([for (final v in variables) _cel('${v['expression'] ?? ''}', title: v['name'] as String?)]),
         ),
       if (!mutating)
         DetailSection(
           title: 'Validations',
           icon: Icons.fact_check_outlined,
-          trailing: Hint('${validations.length}'),
-          child: validations.isEmpty ? const Hint('No validations.') : _stack([for (final v in validations) _Validation(v)], gap: 10),
+          trailing: HintText('${validations.length}'),
+          child: validations.isEmpty ? const HintText('No validations.') : _stack([for (final v in validations) _Validation(v)], gap: 10),
         ),
       if (!mutating && audit.isNotEmpty)
         DetailSection(
           title: 'Audit annotations',
           icon: Icons.edit_note,
-          trailing: Hint('${audit.length}'),
+          trailing: HintText('${audit.length}'),
           child: _stack([for (final a in audit) _cel('${a['valueExpression'] ?? ''}', title: a['key'] as String?)]),
         ),
       if (mutating)
         DetailSection(
           title: 'Mutations',
           icon: Icons.build_outlined,
-          trailing: Hint('${mutations.length}'),
-          child: mutations.isEmpty ? const Hint('No mutations.') : _stack([for (final m in mutations) _Mutation(m)], gap: 10),
+          trailing: HintText('${mutations.length}'),
+          child: mutations.isEmpty ? const HintText('No mutations.') : _stack([for (final m in mutations) _Mutation(m)], gap: 10),
         ),
       DetailSection(
         title: 'Bindings using this policy',
@@ -231,7 +231,7 @@ class _PolicyBindings extends StatelessWidget {
         for (final b in await api.items(ResourceRef(group: admissionGroup, resource: '${kind.toLowerCase()}s')))
           if (dig<String>(b, ['spec', 'policyName']) == policy) b,
       ],
-      errorBuilder: (context, e) => const Hint('Bindings could not be listed.'),
+      errorBuilder: (context, e) => const HintText('Bindings could not be listed.'),
       builder: (context, bindings) {
         if (bindings.isEmpty) return const InlineMessage('No binding references this policy, so it is not enforced anywhere.');
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -311,8 +311,8 @@ class WebhookConfigPanel extends ResourcePanel {
       DetailSection(
         title: 'Webhooks',
         icon: Icons.webhook,
-        trailing: Hint('${hooks.length}'),
-        child: hooks.isEmpty ? const Hint('No webhooks.') : _stack([for (final h in hooks) _Webhook(h)], gap: 12),
+        trailing: HintText('${hooks.length}'),
+        child: hooks.isEmpty ? const HintText('No webhooks.') : _stack([for (final h in hooks) _Webhook(h)], gap: 12),
       ),
     ];
   }
@@ -333,12 +333,12 @@ class _Webhook extends StatelessWidget {
       final port = svc['port'] ?? 443;
       target = InlineWrap([
         ResourceLink(ObjectRef(kind: 'Service', name: '${svc['name']}', namespace: svc['namespace'] as String?), label: '${svc['namespace']}/${svc['name']}'),
-        MonoValue('$port${svc['path'] != null ? ' ${svc['path']}' : ''}', size: 11),
+        MonoText('$port${svc['path'] != null ? ' ${svc['path']}' : ''}', size: 11),
       ]);
     } else if (cc['url'] != null) {
-      target = MonoValue('${cc['url']}', copy: true, size: 11);
+      target = MonoText('${cc['url']}', copy: true, size: 11);
     } else {
-      target = const Hint('no client config');
+      target = const HintText('no client config');
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       InlineWrap([

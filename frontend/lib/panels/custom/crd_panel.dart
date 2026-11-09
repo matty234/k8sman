@@ -12,8 +12,8 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'health.dart';
 import 'schema_browser.dart';
-import 'smart_view.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
+import '../../ui/widgets/atoms.dart';
 
 /// apiextensions.k8s.io/CustomResourceDefinition: names, versions, conversion,
 /// storage migration state, instances and a searchable schema browser.

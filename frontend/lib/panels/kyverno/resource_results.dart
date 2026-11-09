@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../ui/widgets/common.dart';
 import '../../ui/widgets/editorial.dart';
-import '../network/widgets.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'kyverno_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// Kinds that never get a Policy results tab: Kyverno's own and the
 /// reports themselves.
@@ -51,11 +50,11 @@ class _ObjectResults extends StatelessWidget {
             divider: false,
             trailing: RefreshButton(reload),
             child: snap.connectionState != ConnectionState.done
-                ? spinner
+                ? SectionSpinner()
                 : snap.hasError
-                    ? Hint('Could not read policy reports: ${snap.error}')
+                    ? HintText('Could not read policy reports: ${snap.error}')
                     : rs!.isEmpty
-                        ? const Hint('No policy reports mention this object')
+                        ? const HintText('No policy reports mention this object')
                         : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                             ResultCounts(rs),
                             const SizedBox(height: 6),

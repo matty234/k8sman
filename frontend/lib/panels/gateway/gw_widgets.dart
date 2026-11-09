@@ -9,11 +9,9 @@ import '../../state/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../network/widgets.dart';
 import 'gw_model.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
-
-export '../network/widgets.dart' show NetFetch, NetTable, Mono, Muted, CopyText, CopyLine, RefreshButton, spinner, fingerprint;
+import '../../ui/widgets/atoms.dart';
 
 /// Route kinds this cluster serves (TLS/TCP/UDP routes are experimental).
 List<RouteKind> servedRouteKinds(AppState app) => [for (final k in routeKinds) if (app.typeForResource(gwGroup, k.resource) != null) k];
@@ -130,7 +128,7 @@ class BackendLine extends StatelessWidget {
         if (ref.port != null) Text(':${ref.port}', style: monoStyle(context, size: 11.5, color: theme.hintColor)),
       ]),
       if (percent != null) Text('$percent%', style: monoStyle(context, size: 11.5)),
-      if (suffix != null) Muted(suffix!),
+      if (suffix != null) HintText(suffix!),
       if (exists == false) StatusBadge('${ref.kind} not found', dense: true, severity: Severity.error),
       if (notPermitted) const StatusBadge('needs ReferenceGrant', dense: true, severity: Severity.error),
     ]);

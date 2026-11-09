@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../network/widgets.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'kyverno_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// ClusterPolicy and Policy: rules, status, and the results the policy
 /// produced in cached PolicyReports.
@@ -36,9 +35,9 @@ class KyvernoPolicyPanel extends ResourcePanel {
       DetailSection(
         title: 'Rules',
         icon: Icons.rule,
-        trailing: Hint('${rules.length}'),
+        trailing: HintText('${rules.length}'),
         child: rules.isEmpty
-            ? const Hint('No rules')
+            ? const HintText('No rules')
             : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 for (final r in rules) Padding(padding: const EdgeInsets.only(bottom: 10), child: _Rule(r)),
               ]),
@@ -172,11 +171,11 @@ class PolicyResultsSection extends StatelessWidget {
           icon: Icons.fact_check_outlined,
           trailing: RefreshButton(reload),
           child: snap.connectionState != ConnectionState.done
-              ? spinner
+              ? SectionSpinner()
               : snap.hasError
-                  ? Hint('Could not read policy reports: ${snap.error}')
+                  ? HintText('Could not read policy reports: ${snap.error}')
                   : all!.isEmpty
-                      ? const Hint('No results in the cached policy reports')
+                      ? const HintText('No results in the cached policy reports')
                       : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                           ResultCounts(all),
                           const SizedBox(height: 6),

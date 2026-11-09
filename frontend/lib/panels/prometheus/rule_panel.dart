@@ -7,6 +7,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// PrometheusRule: groups and rules from the spec, with live state
 /// (inactive / pending / firing, health, lastError) from Prometheus.
@@ -78,7 +79,7 @@ class _RuleGroupsState extends State<_RuleGroups> {
             DetailSection(
               title: '${g['name'] ?? 'group'}',
               icon: Icons.rule_folder_outlined,
-              trailing: PHint([
+              trailing: HintText([
                 '${asMapList(g['rules']).length} rule${asMapList(g['rules']).length == 1 ? '' : 's'}',
                 if (g['interval'] != null) 'every ${g['interval']}',
               ].join(' · ')),
@@ -112,20 +113,20 @@ class _Summary extends StatelessWidget {
       style: theme.textTheme.bodySmall,
     );
     if (error != null) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [counts, const SizedBox(height: 6), LiveStateMessage(error!)]);
-    if (l == null) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [counts, const SizedBox(height: 6), const PHint('Loading live state…')]);
+    if (l == null) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [counts, const SizedBox(height: 6), const HintText('Loading live state…')]);
     final loaded = l.groups.isNotEmpty;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       counts,
       const SizedBox(height: 6),
       if (!loaded)
-        PHint('Not loaded by ${l.prometheus?.name ?? 'Prometheus'} (check its ruleSelector and ruleNamespaceSelector).')
+        HintText('Not loaded by ${l.prometheus?.name ?? 'Prometheus'} (check its ruleSelector and ruleNamespaceSelector).')
       else
         Wrap(spacing: 14, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
           _Count('firing', l.firing, l.firing > 0 ? severityColor(context, Severity.error) : null),
           _Count('pending', l.pending, l.pending > 0 ? severityColor(context, Severity.warn) : null),
           _Count('inactive', l.inactive, null),
           if (l.errors > 0) _Count('with errors', l.errors, severityColor(context, Severity.error)),
-          PHint('on ${l.prometheus?.name ?? 'Prometheus'}'),
+          HintText('on ${l.prometheus?.name ?? 'Prometheus'}'),
           if (l.firing + l.pending > 0) OpenAlertsButton(ctx.app),
         ]),
     ]);
@@ -176,7 +177,7 @@ class RuleCard extends StatelessWidget {
         Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
           Icon(isAlert ? Icons.notifications_none : Icons.functions, size: 15, color: theme.hintColor),
           Text(name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-          PHint(isAlert ? 'alert' : 'record'),
+          HintText(isAlert ? 'alert' : 'record'),
           if (isAlert && stateText != null) StatusBadge(stateText, dense: true, severity: ruleStateBadge(l?.state, '${labels['severity'] ?? ''}')),
           if (l != null && l.health == 'err') StatusBadge('Error', dense: true, severity: Severity.error),
           if (!isAlert && l != null && l.health == 'ok') StatusBadge('OK', dense: true, severity: Severity.ok),

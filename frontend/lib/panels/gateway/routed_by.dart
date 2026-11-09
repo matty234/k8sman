@@ -7,6 +7,7 @@ import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'gw_model.dart';
 import 'gw_widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// How one route sends traffic to a Service.
 class ServiceRouteUse {

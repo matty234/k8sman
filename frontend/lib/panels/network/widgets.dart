@@ -1,7 +1,5 @@
-/// Small widgets and helpers shared by the network panels.
+/// Endpoint rows and badges shared by the network panels.
 library;
-
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -10,176 +8,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../ui/inspector/inspector.dart';
-
-/// Runs [load] once (in initState) and re-runs it only when [fetchKey]
-/// changes or the user asks for a reload. Build it with a stable key
-/// (e.g. `ValueKey('${ctx.uid}/endpoints')`).
-class NetFetch<T> extends StatefulWidget {
-  final Object fetchKey;
-  final Future<T> Function() load;
-  final Widget Function(BuildContext context, AsyncSnapshot<T> snap, VoidCallback reload) builder;
-  const NetFetch({super.key, required this.fetchKey, required this.load, required this.builder});
-
-  @override
-  State<NetFetch<T>> createState() => _NetFetchState<T>();
-}
-
-class _NetFetchState<T> extends State<NetFetch<T>> {
-  late Future<T> _future = widget.load();
-
-  @override
-  void didUpdateWidget(covariant NetFetch<T> old) {
-    super.didUpdateWidget(old);
-    if (old.fetchKey != widget.fetchKey) _future = widget.load();
-  }
-
-  void _reload() => setState(() => _future = widget.load());
-
-  @override
-  Widget build(BuildContext context) =>
-      FutureBuilder<T>(future: _future, builder: (context, snap) => widget.builder(context, snap, _reload));
-}
-
-/// Stable string fingerprint of a JSON value, for [NetFetch.fetchKey].
-String fingerprint(Object? v) => jsonEncode(v);
-
-const spinner = Padding(
-  padding: EdgeInsets.all(8),
-  child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
-);
-
-/// Small refresh button for section trailers.
-class RefreshButton extends StatelessWidget {
-  final VoidCallback onPressed;
-  const RefreshButton(this.onPressed, {super.key});
-
-  @override
-  Widget build(BuildContext context) => IconButton(
-        iconSize: 15,
-        visualDensity: VisualDensity.compact,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 26, height: 26),
-          style: const ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-        tooltip: 'Refresh',
-        icon: const Icon(Icons.refresh),
-        onPressed: onPressed,
-      );
-}
-
-/// Monospace text with a trailing copy icon. Selectable.
-class CopyText extends StatelessWidget {
-  final String text;
-  final String? copyValue;
-  final Color? color;
-  final double size;
-  const CopyText(this.text, {super.key, this.copyValue, this.color, this.size = 12});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Flexible(child: Text(text, style: monoStyle(context, size: size, color: color))),
-      const SizedBox(width: 2),
-      InkWell(
-        borderRadius: BorderRadius.circular(4),
-        onTap: () => copyToClipboard(context, copyValue ?? text),
-        child: Tooltip(
-          message: 'Copy',
-          child: Padding(padding: const EdgeInsets.all(3), child: Icon(Icons.copy, size: 12, color: theme.hintColor)),
-        ),
-      ),
-    ]);
-  }
-}
-
-/// A one-line command / name in a tinted box with a copy button.
-class CopyLine extends StatelessWidget {
-  final String text;
-  final String? label;
-  const CopyLine(this.text, {super.key, this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.fromLTRB(8, 3, 2, 3),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(children: [
-        if (label != null) ...[
-          SizedBox(width: 74, child: Text(label!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
-        ],
-        Expanded(child: Text(text, style: monoStyle(context, size: 11.5))),
-        IconButton(
-          iconSize: 13,
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 24, height: 24),
-          style: const ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-          tooltip: 'Copy',
-          icon: const Icon(Icons.copy),
-          onPressed: () => copyToClipboard(context, text),
-        ),
-      ]),
-    );
-  }
-}
-
-/// Compact table with a muted header row and hairline separators.
-/// [flex] gives a flex factor per column; null means size to content.
-class NetTable extends StatelessWidget {
-  final List<String> headers;
-  final List<List<Widget>> rows;
-  final List<double?> flex;
-  const NetTable({super.key, required this.headers, required this.rows, required this.flex});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final head = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600, letterSpacing: 0.3);
-    final line = BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35));
-    Widget cell(Widget w) => Padding(padding: const EdgeInsets.fromLTRB(0, 5, 10, 5), child: w);
-    return Table(
-      columnWidths: {
-        for (var i = 0; i < flex.length; i++) i: flex[i] == null ? const IntrinsicColumnWidth() : FlexColumnWidth(flex[i]!),
-      },
-      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-      border: TableBorder(horizontalInside: line),
-      children: [
-        TableRow(children: [for (final h in headers) cell(Text(h.toUpperCase(), style: head))]),
-        for (final r in rows) TableRow(children: [for (final c in r) cell(c)]),
-      ],
-    );
-  }
-}
-
-/// Muted small text.
-class Muted extends StatelessWidget {
-  final String text;
-  final bool mono;
-  const Muted(this.text, {super.key, this.mono = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return mono
-        ? Text(text, style: monoStyle(context, size: 11.5, color: theme.hintColor))
-        : Text(text, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor));
-  }
-}
-
-/// Mono text for table cells.
-class Mono extends StatelessWidget {
-  final String text;
-  final Color? color;
-  const Mono(this.text, {super.key, this.color});
-
-  @override
-  Widget build(BuildContext context) => Text(text, style: monoStyle(context, size: 11.5, color: color));
-}
+import '../../ui/widgets/atoms.dart';
 
 /// Ready/total pill for section trailers.
 class CountBadge extends StatelessWidget {
@@ -281,7 +110,7 @@ class EndpointList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (addrs.isEmpty) return const Padding(padding: EdgeInsets.only(left: 4), child: Muted('No addresses'));
+    if (addrs.isEmpty) return const Padding(padding: EdgeInsets.only(left: 4), child: HintText('No addresses'));
     return TrimmedList([for (final a in ordered(addrs)) _row(context, a)], trimAbove: 10);
   }
 
@@ -334,7 +163,7 @@ class PortChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (ports.isEmpty) return const Muted('all ports');
+    if (ports.isEmpty) return const HintText('all ports');
     return Wrap(spacing: 4, runSpacing: 4, children: [
       for (final p in ports)
         Chipish(text: [

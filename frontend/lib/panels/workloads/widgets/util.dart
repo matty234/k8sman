@@ -8,6 +8,7 @@ import '../../../ui/theme.dart';
 import '../../../ui/widgets/common.dart';
 import '../../../util/k8s.dart';
 import '../../panel.dart';
+import '../../../ui/widgets/atoms.dart';
 export '../../../util/json.dart' show asIntOrNull;
 
 /// Natural compare so `web-2` sorts before `web-10`.
@@ -48,14 +49,6 @@ class OneLineLink extends StatelessWidget {
       child: ResourceLink(ref, label: label ?? ref.name),
     ),
   );
-}
-
-/// Muted "—" / hint text.
-class HintText extends StatelessWidget {
-  final String text;
-  const HintText(this.text, {super.key});
-  @override
-  Widget build(BuildContext context) => Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor));
 }
 
 /// Human readable toleration: `key=value:NoSchedule`, `Exists (all taints)`.

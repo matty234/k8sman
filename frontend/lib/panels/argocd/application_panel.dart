@@ -13,6 +13,7 @@ import 'app_actions.dart';
 import 'app_resources.dart';
 import 'argo_common.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
+import '../../ui/widgets/atoms.dart';
 
 class ApplicationPanel extends ResourcePanel {
   const ApplicationPanel();
@@ -50,7 +51,7 @@ class ApplicationPanel extends ResourcePanel {
         title: sources.length > 1 ? 'Sources (${sources.length})' : 'Source',
         icon: Icons.source_outlined,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (sources.isEmpty) const Hint('No source'),
+          if (sources.isEmpty) const HintText('No source'),
           for (var i = 0; i < sources.length; i++)
             SourceView(
               source: sources[i],
@@ -157,7 +158,7 @@ class AppStatusSummary extends StatelessWidget {
         ),
         (
           'Sync policy',
-          Chips([
+          InlineWrap([
             FlagChip('Auto-sync', auto),
             if (auto) ...[
               FlagChip('Prune', automated['prune'] == true, tooltip: 'Delete resources removed from git automatically'),
@@ -166,7 +167,7 @@ class AppStatusSummary extends StatelessWidget {
             ],
           ]),
         ),
-        if (syncOptions.isNotEmpty) ('Sync options', Chips([for (final o in syncOptions) Chipish(text: o)])),
+        if (syncOptions.isNotEmpty) ('Sync options', InlineWrap([for (final o in syncOptions) Chipish(text: o)])),
         if (retry.isNotEmpty)
           (
             'Retry',
@@ -184,8 +185,8 @@ class AppStatusSummary extends StatelessWidget {
                 ]),
         ),
         ('Compared', st['reconciledAt'] == null ? null : AgeText(st['reconciledAt'], suffix: ' ago', style: theme.textTheme.bodySmall)),
-        if (images.isNotEmpty) ('Images', Chips([for (final i in images) CopyChip(i)])),
-        if (urls.isNotEmpty) ('URLs', Chips([for (final u in urls) _UrlChip(u)])),
+        if (images.isNotEmpty) ('Images', InlineWrap([for (final i in images) CopyChip(i)])),
+        if (urls.isNotEmpty) ('URLs', InlineWrap([for (final u in urls) _UrlChip(u)])),
       ], keyWidth: 100),
       ArgoUiLink(key: ValueKey('ui-${ctx.uid}'), ctx: ctx),
     ]);
@@ -201,7 +202,7 @@ class _Revisions extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final n = revisions.length > targets.length ? revisions.length : targets.length;
-    if (n == 0) return const Hint('—');
+    if (n == 0) return const HintText('—');
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       for (var i = 0; i < n; i++)
         Padding(
@@ -210,7 +211,7 @@ class _Revisions extends StatelessWidget {
             if (i < revisions.length && revisions[i].isNotEmpty)
               CopyChip(shortRevision(revisions[i]), copy: revisions[i], tooltip: 'Copy ${revisions[i]}')
             else
-              const Hint('not compared'),
+              const HintText('not compared'),
             if (i < targets.length) Text('target ${targets[i]}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
           ]),
         ),
@@ -382,10 +383,10 @@ class OperationView extends StatelessWidget {
         (
           'Revision',
           revs.isNotEmpty
-              ? Chips([for (final r in revs) CopyChip(shortRevision(r), copy: r)])
-              : (rev == null || rev.isEmpty ? null : Chips([CopyChip(shortRevision(rev), copy: rev)])),
+              ? InlineWrap([for (final r in revs) CopyChip(shortRevision(r), copy: r)])
+              : (rev == null || rev.isEmpty ? null : InlineWrap([CopyChip(shortRevision(rev), copy: rev)])),
         ),
-        if (flags.isNotEmpty) ('Options', Chips([for (final f in flags) Chipish(text: f)])),
+        if (flags.isNotEmpty) ('Options', InlineWrap([for (final f in flags) Chipish(text: f)])),
         if ((op['retryCount'] ?? 0) != 0) ('Retries', '${op['retryCount']}'),
         if (total > 0) ('Resources', '$total applied${failed.isEmpty ? '' : ', ${failed.length} failed'}'),
       ], keyWidth: 100),
@@ -497,7 +498,7 @@ class SourceView extends StatelessWidget {
     return [
       if (helm['releaseName'] != null) ('Release', '${helm['releaseName']}'),
       if (helm['version'] != null) ('Helm', '${helm['version']}'),
-      if (valueFiles.isNotEmpty) ('Value files', Chips([for (final v in valueFiles) CopyChip(v)])),
+      if (valueFiles.isNotEmpty) ('Value files', InlineWrap([for (final v in valueFiles) CopyChip(v)])),
       if (params.isNotEmpty) ('Parameters', _ParamTable([for (final p in params) ('${p['name']}', '${p['value'] ?? ''}', p['forceString'] == true)])),
       if (fileParams.isNotEmpty) ('File params', _ParamTable([for (final p in fileParams) ('${p['name']}', '${p['path'] ?? ''}', false)])),
       if (values != null) ('Values', CodeBlock(values)),
@@ -513,13 +514,13 @@ class SourceView extends StatelessWidget {
     final annotations = asMap(k['commonAnnotations']);
     final replicas = asMapList(k['replicas']);
     return [
-      if (images.isNotEmpty) ('Images', Chips([for (final i in images) CopyChip(i)])),
+      if (images.isNotEmpty) ('Images', InlineWrap([for (final i in images) CopyChip(i)])),
       if (k['namePrefix'] != null) ('Name prefix', CopyChip('${k['namePrefix']}')),
       if (k['nameSuffix'] != null) ('Name suffix', CopyChip('${k['nameSuffix']}')),
       if (k['namespace'] != null) ('Namespace', '${k['namespace']}'),
       if (labels.isNotEmpty) ('Labels', LabelChips(labels)),
       if (annotations.isNotEmpty) ('Annotations', LabelChips(annotations)),
-      if (replicas.isNotEmpty) ('Replicas', Chips([for (final r in replicas) Chipish(text: '${r['name']}=${r['count']}')])),
+      if (replicas.isNotEmpty) ('Replicas', InlineWrap([for (final r in replicas) Chipish(text: '${r['name']}=${r['count']}')])),
       if (k['version'] != null) ('Kustomize', '${k['version']}'),
       if (patches.isNotEmpty)
         (
@@ -594,7 +595,7 @@ class DestinationView extends StatelessWidget {
       (
         'Namespace',
         ns == null || ns.isEmpty
-            ? const Hint('— (from the manifests)')
+            ? const HintText('— (from the manifests)')
             : (local ? ResourceLink(ObjectRef(kind: 'Namespace', name: ns), label: ns) : Text(ns, style: Theme.of(context).textTheme.bodySmall)),
       ),
       ('Project', ResourceLink(ObjectRef(group: argoGroup, kind: 'AppProject', name: project, namespace: projectNs), label: project)),
@@ -627,7 +628,7 @@ class SyncHistoryView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (history.isEmpty) return const Hint('Never synced');
+    if (history.isEmpty) return const HintText('Never synced');
     final sorted = [...history]..sort((a, b) => ((b['id'] as num?) ?? 0).compareTo((a['id'] as num?) ?? 0));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (var i = 0; i < sorted.length; i++)
@@ -656,7 +657,7 @@ class SyncHistoryView extends StatelessWidget {
                   width: 34,
                   child: Text('#${h['id']}', style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: current ? theme.colorScheme.primary : theme.hintColor)),
                 ),
-                Expanded(child: Chips([for (final r in revs) CopyChip(shortRevision(r), copy: r)])),
+                Expanded(child: InlineWrap([for (final r in revs) CopyChip(shortRevision(r), copy: r)])),
                 if (current) ...[const StatusBadge('current', severity: Severity.info, dense: true), const SizedBox(width: 8)],
                 AgeText(h['deployedAt'], suffix: ' ago'),
               ]),

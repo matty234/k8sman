@@ -7,9 +7,9 @@ import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart' show InlineWrap;
 import 'gw_model.dart';
 import 'gw_widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// One route's attachment to this Gateway through one parentRef.
 class Attachment {
@@ -141,7 +141,7 @@ class _GatewayView extends StatelessWidget {
             child: snap.hasError
                 ? InlineMessage('${snap.error}', isError: true)
                 : grouped == null
-                    ? spinner
+                    ? SectionSpinner()
                     : _routes(context, grouped),
           ),
           if (grouped != null && data!.attachments.isNotEmpty)
@@ -250,12 +250,12 @@ class _GatewayView extends StatelessWidget {
         (
           'Addresses',
           addresses.isEmpty
-              ? const Muted('none assigned')
+              ? const HintText('none assigned')
               : InlineWrap([
                   for (final a in addresses)
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       Flexible(child: Chipish(text: '${a['value']}', copyValue: '${a['value']}')),
-                      if (a['type'] != null && a['type'] != 'IPAddress') Muted(' ${a['type']}'),
+                      if (a['type'] != null && a['type'] != 'IPAddress') HintText(' ${a['type']}'),
                     ]),
                 ]),
         ),
@@ -312,7 +312,7 @@ class _GatewayView extends StatelessWidget {
                 if (problems.isNotEmpty) InsightList([for (final p in problems) Insight(diagSeverity(p.level), p.title, p.detail)]),
                 if (tls.isNotEmpty || certs.isNotEmpty)
                   QuietGroup('TLS ${tls['mode'] ?? 'Terminate'}', [
-                    if (certs.isEmpty) const Muted('no certificates'),
+                    if (certs.isEmpty) const HintText('no certificates'),
                     for (final c in certs) BackendLine(c, fromNamespace: ns, exists: data?.exists[c.key]),
                   ]),
                 QuietGroup('Allowed routes', [
@@ -365,7 +365,7 @@ class _GatewayView extends StatelessWidget {
         if (e.value.isNotEmpty || e.key.isNotEmpty) ...[
           RowGroupLabel(e.key.isEmpty ? 'No matching listener' : '${e.key} · ${protocolOf[e.key] ?? ''}'),
           if (e.value.isEmpty)
-            const Padding(padding: EdgeInsets.only(left: 4), child: Muted('no routes'))
+            const Padding(padding: EdgeInsets.only(left: 4), child: HintText('no routes'))
           else
             for (final a in [...e.value.where((a) => !ok(a)), ...e.value.where(ok)]) _routeRow(context, a, e.key),
         ],
@@ -380,7 +380,7 @@ class _GatewayView extends StatelessWidget {
       TreeRow(
         icon: Icons.router_outlined,
         main: Text(ctx.name, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
-        extras: [if (addr.isNotEmpty) Muted(addr, mono: true)],
+        extras: [if (addr.isNotEmpty) HintText(addr, mono: true)],
       ),
       TreeIndent(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -390,7 +390,7 @@ class _GatewayView extends StatelessWidget {
                 icon: Icons.sensors,
                 main: Text(e.key.isEmpty ? '(no listener)' : e.key, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500)),
                 extras: [
-                  if (byName[e.key] != null) Muted('${byName[e.key]!['protocol']} :${byName[e.key]!['port']}${byName[e.key]!['hostname'] != null ? '  ${byName[e.key]!['hostname']}' : ''}', mono: true),
+                  if (byName[e.key] != null) HintText('${byName[e.key]!['protocol']} :${byName[e.key]!['port']}${byName[e.key]!['hostname'] != null ? '  ${byName[e.key]!['hostname']}' : ''}', mono: true),
                 ],
               ),
               TreeIndent(

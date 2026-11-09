@@ -10,6 +10,7 @@ import '../panel.dart';
 import 'application_panel.dart';
 import 'argo_common.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
+import '../../ui/widgets/atoms.dart';
 
 class ApplicationSetPanel extends ResourcePanel {
   const ApplicationSetPanel();
@@ -35,7 +36,7 @@ class ApplicationSetPanel extends ResourcePanel {
         title: generators.length == 1 ? 'Generator' : 'Generators (${generators.length})',
         icon: Icons.auto_awesome_motion_outlined,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (generators.isEmpty) const Hint('No generators'),
+          if (generators.isEmpty) const HintText('No generators'),
           for (final g in generators) GeneratorView(generator: g),
         ]),
       ),
@@ -197,8 +198,8 @@ class GeneratorView extends StatelessWidget {
           ('Repository', CopyChip('${g['repoURL'] ?? ''}')),
           ('Revision', '${g['revision'] ?? 'HEAD'}'),
           if (dirs.isNotEmpty)
-            ('Directories', Chips([for (final d in dirs) Chipish(text: d['exclude'] == true ? '✗ ${d['path']}' : '${d['path']}')])),
-          if (files.isNotEmpty) ('Files', Chips([for (final f in files) Chipish(text: '${f['path']}')])),
+            ('Directories', InlineWrap([for (final d in dirs) Chipish(text: d['exclude'] == true ? '✗ ${d['path']}' : '${d['path']}')])),
+          if (files.isNotEmpty) ('Files', InlineWrap([for (final f in files) Chipish(text: '${f['path']}')])),
           if (g['pathParamPrefix'] != null) ('Param prefix', '${g['pathParamPrefix']}'),
           if (g['requeueAfterSeconds'] != null) ('Requeue', '${g['requeueAfterSeconds']}s'),
           if (asMap(g['values']).isNotEmpty) ('Values', LabelChips(asMap(g['values']))),
@@ -226,7 +227,7 @@ class GeneratorView extends StatelessWidget {
         subtitle = provider;
         body.add(KeyValueTable([
           ('Repository', '${p['owner'] ?? p['project'] ?? ''}/${p['repo'] ?? p['repository'] ?? ''}'),
-          if (p['labels'] != null) ('Labels', Chips([for (final l in p['labels'] as List) Chipish(text: '$l')])),
+          if (p['labels'] != null) ('Labels', InlineWrap([for (final l in p['labels'] as List) Chipish(text: '$l')])),
           if (g['requeueAfterSeconds'] != null) ('Requeue', '${g['requeueAfterSeconds']}s'),
         ], keyWidth: 90));
       default:
@@ -236,13 +237,13 @@ class GeneratorView extends StatelessWidget {
       body.add(Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Row(children: [
-          const Hint('Post-filter  '),
+          const HintText('Post-filter  '),
           Flexible(child: Chipish(text: selectorToString(selector))),
         ]),
       ));
     }
     if (g['template'] != null && asMap(g['template']).isNotEmpty) {
-      body.add(const Padding(padding: EdgeInsets.only(top: 4), child: Hint('Overrides parts of the template')));
+      body.add(const Padding(padding: EdgeInsets.only(top: 4), child: HintText('Overrides parts of the template')));
     }
     return Container(
       margin: EdgeInsets.only(bottom: 6, left: depth == 0 ? 0 : 4),
@@ -271,7 +272,7 @@ class _ElementsTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (elements.isEmpty) return const Hint('No elements');
+    if (elements.isEmpty) return const HintText('No elements');
     final keys = <String>[];
     for (final e in elements) {
       for (final k in e.keys) {
@@ -321,19 +322,19 @@ class AppSetTemplateView extends StatelessWidget {
         ('Destination', '${destinationCluster(dest)} / ${dest['namespace'] ?? '—'}'),
         (
           'Sync policy',
-          Chips([
+          InlineWrap([
             FlagChip('Auto-sync', auto),
             if (auto) ...[FlagChip('Prune', automated['prune'] == true), FlagChip('Self-heal', automated['selfHeal'] == true)],
           ]),
         ),
-        if (syncOptions.isNotEmpty) ('Sync options', Chips([for (final o in syncOptions) Chipish(text: o)])),
+        if (syncOptions.isNotEmpty) ('Sync options', InlineWrap([for (final o in syncOptions) Chipish(text: o)])),
         if (labels.isNotEmpty) ('Labels', LabelChips(labels)),
       ], keyWidth: 100),
       const SizedBox(height: 6),
       for (var i = 0; i < sources.length; i++) SourceView(source: sources[i], index: sources.length > 1 ? i : null),
       if (spec['templatePatch'] != null) ...[
         const SizedBox(height: 6),
-        const Hint('Template patch'),
+        const HintText('Template patch'),
         const SizedBox(height: 2),
         CodeBlock('${spec['templatePatch']}'.trimRight()),
       ],
@@ -348,7 +349,7 @@ class AppSetConditions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (conditions.isEmpty) return const Hint('No conditions');
+    if (conditions.isEmpty) return const HintText('No conditions');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final c in conditions)
         Padding(
@@ -416,10 +417,10 @@ class _GeneratedAppsState extends State<GeneratedApps> {
   }
 
   @override
-  Widget build(BuildContext context) => KeptFuture<List<Json>>(
+  Widget build(BuildContext context) => KeepingAsync<List<Json>>(
         future: _future,
         builder: (context, apps) {
-          if (apps.isEmpty) return const Hint('No applications generated');
+          if (apps.isEmpty) return const HintText('No applications generated');
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final a in apps) AppRow(a)]);
         },
       );

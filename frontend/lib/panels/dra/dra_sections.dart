@@ -10,8 +10,8 @@ import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'dra_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// "Resource claims" of a pod: each `spec.resourceClaims` entry with the
 /// ResourceClaim behind it and the containers that use it.
@@ -25,7 +25,7 @@ Widget draPodSection(PanelContext ctx) {
   return DetailSection(
     title: 'Resource claims',
     icon: Icons.memory,
-    trailing: Hint('${entries.length}'),
+    trailing: HintText('${entries.length}'),
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final e in entries)
         Padding(
@@ -57,8 +57,8 @@ class _PodClaim extends StatelessWidget {
   @override
   Widget build(BuildContext context) => KeyValueTable([
         (name, InlineWrap([
-          if (claim != null) ResourceLink(resourceClaimRef(claim!, namespace), label: claim) else const Hint('claim not created yet'),
-          if (template != null) Hint('from template $template'),
+          if (claim != null) ResourceLink(resourceClaimRef(claim!, namespace), label: claim) else const HintText('claim not created yet'),
+          if (template != null) HintText('from template $template'),
         ])),
         ('  used by', users.isEmpty ? null : InlineWrap([for (final u in users) Chipish(text: u)])),
       ], keyWidth: 110);
@@ -97,12 +97,12 @@ class _NodeDevicesState extends State<_NodeDevices> {
           return DetailSection(
             title: 'DRA devices',
             icon: Icons.memory,
-            trailing: Hint('${snap.data!.length} slice${snap.data!.length == 1 ? '' : 's'}'),
+            trailing: HintText('${snap.data!.length} slice${snap.data!.length == 1 ? '' : 's'}'),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               for (final d in drivers)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 3),
-                  child: InlineWrap([MonoValue(d, size: 11), Hint('${perDriver[d]} device${perDriver[d] == 1 ? '' : 's'}')]),
+                  child: InlineWrap([MonoText(d, size: 11), HintText('${perDriver[d]} device${perDriver[d] == 1 ? '' : 's'}')]),
                 ),
               for (final s in snap.data!)
                 ResourceLink(ObjectRef(group: draGroup, kind: 'ResourceSlice', name: '${dig(s, ['metadata', 'name'])}'), label: '${dig(s, ['metadata', 'name'])}'),

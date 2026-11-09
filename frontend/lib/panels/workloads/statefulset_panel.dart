@@ -18,6 +18,7 @@ import 'widgets/scaling.dart';
 import 'widgets/sections.dart';
 import 'widgets/status_header.dart';
 import 'widgets/util.dart';
+import '../../ui/widgets/atoms.dart';
 
 const pvcRef = ResourceRef(resource: 'persistentvolumeclaims');
 

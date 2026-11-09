@@ -7,6 +7,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// ServiceMonitor / PodMonitor: what it selects (linked), its endpoints,
 /// and live scrape-target health from Prometheus.
@@ -81,10 +82,10 @@ class _SelectsState extends State<_Selects> {
       AsyncSection<List<Json>>(
         future: _matches,
         builder: (context, items) {
-          if (items.isEmpty) return PHint('No ${kind.toLowerCase()}s match, so nothing is scraped.');
+          if (items.isEmpty) return HintText('No ${kind.toLowerCase()}s match, so nothing is scraped.');
           final shown = items.take(30).toList();
           return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            PHint('${items.length} matching ${kind.toLowerCase()}${items.length == 1 ? '' : 's'}'),
+            HintText('${items.length} matching ${kind.toLowerCase()}${items.length == 1 ? '' : 's'}'),
             const SizedBox(height: 4),
             Wrap(spacing: 12, runSpacing: 4, children: [
               for (final o in shown)
@@ -94,7 +95,7 @@ class _SelectsState extends State<_Selects> {
                       ? '${dig(o, ['metadata', 'name'])}'
                       : '${dig(o, ['metadata', 'namespace'])}/${dig(o, ['metadata', 'name'])}',
                 ),
-              if (items.length > shown.length) PHint('+${items.length - shown.length} more'),
+              if (items.length > shown.length) HintText('+${items.length - shown.length} more'),
             ]),
           ]);
         },
@@ -138,9 +139,9 @@ class _LiveTargetsState extends State<_LiveTargets> {
           DetailSection(
             title: 'Endpoints',
             icon: Icons.settings_ethernet,
-            trailing: PHint('${widget.endpoints.length}'),
+            trailing: HintText('${widget.endpoints.length}'),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              if (widget.endpoints.isEmpty) const PHint('No endpoints'),
+              if (widget.endpoints.isEmpty) const HintText('No endpoints'),
               for (final (i, e) in widget.endpoints.indexed) ...[
                 if (i > 0) Divider(height: 1, color: AppColors.of(context).separator),
                 _EndpointRow(index: i, endpoint: e, pool: live?.pools.where((p) => p.endpoint == i).firstOrNull, loaded: live != null),
@@ -163,14 +164,14 @@ class _LiveTargetsState extends State<_LiveTargets> {
             child: snap.hasError
                 ? LiveStateMessage(snap.error!)
                 : live == null
-                    ? const PHint('Loading…')
+                    ? const HintText('Loading…')
                     : live.pools.isEmpty
-                        ? PHint('${live.prometheus?.name ?? 'Prometheus'} has no targets from this ${widget.ctx.type.kind} '
+                        ? HintText('${live.prometheus?.name ?? 'Prometheus'} has no targets from this ${widget.ctx.type.kind} '
                             '(check its ${widget.isPod ? 'podMonitorSelector' : 'serviceMonitorSelector'} and namespace selector).')
                         : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                             for (final p in live.pools)
                               for (final t in p.targets.take(50)) ScrapeTargetRow(t),
-                            if (live.pools.any((p) => p.targets.length > 50)) PHint('Showing the first 50 targets per endpoint.', style: theme.textTheme.bodySmall),
+                            if (live.pools.any((p) => p.targets.length > 50)) HintText('Showing the first 50 targets per endpoint.', style: theme.textTheme.bodySmall),
                           ]),
           ),
         ]);
@@ -202,11 +203,11 @@ class _EndpointRow extends StatelessWidget {
             Text('$scheme · $port$path', style: monoStyle(context, size: 12)),
             const SizedBox(height: 2),
             Wrap(spacing: 10, runSpacing: 2, children: [
-              PHint('every ${e['interval'] ?? 'default interval'}'),
-              if (e['scrapeTimeout'] != null) PHint('timeout ${e['scrapeTimeout']}'),
-              if (e['honorLabels'] == true) const PHint('honorLabels'),
-              if (asMapList(e['relabelings']).isNotEmpty) PHint('${asMapList(e['relabelings']).length} relabelings'),
-              if (asMapList(e['metricRelabelings']).isNotEmpty) PHint('${asMapList(e['metricRelabelings']).length} metric relabelings'),
+              HintText('every ${e['interval'] ?? 'default interval'}'),
+              if (e['scrapeTimeout'] != null) HintText('timeout ${e['scrapeTimeout']}'),
+              if (e['honorLabels'] == true) const HintText('honorLabels'),
+              if (asMapList(e['relabelings']).isNotEmpty) HintText('${asMapList(e['relabelings']).length} relabelings'),
+              if (asMapList(e['metricRelabelings']).isNotEmpty) HintText('${asMapList(e['metricRelabelings']).length} metric relabelings'),
             ]),
           ]),
         ),

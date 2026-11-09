@@ -5,10 +5,9 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../network/widgets.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'es_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// ExternalSecret: sync status, the store and target Secret, the data
 /// mapping and the template.
@@ -52,7 +51,7 @@ class ExternalSecretPanel extends ResourcePanel {
           KeyValueTable([
             ('Last refresh', refreshTime == null ? null : Text('${status['refreshTime']} (${formatAge(refreshTime)} ago)')),
             ('Refresh interval', policy != null && policy != 'Periodic' ? policy : '${spec['refreshInterval'] ?? '1h'}'),
-            ('Synced version', status['syncedResourceVersion'] == null ? null : MonoValue('${status['syncedResourceVersion']}', size: 11)),
+            ('Synced version', status['syncedResourceVersion'] == null ? null : MonoText('${status['syncedResourceVersion']}', size: 11)),
           ], keyWidth: 110),
         ]),
       ),
@@ -78,7 +77,7 @@ class ExternalSecretPanel extends ResourcePanel {
         DetailSection(
           title: 'Data mapping',
           icon: Icons.table_rows_outlined,
-          trailing: Hint('${data.length + dataFrom.length}'),
+          trailing: HintText('${data.length + dataFrom.length}'),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (data.isNotEmpty) _DataTable(data),
             for (final f in dataFrom) Padding(padding: const EdgeInsets.only(top: 4), child: _DataFromLine(f)),
@@ -118,7 +117,7 @@ class _DataTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final hint = Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).hintColor);
     Widget head(String t) => Padding(padding: const EdgeInsets.only(bottom: 3), child: Text(t, style: hint));
-    Widget cell(String? t) => Padding(padding: const EdgeInsets.only(bottom: 3, right: 8), child: MonoValue(t ?? '', size: 11));
+    Widget cell(String? t) => Padding(padding: const EdgeInsets.only(bottom: 3, right: 8), child: MonoText(t ?? '', size: 11));
     return Table(
       columnWidths: const {0: FlexColumnWidth(1.2), 1: FlexColumnWidth(1.6), 2: FlexColumnWidth(1), 3: FlexColumnWidth(0.6)},
       defaultVerticalAlignment: TableCellVerticalAlignment.top,
@@ -167,7 +166,7 @@ class _DataFromLine extends StatelessWidget {
     if (store.isNotEmpty) parts.add('store ${store['kind'] ?? 'SecretStore'}/${store['name']}');
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('dataFrom  ', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor)),
-      Expanded(child: MonoValue(parts.isEmpty ? '(empty)' : parts.join('  |  '), size: 11)),
+      Expanded(child: MonoText(parts.isEmpty ? '(empty)' : parts.join('  |  '), size: 11)),
     ]);
   }
 }

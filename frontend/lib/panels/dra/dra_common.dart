@@ -10,7 +10,7 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../pod/pod_widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 const draGroup = 'resource.k8s.io';
 
@@ -105,7 +105,7 @@ class DraRequestList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (requests.isEmpty) return const Hint('No device requests');
+    if (requests.isEmpty) return const HintText('No device requests');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final r in requests)
         Padding(padding: const EdgeInsets.only(bottom: 8), child: _Request(r)),
@@ -126,8 +126,8 @@ class _Request extends StatelessWidget {
         if (r.deviceClass != null) ResourceLink(deviceClassRef(r.deviceClass!), label: r.deviceClass),
         if (r.alternatives.isEmpty) Chipish(text: r.mode == 'All' ? 'all matching devices' : '× ${r.count}'),
         if (r.adminAccess) const Chipish(text: 'admin access', color: Colors.orange),
-        if (r.tolerations > 0) Hint('${r.tolerations} toleration${r.tolerations == 1 ? '' : 's'}'),
-        if (r.alternatives.isNotEmpty) const Hint('first available of:'),
+        if (r.tolerations > 0) HintText('${r.tolerations} toleration${r.tolerations == 1 ? '' : 's'}'),
+        if (r.alternatives.isNotEmpty) const HintText('first available of:'),
       ]),
       for (final s in r.selectors) Padding(padding: const EdgeInsets.only(top: 3), child: CelBlock(s)),
       if (r.alternatives.isNotEmpty)

@@ -14,6 +14,7 @@ import '../panel.dart';
 import 'batch_common.dart';
 import 'cron.dart';
 import 'job_panel.dart' show jobSpecSummary;
+import '../../ui/widgets/atoms.dart';
 
 /// The first scheduled time after [lastSchedule] (or [created]) if it is
 /// well overdue at [now], i.e. past by more than max(2m, 25% of cadence).
@@ -228,7 +229,7 @@ class CronStatusHeader extends StatelessWidget {
     final okStale = lastOk != null && lastSched != null && lastOk.isBefore(lastSched) && active.isEmpty;
     Widget timeRow(DateTime t, {Severity? sev}) => Wrap(spacing: 6, children: [
           Text(formatLocal(t), style: theme.textTheme.bodySmall?.copyWith(color: sev == null ? null : severityColor(context, sev))),
-          hint(context, '(${formatRelative(t, now: now)})'),
+          HintText('(${formatRelative(t, now: now)})'),
         ]);
 
     return InspectorHeader(
@@ -277,7 +278,7 @@ class CronStatusHeader extends StatelessWidget {
           'Schedule',
           Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Chipish(text: s.expr.isEmpty ? '(none)' : s.expr, copyValue: s.expr),
-            hint(context, s.zoneShort),
+            HintText(s.zoneShort),
           ]),
         ),
         if (active.isNotEmpty)
@@ -288,7 +289,7 @@ class CronStatusHeader extends StatelessWidget {
                 ResourceLink(ObjectRef(group: 'batch', kind: 'Job', name: '${a['name']}', namespace: a['namespace'] as String? ?? ns), label: '${a['name']}'),
             ]),
           ),
-        ('Last ok', lastOk == null ? hint(context, lastSched == null ? 'never' : 'never succeeded') : timeRow(lastOk, sev: okStale ? Severity.warn : null)),
+        ('Last ok', lastOk == null ? HintText(lastSched == null ? 'never' : 'never succeeded') : timeRow(lastOk, sev: okStale ? Severity.warn : null)),
       ],
     );
   }
@@ -311,7 +312,7 @@ class CronScheduleView extends StatelessWidget {
       Row(children: [
         Icon(Icons.public, size: 13, color: theme.hintColor),
         const SizedBox(width: 4),
-        Expanded(child: hint(context, 'Time zone: ${s.zoneLabel(now)}')),
+        Expanded(child: HintText('Time zone: ${s.zoneLabel(now)}')),
       ]),
       const SizedBox(height: 6),
       if (s.sched == null)
@@ -364,7 +365,7 @@ class _CronSpec extends StatelessWidget {
           TextSpan(text: ' · $policyHelp', style: TextStyle(color: theme.hintColor)),
         ])),
       ),
-      ('Starting deadline', spec['startingDeadlineSeconds'] is num ? formatSeconds((spec['startingDeadlineSeconds'] as num).toInt()) : hint(context, 'none')),
+      ('Starting deadline', spec['startingDeadlineSeconds'] is num ? formatSeconds((spec['startingDeadlineSeconds'] as num).toInt()) : HintText('none')),
       ('History limits', '${spec['successfulJobsHistoryLimit'] ?? 3} successful · ${spec['failedJobsHistoryLimit'] ?? 1} failed'),
       ('Suspend', suspended ? const Align(alignment: Alignment.centerLeft, child: StatusBadge('Suspended', severity: Severity.warn, dense: true)) : 'false'),
     ], keyWidth: 120);

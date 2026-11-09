@@ -7,9 +7,8 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart' show InlineWrap;
 import '../../ui/inspector/inspector.dart';
-import 'widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// Annotation prefixes that configure ingress controllers / related tooling.
 const controllerAnnotationPrefixes = [
@@ -289,7 +288,7 @@ class _IngressView extends StatelessWidget {
               ? ResourceLink(ObjectRef(group: 'networking.k8s.io', kind: 'IngressClass', name: className), label: className)
               : legacyClass != null
                   ? Text('$legacyClass (legacy annotation)')
-                  : const Muted('none: uses the cluster default IngressClass'),
+                  : const HintText('none: uses the cluster default IngressClass'),
         ),
         (
           'Address',
@@ -306,7 +305,7 @@ class _IngressView extends StatelessWidget {
     final svc = asMap(backend['service']);
     if (svc.isEmpty) {
       final res = asMap(backend['resource']);
-      if (res.isEmpty) return const Muted('—');
+      if (res.isEmpty) return const HintText('—');
       final group = '${res['apiGroup'] ?? ''}';
       return ResourceLink(ObjectRef(group: group, kind: '${res['kind']}', name: '${res['name']}', namespace: ctx.namespace));
     }
@@ -368,7 +367,7 @@ class _IngressView extends StatelessWidget {
           return InspectorRow(
             dot: missing ? Severity.error : (unused.isNotEmpty ? Severity.warn : Severity.ok),
             title: name == null
-                ? const Muted('no secret (controller default cert)')
+                ? const HintText('no secret (controller default cert)')
                 : Row(children: [
                     Flexible(child: ResourceLink(ObjectRef(kind: 'Secret', name: name, namespace: ctx.namespace), label: name, singleLine: true)),
                     if (missing) ...[
@@ -444,7 +443,7 @@ class IngressClassPanel extends ResourcePanel {
         icon: Icons.input,
         trailing: isDefault ? const StatusBadge('Default class', dense: true, severity: Severity.ok) : null,
         child: KeyValueTable([
-          ('Controller', spec['controller'] != null ? CopyText('${spec['controller']}') : const Muted('not set')),
+          ('Controller', spec['controller'] != null ? MonoText('${spec['controller']}', copy: true) : const HintText('not set')),
           ('Default', isDefault ? 'yes: Ingresses without ingressClassName use this class' : 'no'),
           (
             'Parameters',
@@ -460,7 +459,7 @@ class IngressClassPanel extends ResourcePanel {
                       ),
                       label: '${params['kind']}/${params['name']}',
                     ),
-                    Muted([
+                    HintText([
                       if (params['apiGroup'] != null) '${params['apiGroup']}',
                       if (params['scope'] != null) 'scope ${params['scope']}',
                       if (params['namespace'] != null) 'ns ${params['namespace']}',
@@ -503,7 +502,7 @@ class _IngressClassUsers extends StatelessWidget {
           child: snap.hasError
               ? InlineMessage('${snap.error}', isError: true)
               : !snap.hasData
-                  ? spinner
+                  ? SectionSpinner()
                   : users.isEmpty
                       ? const InlineMessage('No Ingresses use this class')
                       : Wrap(spacing: 10, runSpacing: 4, children: [

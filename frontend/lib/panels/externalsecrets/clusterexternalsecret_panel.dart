@@ -4,8 +4,8 @@ import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'es_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// ClusterExternalSecret: which namespaces it selects and where it was
 /// (or failed to be) provisioned.
@@ -45,23 +45,23 @@ class ClusterExternalSecretPanel extends ResourcePanel {
         title: 'Namespace selection',
         icon: Icons.filter_alt_outlined,
         child: selectors.isEmpty && names.isEmpty
-            ? const Hint('No namespaceSelector or namespaces set')
+            ? const HintText('No namespaceSelector or namespaces set')
             : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                for (final s in selectors) Padding(padding: const EdgeInsets.only(bottom: 4), child: MonoValue(selectorSummary(s), size: 11)),
+                for (final s in selectors) Padding(padding: const EdgeInsets.only(bottom: 4), child: MonoText(selectorSummary(s), size: 11)),
                 if (names.isNotEmpty) InlineWrap([for (final n in names) Chipish(text: n)]),
               ]),
       ),
       DetailSection(
         title: 'Provisioned namespaces',
         icon: Icons.check_circle_outline,
-        trailing: Hint('${provisioned.length}'),
-        child: provisioned.isEmpty ? const Hint('None') : InlineWrap([for (final n in provisioned) Chipish(text: n)]),
+        trailing: HintText('${provisioned.length}'),
+        child: provisioned.isEmpty ? const HintText('None') : InlineWrap([for (final n in provisioned) Chipish(text: n)]),
       ),
       if (failed.isNotEmpty)
         DetailSection(
           title: 'Failed namespaces',
           icon: Icons.error_outline,
-          trailing: Hint('${failed.length}'),
+          trailing: HintText('${failed.length}'),
           child: KeyValueTable([for (final f in failed) ('${f['namespace'] ?? ''}', '${f['reason'] ?? ''}')], keyWidth: 150),
         ),
     ];

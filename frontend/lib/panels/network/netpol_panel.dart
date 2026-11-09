@@ -6,7 +6,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import '../../ui/inspector/inspector.dart';
 import 'netpol_explain.dart';
-import 'widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 class NetworkPolicyPanel extends ResourcePanel {
   const NetworkPolicyPanel();
@@ -74,7 +74,7 @@ class _NetpolView extends StatelessWidget {
             child: snap.hasError
                 ? InlineMessage('${snap.error}', isError: true)
                 : pods == null
-                    ? spinner
+                    ? SectionSpinner()
                     : _pods(context, pods, sel),
           ),
         ]);
@@ -110,7 +110,7 @@ class _NetpolView extends StatelessWidget {
       insights: insights,
       footer: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
-          child: Muted('policyTypes: ${ex.policyTypes.join(', ')}${ex.policyTypesDefaulted ? ' (defaulted)' : ''}  ·  '
+          child: HintText('policyTypes: ${ex.policyTypes.join(', ')}${ex.policyTypesDefaulted ? ' (defaulted)' : ''}  ·  '
               'policies are additive: traffic is allowed if any policy selecting the pod allows it'),
         ),
         RowAction(icon: Icons.copy, tooltip: 'Copy explanation', onTap: () => copyToClipboard(context, ex.text)),
@@ -128,7 +128,7 @@ class _NetpolView extends StatelessWidget {
     ];
     final multiRule = d.rules.length > 1;
     final Widget body = switch (d.mode) {
-      PolicyMode.unrestricted => Padding(padding: const EdgeInsets.only(left: 4), child: Muted('This policy does not restrict ${d.direction.toLowerCase()} traffic.')),
+      PolicyMode.unrestricted => Padding(padding: const EdgeInsets.only(left: 4), child: HintText('This policy does not restrict ${d.direction.toLowerCase()} traffic.')),
       PolicyMode.denyAll => InspectorRow(
           dot: Severity.neutral,
           title: Text('All ${d.direction.toLowerCase()} traffic denied', maxLines: 2),
@@ -164,6 +164,6 @@ class _NetpolView extends StatelessWidget {
           ? 'No pods in ${ctx.namespace} yet; the policy will apply to every pod created here.'
           : 'No pods match $sel; the policy currently has no effect.');
     }
-    return PodRows(pods, trailing: (p) => [if (dig(p, ['status', 'podIP']) != null) Muted('${dig(p, ['status', 'podIP'])}', mono: true)]);
+    return PodRows(pods, trailing: (p) => [if (dig(p, ['status', 'podIP']) != null) HintText('${dig(p, ['status', 'podIP'])}', mono: true)]);
   }
 }

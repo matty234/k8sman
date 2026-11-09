@@ -6,6 +6,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'gw_model.dart';
 import 'gw_widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// A reference into the grant's namespace from a route or Gateway.
 class GrantUse {
@@ -64,24 +65,24 @@ class ReferenceGrantPanel extends ResourcePanel {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           for (final s in sentences) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(s, style: Theme.of(context).textTheme.bodySmall)),
           const SizedBox(height: 4),
-          NetTable(
+          CompactTable.ruled(
             headers: const ['From kind', 'Namespace'],
             flex: const [1, 1],
-            rows: [for (final f in from) [Mono('${f['kind']}'), Mono('${f['namespace']}')]],
+            rows: [for (final f in from) [MonoText.cell('${f['kind']}'), MonoText.cell('${f['namespace']}')]],
           ),
           const SizedBox(height: 8),
-          NetTable(
+          CompactTable.ruled(
             headers: const ['To kind', 'Name'],
             flex: const [1, 1],
             rows: [
               for (final t in to)
                 [
-                  Mono('${(t['group'] ?? '').toString().isEmpty ? '' : '${t['group']}/'}${t['kind']}'),
+                  MonoText.cell('${(t['group'] ?? '').toString().isEmpty ? '' : '${t['group']}/'}${t['kind']}'),
                   (t['name'] ?? '').toString().isEmpty
-                      ? const Muted('any')
+                      ? const HintText('any')
                       : (t['kind'] == 'Service' || t['kind'] == 'Secret') && (t['group'] ?? '').toString().isEmpty
                           ? ResourceLink(ObjectRef(kind: '${t['kind']}', name: '${t['name']}', namespace: ctx.namespace), label: '${t['name']}')
-                          : Mono('${t['name']}'),
+                          : MonoText.cell('${t['name']}'),
                 ],
             ],
           ),
@@ -119,7 +120,7 @@ class _GrantUsers extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 3),
               child: Wrap(spacing: 6, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 gwLink(u.kind, u.name, namespace: u.namespace, label: '${u.kind} ${u.namespace}/${u.name}'),
-                const Muted('→'),
+                const HintText('→'),
                 BackendLine(u.to, fromNamespace: u.namespace),
               ]),
             );
@@ -134,14 +135,14 @@ class _GrantUsers extends StatelessWidget {
           child: snap.hasError
               ? InlineMessage('${snap.error}', isError: true)
               : !snap.hasData
-                  ? spinner
+                  ? SectionSpinner()
                   : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       if (relied.isEmpty) const InlineMessage('Nothing currently uses this grant.') else for (final u in relied) row(u),
                       if (blocked.isNotEmpty) ...[
                         SubHeader('NOT COVERED BY THIS GRANT', trailing: StatusBadge('${blocked.length}', dense: true, severity: Severity.warn)),
                         const Padding(
                           padding: EdgeInsets.only(bottom: 2),
-                          child: Muted('References from the same namespaces into this one that this grant does not allow.'),
+                          child: HintText('References from the same namespaces into this one that this grant does not allow.'),
                         ),
                         for (final u in blocked) row(u),
                       ],

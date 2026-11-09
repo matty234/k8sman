@@ -12,6 +12,7 @@ import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'common.dart';
 import '../../util/json.dart';
+import '../../ui/widgets/atoms.dart';
 
 class PvcPanel extends ResourcePanel {
   const PvcPanel();
@@ -280,9 +281,9 @@ class _VolumeDetails extends StatelessWidget {
       ('Volume', volumeName != null && volumeName.isNotEmpty ? ResourceLink(pvRef(volumeName), label: volumeName) : Text('not bound yet', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
       ('Volume mode', ValueWithHint(Text(spec['volumeMode'] as String? ?? 'Filesystem', style: theme.textTheme.bodySmall),
           hint: (spec['volumeMode'] ?? 'Filesystem') == 'Block' ? 'raw block device, no filesystem' : 'mounted as a directory')),
-      ('Provisioner', provisioner != null ? MonoValue(provisioner) : null),
+      ('Provisioner', provisioner != null ? MonoText.cell(provisioner) : null),
       ('Selected node', selectedNode != null ? ResourceLink(nodeRef(selectedNode), label: selectedNode) : null),
-      ('Selector', asMap(spec['selector']).isNotEmpty ? MonoValue(selectorToString(spec['selector'])) : null),
+      ('Selector', asMap(spec['selector']).isNotEmpty ? MonoText.cell(selectorToString(spec['selector'])) : null),
       ('Volume attr. class', spec['volumeAttributesClassName'] as String?),
     ], keyWidth: 120);
   }
@@ -588,7 +589,7 @@ class _PodMountRow extends StatelessWidget {
                   child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [
                     Text('${init ? 'init:' : ''}$c', style: hint),
                     Icon(Icons.arrow_forward, size: 11, color: theme.hintColor),
-                    MonoValue(sub != null ? '$path  (subPath $sub)' : path),
+                    MonoText.cell(sub != null ? '$path  (subPath $sub)' : path),
                     if (ro || m.readOnly) Text('read-only', style: hint),
                   ]),
                 ),

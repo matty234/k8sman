@@ -7,6 +7,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// Prometheus and Alertmanager custom resources: version, replicas,
 /// retention, storage, selectors, alerting, conditions, and live status.
@@ -78,7 +79,7 @@ class PromInstancePanel extends ResourcePanel {
                 child: Wrap(spacing: 6, runSpacing: 2, children: [
                   ResourceLink(ObjectRef(kind: 'Service', name: '${a['name']}', namespace: '${a['namespace'] ?? ctx.namespace}'),
                       label: '${a['namespace'] ?? ctx.namespace}/${a['name']}'),
-                  PHint('port ${a['port'] ?? '?'}${a['pathPrefix'] != null ? ' · ${a['pathPrefix']}' : ''}'),
+                  HintText('port ${a['port'] ?? '?'}${a['pathPrefix'] != null ? ' · ${a['pathPrefix']}' : ''}'),
                 ]),
               ),
           ]),
@@ -121,7 +122,7 @@ class PromInstancePanel extends ResourcePanel {
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Row(children: [
-              const PHint('in '),
+              const HintText('in '),
               Flexible(child: SelectorView(spec[nsSel], emptyText: 'all namespaces', missingText: 'its own namespace')),
             ]),
           ),
@@ -149,15 +150,15 @@ class _LiveStatusState extends State<_LiveStatus> {
       builder: (context, snap) {
         if (snap.hasError) return LiveStateMessage(snap.error!);
         final s = snap.data;
-        if (s == null) return const PHint('Checking…');
+        if (s == null) return const HintText('Checking…');
         final id = '${ctx.namespace}/${ctx.name}';
         final inst = (isProm ? s.prometheus : s.alertmanager).where((i) => i.id == id).firstOrNull;
-        if (inst == null) return const PHint('Not discovered by k8sman.');
+        if (inst == null) return const HintText('Not discovered by k8sman.');
         return Wrap(spacing: 10, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
           StatusBadge(inst.reachable ? 'Reachable' : 'Unreachable', dense: true, severity: inst.reachable ? Severity.ok : Severity.error),
-          if (inst.reachable && inst.version.isNotEmpty) PHint('running ${inst.version}'),
-          PHint('via ${inst.service}:${inst.port}'),
-          if (inst.isDefault) const PHint('default'),
+          if (inst.reachable && inst.version.isNotEmpty) HintText('running ${inst.version}'),
+          HintText('via ${inst.service}:${inst.port}'),
+          if (inst.isDefault) const HintText('default'),
           if (!inst.reachable && inst.error != null) Text(inst.error!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.error))),
           OpenAlertsButton(ctx.app),
         ]);

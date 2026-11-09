@@ -68,53 +68,6 @@ class UsageBar extends StatelessWidget {
   }
 }
 
-/// Small header-row table. [flex] gives each column's flex factor.
-class CompactTable extends StatelessWidget {
-  final List<String> headers;
-  final List<List<Widget>> rows;
-  final List<int> flex;
-  final List<TextAlign>? align;
-  const CompactTable({super.key, required this.headers, required this.rows, required this.flex, this.align});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    Widget cell(Widget w, int i) {
-      final a = align?[i] ?? TextAlign.left;
-      return Expanded(
-        flex: flex[i],
-        child: Align(alignment: a == TextAlign.right ? Alignment.centerRight : Alignment.centerLeft, child: w),
-      );
-    }
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Container(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.dividerColor))),
-        child: Row(children: [
-          for (var i = 0; i < headers.length; i++)
-            cell(Text(headers[i], style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600)), i),
-        ]),
-      ),
-      for (final r in rows)
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.4)))),
-          child: Row(children: [for (var i = 0; i < r.length; i++) cell(r[i], i)]),
-        ),
-    ]);
-  }
-}
-
-/// Monospace text cell.
-class MonoText extends StatelessWidget {
-  final String text;
-  final Color? color;
-  const MonoText(this.text, {super.key, this.color});
-  @override
-  Widget build(BuildContext context) => Text(text, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: color));
-}
-
 // ---------------------------------------------------------------------------
 // RBAC
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/gateway/gw_widgets.dart' show CopyLine;
+import 'package:k8sman/ui/widgets/atoms.dart' show CopyLine;
 import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/screenshot.dart';

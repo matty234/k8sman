@@ -266,22 +266,6 @@ class FlagChip extends StatelessWidget {
   }
 }
 
-/// Muted helper text.
-class Hint extends StatelessWidget {
-  final String text;
-  const Hint(this.text, {super.key});
-  @override
-  Widget build(BuildContext context) => Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor));
-}
-
-/// Wraps children with consistent spacing.
-class Chips extends StatelessWidget {
-  final List<Widget> children;
-  const Chips(this.children, {super.key});
-  @override
-  Widget build(BuildContext context) => Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: children);
-}
-
 /// A ResourceLink that ellipsizes instead of wrapping.
 class OneLineRef extends StatelessWidget {
   final ObjectRef ref;
@@ -294,28 +278,6 @@ class OneLineRef extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         softWrap: false,
         child: Tooltip(message: '${ref.kind}/${ref.name}', child: ResourceLink(ref, label: label ?? ref.name)),
-      );
-}
-
-/// FutureBuilder that keeps showing the last data while refetching.
-class KeptFuture<T> extends StatelessWidget {
-  final Future<T> future;
-  final Widget Function(BuildContext, T) builder;
-  const KeptFuture({super.key, required this.future, required this.builder});
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<T>(
-        future: future,
-        builder: (context, snap) {
-          if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
-          if (!snap.hasData) {
-            return const Padding(
-              padding: EdgeInsets.all(8),
-              child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
-            );
-          }
-          return builder(context, snap.data as T);
-        },
       );
 }
 

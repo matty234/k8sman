@@ -18,6 +18,7 @@ import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'logic.dart';
 import 'widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 const _pressureTypes = ['MemoryPressure', 'DiskPressure', 'PIDPressure', 'NetworkUnavailable'];
 
@@ -362,14 +363,14 @@ class _CapacityTable extends StatelessWidget {
       }
       final reserved = (c != null && a != null) ? c - a : null;
       rows.add([
-        MonoText(k),
-        MonoText(formatQty(k, c)),
-        MonoText(formatQty(k, a)),
-        MonoText(reserved == null || reserved == 0 ? '—' : formatQty(k, reserved), color: theme.hintColor),
+        MonoText(k, size: 11, ellipsis: true),
+        MonoText(formatQty(k, c), size: 11, ellipsis: true),
+        MonoText(formatQty(k, a), size: 11, ellipsis: true),
+        MonoText(reserved == null || reserved == 0 ? '—' : formatQty(k, reserved), color: theme.hintColor, size: 11, ellipsis: true),
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      CompactTable(
+      CompactTable.ruled(
         headers: const ['RESOURCE', 'CAPACITY', 'ALLOCATABLE', 'RESERVED'],
         flex: const [4, 3, 3, 3],
         align: const [TextAlign.left, TextAlign.right, TextAlign.right, TextAlign.right],
@@ -440,9 +441,9 @@ class _Images extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
           child: Row(children: [
-            Expanded(child: Tooltip(message: strList(i['names']).join('\n'), child: MonoText(nameOf(i)))),
+            Expanded(child: Tooltip(message: strList(i['names']).join('\n'), child: MonoText(nameOf(i), size: 11, ellipsis: true))),
             const SizedBox(width: 8),
-            MonoText(formatBytes((i['sizeBytes'] as num?)?.toDouble()), color: theme.hintColor),
+            MonoText(formatBytes((i['sizeBytes'] as num?)?.toDouble()), color: theme.hintColor, size: 11, ellipsis: true),
           ]),
         ),
     ]);

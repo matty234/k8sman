@@ -13,10 +13,10 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../ui/widgets/editorial.dart';
 import '../../util/k8s.dart';
-import '../argocd/argo_common.dart' show Hint;
 import 'wf_common.dart';
 import 'wf_graph.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
+import '../../ui/widgets/atoms.dart';
 
 /// The selected node per workflow uid, shared by the failed-steps summary
 /// and the graph. Bounded so it doesn't grow with every opened workflow.
@@ -169,7 +169,7 @@ class _WorkflowNodesViewState extends State<WorkflowNodesView> {
       ] else
         Padding(
           padding: const EdgeInsets.only(top: 6),
-          child: Hint(list ? 'Select a step for its details and logs.' : 'Click a step for its details and logs.'),
+          child: HintText(list ? 'Select a step for its details and logs.' : 'Click a step for its details and logs.'),
         ),
     ]);
   }

@@ -18,8 +18,8 @@ import 'pod_containers.dart';
 import 'pod_logic.dart';
 import '../../ui/inspector/inspector.dart';
 import 'pod_status.dart';
-import 'pod_widgets.dart';
 import '../../util/text.dart';
+import '../../ui/widgets/atoms.dart';
 
 class PodPanel extends ResourcePanel {
   const PodPanel();
@@ -83,7 +83,7 @@ class PodPanel extends ResourcePanel {
             for (final c in healthyMain) row(c),
             if (healthyInit.isNotEmpty) ...[const _GroupLabel('Init'), for (final c in healthyInit) row(c, quiet: true)],
             if (healthyEph.isNotEmpty) ...[const _GroupLabel('Ephemeral'), for (final c in healthyEph) row(c, quiet: true)],
-            if (containers.isEmpty) const Hint('No containers'),
+            if (containers.isEmpty) const HintText('No containers'),
           ],
         ),
       ),
@@ -246,7 +246,7 @@ class PodPanel extends ResourcePanel {
               if (defaults > 0)
                 Tooltip(
                   message: tols.where(isDefaultToleration).map(tolerationText).join('\n'),
-                  child: Hint('${custom.isEmpty ? '' : '+ '}$defaults default (not-ready / unreachable, NoExecute)'),
+                  child: HintText('${custom.isEmpty ? '' : '+ '}$defaults default (not-ready / unreachable, NoExecute)'),
                 ),
             ],
           ),
@@ -264,7 +264,7 @@ class PodPanel extends ResourcePanel {
       if (scheduler != null && scheduler != 'default-scheduler') ('Scheduler', Text('$scheduler', style: small)),
       if (spec['runtimeClassName'] != null) ('Runtime class', Text('${spec['runtimeClassName']}', style: small)),
       if (spec['hostname'] != null || spec['subdomain'] != null)
-        ('Hostname', MonoValue([spec['hostname'] ?? ctx.name, if (spec['subdomain'] != null) spec['subdomain']].join('.'), size: 11)),
+        ('Hostname', MonoText([spec['hostname'] ?? ctx.name, if (spec['subdomain'] != null) spec['subdomain']].join('.'), size: 11)),
       if (spec['dnsPolicy'] != null && spec['dnsPolicy'] != 'ClusterFirst') ('DNS policy', Text('${spec['dnsPolicy']}', style: small)),
     ];
   }
@@ -306,13 +306,13 @@ class _Configuration extends StatelessWidget {
     final podSc = asMap(spec['securityContext']);
     final started = parseTime(status['startTime']);
     return KeyValueTable(keyWidth: 110, [
-      if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), Hint(_qosHint(qos))])),
+      if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), HintText(_qosHint(qos))])),
       (
         'Priority',
         InlineWrap([
           Text('${spec['priority'] ?? 0}', style: small),
-          if (spec['priorityClassName'] != null) Hint('class ${spec['priorityClassName']}'),
-          if (spec['preemptionPolicy'] == 'Never') const Hint('never preempts'),
+          if (spec['priorityClassName'] != null) HintText('class ${spec['priorityClassName']}'),
+          if (spec['preemptionPolicy'] == 'Never') const HintText('never preempts'),
         ]),
       ),
       ('Restart policy', Text('${spec['restartPolicy'] ?? 'Always'} · grace ${spec['terminationGracePeriodSeconds'] ?? 30}s', style: small)),
@@ -356,7 +356,7 @@ class _Volumes extends StatelessWidget {
         if (token != null)
           Tooltip(
             message: 'Added by Kubernetes: a service account token, kube-root-ca.crt and the namespace\n${_mountsOf('${token['name']}').join('\n')}',
-            child: Hint('+ service account token (${token['name']})'),
+            child: HintText('+ service account token (${token['name']})'),
           ),
       ],
     );
@@ -404,7 +404,7 @@ class _Volumes extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 1),
           child: mounts.isEmpty
-              ? const Hint('not mounted')
+              ? const HintText('not mounted')
               : Text('→ $mounts', style: monoStyle(context, size: 10.5, color: theme.hintColor)),
         ),
       ],
@@ -423,7 +423,7 @@ class _Volumes extends StatelessWidget {
   }
 
   Widget _source(BuildContext context, String type, Json src, String volume) {
-    final opt = src['optional'] == true ? const Hint('optional') : null;
+    final opt = src['optional'] == true ? const HintText('optional') : null;
     switch (type) {
       case 'configMap':
         return InlineWrap([_link('ConfigMap', src['name'] as String?, label: '${src['name']}'), ?opt, _items(context, src)]);
@@ -432,16 +432,16 @@ class _Volumes extends StatelessWidget {
       case 'persistentVolumeClaim':
         return InlineWrap([
           _link('PersistentVolumeClaim', src['claimName'] as String?, label: 'pvc/${src['claimName']}'),
-          if (src['readOnly'] == true) const Hint('read-only'),
+          if (src['readOnly'] == true) const HintText('read-only'),
         ]);
       case 'emptyDir':
-        return Hint([src['medium'] == 'Memory' ? 'tmpfs (memory-backed)' : 'node disk', if (src['sizeLimit'] != null) 'limit ${src['sizeLimit']}'].join(' · '));
+        return HintText([src['medium'] == 'Memory' ? 'tmpfs (memory-backed)' : 'node disk', if (src['sizeLimit'] != null) 'limit ${src['sizeLimit']}'].join(' · '));
       case 'hostPath':
         final hostType = '${src['type'] ?? ''}';
         return InlineWrap([
-          MonoValue('${src['path']}', size: 11),
+          MonoText('${src['path']}', size: 11),
           // Directory / DirectoryOrCreate are the norm; name the rest (File, Socket, …).
-          if (!const {'', 'Directory', 'DirectoryOrCreate'}.contains(hostType)) Hint(hostType),
+          if (!const {'', 'Directory', 'DirectoryOrCreate'}.contains(hostType)) HintText(hostType),
         ]);
       case 'downwardAPI':
         return _downward(context, src);
@@ -456,7 +456,7 @@ class _Volumes extends StatelessWidget {
         final claim = '$pod-$volume';
         return InlineWrap([
           _link('PersistentVolumeClaim', claim, label: 'pvc/$claim'),
-          Hint(
+          HintText(
             [
               'ephemeral, deleted with the pod',
               if (t['storageClassName'] != null) 'class ${t['storageClassName']}',
@@ -464,19 +464,19 @@ class _Volumes extends StatelessWidget {
               if (t['accessModes'] is List) (t['accessModes'] as List).join(','),
             ].join(' · '),
           ),
-          if (t['volumeMode'] == 'Block') const Hint('block device'),
+          if (t['volumeMode'] == 'Block') const HintText('block device'),
         ]);
       case 'csi':
-        return InlineWrap([Hint('driver ${src['driver']}'), for (final e in asMap(src['volumeAttributes']).entries) Chipish(text: '${e.key}=${e.value}')]);
+        return InlineWrap([HintText('driver ${src['driver']}'), for (final e in asMap(src['volumeAttributes']).entries) Chipish(text: '${e.key}=${e.value}')]);
       case 'nfs':
-        return MonoValue('${src['server']}:${src['path']}${src['readOnly'] == true ? ' (ro)' : ''}', size: 11);
+        return MonoText('${src['server']}:${src['path']}${src['readOnly'] == true ? ' (ro)' : ''}', size: 11);
       case 'image':
         return InlineWrap([
           Chipish(text: '${src['reference']}', copyValue: '${src['reference']}'),
-          if (src['pullPolicy'] != null) Hint('pull ${src['pullPolicy']}'),
+          if (src['pullPolicy'] != null) HintText('pull ${src['pullPolicy']}'),
         ]);
       default:
-        return Hint(src.entries.map((e) => '${e.key}: ${e.value}').join(' · '));
+        return HintText(src.entries.map((e) => '${e.key}: ${e.value}').join(' · '));
     }
   }
 
@@ -494,15 +494,15 @@ class _Volumes extends StatelessWidget {
   Widget _projectedSource(BuildContext context, Json s) {
     if (s['configMap'] is Map) {
       final cm = asMap(s['configMap']);
-      return InlineWrap([const Hint('configMap'), _link('ConfigMap', cm['name'] as String?, label: '${cm['name']}'), _items(context, cm)]);
+      return InlineWrap([const HintText('configMap'), _link('ConfigMap', cm['name'] as String?, label: '${cm['name']}'), _items(context, cm)]);
     }
     if (s['secret'] is Map) {
       final sec = asMap(s['secret']);
-      return InlineWrap([const Hint('secret'), _link('Secret', sec['name'] as String?, label: '${sec['name']}'), _items(context, sec)]);
+      return InlineWrap([const HintText('secret'), _link('Secret', sec['name'] as String?, label: '${sec['name']}'), _items(context, sec)]);
     }
     if (s['serviceAccountToken'] is Map) {
       final t = asMap(s['serviceAccountToken']);
-      return Hint(
+      return HintText(
         [
           'serviceAccountToken at ${t['path']}',
           if (t['expirationSeconds'] != null) 'expires ${formatDuration(Duration(seconds: (t['expirationSeconds'] as num).toInt()))}',
@@ -514,15 +514,15 @@ class _Volumes extends StatelessWidget {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Hint('downwardAPI  '),
+          const HintText('downwardAPI  '),
           Flexible(child: _downward(context, asMap(s['downwardAPI']))),
         ],
       );
     }
     if (s['clusterTrustBundle'] is Map) {
       final b = asMap(s['clusterTrustBundle']);
-      return Hint('clusterTrustBundle ${b['name'] ?? b['signerName'] ?? ''} at ${b['path']}');
+      return HintText('clusterTrustBundle ${b['name'] ?? b['signerName'] ?? ''} at ${b['path']}');
     }
-    return Hint(s.keys.join(', '));
+    return HintText(s.keys.join(', '));
   }
 }

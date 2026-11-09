@@ -8,6 +8,7 @@ import '../panel.dart';
 import 'gw_model.dart';
 import 'gw_widgets.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
+import '../../ui/widgets/atoms.dart';
 
 /// Envoy Gateway's controllerName (see the add-on catalog).
 const envoyGatewayController = 'gateway.envoyproxy.io/gatewayclass-controller';
@@ -35,7 +36,7 @@ class GatewayClassPanel extends ResourcePanel {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (!condTrue(accepted)) _notAccepted(context, ctx, accepted, controller),
           KeyValueTable([
-            ('Controller', CopyText(controller)),
+            ('Controller', MonoText(controller, copy: true)),
             ('Description', spec['description'] as String?),
             (
               'Parameters',
@@ -46,7 +47,7 @@ class GatewayClassPanel extends ResourcePanel {
                         ObjectRef(group: '${params['group'] ?? ''}', kind: '${params['kind']}', name: '${params['name']}', namespace: params['namespace'] as String?),
                         label: '${params['kind']}/${params['name']}',
                       ),
-                      Muted([if (params['group'] != null) '${params['group']}', if (params['namespace'] != null) 'ns ${params['namespace']}'].join(' · ')),
+                      HintText([if (params['group'] != null) '${params['group']}', if (params['namespace'] != null) 'ns ${params['namespace']}'].join(' · ')),
                     ]),
             ),
             ('Status', condTrue(accepted) ? (accepted?['message'] as String?) : null),
@@ -116,7 +117,7 @@ class _ClassGateways extends StatelessWidget {
           child: snap.hasError
               ? InlineMessage('${snap.error}', isError: true)
               : !snap.hasData
-                  ? spinner
+                  ? SectionSpinner()
                   : users.isEmpty
                       ? const InlineMessage('No Gateways use this class')
                       : HairlineList(padding: const EdgeInsets.symmetric(vertical: 4), [
@@ -128,7 +129,7 @@ class _ClassGateways extends StatelessWidget {
                                 Expanded(
                                   child: Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
                                     gwLink('Gateway', '${dig(g, ['metadata', 'name'])}', namespace: dig(g, ['metadata', 'namespace'])),
-                                    if (addr.isNotEmpty) Muted(addr, mono: true),
+                                    if (addr.isNotEmpty) HintText(addr, mono: true),
                                   ]),
                                 ),
                                 CondBadge(programmed, label: 'Programmed', negative: 'Not programmed'),

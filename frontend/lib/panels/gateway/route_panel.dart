@@ -7,9 +7,9 @@ import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart' show InlineWrap;
 import 'gw_model.dart';
 import 'gw_widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// Everything a route view looks up besides the route itself.
 class RouteLookups {
@@ -164,7 +164,7 @@ class _RouteView extends StatelessWidget {
         if (r.kind.hasHostnames)
           (
             'Hostnames',
-            hosts.isEmpty ? const Muted('any (inherits the listener hostname)') : InlineWrap([for (final h in hosts) Chipish(text: h, copyValue: h)]),
+            hosts.isEmpty ? const HintText('any (inherits the listener hostname)') : InlineWrap([for (final h in hosts) Chipish(text: h, copyValue: h)]),
           ),
         (
           'Backends',
@@ -202,7 +202,7 @@ class _RouteView extends StatelessWidget {
               subtitle: dotLine([p.sectionText, if (status?['controllerName'] != null) 'controller ${status!['controllerName']}']),
               trailing: [if (bad) Text(label, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, sev), fontWeight: FontWeight.w600))],
               details: (_) => status == null
-                  ? const Muted('The controller has not reported on this parent yet.')
+                  ? const HintText('The controller has not reported on this parent yet.')
                   : Wrap(spacing: 8, runSpacing: 4, children: [
                       CondBadge(condOf(conds, 'Accepted'), label: 'Accepted', negative: 'Not accepted'),
                       CondBadge(condOf(conds, 'ResolvedRefs'), label: 'Refs resolved', negative: 'Unresolved refs'),
@@ -290,16 +290,16 @@ class _RouteView extends StatelessWidget {
         details: (_) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 10, children: [
           if (isHttpish)
             QuietGroup('Match', [
-              if (matches.isEmpty) const Muted('everything'),
+              if (matches.isEmpty) const HintText('everything'),
               for (var j = 0; j < matches.length; j++)
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  if (j > 0) const Padding(padding: EdgeInsets.only(right: 6), child: Muted('or')),
-                  Expanded(child: Mono(describeMatch(matches[j], grpc: grpc).join('  ·  ').ifEmpty(grpc ? 'any method' : 'any path'))),
+                  if (j > 0) const Padding(padding: EdgeInsets.only(right: 6), child: HintText('or')),
+                  Expanded(child: MonoText.cell(describeMatch(matches[j], grpc: grpc).join('  ·  ').ifEmpty(grpc ? 'any method' : 'any path'))),
                 ]),
             ]),
           if (filters.isNotEmpty) QuietGroup('Filters', [for (final f in filters) Text(describeFilter(f, routeNamespace: r.namespace))]),
           QuietGroup('Backends', [
-            if (backends.isEmpty) redirect ? const Muted('none (redirect)') : const Muted('none: requests get a 500'),
+            if (backends.isEmpty) redirect ? const HintText('none (redirect)') : const HintText('none: requests get a 500'),
             for (final b in backends)
               BackendLine(b, fromNamespace: r.namespace, percent: weightPercent(backends, b), exists: data?.backends[b.key], notPermitted: notPermitted(b)),
           ]),

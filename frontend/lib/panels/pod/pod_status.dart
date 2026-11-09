@@ -9,7 +9,7 @@ import '../../util/k8s.dart';
 import '../../util/pod.dart';
 import '../panel.dart';
 import 'pod_logic.dart';
-import 'pod_widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// The top of the pod inspector: is this pod OK, and if not, why? A status
 /// line, a row of large figures (ready, restarts, init, up), the insights
@@ -99,7 +99,7 @@ class PodStatusHeader extends StatelessWidget {
             if (hostIp != null)
               Tooltip(
                 message: 'Host IP (the node\'s address)',
-                child: Row(mainAxisSize: MainAxisSize.min, children: [const Hint('host '), Chipish(text: hostIp, copyValue: hostIp)]),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [const HintText('host '), Chipish(text: hostIp, copyValue: hostIp)]),
               ),
           ]),
         ),

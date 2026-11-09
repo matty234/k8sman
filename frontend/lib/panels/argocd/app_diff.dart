@@ -25,6 +25,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'argo_common.dart';
 import 'argocd_settings.dart';
+import '../../ui/widgets/atoms.dart';
 
 // ---------------------------------------------------------------------------
 // Models
@@ -527,7 +528,7 @@ class ResourceDiffBlock extends StatelessWidget {
         ]),
         const SizedBox(height: 4),
         if (!diff.changed)
-          const Hint('No differences after Argo CD\'s normalisation')
+          const HintText('No differences after Argo CD\'s normalisation')
         else
           DiffView(lines: diff.lines, shrinkWrap: true),
         Padding(

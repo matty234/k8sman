@@ -7,16 +7,7 @@ import '../../state/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-
-class PHint extends StatelessWidget {
-  final String text;
-  final TextStyle? style;
-  const PHint(this.text, {super.key, this.style});
-
-  @override
-  Widget build(BuildContext context) =>
-      Text(text, style: (style ?? Theme.of(context).textTheme.bodySmall)?.copyWith(color: Theme.of(context).hintColor));
-}
+import '../../ui/widgets/atoms.dart';
 
 /// Explains why live state is missing, calmly (no Prometheus vs. an error).
 class LiveStateMessage extends StatelessWidget {
@@ -44,11 +35,11 @@ class SelectorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (selector == null) return PHint(missingText);
+    if (selector == null) return HintText(missingText);
     final sel = asMap(selector);
     final labels = asMap(sel['matchLabels']);
     final exprs = asMapList(sel['matchExpressions']);
-    if (labels.isEmpty && exprs.isEmpty) return PHint(emptyText);
+    if (labels.isEmpty && exprs.isEmpty) return HintText(emptyText);
     return Wrap(spacing: 4, runSpacing: 4, children: [
       for (final e in labels.entries) Chipish(text: '${e.key}=${e.value}'),
       for (final x in exprs)
@@ -139,7 +130,7 @@ class ScrapeTargetRow extends StatelessWidget {
               if (t.target != null) ResourceLink(t.target!, label: '${t.target!.kind} ${t.target!.name}'),
               if (parseTime(t.lastScrape) != null && parseTime(t.lastScrape)!.year > 1)
                 AgeText(t.lastScrape, suffix: ' ago', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-              if (t.lastScrapeDuration > 0) PHint('${(t.lastScrapeDuration * 1000).toStringAsFixed(t.lastScrapeDuration < 0.01 ? 1 : 0)} ms'),
+              if (t.lastScrapeDuration > 0) HintText('${(t.lastScrapeDuration * 1000).toStringAsFixed(t.lastScrapeDuration < 0.01 ? 1 : 0)} ms'),
             ]),
             if (t.lastError != null)
               Padding(

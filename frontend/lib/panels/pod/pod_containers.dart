@@ -8,8 +8,8 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import 'pod_logic.dart';
 import '../../ui/inspector/inspector.dart';
-import 'pod_widgets.dart';
 import '../../util/text.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// The token volume Kubernetes adds to every pod (`kube-api-access-*`).
 bool isDefaultTokenMount(Json m) => '${m['name']}'.startsWith('kube-api-access-') && '${m['mountPath']}' == '/var/run/secrets/kubernetes.io/serviceaccount';
@@ -459,7 +459,7 @@ class ContainerDetails extends StatelessWidget {
         tooltip: digest.isEmpty ? null : '$image\n$digest',
         extra: digest.isEmpty ? null : _HoverIcon(icon: Icons.fingerprint, tooltip: 'Copy digest $digest', onTap: () => copyToClipboard(context, id)),
       ),
-      if (policy != null && policy != defaultPullPolicy(image)) Hint('pull $policy'),
+      if (policy != null && policy != defaultPullPolicy(image)) HintText('pull $policy'),
     ]);
   }
 
@@ -622,7 +622,7 @@ class ContainerDetails extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: Tooltip(
             message: '${token['mountPath']}  ←  ${token['name']}${token['readOnly'] == true ? '  read-only' : ''}',
-            child: Hint(shown.isEmpty ? 'service account token' : '+ service account token'),
+            child: HintText(shown.isEmpty ? 'service account token' : '+ service account token'),
           ),
         ),
     ]);
@@ -753,7 +753,7 @@ Widget securityLine(BuildContext context, Json sc) {
   for (final s in asMapList(sc['sysctls'])) {
     add('${s['name']}=${s['value']}');
   }
-  if (parts.isEmpty) return Hint(sc.keys.join(', '));
+  if (parts.isEmpty) return HintText(sc.keys.join(', '));
   final sep = TextSpan(text: '  ·  ', style: small?.copyWith(color: theme.hintColor));
   return Text.rich(
     key: const ValueKey('security-line'),

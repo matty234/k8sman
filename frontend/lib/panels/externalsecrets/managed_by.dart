@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'es_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// "Managed by ExternalSecret <link>" for the Secret panel. The owner is
 /// read from ownerReferences (creationPolicy Owner); a Secret ESO merged
@@ -23,8 +23,8 @@ class ManagedByExternalSecret extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: InlineWrap([
         const Icon(Icons.vpn_key_outlined, size: 14),
-        const Hint('Managed by'),
-        if (owner != null) ResourceLink(owner, label: 'ExternalSecret/${owner.name}') else const Hint('External Secrets Operator'),
+        const HintText('Managed by'),
+        if (owner != null) ResourceLink(owner, label: 'ExternalSecret/${owner.name}') else const HintText('External Secrets Operator'),
       ]),
     );
   }

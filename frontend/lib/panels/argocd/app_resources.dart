@@ -15,6 +15,7 @@ import '../panel.dart';
 import 'app_diff.dart';
 import 'argo_common.dart';
 import 'live_health.dart';
+import '../../ui/widgets/atoms.dart';
 
 enum ResourceFilter { all, outOfSync, unhealthy }
 
@@ -256,7 +257,7 @@ class _ManagedResourcesViewState extends State<ManagedResourcesView> {
   @override
   Widget build(BuildContext context) {
     final entries = _entries;
-    if (entries.isEmpty) return const Hint('No managed resources yet');
+    if (entries.isEmpty) return const HintText('No managed resources yet');
     return FutureBuilder<LiveIndex>(
       future: _future,
       builder: (context, snap) {
@@ -302,7 +303,7 @@ class _ManagedResourcesViewState extends State<ManagedResourcesView> {
             ]),
             const SizedBox(height: 6),
             if (shown.isEmpty)
-              Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Hint(filter == ResourceFilter.outOfSync ? 'Everything is in sync' : 'Everything is healthy')),
+              Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: HintText(filter == ResourceFilter.outOfSync ? 'Everything is in sync' : 'Everything is healthy')),
             for (final g in groupByKind(shown)) ...[
               Padding(
                 padding: const EdgeInsets.only(top: 6, bottom: 2),

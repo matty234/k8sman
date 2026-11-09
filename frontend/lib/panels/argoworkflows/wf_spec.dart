@@ -8,9 +8,9 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../argocd/argo_common.dart' show Hint;
 import '../batch/batch_common.dart' show formatSeconds;
 import 'wf_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 const _templateTypes = ['container', 'script', 'dag', 'steps', 'resource', 'suspend', 'http', 'plugin', 'containerSet', 'data'];
 
@@ -108,7 +108,7 @@ class DeclaredParams extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (params.isEmpty) return const Hint('No parameters');
+    if (params.isEmpty) return const HintText('No parameters');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final p in params)
         Padding(

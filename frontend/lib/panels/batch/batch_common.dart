@@ -9,6 +9,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../../util/json.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// Clock used for derived timings (overridable in tests).
 DateTime Function() batchNow = DateTime.now;
@@ -140,10 +141,6 @@ List<String> podFailurePolicySummary(dynamic policy) {
 // Widgets
 // ---------------------------------------------------------------------------
 
-/// Small muted text.
-Widget hint(BuildContext context, String s, {double? size}) =>
-    Text(s, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor, fontSize: size));
-
 /// A segment of a [CountsBar].
 class CountSegment {
   final String label;
@@ -186,7 +183,7 @@ class CountsBar extends StatelessWidget {
             Text('${s.count} ${s.label}',
                 style: theme.textTheme.bodySmall?.copyWith(color: s.count > 0 ? null : theme.hintColor, fontWeight: s.count > 0 ? FontWeight.w600 : null)),
           ]),
-        if (caption != null) hint(context, caption!),
+        if (caption != null) HintText(caption!),
       ]),
     ]);
   }
@@ -266,13 +263,13 @@ class _ContainerCard extends StatelessWidget {
           Chipish(text: '${c['image'] ?? '?'}', copyValue: '${c['image'] ?? ''}'),
         ]),
         if (cmd.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: CodeBlock(shellJoin(cmd))),
-        if (cmd.isEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: hint(context, 'Image default entrypoint')),
+        if (cmd.isEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: HintText('Image default entrypoint')),
         if (resources.isNotEmpty || env.isNotEmpty || envFrom.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Wrap(spacing: 10, runSpacing: 2, children: [
-              if (resources.isNotEmpty) hint(context, resources),
-              if (env.isNotEmpty) hint(context, '${env.length} env var${env.length == 1 ? '' : 's'}'),
+              if (resources.isNotEmpty) HintText(resources),
+              if (env.isNotEmpty) HintText('${env.length} env var${env.length == 1 ? '' : 's'}'),
               for (final ef in envFrom)
                 if (ef['configMapRef'] != null)
                   ResourceLink(ObjectRef(kind: 'ConfigMap', name: '${ef['configMapRef']['name']}', namespace: namespace))

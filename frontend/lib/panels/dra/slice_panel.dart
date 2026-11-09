@@ -4,8 +4,8 @@ import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'dra_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// ResourceSlice: a driver's devices in one pool, on one node or several.
 class ResourceSlicePanel extends ResourcePanel {
@@ -28,9 +28,9 @@ class ResourceSlicePanel extends ResourcePanel {
         child: KeyValueTable([
           ('Node', node == null ? null : ResourceLink(draNodeRef(node), label: node)),
           ('Scope', node != null ? null : (spec['allNodes'] == true ? 'all nodes' : (selector.isNotEmpty ? 'nodes matching a selector' : (spec['perDeviceNodeSelection'] == true ? 'per device' : null)))),
-          ('Node selector', selector.isEmpty ? null : MonoValue(_selectorText(selector), size: 11)),
-          ('Driver', MonoValue('${spec['driver'] ?? ''}', size: 11)),
-          ('Pool', MonoValue('${pool['name'] ?? ''}', size: 11)),
+          ('Node selector', selector.isEmpty ? null : MonoText(_selectorText(selector), size: 11)),
+          ('Driver', MonoText('${spec['driver'] ?? ''}', size: 11)),
+          ('Pool', MonoText('${pool['name'] ?? ''}', size: 11)),
           ('Generation', pool['generation'] == null ? null : '${pool['generation']}'),
           ('Slices in pool', pool['resourceSliceCount'] == null ? null : '${pool['resourceSliceCount']}'),
         ], keyWidth: 110),
@@ -38,9 +38,9 @@ class ResourceSlicePanel extends ResourcePanel {
       DetailSection(
         title: 'Devices',
         icon: Icons.memory,
-        trailing: Hint('${devices.length}'),
+        trailing: HintText('${devices.length}'),
         child: devices.isEmpty
-            ? const Hint('No devices')
+            ? const HintText('No devices')
             : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final d in devices) _Device(d)]),
       ),
     ];
@@ -73,7 +73,7 @@ class _Device extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         InlineWrap([
-          MonoValue('${device['name'] ?? ''}', size: 11.5),
+          MonoText('${device['name'] ?? ''}', size: 11.5),
           for (final t in taints)
             Chipish(text: '${t['key']}${t['value'] != null && '${t['value']}'.isNotEmpty ? '=${t['value']}' : ''}:${t['effect']}', color: Colors.orange),
         ]),

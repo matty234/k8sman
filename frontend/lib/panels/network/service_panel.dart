@@ -11,10 +11,10 @@ import '../../util/k8s.dart';
 import '../gateway/routed_by.dart';
 import '../panel.dart';
 import '../../util/text.dart';
-import '../pod/pod_widgets.dart' show InlineWrap;
 import '../../ui/inspector/inspector.dart';
 import 'widgets.dart';
 import '../../util/pod.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// Backends of a Service: its EndpointSlices and the pods its selector matches.
 class ServiceBackends {
@@ -200,7 +200,7 @@ class _ServiceView extends StatelessWidget {
             id: 'svc-ports',
             title: 'Ports',
             trailing: SectionSummary(ports.isEmpty ? 'none' : plural(ports.length, 'port')),
-            child: ports.isEmpty ? const Padding(padding: EdgeInsets.only(left: 4), child: Muted('No ports')) : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            child: ports.isEmpty ? const Padding(padding: EdgeInsets.only(left: 4), child: HintText('No ports')) : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               for (final (i, p) in ports.indexed) _portRow(context, p, targets[i]),
             ]),
           ),
@@ -221,7 +221,7 @@ class _ServiceView extends StatelessWidget {
               child: snap.hasError
                   ? InlineMessage('${snap.error}', isError: true)
                   : data == null
-                      ? spinner
+                      ? SectionSpinner()
                       : _endpoints(context, data, addrs, ready),
             ),
           ..._collapsed(context, addrs),
@@ -281,7 +281,7 @@ class _ServiceView extends StatelessWidget {
           external
               ? null
               : headless
-                  ? const Muted('None (headless)')
+                  ? const HintText('None (headless)')
                   : InlineWrap([for (final ip in [for (final ip in (spec['clusterIPs'] as List? ?? [?spec['clusterIP']])) '$ip']) Chipish(text: ip, copyValue: ip)]),
         ),
         (
@@ -337,7 +337,7 @@ class _ServiceView extends StatelessWidget {
 
   Widget _endpoints(BuildContext context, ServiceBackends data, List<EndpointAddr> addrs, int ready) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (addrs.isNotEmpty) EndpointList(addrs, namespace: ctx.namespace, headlessDnsSuffix: headless ? dns : null) else const Padding(padding: EdgeInsets.only(left: 4), child: Muted('No endpoints')),
+      if (addrs.isNotEmpty) EndpointList(addrs, namespace: ctx.namespace, headlessDnsSuffix: headless ? dns : null) else const Padding(padding: EdgeInsets.only(left: 4), child: HintText('No endpoints')),
       if (data.pods != null && ready == 0 && data.pods!.isNotEmpty) ...[
         const RowGroupLabel('Matching pods'),
         PodRows(data.pods!),
@@ -346,7 +346,7 @@ class _ServiceView extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 8, 0, 0),
           child: Wrap(spacing: 8, runSpacing: 2, children: [
-            const Muted('Slices'),
+            const HintText('Slices'),
             for (final s in data.slices)
               ResourceLink(
                 ObjectRef(group: 'discovery.k8s.io', kind: 'EndpointSlice', name: '${dig(s, ['metadata', 'name'])}', namespace: ctx.namespace),
@@ -382,7 +382,7 @@ class _ServiceView extends StatelessWidget {
           if (!external && ports.isNotEmpty && !headless)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Muted(
+              child: HintText(
                 'In-cluster: http://$dns:${ports.first['port']}'
                 '${ports.any((p) => p['nodePort'] != null) ? '  ·  every node: ${ports.where((p) => p['nodePort'] != null).map((p) => ':${p['nodePort']}').join(' ')}' : ''}',
               ),
@@ -390,7 +390,7 @@ class _ServiceView extends StatelessWidget {
           if (headless)
             const Padding(
               padding: EdgeInsets.only(top: 2),
-              child: Muted('Headless: DNS returns the ready pod IPs directly; no virtual IP or kube-proxy load-balancing.'),
+              child: HintText('Headless: DNS returns the ready pod IPs directly; no virtual IP or kube-proxy load-balancing.'),
             ),
         ]),
       ),

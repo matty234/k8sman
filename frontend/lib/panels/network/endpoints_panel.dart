@@ -7,6 +7,7 @@ import '../../util/text.dart';
 import '../panel.dart';
 import '../../ui/inspector/inspector.dart';
 import 'widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// The status header of an endpoint list: "N of M ready" with ready /
 /// not-ready / terminating figures and an insight when none are ready.
@@ -63,7 +64,7 @@ class EndpointSlicePanel extends ResourcePanel {
             'Service',
             svcName != null
                 ? ResourceLink(ObjectRef(kind: 'Service', name: svcName, namespace: ctx.namespace), label: svcName)
-                : const Muted('none (no kubernetes.io/service-name label)'),
+                : const HintText('none (no kubernetes.io/service-name label)'),
           ),
           ('Type', '${o['addressType'] ?? '?'}'),
           ('Managed by', managedBy),
@@ -107,7 +108,7 @@ class EndpointsPanel extends ResourcePanel {
           ('Service', ResourceLink(ObjectRef(kind: 'Service', name: ctx.name, namespace: ctx.namespace), label: ctx.name)),
           ('Subsets', '${subsets.length}'),
         ],
-        footer: const Muted('Legacy core/v1 Endpoints (mirrors EndpointSlices; capped at 1000 addresses).'),
+        footer: const HintText('Legacy core/v1 Endpoints (mirrors EndpointSlices; capped at 1000 addresses).'),
       ),
       for (var i = 0; i < subsets.length; i++)
         InspectorSection(
@@ -121,7 +122,7 @@ class EndpointsPanel extends ResourcePanel {
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 0, 4),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const SizedBox(width: 48, child: Muted('Ports')),
+                const SizedBox(width: 48, child: HintText('Ports')),
                 Expanded(child: PortChips(asMapList(subsets[i]['ports']))),
               ]),
             ),

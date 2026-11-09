@@ -6,6 +6,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'logic.dart';
 import 'widgets.dart';
+import '../../ui/widgets/atoms.dart';
 
 class ResourceQuotaPanel extends ResourcePanel {
   const ResourceQuotaPanel();
@@ -84,19 +85,19 @@ class LimitRangeTables extends StatelessWidget {
         ),
         () {
           final resources = <String>{for (final c in cols) ...asMap(l[c]).keys}.toList()..sort();
-          return CompactTable(
+          return CompactTable.ruled(
             headers: const ['RESOURCE', 'MIN', 'DEF REQ', 'DEF LIMIT', 'MAX', 'RATIO'],
             flex: const [4, 3, 3, 3, 3, 2],
             align: const [TextAlign.left, TextAlign.right, TextAlign.right, TextAlign.right, TextAlign.right, TextAlign.right],
             rows: [
               for (final r in resources)
                 [
-                  MonoText(r),
+                  MonoText(r, size: 11, ellipsis: true),
                   for (final c in cols)
                     () {
                       final v = asMap(l[c])[r];
-                      if (v == null) return MonoText('—', color: theme.hintColor);
-                      return MonoText(c == 'maxLimitRequestRatio' ? '$v' : formatQty(r, parseQty(r, v)));
+                      if (v == null) return MonoText('—', color: theme.hintColor, size: 11, ellipsis: true);
+                      return MonoText(c == 'maxLimitRequestRatio' ? '$v' : formatQty(r, parseQty(r, v)), size: 11, ellipsis: true);
                     }(),
                 ],
             ],

@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../pod/pod_widgets.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
+import '../../ui/widgets/atoms.dart';
 
 const esGroup = 'external-secrets.io';
 
@@ -43,9 +43,9 @@ class ReadyCallout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = readyCondition(status);
-    if (c == null) return const Hint('No Ready condition yet: the operator has not reconciled this object.');
+    if (c == null) return const HintText('No Ready condition yet: the operator has not reconciled this object.');
     final message = '${c['message'] ?? ''}';
-    if (c['status'] == 'True') return message.isEmpty ? const SizedBox.shrink() : Padding(padding: const EdgeInsets.only(bottom: 8), child: Hint(message));
+    if (c['status'] == 'True') return message.isEmpty ? const SizedBox.shrink() : Padding(padding: const EdgeInsets.only(bottom: 8), child: HintText(message));
     return Callout(severity: severityOf(readyReason(status)) == Severity.warn ? Severity.warn : Severity.error, title: readyReason(status), body: message);
   }
 }

@@ -6,7 +6,6 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../argocd/argo_common.dart' show Hint;
 import '../panel.dart';
 import 'wf_actions.dart';
 import 'wf_common.dart';
@@ -14,6 +13,7 @@ import 'wf_graph.dart';
 import 'wf_graph_view.dart';
 import 'wf_spec.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
+import '../../ui/widgets/atoms.dart';
 
 /// argoproj.io Workflow: status header, failed steps, parameters, the node
 /// graph with per-step details and logs, and the spec.
@@ -195,7 +195,7 @@ class FailedSteps extends StatelessWidget {
       title: '${failed.length} failed step${failed.length == 1 ? '' : 's'}',
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         for (final n in shown) _row(context, n),
-        if (failed.length > shown.length) Hint('… and ${failed.length - shown.length} more (see Steps)'),
+        if (failed.length > shown.length) HintText('… and ${failed.length - shown.length} more (see Steps)'),
       ]),
     );
   }
@@ -257,7 +257,7 @@ class WorkflowParams extends StatelessWidget {
     final artifacts = [
       ...asMapList(dig(workflow, ['spec', 'arguments', 'artifacts'])),
     ];
-    if (own.isEmpty && defaults.isEmpty && artifacts.isEmpty) return const Hint('No parameters');
+    if (own.isEmpty && defaults.isEmpty && artifacts.isEmpty) return const HintText('No parameters');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ParamTable([...own, ...defaults], defaulted: {for (final p in defaults) '${p['name']}'}),
       if (artifacts.isNotEmpty) ...[

@@ -4,8 +4,8 @@ import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart';
 import 'dra_common.dart';
+import '../../ui/widgets/atoms.dart';
 
 /// ResourceClaim: what was asked for, what was allocated, who uses it.
 class ResourceClaimPanel extends ResourcePanel {
@@ -28,7 +28,7 @@ class ResourceClaimPanel extends ResourcePanel {
         icon: Icons.memory,
         trailing: StatusBadge(state, dense: true),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (allocation.isEmpty) const Hint('Not allocated yet: the scheduler allocates devices when a pod using this claim is scheduled.'),
+          if (allocation.isEmpty) const HintText('Not allocated yet: the scheduler allocates devices when a pod using this claim is scheduled.'),
           KeyValueTable([
             ('Node', nodes.isEmpty ? null : InlineWrap([for (final n in nodes) ResourceLink(draNodeRef(n), label: n)])),
             ('Allocated', allocation['allocationTimestamp'] == null ? null : Text('${allocation['allocationTimestamp']}', style: Theme.of(context).textTheme.bodySmall)),
@@ -39,23 +39,23 @@ class ResourceClaimPanel extends ResourcePanel {
       DetailSection(
         title: 'Requests',
         icon: Icons.fact_check_outlined,
-        trailing: Hint('${draRequests(asMap(ctx.spec['devices'])).length}'),
+        trailing: HintText('${draRequests(asMap(ctx.spec['devices'])).length}'),
         child: DraRequestList(draRequests(asMap(ctx.spec['devices']))),
       ),
       if (results.isNotEmpty)
         DetailSection(
           title: 'Allocation',
           icon: Icons.developer_board,
-          trailing: Hint('${results.length} device${results.length == 1 ? '' : 's'}'),
+          trailing: HintText('${results.length} device${results.length == 1 ? '' : 's'}'),
           child: _Results(results),
         ),
       if (reserved.isNotEmpty || allocation.isNotEmpty)
         DetailSection(
           title: 'Reserved for',
           icon: Icons.link,
-          trailing: Hint('${reserved.length}'),
+          trailing: HintText('${reserved.length}'),
           child: reserved.isEmpty
-              ? const Hint('No consumers: the claim is allocated but no pod holds it.')
+              ? const HintText('No consumers: the claim is allocated but no pod holds it.')
               : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   for (final c in reserved) Padding(padding: const EdgeInsets.only(bottom: 3), child: _Consumer(c, ctx.namespace)),
                 ]),
@@ -82,10 +82,10 @@ class _Results extends StatelessWidget {
         TableRow(children: [head('Request'), head('Device'), head('Driver'), head('Pool')]),
         for (final r in results)
           TableRow(children: [
-            cell(InlineWrap([MonoValue('${r['request'] ?? ''}', size: 11), if (r['adminAccess'] == true) const Chipish(text: 'admin', color: Colors.orange)])),
-            cell(MonoValue('${r['device'] ?? ''}', size: 11)),
-            cell(MonoValue('${r['driver'] ?? ''}', size: 11)),
-            cell(MonoValue('${r['pool'] ?? ''}', size: 11)),
+            cell(InlineWrap([MonoText('${r['request'] ?? ''}', size: 11), if (r['adminAccess'] == true) const Chipish(text: 'admin', color: Colors.orange)])),
+            cell(MonoText('${r['device'] ?? ''}', size: 11)),
+            cell(MonoText('${r['driver'] ?? ''}', size: 11)),
+            cell(MonoText('${r['pool'] ?? ''}', size: 11)),
           ]),
       ],
     );
@@ -120,8 +120,8 @@ class _DeviceStatus extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 8),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               InlineWrap([
-                MonoValue('${d['device'] ?? ''}', size: 11),
-                Hint('${d['driver'] ?? ''} / ${d['pool'] ?? ''}'),
+                MonoText('${d['device'] ?? ''}', size: 11),
+                HintText('${d['driver'] ?? ''} / ${d['pool'] ?? ''}'),
                 for (final ip in (dig<List>(d, ['networkData', 'ips']) ?? const [])) Chipish(text: '$ip'),
                 if (dig<String>(d, ['networkData', 'hardwareAddress']) case final mac?) Chipish(text: mac),
               ]),
@@ -166,7 +166,7 @@ class _OriginState extends State<_Origin> {
           padding: const EdgeInsets.only(top: 4),
           child: KeyValueTable([
             ('Created for', ResourceLink(ObjectRef(kind: 'Pod', name: podName, namespace: ns), label: 'Pod/$podName')),
-            ('Pod claim', claimName == null ? null : MonoValue(claimName, size: 11)),
+            ('Pod claim', claimName == null ? null : MonoText(claimName, size: 11)),
             ('Template', template == null ? null : ResourceLink(resourceClaimTemplateRef(template, ns), label: template)),
           ], keyWidth: 100),
         );

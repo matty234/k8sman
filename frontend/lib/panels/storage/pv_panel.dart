@@ -8,6 +8,7 @@ import '../../util/k8s.dart';
 import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'common.dart';
+import '../../ui/widgets/atoms.dart';
 
 class PvPanel extends ResourcePanel {
   const PvPanel();
@@ -179,7 +180,7 @@ class _PvHeader extends StatelessWidget {
         ('Mode', ValueWithHint(Text(spec['volumeMode'] as String? ?? 'Filesystem', style: theme.textTheme.bodySmall),
             hint: (spec['volumeMode'] ?? 'Filesystem') == 'Block' ? 'raw block device' : null)),
         ('Provisioner', dig<String>(ctx.metadata, ['annotations', 'pv.kubernetes.io/provisioned-by']) != null
-            ? MonoValue(dig<String>(ctx.metadata, ['annotations', 'pv.kubernetes.io/provisioned-by'])!)
+            ? MonoText.cell(dig<String>(ctx.metadata, ['annotations', 'pv.kubernetes.io/provisioned-by'])!)
             : null),
         ('Attr. class', spec['volumeAttributesClassName'] as String?),
       ],
@@ -238,7 +239,7 @@ class PvSourceView extends StatelessWidget {
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     String? s(String k) => src[k] == null ? null : '${src[k]}';
-    Widget? mono(String k) => src[k] == null ? null : MonoValue('${src[k]}');
+    Widget? mono(String k) => src[k] == null ? null : MonoText.cell('${src[k]}');
     Widget? ro() => src['readOnly'] == true ? const StatusBadge('read-only', severity: Severity.info, dense: true) : null;
 
     switch (type) {
@@ -277,7 +278,7 @@ class PvSourceView extends StatelessWidget {
         return KeyValueTable([('Path', mono('path')), ('FS type', s('fsType'))], keyWidth: 120);
       case 'nfs':
         return KeyValueTable([
-          ('Export', MonoValue('${src['server'] ?? '?'}:${src['path'] ?? '?'}')),
+          ('Export', MonoText.cell('${src['server'] ?? '?'}:${src['path'] ?? '?'}')),
           ('Server', s('server')),
           ('Path', mono('path')),
           ('Access', ro()),
@@ -312,7 +313,7 @@ class PvSourceView extends StatelessWidget {
       default:
         return KeyValueTable([
           for (final e in src.entries)
-            (e.key, e.value is Map || e.value is List ? MonoValue(jsonEncode(e.value)) : MonoValue('${e.value}')),
+            (e.key, e.value is Map || e.value is List ? MonoText.cell(jsonEncode(e.value)) : MonoText.cell('${e.value}')),
         ], keyWidth: 120);
     }
   }
