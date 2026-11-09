@@ -14,6 +14,7 @@ import '../panels/panel.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
+import 'pod_markers.dart';
 import 'prom_api.dart';
 
 // ---------------------------------------------------------------------------
@@ -71,6 +72,7 @@ Widget podHistory(PanelContext ctx) {
     key: ValueKey('pod-history-${ctx.uid}'),
     api: ctx.api,
     breakdownLabel: 'container',
+    markers: () async => podMarkers(ctx.object, await ctx.api.events(namespace: ctx.namespace, uid: ctx.uid)),
     charts: [
       MetricChartSpec(
         title: 'CPU',
@@ -305,6 +307,10 @@ class MetricHistorySection extends StatefulWidget {
   /// A hint line under the charts.
   final String? note;
 
+  /// Events to mark on every chart; fetched on open and again with each
+  /// range change (which re-queries the charts). Failures just mean no markers.
+  final Future<List<ChartMarker>> Function()? markers;
+
   const MetricHistorySection({
     super.key,
     required this.api,
@@ -314,6 +320,7 @@ class MetricHistorySection extends StatefulWidget {
     this.initialRange,
     this.probe,
     this.note,
+    this.markers,
   });
 
   @override
@@ -337,6 +344,22 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
   }
   late Duration? _range = widget.initialRange;
   bool _breakdown = false;
+  List<ChartMarker> _markers = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMarkers();
+  }
+
+  Future<void> _loadMarkers() async {
+    final load = widget.markers;
+    if (load == null) return;
+    try {
+      final m = await load();
+      if (mounted) setState(() => _markers = m);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -348,7 +371,10 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
         return DetailSection(
           title: widget.title,
           icon: Icons.show_chart,
-          trailing: RangePicker(value: _range!, onChanged: (r) => setState(() => _range = r)),
+          trailing: RangePicker(value: _range!, onChanged: (r) {
+            setState(() => _range = r);
+            _loadMarkers();
+          }),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final spec in widget.charts)
               Padding(
@@ -359,6 +385,7 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
                   spec: spec,
                   range: _range!,
                   breakdown: _breakdown ? widget.breakdownLabel : null,
+                  markers: _markers,
                 ),
               ),
             if (widget.note != null)
@@ -430,7 +457,8 @@ class MetricHistoryChart extends StatefulWidget {
   final Duration range;
   final String? breakdown;
   final double height;
-  const MetricHistoryChart({super.key, required this.prom, required this.spec, required this.range, this.breakdown, this.height = 76});
+  final List<ChartMarker> markers;
+  const MetricHistoryChart({super.key, required this.prom, required this.spec, required this.range, this.breakdown, this.height = 76, this.markers = const []});
 
   @override
   State<MetricHistoryChart> createState() => _MetricHistoryChartState();
@@ -491,7 +519,7 @@ class _MetricHistoryChartState extends State<MetricHistoryChart> {
         } else if (series.isEmpty) {
           body = _ChartMessage('No data in this range', height: widget.height);
         } else {
-          body = AreaChart(series: series, unit: widget.spec.unit, height: widget.height, labelKey: widget.spec.seriesLabel ?? widget.breakdown, range: widget.range, seriesName: widget.spec.title);
+          body = AreaChart(series: series, unit: widget.spec.unit, height: widget.height, labelKey: widget.spec.seriesLabel ?? widget.breakdown, range: widget.range, seriesName: widget.spec.title, markers: widget.markers);
         }
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, const SizedBox(height: 4), body]);
       },
@@ -566,6 +594,10 @@ class AreaChart extends StatefulWidget {
   /// and latest value sit at the top right with an arrow ("requested
   /// 240 cores ↑").
   final bool labelGuides;
+
+  /// Events on the time axis: ticks along the bottom edge, below the data.
+  /// Hovering one shows its tooltip instead of the value readout.
+  final List<ChartMarker> markers;
   const AreaChart({
     super.key,
     required this.series,
@@ -577,6 +609,7 @@ class AreaChart extends StatefulWidget {
     this.guides = const [],
     this.yMax,
     this.labelGuides = false,
+    this.markers = const [],
   });
 
   @override
@@ -585,6 +618,7 @@ class AreaChart extends StatefulWidget {
 
 class _AreaChartState extends State<AreaChart> {
   double? _hoverX;
+  double? _hoverY;
 
   String _name(MetricSeries s, int i) {
     final k = widget.labelKey;
@@ -618,19 +652,31 @@ class _AreaChartState extends State<AreaChart> {
           final ms = shared.millisecondsSinceEpoch.toDouble();
           if (ms >= tMin && ms <= tMax) hoverX = (ms - tMin) / (tMax - tMin) * width;
         }
+        // Markers: clustered by pixel distance, hit-tested only in the band.
+        final clusters = tMax > tMin ? _cluster(widget.markers, tMin, tMax, width) : const <_MarkerCluster>[];
+        final band = clusters.isEmpty ? 0.0 : _markerBand;
+        final total = widget.height + band;
+        _MarkerCluster? active;
+        if (_hoverX != null && _hoverY != null && _hoverY! >= widget.height - 4) active = _clusterAt(clusters, _hoverX!);
+        if (active != null) hoverX = null;
         final hoverT = hoverX == null || tMax <= tMin ? null : timeAt(hoverX);
         final readout = hoverT == null ? null : _readout(hoverT);
         return MouseRegion(
           onHover: (e) {
-            setState(() => _hoverX = e.localPosition.dx);
-            if (tMax > tMin) sync?.value = timeAt(e.localPosition.dx);
+            setState(() {
+              _hoverX = e.localPosition.dx;
+              _hoverY = e.localPosition.dy;
+            });
+            if (tMax <= tMin) return;
+            final c = _hoverY! >= widget.height - 4 ? _clusterAt(clusters, _hoverX!) : null;
+            sync?.value = c?.time ?? timeAt(e.localPosition.dx);
           },
           onExit: (_) {
-            setState(() => _hoverX = null);
+            setState(() => _hoverX = _hoverY = null);
             sync?.value = null;
           },
           child: SizedBox(
-            height: widget.height,
+            height: total,
             child: Stack(clipBehavior: Clip.none, children: [
               Positioned.fill(
                 child: CustomPaint(
@@ -645,12 +691,24 @@ class _AreaChartState extends State<AreaChart> {
                     fill: !multi,
                     guides: onScale,
                     guideColor: theme.hintColor,
+                    band: band,
+                    clusters: clusters,
+                    active: active,
+                    severityColors: _severityColors(context),
+                    badge: hint?.copyWith(fontSize: 8.5),
                   ),
                 ),
               ),
+              if (active != null)
+                Positioned(
+                  bottom: band + 3,
+                  left: (active.x + 8 + 220 > width) ? null : math.max(0, active.x - 8),
+                  right: (active.x + 8 + 220 > width) ? math.max(0, width - active.x - 8) : null,
+                  child: _MarkerTooltip(cluster: active, colors: _severityColors(context)),
+                ),
               Positioned(left: 0, top: -1, child: Text(formatMetric(vMax, widget.unit), style: hint)),
               if (widget.labelGuides) ..._guideLabels(vMax, onScale, hint),
-              if (readout != null)
+              if (readout != null && active == null)
                 Positioned(
                   top: 2,
                   left: (hoverX! + 8 + 150 > width) ? null : hoverX + 8,
@@ -688,6 +746,42 @@ class _AreaChartState extends State<AreaChart> {
           ]),
         ),
     ]);
+  }
+
+  /// Markers inside the time range, sorted, merged when their ticks are
+  /// within [_clusterPx] of the cluster's first one.
+  static List<_MarkerCluster> _cluster(List<ChartMarker> markers, double tMin, double tMax, double width) {
+    final inRange = [
+      for (final m in markers)
+        if (m.time.millisecondsSinceEpoch >= tMin && m.time.millisecondsSinceEpoch <= tMax) m
+    ]..sort((a, b) => a.time.compareTo(b.time));
+    final out = <_MarkerCluster>[];
+    double? startX;
+    for (final m in inRange) {
+      final x = (m.time.millisecondsSinceEpoch - tMin) / (tMax - tMin) * width;
+      if (out.isNotEmpty && x - startX! <= _clusterPx) {
+        out.last.items.add(m);
+      } else {
+        startX = x;
+        out.add(_MarkerCluster(x, [m]));
+      }
+    }
+    return out;
+  }
+
+  /// The cluster nearest [x] within [_markerHitPx] (binary search on the sorted xs).
+  static _MarkerCluster? _clusterAt(List<_MarkerCluster> cs, double x) {
+    var lo = 0, hi = cs.length;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      cs[mid].x < x ? lo = mid + 1 : hi = mid;
+    }
+    _MarkerCluster? best;
+    for (final i in [lo - 1, lo]) {
+      if (i < 0 || i >= cs.length) continue;
+      if ((cs[i].x - x).abs() <= _markerHitPx && (best == null || (cs[i].x - x).abs() < (best.x - x).abs())) best = cs[i];
+    }
+    return best;
   }
 
   /// Names at the right end of the guides on the scale (above the line,
@@ -803,6 +897,11 @@ class _AreaPainter extends CustomPainter {
   final bool fill;
   final List<ChartGuide> guides;
   final Color guideColor;
+  final double band;
+  final List<_MarkerCluster> clusters;
+  final _MarkerCluster? active;
+  final Map<ChartSeverity, Color> severityColors;
+  final TextStyle? badge;
 
   _AreaPainter({
     required this.series,
@@ -815,10 +914,16 @@ class _AreaPainter extends CustomPainter {
     required this.fill,
     this.guides = const [],
     this.guideColor = Colors.grey,
+    this.band = 0,
+    this.clusters = const [],
+    this.active,
+    this.severityColors = const {},
+    this.badge,
   });
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paint(Canvas canvas, Size fullSize) {
+    final size = Size(fullSize.width, fullSize.height - band);
     final gridPaint = Paint()
       ..color = grid
       ..strokeWidth = 1;
@@ -892,10 +997,25 @@ class _AreaPainter extends CustomPainter {
     if (hoverX != null) {
       canvas.drawLine(Offset(hoverX!, 0), Offset(hoverX!, size.height), Paint()..color = grid.withValues(alpha: 1)..strokeWidth = 1);
     }
+    if (active != null) {
+      // A faint guide up through the chart at the hovered marker's time.
+      canvas.drawLine(Offset(active!.x, 0), Offset(active!.x, size.height), Paint()..color = severityColors[active!.severity]!.withValues(alpha: 0.45)..strokeWidth = 1);
+    }
+    for (final c in clusters) {
+      final on = identical(c, active);
+      final paint = Paint()..color = severityColors[c.severity]!.withValues(alpha: on ? 1 : 0.8);
+      final top = size.height + 2;
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(c.x - (on ? 1.5 : 1), top, on ? 3 : 2, _markerTick), const Radius.circular(1)), paint);
+      if (c.items.length > 1) {
+        final tp = TextPainter(text: TextSpan(text: '${c.items.length}', style: badge?.copyWith(color: paint.color)), textDirection: TextDirection.ltr)..layout();
+        tp.paint(canvas, Offset(math.min(c.x + 3, fullSize.width - tp.width), top - 1));
+      }
+    }
   }
 
   @override
-  bool shouldRepaint(_AreaPainter old) => old.series != series || old.guides != guides || old.hoverX != hoverX || old.vMax != vMax || old.colors != colors;
+  bool shouldRepaint(_AreaPainter old) =>
+      old.series != series || old.guides != guides || old.hoverX != hoverX || old.vMax != vMax || old.colors != colors || old.clusters != clusters || old.active != active || old.band != band;
 }
 
 
@@ -932,4 +1052,106 @@ class _ChartHoverScopeState extends State<ChartHoverScope> {
 
   @override
   Widget build(BuildContext context) => ChartHoverSync(notifier: _time, child: widget.child);
+}
+
+// ---------------------------------------------------------------------------
+// Event markers
+// ---------------------------------------------------------------------------
+
+enum ChartSeverity { info, warn, error }
+
+/// A point event on a chart's time axis (a pod event, a restart).
+class ChartMarker {
+  final DateTime time;
+  final ChartSeverity severity;
+  final String title;
+
+  /// Lines under the title (message, container); shown to two lines each.
+  final List<String> details;
+
+  /// How many times the event repeated ("×5" when above 1).
+  final int count;
+  const ChartMarker({required this.time, required this.title, this.severity = ChartSeverity.info, this.details = const [], this.count = 1});
+}
+
+/// Tick band under the chart, tick height, merge distance and hit distance (px).
+const _markerBand = 10.0;
+const _markerTick = 6.0;
+const _clusterPx = 5.0;
+const _markerHitPx = 6.0;
+
+class _MarkerCluster {
+  final double x;
+  final List<ChartMarker> items;
+  _MarkerCluster(this.x, this.items);
+
+  DateTime get time => items.first.time;
+  ChartSeverity get severity => items.map((m) => m.severity).reduce((a, b) => a.index >= b.index ? a : b);
+}
+
+Map<ChartSeverity, Color> _severityColors(BuildContext context) {
+  final theme = Theme.of(context);
+  final dark = theme.brightness == Brightness.dark;
+  return {
+    ChartSeverity.info: dark ? const Color(0xFF9096A0) : const Color(0xFF7A808A),
+    ChartSeverity.warn: dark ? const Color(0xFFE0A93B) : const Color(0xFFB7791F),
+    ChartSeverity.error: theme.colorScheme.error,
+  };
+}
+
+class _MarkerTooltip extends StatelessWidget {
+  final _MarkerCluster cluster;
+  final Map<ChartSeverity, Color> colors;
+  const _MarkerTooltip({required this.cluster, required this.colors});
+
+  static const _maxRows = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    String two(int n) => n.toString().padLeft(2, '0');
+    String at(DateTime t) {
+      final l = t.toLocal();
+      return '${two(l.hour)}:${two(l.minute)}:${two(l.second)}';
+    }
+
+    final small = theme.textTheme.labelSmall?.copyWith(fontSize: 10.5);
+    final hint = small?.copyWith(color: theme.hintColor);
+    Widget dot(ChartSeverity s) => Container(width: 6, height: 6, margin: const EdgeInsets.only(right: 5), decoration: BoxDecoration(color: colors[s], shape: BoxShape.circle));
+    final items = cluster.items;
+    final rows = <Widget>[];
+    if (items.length == 1) {
+      final m = items.single;
+      rows.add(Row(mainAxisSize: MainAxisSize.min, children: [
+        dot(m.severity),
+        Flexible(child: Text(m.title, overflow: TextOverflow.ellipsis, style: small?.copyWith(fontWeight: FontWeight.w600))),
+        if (m.count > 1) Text('  ×${m.count}', style: hint),
+      ]));
+      rows.add(Text(at(m.time), style: hint));
+      for (final d in m.details) {
+        rows.add(Text(d, maxLines: 2, overflow: TextOverflow.ellipsis, style: small));
+      }
+    } else {
+      for (final m in items.take(_maxRows)) {
+        rows.add(Row(mainAxisSize: MainAxisSize.min, children: [
+          dot(m.severity),
+          Text('${at(m.time)}  ', style: hint),
+          Flexible(child: Text(m.title + (m.count > 1 ? ' ×${m.count}' : ''), overflow: TextOverflow.ellipsis, style: small)),
+        ]));
+      }
+      if (items.length > _maxRows) rows.add(Text('+${items.length - _maxRows} more', style: hint));
+    }
+    return IgnorePointer(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 220),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: AppColors.of(context).separator),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+      ),
+    );
+  }
 }

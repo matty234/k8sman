@@ -236,6 +236,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     (namespace, service, port, path prefix); its reachability shows there.
   - History charts offer 10m, 15m, 1h, 6h, 1d and 1w, and the Prometheus
     settings choose the range charts first open with.
+  - Pod history charts mark the pod's events (and container starts and
+    restarts from its status, which outlive events) as ticks under the time
+    axis: grey Normal, amber Warning, red for OOMKilled, BackOff and failed
+    probes. Hovering a tick shows the event in place of the value readout.
 
 ## Bottom dock: alerts, logs and terminals
 
