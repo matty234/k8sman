@@ -24,6 +24,9 @@ class SecretPanel extends ResourcePanel {
   Set<String> get kinds => {'/Secret'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final data = asMap(ctx.object['data']);
     return [
@@ -63,7 +66,7 @@ class _SecretHeader extends StatelessWidget {
         ],
         insights: _typeInsights(type, decoded),
         extraInsights: missingKeyInsights(snap, {...data.keys}, 'Secret'),
-        facts: [('Type', secretTypeExplanation(type))],
+        facts: [?ownerFact(ctx.object), ('Type', secretTypeExplanation(type))],
         factsKeyWidth: 56,
       ),
     );

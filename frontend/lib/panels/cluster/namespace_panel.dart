@@ -20,6 +20,9 @@ class NamespacePanel extends ResourcePanel {
   Set<String> get kinds => {'/Namespace'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
         _NamespaceView(key: ValueKey(ctx.uid), ctx: ctx),
         _QuotaSection(key: ValueKey('${ctx.uid}/quotas'), api: ctx.api, namespace: ctx.name),
@@ -164,6 +167,7 @@ class _NamespaceViewState extends State<_NamespaceView> {
       ],
       insights: insights,
       factsKeyWidth: 82, facts: [
+        ?ownerFact(ctx.object),
         if (deleting != null)
           ('Deleting', Row(children: [Text('requested ', style: theme.textTheme.bodySmall), AgeText(deleting, suffix: ' ago', style: theme.textTheme.bodySmall)])),
         (

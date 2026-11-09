@@ -188,7 +188,7 @@ class StatefulSetPanel extends ResourcePanel {
           if (ordStart != 0) ('Ordinals start', '$ordStart'),
         ], keyWidth: 120),
       ),
-      podTemplateSection(asMap(spec['template']), ctx.namespace),
+      podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid),
       schedulingSection(asMap(dig(spec, ['template', 'spec']))),
       if (asMapList(st['conditions']).isNotEmpty) conditionsSection(context, st),
       selectorSection(spec['selector']),

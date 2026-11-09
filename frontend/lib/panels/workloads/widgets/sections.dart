@@ -114,10 +114,11 @@ Widget selectorSection(dynamic selector, {List<(String, Object?)> extra = const 
       extra.isEmpty ? SelectorChips(selector) : KeyValueTable([('Selector', SelectorChips(selector)), ...extra], keyWidth: 110),
     );
 
-/// The pod template (containers, service account, volumes, config refs).
-Widget podTemplateSection(Json template, String? namespace) => workloadSection(
+/// The pod template (containers as rows, service account, volumes, config
+/// refs); [uid] keys which container rows are open.
+Widget podTemplateSection(Json template, String? namespace, {required String uid}) => workloadSection(
       'template',
       'Pod template',
       templateSummary(template),
-      PodTemplateSummary(template: template, namespace: namespace, showScheduling: false),
+      PodTemplateSummary(template: template, namespace: namespace, memoryKey: uid, showScheduling: false),
     );

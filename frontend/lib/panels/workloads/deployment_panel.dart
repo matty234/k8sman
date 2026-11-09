@@ -127,7 +127,7 @@ class DeploymentPanel extends ResourcePanel {
           ('Generation', '${ctx.metadata['generation'] ?? '?'} (observed ${st['observedGeneration'] ?? '?'})'),
         ], keyWidth: 120),
       ),
-      podTemplateSection(asMap(spec['template']), ctx.namespace),
+      podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid),
       schedulingSection(asMap(dig(spec, ['template', 'spec']))),
       conditionsSection(context, st),
       selectorSection(spec['selector']),

@@ -16,6 +16,9 @@ class PvPanel extends ResourcePanel {
   Set<String> get kinds => {'/PersistentVolume'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final spec = ctx.spec;
     final source = detectPvSource(spec);
@@ -165,6 +168,7 @@ class _PvHeader extends StatelessWidget {
         if (deleting) const Insight(Severity.warn, 'Terminating', 'Deletion waits for kubernetes.io/pv-protection: the volume is removed once no claim is bound to it.'),
       ],
       facts: [
+        ?ownerFact(ctx.object),
         (
           'Claim',
           claimName != null ? ResourceLink(pvcRef(claimName, claimNs), label: '${claimNs != null ? '$claimNs/' : ''}$claimName') : Text('unbound', style: hint),

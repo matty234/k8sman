@@ -67,6 +67,9 @@ class RoutePanel extends ResourcePanel {
   Set<String> get kinds => {for (final k in routeKinds) k.gk};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [_RouteView(key: ValueKey('${ctx.uid}/route'), ctx: ctx)];
 }
 
@@ -157,6 +160,7 @@ class _RouteView extends StatelessWidget {
       ],
       insights: insights,
       factsKeyWidth: 80, facts: [
+        ?ownerFact(ctx.object),
         if (r.kind.hasHostnames)
           (
             'Hostnames',

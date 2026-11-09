@@ -54,7 +54,7 @@ void main() {
       await saveScreenshot(tester, 'storage-pvc-bound');
 
       expect(find.text('Bound'), findsOneWidget);
-      expect(find.text('requested'), findsOneWidget);
+      expect(find.text('requested'), findsNothing); // same as provisioned
       expect(find.text('provisioned'), findsOneWidget);
       expect(find.text('RWO'), findsOneWidget);
       expect(find.textContaining('read-write by pods on a single node', findRichText: true), findsOneWidget);

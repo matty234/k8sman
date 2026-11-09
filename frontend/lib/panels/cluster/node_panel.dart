@@ -28,6 +28,9 @@ class NodePanel extends ResourcePanel {
   Set<String> get kinds => {'/Node'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final status = ctx.status;
     final labels = asMap(ctx.metadata['labels']);
@@ -291,6 +294,7 @@ class _NodeHeader extends StatelessWidget {
       ],
       insights: insights,
       factsKeyWidth: 82, facts: [
+        ?ownerFact(ctx.object),
         ('Ready since', ready == null ? null : AgeText(ready['lastTransitionTime'], suffix: ' ago', style: small)),
         ('Heartbeat', ready == null ? null : AgeText(ready['lastHeartbeatTime'], suffix: ' ago', style: small)),
         ('Internal IP', internalIp == null ? null : Align(alignment: Alignment.centerLeft, child: Chipish(text: internalIp, copyValue: internalIp))),

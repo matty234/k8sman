@@ -30,9 +30,8 @@ void main() {
       expect(tester.takeException(), isNull, reason: 'overflow at $width');
 
       expect(find.text('Bound'), findsOneWidget);
-      for (final label in ['provisioned', 'requested']) {
-        expect(find.byKey(ValueKey('figure-$label')), findsOneWidget, reason: label);
-      }
+      expect(find.byKey(const ValueKey('figure-provisioned')), findsOneWidget);
+      expect(find.byKey(const ValueKey('figure-requested')), findsNothing, reason: 'same as provisioned');
       expect(find.text('standard'), findsOneWidget); // class
       expect(find.text('Usage'), findsOneWidget);
       expect(find.byKey(const ValueKey('pvc-mount-redis-0')), findsOneWidget);

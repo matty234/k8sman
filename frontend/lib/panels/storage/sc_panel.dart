@@ -17,6 +17,9 @@ class StorageClassPanel extends ResourcePanel {
   Set<String> get kinds => {'storage.k8s.io/StorageClass'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final o = ctx.object;
     final params = asMap(o['parameters']);
@@ -112,6 +115,7 @@ class _ClassHeader extends StatelessWidget {
         if (provisioner == 'kubernetes.io/no-provisioner') const Insight(Severity.info, 'No dynamic provisioning: PVs for this class must be created manually.'),
       ],
       facts: [
+        ?ownerFact(object),
         (
           'Binding',
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

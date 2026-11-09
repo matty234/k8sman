@@ -132,6 +132,9 @@ class ServicePanel extends ResourcePanel {
   @override
   Set<String> get kinds => {'/Service'};
 
+  @override
+  bool get ownerInHeader => true;
+
   /// Merged logs of the pods the selector picks (none for selector-less services).
   @override
   List<ResourceAction> actions(PanelContext ctx) => asMap(ctx.spec['selector']).isEmpty ? const [] : [workloadLogsAction(ctx)];
@@ -272,6 +275,7 @@ class _ServiceView extends StatelessWidget {
       ],
       insights: insights,
       factsKeyWidth: 72, facts: [
+        ?ownerFact(ctx.object),
         (
           'Cluster IP',
           external

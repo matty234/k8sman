@@ -125,7 +125,7 @@ class DaemonSetPanel extends ResourcePanel {
         ], keyWidth: 120),
       ),
       schedulingSection(podSpec, emptyText: 'No nodeSelector, tolerations or affinity: runs on every schedulable node without taints', none: 'every node'),
-      podTemplateSection(asMap(spec['template']), ctx.namespace),
+      podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid),
       if (asMapList(st['conditions']).isNotEmpty) conditionsSection(context, st),
       selectorSection(spec['selector']),
     ];

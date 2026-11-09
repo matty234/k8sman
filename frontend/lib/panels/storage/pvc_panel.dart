@@ -19,6 +19,9 @@ class PvcPanel extends ResourcePanel {
   Set<String> get kinds => {'/PersistentVolumeClaim'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final spec = ctx.spec;
     final status = ctx.status;
@@ -144,7 +147,8 @@ class PvcStatusHeader extends StatelessWidget {
       detail: deleting ? Text('was $phase') : null,
       figures: [
         _quantityFigure(capacity, 'provisioned', severity: short ? Severity.warn : Severity.neutral),
-        _quantityFigure(requested, 'requested'),
+        // Only when it differs from what was provisioned.
+        if (cap == null || req != cap) _quantityFigure(requested, 'requested'),
         if (limit != null) _quantityFigure(limit, 'limit'),
       ],
       extraInsights: [
@@ -175,6 +179,7 @@ class PvcStatusHeader extends StatelessWidget {
         ..._resizeInsights(requested, capacity),
       ],
       facts: [
+        ?ownerFact(ctx.object),
         ('Class', _storageClassValue(context, scName)),
         ('Access', AccessModesView(modes)),
         (

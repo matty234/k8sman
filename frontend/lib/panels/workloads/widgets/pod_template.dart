@@ -4,33 +4,34 @@ import '../../../api/models.dart';
 import '../../../ui/theme.dart';
 import '../../../ui/widgets/common.dart';
 import '../../../util/k8s.dart';
+import '../../pod/pod_containers.dart' show TemplateContainers;
 import 'util.dart';
 
-/// Summary of a pod template (`spec.template`): containers with copyable
-/// images, ports, resources, command and probes; then service account,
-/// node selector, tolerations, volumes and config references.
+/// Summary of a pod template (`spec.template`): its containers as the pod
+/// inspector's rows (without live state), then service account, node
+/// selector, tolerations, volumes and config references.
 class PodTemplateSummary extends StatelessWidget {
   final Json template;
   final String? namespace;
 
   /// Hide scheduling rows when the panel already shows them elsewhere.
   final bool showScheduling;
-  const PodTemplateSummary({super.key, required this.template, required this.namespace, this.showScheduling = true});
+
+  /// Keys which container rows are open for the session (the workload's uid).
+  final String memoryKey;
+  const PodTemplateSummary({super.key, required this.template, required this.namespace, required this.memoryKey, this.showScheduling = true});
 
   @override
   Widget build(BuildContext context) {
     final spec = asMap(template['spec']);
-    final inits = asMapList(spec['initContainers']);
-    final containers = asMapList(spec['containers']);
     final sa = (spec['serviceAccountName'] ?? spec['serviceAccount']) as String?;
     final volumes = asMapList(spec['volumes']);
     final configRefs = _configRefs(spec, namespace);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final c in inits) _ContainerCard(c, init: true),
-        for (final c in containers) _ContainerCard(c),
-        const SizedBox(height: 4),
+        TemplateContainers(template: template, namespace: namespace, memoryKey: memoryKey),
+        const SizedBox(height: 10),
         KeyValueTable([
           (
             'Service account',
@@ -86,150 +87,6 @@ class PodTemplateSummary extends StatelessWidget {
       add('Secret', s['name']);
     }
     return out;
-  }
-}
-
-class _ContainerCard extends StatelessWidget {
-  final Json c;
-  final bool init;
-  const _ContainerCard(this.c, {this.init = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final small = theme.textTheme.bodySmall;
-    final hint = small?.copyWith(color: theme.hintColor);
-    final ports = asMapList(c['ports']);
-    final res = asMap(c['resources']);
-    final cmd = [...?(c['command'] as List?), ...?(c['args'] as List?)].map((e) => '$e').toList();
-    final mounts = asMapList(c['volumeMounts']);
-    final probes = <String>[
-      for (final p in const ['startup', 'liveness', 'readiness'])
-        if (c['${p}Probe'] is Map) '$p ${_probe(asMap(c['${p}Probe']))}',
-    ];
-    final restartAlways = init && c['restartPolicy'] == 'Always';
-
-    Widget line(String label, Widget child) => Padding(
-      padding: const EdgeInsets.only(top: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(width: 64, child: Text(label, style: hint)),
-          Expanded(child: child),
-        ],
-      ),
-    );
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(6),
-        border: Border(left: BorderSide(color: init ? theme.hintColor : theme.colorScheme.primary, width: 2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text('${c['name']}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-              if (init) ...[const SizedBox(width: 6), StatusBadge(restartAlways ? 'sidecar' : 'init', severity: Severity.neutral, dense: true)],
-              const SizedBox(width: 8),
-              Flexible(
-                child: Align(alignment: Alignment.centerRight, child: ImageChip('${c['image'] ?? ''}')),
-              ),
-            ],
-          ),
-          if (ports.isNotEmpty)
-            line(
-              'ports',
-              Wrap(
-                spacing: 4,
-                runSpacing: 2,
-                children: [
-                  for (final p in ports) Chipish(text: '${p['name'] != null ? '${p['name']} ' : ''}${p['containerPort']}/${p['protocol'] ?? 'TCP'}'),
-                ],
-              ),
-            ),
-          line('resources', _resources(context, res)),
-          if (cmd.isNotEmpty)
-            line(
-              'command',
-              Tooltip(
-                message: cmd.join(' '),
-                child: Text(cmd.map(_shellQuote).join(' '), maxLines: 2, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11)),
-              ),
-            ),
-          if (probes.isNotEmpty) line('probes', Text(probes.join(' · '), style: small)),
-          if (mounts.isNotEmpty)
-            line(
-              'mounts',
-              Text(
-                mounts.map((m) => '${m['name']}→${m['mountPath']}${m['readOnly'] == true ? ' (ro)' : ''}').join('  '),
-                style: monoStyle(context, size: 11),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static String _shellQuote(String s) => s.contains(RegExp(r'''[\s"'$;|&]''')) ? "'${s.replaceAll("'", r"'\''")}'" : s;
-
-  static String _probe(Json p) {
-    String target;
-    if (p['httpGet'] is Map) {
-      final h = asMap(p['httpGet']);
-      target = 'GET ${h['path'] ?? '/'}:${h['port']}';
-    } else if (p['tcpSocket'] is Map) {
-      target = 'tcp:${dig(p, ['tcpSocket', 'port'])}';
-    } else if (p['grpc'] is Map) {
-      target = 'grpc:${dig(p, ['grpc', 'port'])}';
-    } else if (p['exec'] is Map) {
-      target = 'exec';
-    } else {
-      target = '?';
-    }
-    final period = p['periodSeconds'];
-    return period != null ? '$target /${period}s' : target;
-  }
-
-  Widget _resources(BuildContext context, Json res) {
-    final theme = Theme.of(context);
-    final req = asMap(res['requests']);
-    final lim = asMap(res['limits']);
-    if (req.isEmpty && lim.isEmpty) {
-      return Text('none set', style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.warn)));
-    }
-    final keys = <String>{...req.keys, ...lim.keys};
-    final spans = <InlineSpan>[];
-    for (final k in keys) {
-      if (spans.isNotEmpty) spans.add(const TextSpan(text: '   '));
-      spans.add(
-        TextSpan(
-          text: '$k ',
-          style: TextStyle(color: theme.hintColor),
-        ),
-      );
-      spans.add(TextSpan(text: '${req[k] ?? '–'}'));
-      spans.add(
-        TextSpan(
-          text: ' / ',
-          style: TextStyle(color: theme.hintColor),
-        ),
-      );
-      spans.add(
-        TextSpan(
-          text: '${lim[k] ?? 'no limit'}',
-          style: lim[k] == null ? TextStyle(color: theme.hintColor, fontStyle: FontStyle.italic) : null,
-        ),
-      );
-    }
-    return Tooltip(
-      message: 'requests / limits',
-      child: Text.rich(TextSpan(children: spans), style: monoStyle(context, size: 11)),
-    );
   }
 }
 

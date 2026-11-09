@@ -24,6 +24,9 @@ class JobPanel extends ResourcePanel {
   Set<String> get kinds => {'batch/Job'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx)];
 
   @override
@@ -133,7 +136,6 @@ class JobStatusHeader extends StatelessWidget {
     final deadline = (spec['activeDeadlineSeconds'] as num?)?.toInt();
     final start = parseTime(status['startTime']);
     final dur = jobDuration(job, now: now);
-    final owners = ownerRefs(job);
     final readyActive = ready == null ? active : ready.clamp(0, active);
     final failing = st.label == 'Failed' || st.label == 'Failing';
     final canAct = !ctx.app.readOnly;
@@ -207,7 +209,7 @@ class JobStatusHeader extends StatelessWidget {
               message: 'Sets spec.suspend=false; the job controller starts creating pods again.'),
       ],
       facts: [
-        if (owners.isNotEmpty) ('Owner', Wrap(spacing: 8, children: [for (final o in owners) ResourceLink(o)])),
+        ?ownerFact(ctx.object),
         if (start != null) ('Started', _timeWithAge(context, start)),
         if (st.finishedAt != null) (st.label == 'Failed' ? 'Failed' : 'Finished', _timeWithAge(context, st.finishedAt!)),
         if (terminating > 0) ('Pods', '$terminating terminating'),

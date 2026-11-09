@@ -68,6 +68,9 @@ class GatewayPanel extends ResourcePanel {
   Set<String> get kinds => {'$gwGroup/Gateway'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [_GatewayView(key: ValueKey('${ctx.uid}/gateway'), ctx: ctx)];
 }
 
@@ -236,6 +239,7 @@ class _GatewayView extends StatelessWidget {
       ],
       insights: insights,
       factsKeyWidth: 80, facts: [
+        ?ownerFact(ctx.object),
         (
           'Class',
           Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [

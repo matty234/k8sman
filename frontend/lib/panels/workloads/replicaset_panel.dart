@@ -81,7 +81,7 @@ class ReplicaSetPanel extends ResourcePanel {
         actionCtx: ctx,
         sectionTitle: 'Pods',
       ),
-      podTemplateSection(asMap(spec['template']), ctx.namespace),
+      podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid),
       schedulingSection(asMap(dig(spec, ['template', 'spec']))),
       if (asMapList(st['conditions']).isNotEmpty) conditionsSection(context, st),
       selectorSection(spec['selector'], extra: [

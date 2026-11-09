@@ -60,48 +60,6 @@ class HintText extends StatelessWidget {
   Widget build(BuildContext context) => Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor));
 }
 
-/// Image reference chip: monospace, click (or the icon) copies the full ref.
-class ImageChip extends StatelessWidget {
-  final String image;
-  final Color? highlight;
-  final String? tooltip;
-  const ImageChip(this.image, {super.key, this.highlight, this.tooltip});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final c = highlight;
-    final chip = InkWell(
-      borderRadius: BorderRadius.circular(4),
-      onTap: () => copyToClipboard(context, image),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(6, 1, 4, 1),
-        decoration: BoxDecoration(
-          color: (c ?? theme.colorScheme.secondaryContainer).withValues(alpha: c == null ? 0.5 : 0.18),
-          borderRadius: BorderRadius.circular(4),
-          border: c == null ? null : Border.all(color: c.withValues(alpha: 0.6)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                image,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: monoStyle(context, size: 11, color: c),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Icon(Icons.copy, size: 11, color: theme.hintColor),
-          ],
-        ),
-      ),
-    );
-    return Tooltip(message: tooltip ?? 'Copy $image', child: chip);
-  }
-}
-
 /// Human readable toleration: `key=value:NoSchedule`, `Exists (all taints)`.
 String formatToleration(Json t) {
   final key = t['key'] as String?;

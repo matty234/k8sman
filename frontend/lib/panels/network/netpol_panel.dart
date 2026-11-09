@@ -15,6 +15,9 @@ class NetworkPolicyPanel extends ResourcePanel {
   Set<String> get kinds => {'networking.k8s.io/NetworkPolicy'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) =>
       [_NetpolView(key: ValueKey('${ctx.uid}/netpol'), ctx: ctx)];
 }
@@ -112,6 +115,7 @@ class _NetpolView extends StatelessWidget {
         ),
         RowAction(icon: Icons.copy, tooltip: 'Copy explanation', onTap: () => copyToClipboard(context, ex.text)),
       ]),
+      facts: [?ownerFact(ctx.object)],
     );
   }
 

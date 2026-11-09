@@ -21,6 +21,9 @@ class ServiceAccountPanel extends ResourcePanel {
   Set<String> get kinds => {'/ServiceAccount'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final theme = Theme.of(context);
     final automount = ctx.object['automountServiceAccountToken'];
@@ -50,6 +53,7 @@ class ServiceAccountPanel extends ResourcePanel {
             ...usedByFigures(snap),
           ],
           facts: [
+            ?ownerFact(ctx.object),
             (
               'Automount',
               Text(

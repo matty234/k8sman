@@ -101,6 +101,9 @@ class IngressPanel extends ResourcePanel {
   Set<String> get kinds => {'networking.k8s.io/Ingress'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     return [_IngressView(key: ValueKey('${ctx.uid}/ingress'), ctx: ctx)];
   }
@@ -279,6 +282,7 @@ class _IngressView extends StatelessWidget {
       ],
       insights: insights,
       factsKeyWidth: 64, facts: [
+        ?ownerFact(ctx.object),
         (
           'Class',
           className != null

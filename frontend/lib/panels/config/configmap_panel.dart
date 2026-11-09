@@ -18,6 +18,9 @@ class ConfigMapPanel extends ResourcePanel {
   Set<String> get kinds => {'/ConfigMap'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final data = asMap(ctx.object['data']);
     final binary = asMap(ctx.object['binaryData']);
@@ -41,6 +44,7 @@ class ConfigMapPanel extends ResourcePanel {
             ...usedByFigures(snap),
           ],
           extraInsights: missingKeyInsights(snap, existing, 'ConfigMap'),
+          facts: [?ownerFact(ctx.object)],
         ),
       ),
       InspectorSection(

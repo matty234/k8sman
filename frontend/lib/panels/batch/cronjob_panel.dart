@@ -84,6 +84,9 @@ class CronJobPanel extends ResourcePanel {
   Set<String> get kinds => {'batch/CronJob'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final now = batchNow();
     final jobSpec = asMap(dig(ctx.spec, ['jobTemplate', 'spec']));
@@ -269,6 +272,7 @@ class CronStatusHeader extends StatelessWidget {
           ActionButton(ctx, action: 'suspend', label: 'Suspend', icon: Icons.pause, title: 'Suspend CronJob ${ctx.name}?', message: 'No new jobs will be scheduled.'),
       ],
       facts: [
+        ?ownerFact(ctx.object),
         (
           'Schedule',
           Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [

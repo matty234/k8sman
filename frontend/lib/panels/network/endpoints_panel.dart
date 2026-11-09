@@ -43,6 +43,9 @@ class EndpointSlicePanel extends ResourcePanel {
   Set<String> get kinds => {'discovery.k8s.io/EndpointSlice'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final o = ctx.object;
     final labels = asMap(ctx.metadata['labels']);
@@ -55,6 +58,7 @@ class EndpointSlicePanel extends ResourcePanel {
         addrs,
         what: 'slice',
         facts: [
+          ?ownerFact(ctx.object),
           (
             'Service',
             svcName != null
@@ -83,6 +87,9 @@ class EndpointsPanel extends ResourcePanel {
   Set<String> get kinds => {'/Endpoints'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final subsets = asMapList(ctx.object['subsets']);
     List<EndpointAddr> addrsOf(Json s) => [
@@ -96,6 +103,7 @@ class EndpointsPanel extends ResourcePanel {
         what: 'service',
         extra: [if (subsets.isEmpty) const Insight(Severity.error, 'No subsets', 'This service has no endpoints.')],
         facts: [
+          ?ownerFact(ctx.object),
           ('Service', ResourceLink(ObjectRef(kind: 'Service', name: ctx.name, namespace: ctx.namespace), label: ctx.name)),
           ('Subsets', '${subsets.length}'),
         ],
