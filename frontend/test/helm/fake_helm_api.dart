@@ -52,6 +52,16 @@ class FakeHelmApi extends HelmApi {
     return dryRun ? HelmResult.fromJson(fx('upgrade-dryrun-api.json')) : HelmResult(message: 'Upgraded $name to revision 3 (deployed)');
   }
 
+  /// Versions served for any oci:// ref, or an error when [ociError] is set.
+  String? ociError;
+
+  @override
+  Future<OciVersions> ociVersions(String ref) async {
+    calls.add('oci $ref');
+    if (ociError != null) throw ApiException(500, ociError!);
+    return const OciVersions(['1.3.0', '1.2.0', '1.1.0', '1.0.0'], '1.3.0');
+  }
+
   @override
   Future<HelmResult> rollback(String namespace, String name, int revision, {bool dryRun = false, bool wait = false, int? timeoutSeconds}) async {
     calls.add('rollback $namespace/$name $revision');

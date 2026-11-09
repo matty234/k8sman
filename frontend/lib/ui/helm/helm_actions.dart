@@ -14,6 +14,7 @@ import '../../util/k8s.dart';
 import '../detail/yaml_editor.dart' show DiffView;
 import '../theme.dart';
 import 'helm_api.dart';
+import 'oci_version_field.dart';
 import 'yaml_view.dart';
 import '../keys.dart';
 
@@ -208,20 +209,22 @@ Future<HelmResult?> uninstallRelease(BuildContext context, HelmApi api, HelmRele
 Future<HelmResult?> upgradeReleaseValues(BuildContext context, HelmApi api, HelmReleaseDetail d, {required String kubeContext}) async {
   final r = d.release;
   var text = d.values;
+  _ChartSource? source;
   while (context.mounted) {
-    final edited = await showDialog<(String, HelmResult)>(
+    final edited = await showDialog<(String, HelmResult, _ChartSource?)>(
       context: context,
       barrierDismissible: false,
-      builder: (c) => _ValuesEditorDialog(api: api, detail: d, initial: text),
+      builder: (c) => _ValuesEditorDialog(api: api, detail: d, initial: text, source: source),
     );
     if (edited == null || !context.mounted) return null;
     text = edited.$1;
     final dry = edited.$2;
+    final src = source = edited.$3;
     final stats = diffStats(diffLines(dry.currentManifest, dry.manifest));
     final ok = await confirmAction(
       context,
       title: 'Upgrade ${r.name} with these values?',
-      message: 'Creates revision ${r.revision + 1} from the stored chart ${r.chartRef}. '
+      message: 'Creates revision ${r.revision + 1} from ${src == null ? 'the stored chart ${r.chartRef}' : '${src.ref}${src.version.isEmpty ? '' : ' ${src.version}'}'}. '
           'Manifest +${stats.added} −${stats.removed} lines, validated by a dry run.',
       kubeContext: kubeContext,
       objectName: r.name,
@@ -238,17 +241,28 @@ Future<HelmResult?> upgradeReleaseValues(BuildContext context, HelmApi api, Helm
     );
     if (!context.mounted) return null;
     if (ok == true) {
-      return _runWithProgress(context, 'Upgrading ${r.name}…', () => api.upgrade(r.namespace, r.name, text));
+      return _runWithProgress(context, 'Upgrading ${r.name}…', () => src == null
+          ? api.upgrade(r.namespace, r.name, text)
+          : api.upgradeChart(r.namespace, r.name, repo: src.ref, chart: '', version: src.version.isEmpty ? null : src.version, values: text));
     }
   }
   return null;
+}
+
+/// An `oci://` chart (and version, "" = latest) to upgrade to instead of
+/// the chart stored in the release.
+class _ChartSource {
+  final String ref;
+  final String version;
+  const _ChartSource(this.ref, this.version);
 }
 
 class _ValuesEditorDialog extends StatefulWidget {
   final HelmApi api;
   final HelmReleaseDetail detail;
   final String initial;
-  const _ValuesEditorDialog({required this.api, required this.detail, required this.initial});
+  final _ChartSource? source;
+  const _ValuesEditorDialog({required this.api, required this.detail, required this.initial, this.source});
 
   @override
   State<_ValuesEditorDialog> createState() => _ValuesEditorDialogState();
@@ -256,21 +270,30 @@ class _ValuesEditorDialog extends StatefulWidget {
 
 class _ValuesEditorDialogState extends State<_ValuesEditorDialog> {
   late final _controller = CodeLineEditingController.fromText(widget.initial);
+  late final _ref = TextEditingController(text: widget.source?.ref ?? '');
+  late String _version = widget.source?.version ?? '';
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
     _controller.dispose();
+    _ref.dispose();
     super.dispose();
   }
+
+  bool get _oci => _ref.text.trim().startsWith('oci://');
 
   Future<void> _dryRun() async {
     setState(() => (_busy = true, _error = null));
     final r = widget.detail.release;
     try {
-      final res = await widget.api.upgrade(r.namespace, r.name, _controller.text, dryRun: true);
-      if (mounted) Navigator.pop(context, (_controller.text, res));
+      final src = _oci ? _ChartSource(_ref.text.trim(), _version.trim()) : null;
+      final res = src == null
+          ? await widget.api.upgrade(r.namespace, r.name, _controller.text, dryRun: true)
+          : await widget.api.upgradeChart(r.namespace, r.name,
+              repo: src.ref, chart: '', version: src.version.isEmpty ? null : src.version, values: _controller.text, dryRun: true);
+      if (mounted) Navigator.pop(context, (_controller.text, res, src));
     } on ApiException catch (e) {
       if (mounted) setState(() => (_busy = false, _error = e.message));
     } catch (e) {
@@ -296,6 +319,35 @@ class _ValuesEditorDialogState extends State<_ValuesEditorDialog> {
               'A dry run renders the result for review before anything changes.',
               style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
             ),
+            const SizedBox(height: 8),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _ref,
+                  onChanged: (_) => setState(() {}),
+                  style: monoStyle(context),
+                  decoration: const InputDecoration(
+                    labelText: 'Chart (optional)',
+                    hintText: 'oci://registry/path/chart: upgrade to a registry chart',
+                    isDense: true,
+                  ),
+                ),
+              ),
+              if (_oci) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: OciVersionField(
+                    api: widget.api,
+                    ref: _ref.text.trim(),
+                    current: r.chartVersion.isEmpty ? null : r.chartVersion,
+                    version: _version,
+                    onChanged: (v) => setState(() => _version = v),
+                  ),
+                ),
+              ],
+            ]),
             const SizedBox(height: 8),
             Expanded(child: HelmYamlView(controller: _controller, readOnly: false)),
             if (_error != null)

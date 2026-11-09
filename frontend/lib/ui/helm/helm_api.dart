@@ -270,6 +270,12 @@ class HelmResult {
       );
 }
 
+class OciVersions {
+  final List<String> versions;
+  final String latest;
+  const OciVersions(this.versions, this.latest);
+}
+
 class HelmChartVersion {
   final String version, appVersion, description;
   final DateTime? created;
@@ -379,6 +385,12 @@ class HelmApi {
         'timeoutSeconds': ?timeoutSeconds,
         'dryRun': dryRun,
       }));
+
+  /// Tags of an `oci://` chart reference, newest first (cached server-side).
+  Future<OciVersions> ociVersions(String ref) async {
+    final j = await _get('oci/versions', {'ref': ref});
+    return OciVersions([for (final v in (j['versions'] as List? ?? const [])) '$v'], '${j['latest'] ?? ''}');
+  }
 
   /// Available chart versions, newest first.
   Future<List<HelmChartVersion>> chartVersions(String repo, String chart) async {

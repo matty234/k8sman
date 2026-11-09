@@ -256,7 +256,9 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   PodDisruptionBudgets, retrying for up to 5 minutes.
 - **Metrics**: Top, custom metrics, external metrics and a live HPA view.
 - **Helm**: releases, values, manifest, hooks, history diffs, rollback,
-  upgrade with a dry-run diff, uninstall, and stuck-release recovery.
+  upgrade with a dry-run diff (optionally to an `oci://` chart, with a
+  searchable list of the registry's versions using your `helm registry login`
+  credentials), uninstall, and stuck-release recovery.
 - **Security**: network exposure, RBAC risk (including unused privileged
   ServiceAccounts), Pod Security, best practices, Trivy image CVEs, and
   **Copy for AI**.
