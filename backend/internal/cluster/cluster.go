@@ -98,7 +98,8 @@ type Clients struct {
 	crdCols map[schema.GroupResource]map[string][]PrinterColumn
 }
 
-var crdGVR = schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
+// CRDGVR is the CustomResourceDefinition resource.
+var CRDGVR = schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
 
 // Resources discovers all listable resources (preferred version per group).
 // Set refresh to drop the discovery cache first (e.g. after installing a CRD).
@@ -258,7 +259,7 @@ func (c *Clients) PrinterColumns(ctx context.Context, gvr schema.GroupVersionRes
 	}
 	c.crdMu.Unlock()
 
-	item, err := c.Dynamic.Resource(crdGVR).Get(ctx, gr.Resource+"."+gr.Group, metav1.GetOptions{ResourceVersion: "0"})
+	item, err := c.Dynamic.Resource(CRDGVR).Get(ctx, gr.Resource+"."+gr.Group, metav1.GetOptions{ResourceVersion: "0"})
 	if err != nil {
 		return nil // e.g. RBAC: fall back to generic columns, retry next time
 	}
@@ -329,7 +330,7 @@ func (c *Clients) loadCRDs(ctx context.Context) map[schema.GroupResource]bool {
 func (c *Clients) crdNames(ctx context.Context) ([]string, error) {
 	var names []string
 	if c.Metadata != nil {
-		list, err := c.Metadata.Resource(crdGVR).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
+		list, err := c.Metadata.Resource(CRDGVR).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
 		if err != nil {
 			return nil, err
 		}
@@ -338,7 +339,7 @@ func (c *Clients) crdNames(ctx context.Context) ([]string, error) {
 		}
 		return names, nil
 	}
-	list, err := c.Dynamic.Resource(crdGVR).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
+	list, err := c.Dynamic.Resource(CRDGVR).List(ctx, metav1.ListOptions{ResourceVersion: "0"})
 	if err != nil {
 		return nil, err
 	}

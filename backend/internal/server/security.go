@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -110,9 +109,7 @@ func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *secu
 	}
 	// Ignore rules are applied here, to this request's own result, not in
 	// the shared run: editing them takes effect on the next fetch.
-	if s.settings != nil {
-		security.ApplyIgnores(res, s.settings.SecurityIgnores(c.Context))
-	}
+	security.ApplyIgnores(res, s.settings.SecurityIgnores(c.Context))
 	if len(errs) > 0 {
 		res.Errors = map[string]string{}
 		for k, e := range errs {
@@ -306,12 +303,12 @@ func (s *Server) handleScannerStatus(w http.ResponseWriter, r *http.Request, sc 
 }
 
 func handleScan(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
-	var body struct {
+	type scanBody struct {
 		Image string `json:"image"`
 		Force bool   `json:"force"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-		writeErr(w, httpx.BadRequest("invalid body: %v", err))
+	body, ok := httpx.DecodeJSON[scanBody](w, r, 1<<16)
+	if !ok {
 		return
 	}
 	res, err := sc.Scan(r.Context(), body.Image, body.Force)
@@ -319,9 +316,9 @@ func handleScan(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
 	case errors.Is(err, security.ErrBadImage):
 		writeErr(w, httpx.BadRequest("%v: %q", err, body.Image))
 	case errors.Is(err, security.ErrNoTrivy):
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: err.Error(), Code: http.StatusServiceUnavailable, Reason: "ScannerUnavailable"})
+		httpx.WriteError(w, http.StatusServiceUnavailable, "ScannerUnavailable", err.Error())
 	case err != nil:
-		httpx.WriteJSON(w, http.StatusBadGateway, httpx.ErrorBody{Error: err.Error(), Code: http.StatusBadGateway, Reason: "ScanFailed"})
+		httpx.WriteError(w, http.StatusBadGateway, "ScanFailed", err.Error())
 	default:
 		httpx.WriteJSON(w, 200, res)
 	}

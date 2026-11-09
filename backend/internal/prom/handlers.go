@@ -205,9 +205,8 @@ func (h *Handler) handleCreateSilence(w http.ResponseWriter, r *http.Request) {
 	if h.refuseReadOnly(w) {
 		return
 	}
-	var body SilenceRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		writeErr(w, httpx.BadRequest("invalid body: %v", err))
+	body, ok := httpx.DecodeJSON[SilenceRequest](w, r, 64<<10)
+	if !ok {
 		return
 	}
 	payload, err := body.build(h.now())

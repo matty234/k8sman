@@ -88,7 +88,7 @@ func checkAccess(w http.ResponseWriter, r *http.Request, token string) bool {
 }
 
 func guardErr(w http.ResponseWriter, code int, msg, reason string) {
-	httpx.WriteJSON(w, code, httpx.ErrorBody{Error: msg, Code: code, Reason: reason})
+	httpx.WriteError(w, code, reason, msg)
 }
 
 func validToken(r *http.Request, token string) bool {

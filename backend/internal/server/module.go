@@ -130,7 +130,7 @@ func builtinModules() []Module {
 // mountModules registers every module's routes, behind a check that
 // answers 404 while the user has the module turned off.
 func (s *Server) mountModules() {
-	d := Deps{Mgr: s.mgr, Settings: s.settings, ReadOnlyFlag: s.readOnly, RefuseReadOnly: s.readOnlyRefused}
+	d := Deps{Mgr: s.mgr, Settings: s.settings, ReadOnlyFlag: s.readOnly, RefuseReadOnly: s.refuseReadOnly}
 	for _, m := range s.modules {
 		m.Routes(moduleRouter{s: s, name: m.Name()}, d)
 	}
@@ -167,7 +167,7 @@ func (s *Server) settingsContext(r *http.Request) string {
 func (s *Server) handleGetModuleSettings(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if _, ok := s.configurable(id); !ok {
-		httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{Error: fmt.Sprintf("module %q has no settings", id), Code: http.StatusNotFound})
+		httpx.WriteError(w, http.StatusNotFound, "", fmt.Sprintf("module %q has no settings", id))
 		return
 	}
 	ctx := s.settingsContext(r)
@@ -190,7 +190,7 @@ func (s *Server) handlePutModuleSettings(w http.ResponseWriter, r *http.Request)
 	id := r.PathValue("id")
 	m, ok := s.configurable(id)
 	if !ok {
-		httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{Error: fmt.Sprintf("module %q has no settings", id), Code: http.StatusNotFound})
+		httpx.WriteError(w, http.StatusNotFound, "", fmt.Sprintf("module %q has no settings", id))
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
@@ -224,11 +224,8 @@ type moduleRouter struct {
 func (mr moduleRouter) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
 	mr.s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		if mr.s.settings.ModuleDisabled(mr.name) {
-			httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{
-				Error:  fmt.Sprintf("the %s integration is turned off in k8sman's settings", mr.name),
-				Code:   http.StatusNotFound,
-				Reason: "ModuleDisabled",
-			})
+			httpx.WriteError(w, http.StatusNotFound, "ModuleDisabled",
+				fmt.Sprintf("the %s integration is turned off in k8sman's settings", mr.name))
 			return
 		}
 		h(w, r)
@@ -262,10 +259,10 @@ func (s *Server) handlePutModules(w http.ResponseWriter, r *http.Request) {
 	s.handleGetModules(w, r)
 }
 
-// readOnlyRefused writes 403 when the current context is read-only.
-func (s *Server) readOnlyRefused(w http.ResponseWriter) bool {
+// refuseReadOnly writes 403 when the current context is read-only.
+func (s *Server) refuseReadOnly(w http.ResponseWriter) bool {
 	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+		httpx.WriteError(w, http.StatusForbidden, "", s.readOnlyMessage())
 		return true
 	}
 	return false

@@ -9,7 +9,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
@@ -61,7 +60,7 @@ func gatewayClasses(ctx context.Context, c *cluster.Clients) gatewayStatus {
 	st.CRD = true
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	gvr := schema.GroupVersionResource{Group: t.Group, Version: t.Version, Resource: t.Resource}
+	gvr := t.GVR()
 	list, err := c.Dynamic.Resource(gvr).List(ctx, metav1.ListOptions{Limit: 200})
 	if err != nil {
 		return st
@@ -91,7 +90,7 @@ func (m *gatewayModule) OverviewInputs(l *OverviewLists) {
 		return
 	}
 	list := func(t cluster.ResourceType) ([]unstructured.Unstructured, error) {
-		gvr := schema.GroupVersionResource{Group: t.Group, Version: t.Version, Resource: t.Resource}
+		gvr := t.GVR()
 		items, err := listCached(ctx, kcache.For(c), gvr, ns)
 		if err != nil {
 			return nil, err

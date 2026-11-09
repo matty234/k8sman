@@ -57,8 +57,7 @@ type applyResult struct {
 // owns come back as a Conflict rather than being taken over.
 // ?dryRun=true persists nothing.
 func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
-	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+	if s.refuseReadOnly(w) {
 		return
 	}
 	q := r.URL.Query()

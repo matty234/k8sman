@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -412,9 +411,8 @@ type CheckRequest struct {
 // SelfSubjectAccessReview without a subject) and compares the answer with
 // the local resolver. Reviews persist nothing, so this works read-only.
 func (s *Server) handleRBACCheck(w http.ResponseWriter, r *http.Request) {
-	var body CheckRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-		writeErr(w, httpx.BadRequest("invalid body: %v", err))
+	body, ok := httpx.DecodeJSON[CheckRequest](w, r, 1<<16)
+	if !ok {
 		return
 	}
 	req := body.Request
@@ -500,8 +498,7 @@ var rbacKinds = map[string]string{"Role": "roles", "ClusterRole": "clusterroles"
 // nothing. Escalation checks happen in the API server: a user can't grant
 // what they don't hold, and gets a 403 that says so.
 func (s *Server) handleRBACApply(w http.ResponseWriter, r *http.Request) {
-	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+	if s.refuseReadOnly(w) {
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))

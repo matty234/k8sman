@@ -71,7 +71,7 @@ func clusterAddrs(ctx context.Context, c *cluster.Clients) map[string]string {
 		}
 	})
 	if t, err := c.Find(ctx, overview.GatewayGroup, "", "gateways"); err == nil {
-		each(schema.GroupVersionResource{Group: t.Group, Version: t.Version, Resource: t.Resource}, func(u *unstructured.Unstructured) {
+		each(t.GVR(), func(u *unstructured.Unstructured) {
 			for _, ip := range strs(u, "value", "status", "addresses") {
 				add(ip, "gateway/"+u.GetNamespace()+"/"+u.GetName())
 			}

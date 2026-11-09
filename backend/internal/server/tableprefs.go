@@ -18,10 +18,8 @@ func (s *Server) tablePrefsRoutes() {
 // handleGetTablePrefs returns {tables: {"<group>/<Kind>": {…}}}.
 func (s *Server) handleGetTablePrefs(w http.ResponseWriter, r *http.Request) {
 	tables := map[string]settings.TablePrefs{}
-	if s.settings != nil {
-		if t := s.settings.Get().Tables; t != nil {
-			tables = t
-		}
+	if t := s.settings.Get().Tables; t != nil {
+		tables = t
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"tables": tables})
 }
@@ -34,15 +32,11 @@ func (s *Server) handlePutTablePrefs(w http.ResponseWriter, r *http.Request) {
 		Prefs *settings.TablePrefs `json:"prefs"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil || body.Kind == "" || len(body.Kind) > 300 {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: "body must be {kind, prefs}", Code: http.StatusBadRequest})
+		httpx.WriteError(w, http.StatusBadRequest, "", "body must be {kind, prefs}")
 		return
 	}
 	if p := body.Prefs; p != nil && (len(p.Filter) > 1000 || len(p.Widths) > 100 || len(p.Mode) > 40) {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: "prefs too large", Code: http.StatusBadRequest})
-		return
-	}
-	if s.settings == nil {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: "settings are not available", Code: http.StatusServiceUnavailable})
+		httpx.WriteError(w, http.StatusBadRequest, "", "prefs too large")
 		return
 	}
 	if err := s.settings.SetTablePrefs(body.Kind, body.Prefs); err != nil {

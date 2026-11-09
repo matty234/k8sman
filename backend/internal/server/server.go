@@ -137,11 +137,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	start := time.Now()
 	if s.mgr.Clients() == nil && !worksDisconnected(r.URL.Path) {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{
-			Error:  fmt.Sprintf("no cluster connection: %v", s.mgr.Err()),
-			Code:   http.StatusServiceUnavailable,
-			Reason: "NoKubeconfig",
-		})
+		httpx.WriteError(w, http.StatusServiceUnavailable, "NoKubeconfig", fmt.Sprintf("no cluster connection: %v", s.mgr.Err()))
 		return
 	}
 	if contextMismatch(w, r, s.mgr.Clients()) {
@@ -170,11 +166,8 @@ func contextMismatch(w http.ResponseWriter, r *http.Request, c *cluster.Clients)
 			return false
 		}
 	}
-	httpx.WriteJSON(w, http.StatusConflict, httpx.ErrorBody{
-		Error:  fmt.Sprintf("k8sman is now on context %q, not %q, so nothing was changed. Check the cluster and try again.", c.Context, want),
-		Code:   http.StatusConflict,
-		Reason: "ContextMismatch",
-	})
+	httpx.WriteError(w, http.StatusConflict, "ContextMismatch",
+		fmt.Sprintf("k8sman is now on context %q, not %q, so nothing was changed. Check the cluster and try again.", c.Context, want))
 	return true
 }
 
@@ -802,11 +795,8 @@ func (s *Server) handlePutColumns(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	var body struct {
-		Columns []columns.Column `json:"columns"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, httpx.BadRequest("invalid body: %v", err))
+	body, ok := httpx.DecodeJSON[columnsBody](w, r, 0)
+	if !ok {
 		return
 	}
 	if err := s.store.Set(columns.Key(rq.Type.Group, rq.Type.Resource), body.Columns); err != nil {
@@ -830,6 +820,11 @@ func (s *Server) handleDeleteColumns(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, 200, map[string]any{"columns": cols, "isDefault": true})
 }
 
+// columnsBody is the body of the column-configuration endpoints.
+type columnsBody struct {
+	Columns []columns.Column `json:"columns"`
+}
+
 // handlePreviewColumns evaluates an unsaved column set against live objects
 // so the column editor can show results and errors as the user types.
 func (s *Server) handlePreviewColumns(w http.ResponseWriter, r *http.Request) {
@@ -838,11 +833,8 @@ func (s *Server) handlePreviewColumns(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	var body struct {
-		Columns []columns.Column `json:"columns"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, httpx.BadRequest("invalid body: %v", err))
+	body, ok := httpx.DecodeJSON[columnsBody](w, r, 0)
+	if !ok {
 		return
 	}
 	limit := int64(25)

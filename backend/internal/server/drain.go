@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -147,8 +146,7 @@ func (s *Server) handleDrainPlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDrain(w http.ResponseWriter, r *http.Request) {
-	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+	if s.refuseReadOnly(w) {
 		return
 	}
 	node := r.URL.Query().Get("name")
@@ -158,8 +156,8 @@ func (s *Server) handleDrain(w http.ResponseWriter, r *http.Request) {
 	}
 	var opts DrainOptions
 	if r.ContentLength != 0 {
-		if err := json.NewDecoder(r.Body).Decode(&opts); err != nil {
-			writeErr(w, httpx.BadRequest("invalid body: %v", err))
+		var ok bool
+		if opts, ok = httpx.DecodeJSON[DrainOptions](w, r, 0); !ok {
 			return
 		}
 	}

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -39,8 +38,7 @@ func (s *Server) mutationRoutes() {
 // concurrent change yields 409 Conflict instead of being overwritten.
 // ?dryRun=true runs server-side validation/admission without persisting.
 func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
-	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+	if s.refuseReadOnly(w) {
 		return
 	}
 	c, rq, err := s.parseResource(r.Context(), r)
@@ -135,17 +133,16 @@ func (s *Server) handleFreeForwardPort(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateForward(w http.ResponseWriter, r *http.Request) {
-	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+	if s.refuseReadOnly(w) {
 		return
 	}
-	var body struct {
+	type forwardBody struct {
 		portforward.Spec
 		// Replace stops and forgets the forward holding the same local port.
 		Replace bool `json:"replace"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, httpx.BadRequest("invalid body: %v", err))
+	body, ok := httpx.DecodeJSON[forwardBody](w, r, 0)
+	if !ok {
 		return
 	}
 	st, err := s.pf.Create(body.Spec, body.Replace)
@@ -166,15 +163,15 @@ func (s *Server) handleCreateForward(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateForward(w http.ResponseWriter, r *http.Request) {
-	var body struct {
+	type updateForwardBody struct {
 		AutoStart     *bool   `json:"autoStart"`
 		Label         *string `json:"label"`
 		LocalPort     *int    `json:"localPort"`
 		OpenInBrowser *bool   `json:"openInBrowser"`
 		HTTPS         *bool   `json:"https"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, httpx.BadRequest("invalid body: %v", err))
+	body, ok := httpx.DecodeJSON[updateForwardBody](w, r, 0)
+	if !ok {
 		return
 	}
 	st, err := s.pf.Update(r.PathValue("id"), portforward.Changes{
@@ -191,8 +188,7 @@ func (s *Server) handleForwardAction(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var err error
 	if r.URL.Path[len(r.URL.Path)-5:] == "start" {
-		if s.isReadOnly() {
-			httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+		if s.refuseReadOnly(w) {
 			return
 		}
 		err = s.pf.Start(id)
@@ -224,7 +220,7 @@ func (s *Server) handleDeleteForward(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) forwardErr(w http.ResponseWriter, err error) {
 	if portforward.IsNotFound(err) {
-		httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{Error: err.Error(), Code: http.StatusNotFound})
+		httpx.WriteError(w, http.StatusNotFound, "", err.Error())
 		return
 	}
 	writeErr(w, err)

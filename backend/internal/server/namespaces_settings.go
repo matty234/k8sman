@@ -52,9 +52,7 @@ func (s *Server) handleGetFavouriteNamespaces(w http.ResponseWriter, r *http.Req
 func (s *Server) getNamespaceList(w http.ResponseWriter, r *http.Request, pick func(settings.Settings) map[string][]string) {
 	ctx := s.settingsContext(r)
 	list := []string{}
-	if s.settings != nil {
-		list = append(list, pick(s.settings.Get())[ctx]...)
-	}
+	list = append(list, pick(s.settings.Get())[ctx]...)
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"context": ctx, "namespaces": list})
 }
 
@@ -84,7 +82,7 @@ func (s *Server) putNamespaceList(w http.ResponseWriter, r *http.Request, save f
 // saveNamespaceSetting checks names and the context, then saves.
 func (s *Server) saveNamespaceSetting(w http.ResponseWriter, r *http.Request, context string, names []string, save func(ctx string) error) {
 	bad := func(msg string) {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: msg, Code: http.StatusBadRequest})
+		httpx.WriteError(w, http.StatusBadRequest, "", msg)
 	}
 	if len(names) > maxRememberedNamespaces {
 		bad("too many namespaces")
@@ -102,10 +100,6 @@ func (s *Server) saveNamespaceSetting(w http.ResponseWriter, r *http.Request, co
 	}
 	if ctx == "" {
 		bad("no context")
-		return
-	}
-	if s.settings == nil {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: "settings are not available", Code: http.StatusServiceUnavailable})
 		return
 	}
 	if err := save(ctx); err != nil {
@@ -134,7 +128,7 @@ func (s *Server) handlePutAllowedNamespaces(w http.ResponseWriter, r *http.Reque
 // allowedNamespaces is the current context's allowlist (nil = every
 // namespace), sorted.
 func (s *Server) allowedNamespaces() kube.Namespaces {
-	if s.settings == nil || s.mgr == nil {
+	if s.mgr == nil {
 		return nil
 	}
 	c := s.mgr.Clients()
@@ -159,10 +153,7 @@ func (s *Server) parseScope(q url.Values) (kube.Namespaces, error) {
 // context opens. mode is "all" (the default), "kubeconfig" or "namespaces".
 func (s *Server) handleGetDefaultNamespace(w http.ResponseWriter, r *http.Request) {
 	ctx := s.settingsContext(r)
-	var d settings.DefaultNamespace
-	if s.settings != nil {
-		d = s.settings.Get().DefaultNamespace[ctx]
-	}
+	d := s.settings.Get().DefaultNamespace[ctx]
 	mode := "all"
 	switch {
 	case d.FromKubeconfig:
@@ -221,12 +212,10 @@ func (s *Server) handleSuggestAllowedNamespaces(w http.ResponseWriter, r *http.R
 	if c.Namespace != "" {
 		known[c.Namespace] = true
 	}
-	if s.settings != nil {
-		st := s.settings.Get()
-		for _, l := range [][]string{st.Namespaces[c.Context], st.FavouriteNamespaces[c.Context], st.AllowedNamespaces[c.Context]} {
-			for _, n := range l {
-				known[n] = true
-			}
+	st := s.settings.Get()
+	for _, l := range [][]string{st.Namespaces[c.Context], st.FavouriteNamespaces[c.Context], st.AllowedNamespaces[c.Context]} {
+		for _, n := range l {
+			known[n] = true
 		}
 	}
 	listed := false

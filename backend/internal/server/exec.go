@@ -296,7 +296,7 @@ func newExecutor(c *cluster.Clients, ns, pod string, opts *corev1.PodExecOptions
 // shell (auto | zsh | bash | ...), cols, rows (initial size).
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: "exec is disabled in read-only mode", Code: http.StatusForbidden, Reason: "Forbidden"})
+		httpx.WriteError(w, http.StatusForbidden, "Forbidden", "exec is disabled in read-only mode")
 		return
 	}
 	q := r.URL.Query()
@@ -450,12 +450,11 @@ var debugMu sync.Mutex // serialises ephemeral container updates per server
 // The UI then execs into it. Ephemeral containers can't be removed.
 func (s *Server) handleDebugContainer(w http.ResponseWriter, r *http.Request) {
 	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: "debug containers are disabled in read-only mode", Code: http.StatusForbidden, Reason: "Forbidden"})
+		httpx.WriteError(w, http.StatusForbidden, "Forbidden", "debug containers are disabled in read-only mode")
 		return
 	}
-	var req DebugContainerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, httpx.BadRequest("invalid body: %v", err))
+	req, ok := httpx.DecodeJSON[DebugContainerRequest](w, r, 0)
+	if !ok {
 		return
 	}
 	if req.Namespace == "" || req.Pod == "" {
@@ -479,7 +478,7 @@ func (s *Server) handleDebugContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := waitEphemeralRunning(ctx, c, req.Namespace, req.Pod, name); err != nil {
-		httpx.WriteJSON(w, http.StatusGatewayTimeout, httpx.ErrorBody{Error: err.Error(), Code: http.StatusGatewayTimeout, Reason: "DebugContainerNotRunning"})
+		httpx.WriteError(w, http.StatusGatewayTimeout, "DebugContainerNotRunning", err.Error())
 		return
 	}
 	log.Printf("debug container %s added to %s/%s (image %s, target %q)", name, req.Namespace, req.Pod, req.Image, req.TargetContainer)

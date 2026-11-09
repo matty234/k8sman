@@ -26,11 +26,7 @@ func (s *Server) iconRoutes(opts Options) {
 // false | null (automatic), flag: --no-remote-icons is set, effective:
 // whether icons are fetched for the current context}.
 func (s *Server) writeIconSettings(w http.ResponseWriter, disabled bool) {
-	var v *bool
-	if s.settings != nil {
-		v = s.settings.Get().RemoteIcons
-	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"remoteIcons": v, "flag": disabled, "effective": s.remoteIcons(disabled)})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"remoteIcons": s.settings.Get().RemoteIcons, "flag": disabled, "effective": s.remoteIcons(disabled)})
 }
 
 // handlePutIconSettings saves settings.json "remoteIcons".
@@ -40,11 +36,7 @@ func (s *Server) handlePutIconSettings(w http.ResponseWriter, r *http.Request, d
 		RemoteIcons *bool `json:"remoteIcons"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&body); err != nil {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: "body must be {remoteIcons}", Code: http.StatusBadRequest})
-		return
-	}
-	if s.settings == nil {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: "settings are not available", Code: http.StatusServiceUnavailable})
+		httpx.WriteError(w, http.StatusBadRequest, "", "body must be {remoteIcons}")
 		return
 	}
 	if err := s.settings.Update(func(st *settings.Settings) { st.RemoteIcons = body.RemoteIcons }); err != nil {

@@ -17,9 +17,7 @@ func (s *Server) securityIgnoreRoutes() {
 	s.mux.HandleFunc("GET /api/settings/security-ignores", func(w http.ResponseWriter, r *http.Request) {
 		ctx := s.settingsContext(r)
 		rules := []security.IgnoreRule{}
-		if s.settings != nil {
-			rules = append(rules, s.settings.SecurityIgnores(ctx)...)
-		}
+		rules = append(rules, s.settings.SecurityIgnores(ctx)...)
 		httpx.WriteJSON(w, http.StatusOK, map[string]any{"context": ctx, "ignores": rules})
 	})
 	s.mux.HandleFunc("PUT /api/settings/security-ignores", func(w http.ResponseWriter, r *http.Request) {
@@ -52,10 +50,6 @@ func (s *Server) securityIgnoreRoutes() {
 		}
 		if ctx == "" {
 			writeErr(w, httpx.BadRequest("no context"))
-			return
-		}
-		if s.settings == nil {
-			httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: "settings are not available", Code: http.StatusServiceUnavailable})
 			return
 		}
 		if err := s.settings.SetSecurityIgnores(ctx, body.Ignores); err != nil {

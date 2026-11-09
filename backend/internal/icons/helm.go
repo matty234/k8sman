@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/matty234/k8sman/backend/internal/cluster"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/metadata"
 )
@@ -101,8 +101,6 @@ type helmIndex struct {
 	via map[string]string
 }
 
-var crdGVR = schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
-
 const (
 	annRelease   = "meta.helm.sh/release-name"
 	annReleaseNS = "meta.helm.sh/release-namespace"
@@ -166,7 +164,7 @@ func buildHelmIndex(ctx context.Context, typed kubernetes.Interface, meta metada
 	// 1. Labelled/annotated CRDs (metadata only: CRD objects are large).
 	var crds []metav1.PartialObjectMetadata
 	if meta != nil {
-		if list, err := meta.Resource(crdGVR).List(ctx, metav1.ListOptions{}); err == nil {
+		if list, err := meta.Resource(cluster.CRDGVR).List(ctx, metav1.ListOptions{}); err == nil {
 			crds = list.Items
 		}
 	}

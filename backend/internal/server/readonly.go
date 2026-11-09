@@ -72,11 +72,7 @@ func (s *Server) handlePutReadOnly(w http.ResponseWriter, r *http.Request) {
 		ReadOnly *bool  `json:"readOnly"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil || body.Context == "" {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: "body must be {context, readOnly}", Code: http.StatusBadRequest})
-		return
-	}
-	if s.settings == nil {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: "settings are not available", Code: http.StatusServiceUnavailable})
+		httpx.WriteError(w, http.StatusBadRequest, "", "body must be {context, readOnly}")
 		return
 	}
 	if err := s.settings.SetContextReadOnly(body.Context, body.ReadOnly); err != nil {

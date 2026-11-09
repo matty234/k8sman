@@ -18,10 +18,7 @@ import (
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
-
-var jobGVR = schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}
 
 // ActionRequest is the body of POST /api/actions/{action}. Target comes from
 // the usual group/version/resource/namespace/name query params.
@@ -147,8 +144,7 @@ func hasScaleSubresource(c *cluster.Clients, rt cluster.ResourceType) bool {
 }
 
 func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
-	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+	if s.refuseReadOnly(w) {
 		return
 	}
 	action := r.PathValue("action")
@@ -310,7 +306,7 @@ func triggerCronJob(ctx context.Context, c *cluster.Clients, ns, name string, dr
 	var spec map[string]any
 	_ = json.Unmarshal(specJSON, &spec)
 	job["spec"] = spec
-	jobs := c.Dynamic.Resource(jobGVR).Namespace(ns)
+	jobs := c.Dynamic.Resource(gvrJobs).Namespace(ns)
 	_, err = jobs.Create(ctx, &unstructured.Unstructured{Object: job}, metav1.CreateOptions{FieldManager: fieldManager, DryRun: dry})
 	return jobName, err
 }
