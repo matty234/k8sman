@@ -72,6 +72,9 @@ type Settings struct {
 	// AppLinks makes "Copy link" copy the k8sman:// form instead of the
 	// https://k8sman.dev/o/ one.
 	AppLinks bool `json:"appLinks,omitempty"`
+
+	// LogsNewestFirst shows log lines newest first in every log view.
+	LogsNewestFirst bool `json:"logsNewestFirst,omitempty"`
 }
 
 // ViewVersion is the view record version this build writes.

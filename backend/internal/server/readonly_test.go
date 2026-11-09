@@ -120,6 +120,14 @@ func TestRememberedNamespaces(t *testing.T) {
 		t.Fatal("empty list should forget the context")
 	}
 
+	// The log viewer's newest-first preference round-trips.
+	if rec, _ := do(t, s, "PUT", "/api/settings/logs", `{"newestFirst":true}`); rec.Code != http.StatusNoContent || !st.Get().LogsNewestFirst {
+		t.Fatalf("put logs: %d %s", rec.Code, rec.Body)
+	}
+	if rec, _ := do(t, s, "GET", "/api/settings/logs", ""); !strings.Contains(rec.Body.String(), `"newestFirst":true`) {
+		t.Fatalf("get logs: %s", rec.Body)
+	}
+
 	// Favourites are stored separately, per context.
 	if rec, _ := do(t, s, "PUT", "/api/settings/favourite-namespaces", `{"context":"dev","namespaces":["team-a"]}`); rec.Code != http.StatusNoContent {
 		t.Fatalf("put favourites: %d %s", rec.Code, rec.Body)

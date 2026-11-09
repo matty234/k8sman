@@ -81,6 +81,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.kubeconfigRoutes()
 	s.sidebarRoutes()
 	s.linkRoutes()
+	s.logSettingsRoutes()
 	s.viewRoutes()
 	s.readOnlyRoutes()
 	s.tablePrefsRoutes()
