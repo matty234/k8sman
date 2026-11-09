@@ -813,3 +813,58 @@ class FigureCaption extends StatelessWidget {
     return Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600, letterSpacing: 0.3));
   }
 }
+
+/// A heading row that fits narrow places: [title], an optional [chevron]
+/// after it, and a hairline (when [rule]) running from there to [trailing].
+/// [trailing] keeps its width; the title gives way with its own ellipsis.
+class TitleRule extends StatelessWidget {
+  final Widget title;
+  final Widget? chevron;
+  final Widget? trailing;
+  final bool rule;
+  const TitleRule({super.key, required this.title, this.chevron, this.trailing, this.rule = true});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomMultiChildLayout(delegate: _TitleRuleLayout(), children: [
+      LayoutId(id: _Slot.title, child: title),
+      if (chevron != null) LayoutId(id: _Slot.chevron, child: chevron!),
+      if (rule) LayoutId(id: _Slot.rule, child: Container(height: 1, color: AppColors.of(context).separator.withValues(alpha: 0.75))),
+      if (trailing != null) LayoutId(id: _Slot.trailing, child: trailing!),
+    ]);
+  }
+}
+
+enum _Slot { title, chevron, rule, trailing }
+
+class _TitleRuleLayout extends MultiChildLayoutDelegate {
+  @override
+  void performLayout(Size size) {
+    final w = size.width;
+    final h = size.height;
+    double centre(Size s) => (h - s.height) / 2;
+    var right = w;
+    if (hasChild(_Slot.trailing)) {
+      final s = layoutChild(_Slot.trailing, BoxConstraints(maxWidth: w * 0.7, maxHeight: h));
+      positionChild(_Slot.trailing, Offset(w - s.width, centre(s)));
+      right = w - s.width - 10;
+    }
+    Size? chevron;
+    if (hasChild(_Slot.chevron)) chevron = layoutChild(_Slot.chevron, BoxConstraints(maxWidth: w, maxHeight: h));
+    final t = layoutChild(_Slot.title, BoxConstraints(maxWidth: (right - (chevron?.width ?? 0)).clamp(0.0, w), maxHeight: h));
+    positionChild(_Slot.title, Offset(0, centre(t)));
+    var x = t.width;
+    if (chevron != null) {
+      positionChild(_Slot.chevron, Offset(x, centre(chevron)));
+      x += chevron.width;
+    }
+    if (hasChild(_Slot.rule)) {
+      final left = x + 6;
+      layoutChild(_Slot.rule, BoxConstraints.tightFor(width: (right - left).clamp(0.0, w), height: 1));
+      positionChild(_Slot.rule, Offset(left, (h - 1) / 2));
+    }
+  }
+
+  @override
+  bool shouldRelayout(_TitleRuleLayout oldDelegate) => false;
+}

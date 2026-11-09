@@ -11,14 +11,16 @@ import '../../app/window_chrome.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
+import 'editorial.dart' show TitleRule, tabularFigures;
 
 export 'async.dart';
 
 /// A titled, collapsible block in the detail sidebar. Every panel section
 /// should be one of these.
 ///
-/// Sections render as quiet groups: a hairline above, a small title row and
-/// the content flush below, with no boxed border. Pass [card] for a summary
+/// Sections render as quiet groups: a small semibold title with a hairline
+/// running to [trailing] (the app-wide section heading, see editorial.dart)
+/// and the content flush below, with no boxed border. Pass [card] for a summary
 /// treatment (a softly filled card, e.g. for the first, most important
 /// section of a panel).
 class DetailSection extends StatefulWidget {
@@ -58,32 +60,27 @@ class _DetailSectionState extends State<DetailSection> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
+    // The app's section heading (as on the Overview): a small semibold label
+    // with a hairline running to [trailing]. The hairline is the divider
+    // between sections, so there is no rule above; a card has none.
+    final rule = widget.divider && !widget.card;
+    final titleStyle = theme.textTheme.labelLarge?.copyWith(fontSize: 12.5, fontWeight: FontWeight.w600, letterSpacing: 0.2, color: theme.colorScheme.onSurface.withValues(alpha: 0.86));
     final header = Hoverable(
       onTap: () => setState(() => _expanded = !_expanded),
       builder: (hovered) => SizedBox(
         height: 26,
-        child: Row(children: [
-          Expanded(
-            child: Row(children: [
-              Flexible(
-                child: Text(
-                  widget.title,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  style: theme.textTheme.titleSmall?.copyWith(fontSize: 12.5),
-                ),
-              ),
-              const SizedBox(width: 2),
-              AnimatedRotation(
-                turns: _expanded ? 0.25 : 0,
-                duration: const Duration(milliseconds: 120),
-                child: Icon(Icons.chevron_right, size: 15, color: hovered || !_expanded ? theme.hintColor : colors.faint.withValues(alpha: 0.7)),
-              ),
-            ]),
+        child: TitleRule(
+          rule: rule,
+          title: Text(widget.title, overflow: TextOverflow.ellipsis, maxLines: 1, style: titleStyle),
+          chevron: AnimatedRotation(
+            turns: _expanded ? 0.25 : 0,
+            duration: const Duration(milliseconds: 120),
+            child: Icon(Icons.chevron_right, size: 15, color: hovered || !_expanded ? theme.hintColor : (rule ? Colors.transparent : colors.faint.withValues(alpha: 0.7))),
           ),
-          if (widget.trailing != null)
-            DefaultTextStyle.merge(style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor), child: widget.trailing!),
-        ]),
+          trailing: widget.trailing == null
+              ? null
+              : DefaultTextStyle.merge(style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontFeatures: tabularFigures), child: widget.trailing!),
+        ),
       ),
     );
     final body = Column(
@@ -105,11 +102,7 @@ class _DetailSectionState extends State<DetailSection> {
         child: body,
       );
     }
-    return Container(
-      padding: const EdgeInsets.only(top: 8, bottom: 16),
-      decoration: widget.divider ? BoxDecoration(border: Border(top: BorderSide(color: colors.separator))) : null,
-      child: body,
-    );
+    return Padding(padding: const EdgeInsets.only(top: 6, bottom: 14), child: body);
   }
 }
 
