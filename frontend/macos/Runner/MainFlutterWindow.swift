@@ -116,7 +116,11 @@ class MainFlutterWindow: NSWindow {
         self?.chooseYaml(result: result)
       case "saveYaml":
         let args = call.arguments as? [String: Any]
-        self?.saveYaml(suggestedName: args?["name"] as? String ?? "views.yaml", result: result)
+        self?.saveYaml(
+          suggestedName: args?["name"] as? String ?? "views.yaml",
+          extensions: args?["extensions"] as? [String] ?? ["yaml", "yml"],
+          prompt: args?["prompt"] as? String ?? "Export",
+          result: result)
       case "reveal":
         if let path = call.arguments as? String {
           NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
@@ -228,14 +232,14 @@ class MainFlutterWindow: NSWindow {
     }
   }
 
-  /// Save panel for a .yaml file (exporting saved views); returns the
-  /// chosen path, which Dart writes.
-  private func saveYaml(suggestedName: String, result: @escaping FlutterResult) {
+  /// Save panel for a text file (exporting saved views as .yaml, log
+  /// downloads); returns the chosen path, which Dart writes.
+  private func saveYaml(suggestedName: String, extensions: [String], prompt: String, result: @escaping FlutterResult) {
     let panel = NSSavePanel()
-    panel.title = "Export"
-    panel.prompt = "Export"
+    panel.title = prompt
+    panel.prompt = prompt
     panel.nameFieldStringValue = suggestedName
-    panel.allowedFileTypes = ["yaml", "yml"]
+    panel.allowedFileTypes = extensions
     panel.canCreateDirectories = true
     panel.beginSheetModal(for: self) { response in
       result(response == .OK ? panel.url?.path : nil)

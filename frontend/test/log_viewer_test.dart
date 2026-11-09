@@ -17,6 +17,7 @@ Json _pod() => jsonDecode(File('../dev/fixtures/pod-web.json').readAsStringSync(
 class _LogApi extends FakeApiClient {
   final requests = <String>[];
   final streams = <StreamController<LogMessage>>[];
+  final since = <int?>[];
   Json? pod;
 
   @override
@@ -31,6 +32,7 @@ class _LogApi extends FakeApiClient {
     int? sinceSeconds,
   }) {
     requests.add('$container previous=$previous follow=$follow');
+    since.add(sinceSeconds);
     final c = StreamController<LogMessage>();
     streams.add(c);
     return c.stream;
@@ -38,6 +40,12 @@ class _LogApi extends FakeApiClient {
 
   @override
   Future<Json> object(ResourceRef r, {String? namespace, required String name}) async => pod ?? super.object(r, namespace: namespace, name: name);
+
+  @override
+  Future<bool> getLogNewestFirst() async => false;
+
+  @override
+  Future<void> putLogNewestFirst(bool v) async {}
 
   void push(Iterable<String> lines) {
     for (final l in lines) {
@@ -47,6 +55,64 @@ class _LogApi extends FakeApiClient {
 }
 
 void main() {
+  testWidgets('newest first stays pinned at the top; regex search; since reconnects with sinceSeconds', (tester) async {
+    final api = _LogApi();
+    final dock = await pumpLogDock(tester, _pod(), api: api, container: 'nginx');
+    final s = dock.active!;
+    var n = 0;
+    Future<void> add(int count) async {
+      api.push([for (var i = 0; i < count; i++) 'line ${n++}']);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump();
+    }
+
+    await add(300);
+    dock.setNewestFirst(true);
+    await tester.pump();
+    await tester.pump();
+    final list = find.descendant(of: find.byType(LogStreamView), matching: find.byType(ListView));
+    final scroll = tester.widget<ListView>(list).controller!;
+    expect(scroll.offset, 0);
+    expect(find.text('line 299'), findsOneWidget);
+    await add(5);
+    expect(scroll.offset, 0);
+    expect(find.text('line 304'), findsOneWidget);
+
+    // Scrolling down (away from the newest) pauses following; new lines
+    // arrive above without moving what is being read.
+    final mouse = TestPointer(1, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(mouse.hover(tester.getCenter(list)));
+    await tester.sendEventToBinding(mouse.scroll(const Offset(0, 200)));
+    await tester.pump();
+    final reading = scroll.offset;
+    expect(reading, greaterThan(0));
+    await add(5);
+    expect(scroll.offset, reading + 5 * 17);
+    expect(find.text('Jump to latest'), findsOneWidget);
+    await tester.tap(find.text('Jump to latest'));
+    await tester.pump();
+    await tester.pump();
+    expect(scroll.offset, 0);
+
+    // Regex: case-insensitive, compiled once; an invalid pattern matches nothing.
+    s.setView(regex: true);
+    s.setQuery(r'LINE 29[0-2]$');
+    expect(s.matching.length, 3);
+    s.setQuery('(');
+    expect(s.regexInvalid, isTrue);
+    expect(s.matching, isEmpty);
+    s.setQuery('');
+
+    // "since" reconnects asking for sinceSeconds.
+    await tester.tap(find.text('last 500'));
+    await tester.pump();
+    await tester.tap(find.text('since 1h'));
+    await tester.pump();
+    expect(api.since.last, 3600);
+    expect(api.requests.length, 2);
+    dock.closeAll();
+  });
+
   testWidgets('scrolling up pauses following; evicted lines and new lines leave the view still', (tester) async {
     final api = _LogApi();
     final dock = await pumpLogDock(tester, _pod(), api: api, container: 'nginx');

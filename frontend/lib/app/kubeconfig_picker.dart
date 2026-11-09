@@ -55,13 +55,17 @@ class NativeFiles {
   /// Asks where to save [text] as `.yaml` and writes it. Returns the path,
   /// or null when cancelled. Throws [UnsupportedError] when the platform
   /// has no save panel (the caller then falls back to the clipboard).
-  static Future<String?> saveYaml(String suggestedName, String text) async {
+  static Future<String?> saveYaml(String suggestedName, String text) => saveText(suggestedName, text, extensions: const ['yaml', 'yml'], label: 'YAML');
+
+  /// [saveYaml] for any text file type: the save panel offers [extensions]
+  /// (the first is the default).
+  static Future<String?> saveText(String suggestedName, String text, {required List<String> extensions, required String label, String confirm = 'Export'}) async {
     String? path;
     if (_windows || _linux) {
       try {
         final loc = await FileSelectorPlatform.instance.getSaveLocation(
-          acceptedTypeGroups: const [_yaml],
-          options: SaveDialogOptions(suggestedName: suggestedName, confirmButtonText: 'Export'),
+          acceptedTypeGroups: [XTypeGroup(label: label, extensions: extensions)],
+          options: SaveDialogOptions(suggestedName: suggestedName, confirmButtonText: confirm),
         );
         path = loc?.path;
       } on UnimplementedError {
@@ -69,7 +73,7 @@ class NativeFiles {
       }
     } else {
       try {
-        path = await _channel.invokeMethod<String>('saveYaml', {'name': suggestedName});
+        path = await _channel.invokeMethod<String>('saveYaml', {'name': suggestedName, 'extensions': extensions, 'prompt': confirm});
       } on MissingPluginException {
         throw UnsupportedError('no save panel');
       }

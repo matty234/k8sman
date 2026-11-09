@@ -52,6 +52,8 @@ class LogStream extends LogSession {
   String get id => logStreamId(namespace, pod, _container);
   @override
   String get label => '$pod/$_container';
+  @override
+  String get downloadBase => '$pod-$_container';
 
   @override
   bool get isSubscribed => _sub != null;
@@ -70,11 +72,14 @@ class LogStream extends LogSession {
   }
 
   /// Change subscription options and reconnect.
-  void setOptions({bool? follow, bool? previous, bool? timestamps, int? tail}) {
+  void setOptions({bool? follow, bool? previous, bool? timestamps, LogRange? range}) {
     if (follow != null) this.follow = follow;
     if (previous != null) this.previous = previous;
     if (timestamps != null) this.timestamps = timestamps;
-    if (tail != null) this.tail = tail;
+    if (range != null) {
+      tail = range.tail;
+      since = range.since;
+    }
     _subscribe();
     notifyListeners();
   }
@@ -125,7 +130,7 @@ class LogStream extends LogSession {
     phase = LogPhase.connecting;
     // A terminated instance has nothing to follow.
     _sub = api
-        .logs(namespace: namespace, pod: pod, container: c.name, tailLines: tail, previous: previous, follow: follow && !previous, timestamps: timestamps)
+        .logs(namespace: namespace, pod: pod, container: c.name, tailLines: tail, sinceSeconds: since, previous: previous, follow: follow && !previous, timestamps: timestamps)
         .listen(_onMessage, onError: (Object e) => _finish(LogPhase.error, '$e'), onDone: () => _finish(LogPhase.eof));
   }
 
@@ -230,6 +235,32 @@ class LogDock extends ChangeNotifier {
   final ApiClient api;
   LogDock(this.api);
 
+  /// Newest line at the top (an app setting in settings.json; new tabs start
+  /// with it and changing it applies to every open one).
+  bool newestFirst = false;
+  Future<void> _prefSaves = Future.value();
+
+  Future<void> loadPrefs() async {
+    try {
+      newestFirst = await api.getLogNewestFirst();
+      for (final t in _tabs.whereType<LogSession>()) {
+        t.setView(newestFirst: newestFirst);
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('log preferences: $e');
+    }
+  }
+
+  void setNewestFirst(bool v) {
+    newestFirst = v;
+    for (final t in _tabs.whereType<LogSession>()) {
+      t.setView(newestFirst: v);
+    }
+    notifyListeners();
+    _prefSaves = _prefSaves.then((_) => api.putLogNewestFirst(v)).catchError((Object e) => debugPrint('save log preferences: $e'));
+  }
+
   static const double minHeight = 120;
   static const double defaultHeight = 280;
 
@@ -286,7 +317,7 @@ class LogDock extends ChangeNotifier {
     final c = container ?? defaultLogContainer(podObject) ?? '';
     var s = find(ns, name, c);
     if (s == null) {
-      s = LogStream(api: api, namespace: ns, pod: name, container: c, podObject: podObject, previous: previous);
+      s = LogStream(api: api, namespace: ns, pod: name, container: c, podObject: podObject, previous: previous)..newestFirst = newestFirst;
       _tabs.add(s);
     } else {
       s.podObject = podObject;
@@ -315,7 +346,7 @@ class LogDock extends ChangeNotifier {
     final id = aggregateId(namespace, selector, pods);
     var s = _tabs.whereType<AggregateLogStream>().where((t) => t.id == id).firstOrNull;
     if (s == null) {
-      s = AggregateLogStream(api: api, namespace: namespace, selector: selector, podNames: pods, title: title, allContainers: allContainers);
+      s = AggregateLogStream(api: api, namespace: namespace, selector: selector, podNames: pods, title: title, allContainers: allContainers)..newestFirst = newestFirst;
       _tabs.add(s);
     } else if (s.phase == LogPhase.error || s.phase == LogPhase.eof) {
       s.reconnect();

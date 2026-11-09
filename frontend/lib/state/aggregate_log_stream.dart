@@ -136,15 +136,18 @@ class AggregateLogStream extends LogSession {
 
   // --- options ---
 
-  void setOptions({bool? follow, bool? previous, bool? timestamps, int? tail, bool? allContainers}) {
+  void setOptions({bool? follow, bool? previous, bool? timestamps, LogRange? range, bool? allContainers}) {
     final reconnect = (follow != null && follow != this.follow) ||
         (previous != null && previous != _previous) ||
-        (tail != null && tail != this.tail) ||
+        (range != null && range != (tail: tail, since: since)) ||
         (allContainers != null && allContainers != _allContainers);
     if (previous != null) _previous = previous;
     if (follow != null) this.follow = follow;
     if (timestamps != null) this.timestamps = timestamps;
-    if (tail != null) this.tail = tail;
+    if (range != null) {
+      tail = range.tail;
+      since = range.since;
+    }
     if (allContainers != null) _allContainers = allContainers;
     if (reconnect) _subscribe();
     notifyListeners();
@@ -207,13 +210,25 @@ class AggregateLogStream extends LogSession {
     final m = meta[idx];
     final src = sources[m.src];
     if (src.hidden) return false;
+    if (regex) {
+      final re = queryRegex;
+      return re != null && ((m.kind == 0 && re.hasMatch(src.full)) || re.hasMatch(lines[idx]));
+    }
     return (m.kind == 0 && src.lowerFull.contains(q)) || lines[idx].toLowerCase().contains(q);
   }
 
   @override
-  String copyText() {
+  String get downloadBase => '${(title ?? namespace).replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '-')}-logs';
+
+  @override
+  String copyText() => exportText(all: true);
+
+  @override
+  String exportText({bool all = false}) {
+    final rows = all ? null : visibleRows;
     final b = StringBuffer();
-    for (var i = 0; i < lines.length; i++) {
+    for (var n = 0; n < (rows?.length ?? lines.length); n++) {
+      final i = rows == null ? n : rows[n];
       final m = meta[i];
       if (sources[m.src].hidden) continue;
       if (b.isNotEmpty) b.write('\n');
@@ -328,6 +343,7 @@ class AggregateLogStream extends LogSession {
           pods: selector == null ? podNames : null,
           container: _allContainers ? '*' : null,
           tailLines: tail,
+          sinceSeconds: since,
           follow: follow && !_previous,
           previous: _previous,
         )

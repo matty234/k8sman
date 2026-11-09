@@ -319,6 +319,11 @@ class ApiClient {
   // ---- integrations (settings.json) ----
 
   /// Ids of the integration modules the user turned off.
+  /// Whether the log viewer shows the newest line at the top.
+  Future<bool> getLogNewestFirst() async => (await _get('settings/logs') as Json)['newestFirst'] == true;
+
+  Future<void> putLogNewestFirst(bool v) => _send('PUT', 'settings/logs', const {}, {'newestFirst': v});
+
   Future<Set<String>> getDisabledModules() async {
     final j = await _get('settings/modules') as Json;
     return {for (final id in (j['disabled'] as List? ?? const [])) '$id'};

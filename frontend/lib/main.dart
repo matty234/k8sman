@@ -21,7 +21,14 @@ void main() {
   final app = AppState(api);
   // Spawns the embedded backend (macOS/Windows app) or uses K8SMAN_BACKEND, then
   // loads the app state whenever the backend (re)connects.
-  final backend = BackendController(api, onReady: app.backendConnected);
+  final dock = LogDock(api);
+  final backend = BackendController(
+    api,
+    onReady: () {
+      dock.loadPrefs();
+      return app.backendConnected();
+    },
+  );
   // Updates: background check, banner, About panel. Sparkle on macOS; on
   // Windows and Linux a GitHub "latest release" check linking to the download.
   final noSparkle = !kIsWeb && defaultTargetPlatform != TargetPlatform.macOS;
@@ -32,7 +39,7 @@ void main() {
         Provider<ApiClient>.value(value: api),
         ChangeNotifierProvider<AppState>.value(value: app),
         ChangeNotifierProvider<BackendController>.value(value: backend),
-        ChangeNotifierProvider<LogDock>(create: (_) => LogDock(api)),
+        ChangeNotifierProvider<LogDock>.value(value: dock),
         ChangeNotifierProvider<UpdateController>.value(value: updates),
       ],
       child: const K8sManApp(),

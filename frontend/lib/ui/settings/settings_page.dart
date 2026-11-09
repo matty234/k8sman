@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import '../../app/updates/update_controller.dart';
 import '../../app/updates/update_ui.dart';
 import '../../state/app_state.dart';
+import '../../state/log_dock.dart';
 import '../keyboard_help.dart';
 import '../keys.dart';
 import '../theme.dart';
@@ -310,6 +311,18 @@ class _SettingsPageState extends State<SettingsPage> {
           description: 'Looks for a new release in the background every few hours.',
           keywords: const ['update', 'updates', 'sparkle', 'release', 'version'],
           builder: (context) => const _AutomaticUpdates(),
+        ),
+        SettingItem.row(
+          key: const ValueKey('settings-logs-newest-first'),
+          group: 'Logs',
+          label: 'Newest line first',
+          description: 'The log viewer shows the newest line at the top, and following stays pinned there. Also in the log toolbar\'s ⋯ menu.',
+          keywords: const ['log', 'logs', 'order', 'reverse', 'newest', 'latest', 'descending'],
+          trailing: (context) => SettingSwitch(
+            key: const ValueKey('logs-newest-first-switch'),
+            value: context.watch<LogDock>().newestFirst,
+            onChanged: context.read<LogDock>().setNewestFirst,
+          ),
         ),
         SettingItem.row(
           group: 'Appearance',

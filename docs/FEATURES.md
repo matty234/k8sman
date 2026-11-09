@@ -202,6 +202,13 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 
 - Log tabs with search, highlighting and "only matching" filtering, follow,
   previous instance, timestamps, wrap, initial lines, Copy all and Clear.
+- Log viewer extras: a `.*` toggle beside search makes it a case-insensitive
+  regex (invalid patterns show a red outline and match nothing); the history
+  picker also loads by time (`since 5m` to `1d`, sent as `sinceSeconds`, up to
+  the 10,000-line buffer); the **⋯** menu has **Newest first** (newest line on
+  top, following pins the top; also Settings ▸ General) and **Download logs…**
+  (shown lines, or only the matching ones, to `<pod>-<container>-<time>.log`;
+  aggregates are named `<workload>-logs-<time>.log` and keep the pod prefix).
 - Aggregated logs (k9s style): **Logs** on a Deployment, StatefulSet, DaemonSet,
   ReplicaSet, Job or Service, or `l` / **Logs (N pods)** on two or more selected
   pods, opens one tab merging every pod's logs in timestamp order. Each line

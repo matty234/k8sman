@@ -8,6 +8,7 @@ import '../../panels/pod/pod_logic.dart';
 import '../../panels/pod/pod_widgets.dart';
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
+import '../../app/kubeconfig_picker.dart' show NativeFiles;
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -60,6 +61,8 @@ class _LogStreamViewState extends State<LogStreamView> {
   // number of its first line, its row count and (when filtered) its rows.
   // Used to keep the rows on screen still when old lines are evicted.
   int _seenFirstSeq = 0;
+  int _seenNextSeq = 0;
+  bool _seenNewest = false;
   int _seenRowCount = 0;
   List<int>? _seenRows;
   String? _seenRowsView;
@@ -70,6 +73,9 @@ class _LogStreamViewState extends State<LogStreamView> {
   static const double _pinSlop = 4;
 
   LogSession get s => widget.stream;
+
+  /// The tail (where following sticks) is the top when the newest line is first.
+  bool get _newest => s.newestFirst;
 
   @override
   void initState() {
@@ -103,10 +109,11 @@ class _LogStreamViewState extends State<LogStreamView> {
     setState(() {});
     // New lines, or a different visible set (filter / wrap): follow the tail
     // when pinned, otherwise keep the offset within the new extent.
-    final view = '${s.lines.nextSeq}|${s.visibleRows?.length}|${s.onlyMatching}|${s.onlyMatching ? s.query : ''}|${s.wrap}';
+    final view = '${s.lines.nextSeq}|${s.visibleRows?.length}|${s.onlyMatching}|${s.onlyMatching ? s.query : ''}|${s.regex}|${s.wrap}|$_newest';
     if (view != _seenView) {
       _seenView = view;
-      if (s.lines.isEmpty) _pinned = true;
+      if (s.lines.isEmpty || _newest != _seenNewest) _pinned = true;
+      _seenNewest = _newest;
       if (_pinned) {
         _jumpToEndSoon();
       } else {
@@ -125,7 +132,10 @@ class _LogStreamViewState extends State<LogStreamView> {
     // Any user scroll towards older lines stops following at once, however
     // small: staying pinned would snap the view back to the end on the next
     // flush (and cancel the gesture). Reaching the end again resumes it.
-    final pinned = p.userScrollDirection != ScrollDirection.forward && p.pixels >= p.maxScrollExtent - _pinSlop;
+    // With the newest line first, "the end" is the top and away is down.
+    final pinned = _newest
+        ? p.userScrollDirection != ScrollDirection.reverse && p.pixels <= _pinSlop
+        : p.userScrollDirection != ScrollDirection.forward && p.pixels >= p.maxScrollExtent - _pinSlop;
     if (pinned != _pinned) setState(() => _pinned = pinned);
   }
 
@@ -135,9 +145,27 @@ class _LogStreamViewState extends State<LogStreamView> {
   /// not a jump, so an in-progress drag or fling carries on.
   void _keepRowsInPlace() {
     final rows = s.visibleRows;
-    final view = '${s.onlyMatching}|${s.onlyMatching ? s.query : ''}|${s.wrap}|${rows == null}';
+    final view = '${s.onlyMatching}|${s.onlyMatching ? s.query : ''}|${s.regex}|${s.wrap}|${rows == null}|$_newest';
     final first = s.lines.firstSeq;
-    if (!_pinned && !s.wrap && view == _seenRowsView && first > _seenFirstSeq && s.lines.isNotEmpty && _scroll.hasClients) {
+    if (_newest && !_pinned && !s.wrap && view == _seenRowsView && s.lines.isNotEmpty && _scroll.hasClients) {
+      // New lines arrive above the reader: shift the offset by the rows that
+      // were added so what is on screen stays put.
+      var added = 0;
+      if (rows == null) {
+        added = s.lines.nextSeq - _seenNextSeq;
+      } else {
+        while (added < rows.length && first + rows[rows.length - 1 - added] >= _seenNextSeq) {
+          added++;
+        }
+      }
+      final p = _scroll.position;
+      if (added > 0 && p.hasPixels) {
+        p.correctBy(added * _lineHeight);
+        // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+        p.notifyListeners();
+      }
+    }
+    if (!_newest && !_pinned && !s.wrap && view == _seenRowsView && first > _seenFirstSeq && s.lines.isNotEmpty && _scroll.hasClients) {
       var gone = 0;
       final old = _seenRows;
       if (old == null) {
@@ -158,6 +186,7 @@ class _LogStreamViewState extends State<LogStreamView> {
     }
     _seenRowsView = view;
     _seenFirstSeq = first;
+    _seenNextSeq = s.lines.nextSeq;
     _seenRows = rows;
     _seenRowCount = rows?.length ?? s.lines.length;
   }
@@ -170,7 +199,7 @@ class _LogStreamViewState extends State<LogStreamView> {
 
   void _jumpToEndSoon() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      if (mounted && _scroll.hasClients) _scroll.jumpTo(_newest ? 0 : _scroll.position.maxScrollExtent);
     });
   }
 
@@ -249,7 +278,8 @@ class _LogStreamViewState extends State<LogStreamView> {
   Widget _logList(BuildContext context, List<int>? indices, int count) {
     final style = monoStyle(context, size: 12);
     const lineHeight = _lineHeight;
-    final q = s.query.toLowerCase();
+    final q = s.needle;
+    final re = s.queryRegex;
     final session = s;
     final agg = session is AggregateLogStream ? session : null;
     final palette = agg == null ? null : sourcePalette(Theme.of(context).brightness);
@@ -263,13 +293,15 @@ class _LogStreamViewState extends State<LogStreamView> {
         itemExtent: s.wrap ? null : lineHeight,
         itemCount: count,
         itemBuilder: (context, i) {
-          final idx = indices == null ? i : indices[i];
+          final k = _newest ? count - 1 - i : i;
+          final idx = indices == null ? k : indices[k];
           final text = s.lines[idx];
           final m = agg?.meta[idx];
           final src = m == null ? null : agg!.sources[m.src];
           return _LogLine(
             text: text,
-            query: s.query,
+            query: s.regex ? '' : s.query,
+            regex: re,
             timestamps: s.timestamps,
             wrap: s.wrap,
             style: style,
@@ -303,7 +335,7 @@ class _LogStreamViewState extends State<LogStreamView> {
     // Stay pinned when the viewport or content size changes (resize, wrap toggle).
     final pinnedBody = NotificationListener<ScrollMetricsNotification>(
       onNotification: (n) {
-        if (_pinned && n.metrics.axis == Axis.vertical && n.metrics.pixels < n.metrics.maxScrollExtent) _jumpToEndSoon();
+        if (_pinned && n.metrics.axis == Axis.vertical && (_newest ? n.metrics.pixels > 0 : n.metrics.pixels < n.metrics.maxScrollExtent)) _jumpToEndSoon();
         return false;
       },
       child: body,
@@ -314,10 +346,11 @@ class _LogStreamViewState extends State<LogStreamView> {
         if (!_pinned)
           Positioned(
             right: 16,
-            bottom: 10,
+            top: _newest ? 10 : null,
+            bottom: _newest ? null : 10,
             child: FilledButton.tonalIcon(
               style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
-              icon: const Icon(Icons.arrow_downward, size: 15),
+              icon: Icon(_newest ? Icons.arrow_upward : Icons.arrow_downward, size: 15),
               label: const Text('Jump to latest'),
               onPressed: () {
                 setState(() => _pinned = true);
@@ -395,15 +428,19 @@ class _Toolbar extends StatelessWidget {
             ),
           _box(
             context,
-            MenuSelect<int>(
-              value: ls?.tail ?? agg!.tail,
+            MenuSelect<LogRange>(
+              value: (tail: ls?.tail ?? agg!.tail, since: s.since),
               options: [
-                for (final n in agg != null ? const [100, 200, 500, 1000] : const [100, 500, 2000, -1])
-                  (n, Text(n < 0 ? 'all lines' : (agg != null ? 'last $n each' : 'last $n'), style: theme.textTheme.bodySmall)),
+                for (final n in agg != null ? const [100, 200, 500, 1000, -1] : const [100, 500, 2000, -1])
+                  (
+                    (tail: n, since: null),
+                    Text(n < 0 ? 'all lines' : (agg != null ? 'last $n each' : 'last $n'), style: theme.textTheme.bodySmall),
+                  ),
+                for (final (label, secs) in _sinceChoices) ((tail: -1, since: secs), Text('since $label', style: theme.textTheme.bodySmall)),
               ],
-              onChanged: (v) => ls != null ? ls.setOptions(tail: v) : agg!.setOptions(tail: v),
+              onChanged: (v) => ls != null ? ls.setOptions(range: v) : agg!.setOptions(range: v),
             ),
-            tooltip: agg != null ? 'Initial lines per container' : 'Initial lines',
+            tooltip: agg != null ? 'How much history to load, per container (reconnects)' : 'How much history to load (reconnects)',
           ),
           _Toggle(
             label: 'Follow',
@@ -453,32 +490,39 @@ class _Toolbar extends StatelessWidget {
                   ),
                 ),
               ),
+              _RegexToggle(stream: s),
+              const SizedBox(width: 2),
               SizedBox(
                 width: searchW,
                 height: 26,
-                child: TextField(
-                  controller: search,
-                  style: monoStyle(context, size: 12),
-                  decoration: InputDecoration(
-                    hintText: 'Search',
-                    hintStyle: theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).faint),
-                    prefixIcon: const Icon(Icons.search, size: 14),
-                    suffixIcon: s.query.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: 'Clear search',
-                            iconSize: 12,
-                            icon: const Icon(Icons.close),
-                            onPressed: () {
-                              search.clear();
-                              s.setQuery('');
-                            },
-                          ),
-                    suffixText: matchCount == null || searchW < 170 ? null : '$matchCount',
-                    suffixStyle: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontSize: 11),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 5, horizontal: 6),
+                child: Tooltip(
+                  message: s.regexError == null ? '' : 'Invalid regex: ${s.regexError}',
+                  child: TextField(
+                    controller: search,
+                    style: monoStyle(context, size: 12),
+                    decoration: InputDecoration(
+                      hintText: s.regex ? 'Search (regex)' : 'Search',
+                      enabledBorder: s.regexInvalid ? OutlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.error)) : null,
+                      focusedBorder: s.regexInvalid ? OutlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.error, width: 2)) : null,
+                      hintStyle: theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).faint),
+                      prefixIcon: const Icon(Icons.search, size: 14),
+                      suffixIcon: s.query.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Clear search',
+                              iconSize: 12,
+                              icon: const Icon(Icons.close),
+                              onPressed: () {
+                                search.clear();
+                                s.setQuery('');
+                              },
+                            ),
+                      suffixText: matchCount == null || searchW < 170 ? null : '$matchCount',
+                      suffixStyle: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontSize: 11),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 5, horizontal: 6),
+                    ),
+                    onChanged: s.setQuery,
                   ),
-                  onChanged: s.setQuery,
                 ),
               ),
               const SizedBox(width: 4),
@@ -490,6 +534,7 @@ class _Toolbar extends StatelessWidget {
                 tooltip: matchCount == null ? 'Show only matching lines' : 'Show only matching lines ($matchCount match${matchCount == 1 ? '' : 'es'})',
                 onChanged: (v) => s.setView(onlyMatching: v),
               ),
+              _MoreMenu(stream: s),
               IconButton(
                 tooltip: 'Copy all',
                 icon: const Icon(Icons.copy_all_outlined, size: 15),
@@ -515,6 +560,107 @@ class _Toolbar extends StatelessWidget {
       child: Center(widthFactor: 1, child: child),
     );
     return tooltip == null ? w : Tooltip(message: tooltip, child: w);
+  }
+}
+
+/// History choices by time: label and seconds.
+const _sinceChoices = [('5m', 300), ('15m', 900), ('1h', 3600), ('6h', 21600), ('1d', 86400)];
+
+/// The `.*` switch beside the search box: the query is a regular expression.
+class _RegexToggle extends StatelessWidget {
+  final LogSession stream;
+  const _RegexToggle({required this.stream});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    final on = stream.regex;
+    final bad = stream.regexInvalid;
+    final fg = bad ? theme.colorScheme.error : (on ? theme.colorScheme.primary : theme.hintColor);
+    return Semantics(
+      label: 'Regex search',
+      toggled: on,
+      button: true,
+      child: Tooltip(
+        message: 'Search with a case-insensitive regular expression',
+        child: Hoverable(
+          key: const ValueKey('log-regex'),
+          onTap: () => stream.setView(regex: !on),
+          cursor: SystemMouseCursors.basic,
+          builder: (h) => Container(
+            height: 24,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: on ? theme.colorScheme.primary.withValues(alpha: 0.13) : (h ? colors.hover : null),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Text('.*', style: monoStyle(context, size: 12).copyWith(color: fg, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The "⋯" menu: newest-first order (an app setting) and downloading the log.
+class _MoreMenu extends StatelessWidget {
+  final LogSession stream;
+  const _MoreMenu({required this.stream});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final on = stream.newestFirst;
+    Widget item(IconData icon, String label, {bool checked = false}) => Row(
+      children: [
+        SizedBox(width: 18, child: checked ? Icon(Icons.check, size: 14, color: theme.colorScheme.primary) : null),
+        Icon(icon, size: 15),
+        const SizedBox(width: 8),
+        Text(label, style: theme.textTheme.bodySmall),
+      ],
+    );
+    return MenuButton<String>(
+      tooltip: 'More: newest first, download',
+      onSelected: (v) {
+        if (v == 'newest') context.read<LogDock>().setNewestFirst(!on);
+        if (v == 'download') _download(context, stream);
+      },
+      items: () => [
+        PopupMenuItem(value: 'newest', height: 30, child: item(Icons.vertical_align_top, 'Newest first', checked: on)),
+        PopupMenuItem(value: 'download', height: 30, enabled: stream.lines.isNotEmpty, child: item(Icons.download_outlined, 'Download logs…')),
+      ],
+      builder: (h) => Container(
+        key: const ValueKey('log-more'),
+        height: 24,
+        width: 28,
+        decoration: BoxDecoration(
+          color: on ? theme.colorScheme.primary.withValues(alpha: 0.13) : (h ? theme.colorScheme.onSurface.withValues(alpha: 0.06) : null),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Icon(Icons.more_horiz, size: 16, color: on ? theme.colorScheme.primary : theme.hintColor),
+      ),
+    );
+  }
+}
+
+/// Saves the lines being shown (every buffered line unless only-matching is
+/// on) to a file the user chooses; where there is no save panel, copies them.
+Future<void> _download(BuildContext context, LogSession s) async {
+  final t = DateTime.now();
+  String two(int n) => n.toString().padLeft(2, '0');
+  final stamp = '${t.year}${two(t.month)}${two(t.day)}-${two(t.hour)}${two(t.minute)}${two(t.second)}';
+  final name = '${s.downloadBase}-$stamp.log'.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  final text = '${s.exportText()}\n';
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  try {
+    final path = await NativeFiles.saveText(name, text, extensions: const ['log', 'txt'], label: 'Log', confirm: 'Save');
+    if (path != null) messenger?.showSnackBar(SnackBar(content: Text('Saved logs to $path')));
+  } on UnsupportedError {
+    if (context.mounted) copyToClipboard(context, text, label: 'logs');
+  } catch (e) {
+    messenger?.showSnackBar(SnackBar(content: Text('Could not save logs: $e')));
   }
 }
 
@@ -735,6 +881,7 @@ const _lightSources = [
 class _LogLine extends StatelessWidget {
   final String text;
   final String query;
+  final RegExp? regex;
   final bool timestamps;
   final bool wrap;
   final bool highlight;
@@ -751,6 +898,7 @@ class _LogLine extends StatelessWidget {
   const _LogLine({
     required this.text,
     required this.query,
+    this.regex,
     required this.timestamps,
     required this.wrap,
     required this.style,
@@ -847,22 +995,28 @@ class _LogLine extends StatelessWidget {
   }
 
   List<InlineSpan> _highlight(String s, TextStyle base) {
-    if (query.isEmpty) return [TextSpan(text: s, style: base)];
-    final lower = s.toLowerCase();
-    final q = query.toLowerCase();
+    final re = regex;
+    if (query.isEmpty && re == null) return [TextSpan(text: s, style: base)];
+    final hit = base.copyWith(backgroundColor: Colors.amber.withValues(alpha: 0.85), color: Colors.black);
     final out = <InlineSpan>[];
     var start = 0;
-    while (true) {
-      final i = lower.indexOf(q, start);
-      if (i < 0) break;
-      if (i > start) out.add(TextSpan(text: s.substring(start, i), style: base));
-      out.add(
-        TextSpan(
-          text: s.substring(i, i + q.length),
-          style: base.copyWith(backgroundColor: Colors.amber.withValues(alpha: 0.85), color: Colors.black),
-        ),
-      );
-      start = i + q.length;
+    if (re != null) {
+      for (final m in re.allMatches(s)) {
+        if (m.end == m.start) continue;
+        if (m.start > start) out.add(TextSpan(text: s.substring(start, m.start), style: base));
+        out.add(TextSpan(text: s.substring(m.start, m.end), style: hit));
+        start = m.end;
+      }
+    } else {
+      final lower = s.toLowerCase();
+      final q = query.toLowerCase();
+      while (true) {
+        final i = lower.indexOf(q, start);
+        if (i < 0) break;
+        if (i > start) out.add(TextSpan(text: s.substring(start, i), style: base));
+        out.add(TextSpan(text: s.substring(i, i + q.length), style: hit));
+        start = i + q.length;
+      }
     }
     if (start < s.length) out.add(TextSpan(text: s.substring(start), style: base));
     return out;
