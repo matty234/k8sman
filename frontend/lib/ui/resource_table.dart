@@ -19,7 +19,7 @@ import 'widgets/editorial.dart' show HairlineBar;
 import '../state/app_state.dart';
 import '../state/cluster_error.dart';
 import '../state/table_controller.dart';
-import '../state/table_query.dart' show cellText;
+import '../state/table_query.dart' show cellText, fieldKey;
 import '../util/k8s.dart';
 import '../util/node_os.dart';
 import 'cluster_error_view.dart';
@@ -361,13 +361,32 @@ class _TableBodyState extends State<_TableBody> {
         _click(tc, app, row);
       },
       // Decided at click time (the selection may have changed since).
-      onContextMenu: (pos) {
+      onContextMenu: (pos, col) {
         final selectedRows = tc.selectedRows;
         selectedRows.length >= 2 && tc.isSelected(row.uid)
             ? _showBulkMenu(context, pos, tc, app, selectedRows)
-            : showRowContextMenu(context, pos, tc.type, row);
+            : showRowContextMenu(context, pos, tc.type, row, cellFilter: _cellFilter(tc, row, col));
       },
     );
+  }
+
+  /// "Filter by" / "Exclude" for the right-clicked cell: a `column=value`
+  /// term added to the filter. Not for empty cells, or columns whose text
+  /// doesn't make a useful term (ages, usage, label sets).
+  static CellFilter? _cellFilter(TableController tc, TableRowData row, int? col) {
+    if (col == null || col >= tc.columns.length) return null;
+    final column = tc.columns[col];
+    if (const {'age', 'usage', 'labels', 'percent'}.contains(column.type)) return null;
+    final key = fieldKey(column.name);
+    final value = cellText(col < row.cells.length ? row.cells[col] : null).trim();
+    if (key.isEmpty || value.isEmpty || value.length > 80 || value.contains('"')) return null;
+    final v = value.contains(RegExp(r'\s')) ? '"$value"' : value;
+    void add(String term) {
+      final f = tc.filter.trim();
+      tc.setFilter('${f.isEmpty ? '' : '$f '}$term ');
+    }
+
+    return CellFilter(column: column.name, value: value, include: () => add('$key=$v'), exclude: () => add('$key!=$v'));
   }
 
   static bool _isInspected(AppState app, ResourceType type, TableRowData row) =>
@@ -1126,6 +1145,16 @@ class _ResizeHandleState extends State<_ResizeHandle> {
 }
 
 class _Row extends StatelessWidget {
+  /// The column under [x] (row-local), past the row's margin and inset.
+  int? _columnAt(double x) {
+    var left = 6.0 + (selected && inspected ? 3 : 6);
+    for (var i = 0; i < widths.length; i++) {
+      if (x >= left && x < left + widths[i]) return i;
+      left += widths[i];
+    }
+    return null;
+  }
+
   final TableRowData row;
   final List<ColumnDef> columns;
   final List<double> widths;
@@ -1142,8 +1171,9 @@ class _Row extends StatelessWidget {
   final bool joinBelow;
   final VoidCallback onTap;
 
-  /// Right-click (or two-finger click) at a global position.
-  final ValueChanged<Offset>? onContextMenu;
+  /// Right-click (or two-finger click) at a global position, over column
+  /// [col] (null between columns).
+  final void Function(Offset global, int? col)? onContextMenu;
   const _Row({
     super.key,
     required this.row,
@@ -1166,7 +1196,7 @@ class _Row extends StatelessWidget {
     const r = Radius.circular(5);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onSecondaryTapDown: onContextMenu == null ? null : (d) => onContextMenu!(d.globalPosition),
+      onSecondaryTapDown: onContextMenu == null ? null : (d) => onContextMenu!(d.globalPosition, _columnAt(d.localPosition.dx)),
       child: Hoverable(
         cursor: SystemMouseCursors.basic,
         onTap: onTap,

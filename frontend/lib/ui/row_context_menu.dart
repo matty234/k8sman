@@ -18,7 +18,16 @@ import 'widgets/context_menu.dart';
 ///
 /// The live object is fetched first because several actions depend on its
 /// current state (Pause vs Resume, Cordon vs Uncordon, container list…).
-Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, ResourceType type, TableRowData row) async {
+/// A right-clicked table cell's value, and adding it to the filter.
+class CellFilter {
+  final String column;
+  final String value;
+  final VoidCallback include;
+  final VoidCallback exclude;
+  const CellFilter({required this.column, required this.value, required this.include, required this.exclude});
+}
+
+Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, ResourceType type, TableRowData row, {CellFilter? cellFilter}) async {
   final api = context.read<ApiClient>();
   final app = context.read<AppState>();
   final ns = type.namespaced ? row.namespace : null;
@@ -45,6 +54,11 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
 
   final entries = <PopupMenuEntry<VoidCallback>>[
     item(Icons.open_in_new, 'Open', () => app.openDetail(target), shortcut: '↩'),
+    if (cellFilter != null) ...[
+      const PopupMenuDivider(height: 9),
+      item(Icons.filter_alt_outlined, 'Filter by ${cellFilter.column} = ${_short(cellFilter.value)}', cellFilter.include),
+      item(Icons.filter_alt_off_outlined, 'Exclude ${cellFilter.column} = ${_short(cellFilter.value)}', cellFilter.exclude),
+    ],
     if (safe.isNotEmpty) const PopupMenuDivider(height: 9),
     for (final a in safe) item(a.icon, a.label, () => a.run(context)),
     const PopupMenuDivider(height: 9),
@@ -70,3 +84,5 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
   final chosen = await showContextMenuAt<VoidCallback>(context, globalPosition, entries, constraints: const BoxConstraints(minWidth: 220, maxWidth: 320));
   if (chosen != null && context.mounted) chosen();
 }
+
+String _short(String v) => v.length > 28 ? '${v.substring(0, 27)}…' : v;

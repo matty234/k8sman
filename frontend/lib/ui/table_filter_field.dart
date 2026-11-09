@@ -26,6 +26,13 @@ class _TableFilterFieldState extends State<TableFilterField> {
   void initState() {
     super.initState();
     _focus.addListener(_onFocus);
+    widget.controller.addListener(_onController);
+  }
+
+  /// The filter set elsewhere (a cell's "Filter by", Revert): show it.
+  void _onController() {
+    final f = widget.controller.filter;
+    if (f != _text.text) _text.value = TextEditingValue(text: f, selection: TextSelection.collapsed(offset: f.length));
   }
 
   /// `/` (or a click) into the box selects its text, ready to retype.
@@ -36,6 +43,7 @@ class _TableFilterFieldState extends State<TableFilterField> {
   @override
   void dispose() {
     _focus.removeListener(_onFocus);
+    widget.controller.removeListener(_onController);
     _text.dispose();
     super.dispose();
   }

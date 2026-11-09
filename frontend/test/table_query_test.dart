@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -135,6 +136,18 @@ void main() {
     expect(tc.filter, '');
     expect(tc.rows, hasLength(3));
     expect(find.byKey(const ValueKey('table-filter-clear')), findsNothing);
+
+    // Right-click a cell: filter by its value (shown in the box too).
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape); // close the suggestions
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape); // back to the table
+    await tester.pump();
+    await tester.tap(find.text('data'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Filter by Namespace = data'));
+    await tester.pumpAndSettle();
+    expect(tc.filter, 'namespace=data ');
+    expect(tc.rows.map((r) => r.name), ['db']);
+    expect(find.widgetWithText(TextField, 'namespace=data '), findsOneWidget);
   });
 
   testWidgets('sort is kept when the table is left and reopened', (tester) async {
