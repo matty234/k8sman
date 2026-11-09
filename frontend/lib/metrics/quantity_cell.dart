@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../ui/theme.dart';
@@ -28,7 +30,7 @@ Widget quantityCell(BuildContext context, dynamic value, TextStyle? base) {
 }
 
 /// Below this width a usage cell shows only its value.
-const usageBarMinWidth = 90.0;
+const usageBarMinWidth = 112.0;
 
 /// Table cell for the `usage` column type (see [UsageValue]): the value, a
 /// thin bar against the limit/request/allocatable/capacity and the
@@ -39,7 +41,6 @@ class UsageCell extends StatelessWidget {
   final TextStyle? style;
   const UsageCell({super.key, required this.value, this.style});
 
-  static const _barWidth = 30.0;
   static const _pctWidth = 38.0;
 
   @override
@@ -61,13 +62,19 @@ class UsageCell extends StatelessWidget {
       }
       // The bar and percentage keep their place (blank without a base) so
       // values line up down the column.
+      // The value takes a right-aligned slot sized to the column (so values
+      // and bars line up down it), and the bar fills what's left.
+      // Wide enough for the text (snapped up to a 16px step so rows with
+      // similar values share a slot), and at least a third of the cell.
+      final measured = (TextPainter(text: TextSpan(text: u.text, style: style), maxLines: 1, textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout()).width;
+      final room = box.maxWidth - _pctWidth - 12 - 16; // keep 16px for the bar
+      final valueWidth = math.min(room, math.max((box.maxWidth - _pctWidth) / 3, (measured / 16).ceil() * 16.0));
       return Row(children: [
-        Expanded(child: valueText),
+        SizedBox(width: valueWidth, child: valueText),
         const SizedBox(width: 6),
-        SizedBox(
-          width: _barWidth,
+        Expanded(
           child: p == null
-              ? null
+              ? const SizedBox.shrink()
               : _UsageBar(frac: p / 100, color: alert ?? theme.colorScheme.onSurface.withValues(alpha: 0.42)),
         ),
         SizedBox(
