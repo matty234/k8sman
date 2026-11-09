@@ -4,6 +4,7 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 /// Condition types that are bad when True.
 bool isNegativeCondition(String type) =>
@@ -161,16 +162,16 @@ class HealthSummary extends StatelessWidget {
 
   static Widget _line(BuildContext context, IconData icon, Severity sev, String text, {Widget? trailing}) {
     final theme = Theme.of(context);
+    if (sev == Severity.error || sev == Severity.warn) {
+      return Padding(padding: const EdgeInsets.only(top: 4), child: Callout(severity: sev, icon: icon, title: text, action: trailing));
+    }
     final c = sev == Severity.neutral ? theme.hintColor : severityColor(context, sev);
-    final boxed = sev == Severity.error || sev == Severity.warn;
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      padding: boxed ? const EdgeInsets.symmetric(horizontal: 8, vertical: 6) : EdgeInsets.zero,
-      decoration: boxed ? BoxDecoration(color: c.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6), border: Border.all(color: c.withValues(alpha: 0.3))) : null,
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 14, color: c)),
         const SizedBox(width: 6),
-        Expanded(child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: boxed ? c : theme.hintColor))),
+        Expanded(child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
         if (trailing != null) ...[const SizedBox(width: 6), trailing],
       ]),
     );

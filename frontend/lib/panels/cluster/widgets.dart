@@ -5,6 +5,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import 'logic.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 /// Severity for a utilisation fraction.
 Severity usageSeverity(double frac) => frac >= 0.9 ? Severity.error : (frac >= 0.7 ? Severity.warn : Severity.ok);
@@ -61,40 +62,6 @@ class UsageBar extends StatelessWidget {
         SizedBox(
           width: 40,
           child: Text(pct, textAlign: TextAlign.right, style: monoStyle(context, size: 11, color: c).copyWith(fontWeight: FontWeight.w600)),
-        ),
-      ]),
-    );
-  }
-}
-
-/// A prominent coloured box for important state (cordoned, Terminating, dangerous grants).
-class Callout extends StatelessWidget {
-  final Severity severity;
-  final IconData icon;
-  final String title;
-  final Widget? child;
-  const Callout({super.key, required this.severity, required this.icon, required this.title, this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = severityColor(context, severity);
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: c.withValues(alpha: 0.6)),
-      ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, size: 18, color: c),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: theme.textTheme.bodyMedium?.copyWith(color: c, fontWeight: FontWeight.w700)),
-            if (child != null) ...[const SizedBox(height: 4), child!],
-          ]),
         ),
       ]),
     );
@@ -196,14 +163,11 @@ class DangerCallout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (dangers.isEmpty) return const SizedBox.shrink();
-    final theme = Theme.of(context);
     return Callout(
       severity: Severity.error,
       icon: Icons.gpp_maybe_outlined,
       title: 'Dangerous grants',
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (final d in dangers) Text('• $d', style: theme.textTheme.bodySmall),
-      ]),
+      body: [for (final d in dangers) '• $d'].join('\n'),
     );
   }
 }

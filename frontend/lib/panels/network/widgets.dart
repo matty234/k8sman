@@ -181,44 +181,6 @@ class Mono extends StatelessWidget {
   Widget build(BuildContext context) => Text(text, style: monoStyle(context, size: 11.5, color: color));
 }
 
-/// A coloured callout box for derived diagnoses.
-class Callout extends StatelessWidget {
-  final Severity severity;
-  final String title;
-  final String? detail;
-  const Callout({super.key, required this.severity, required this.title, this.detail});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final c = severityColor(context, severity);
-    final icon = severityIcon(severity);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: c.withValues(alpha: 0.45)),
-      ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 16, color: c)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: theme.textTheme.bodySmall?.copyWith(color: c, fontWeight: FontWeight.w600)),
-            if (detail != null && detail!.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(detail!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.8))),
-              ),
-          ]),
-        ),
-      ]),
-    );
-  }
-}
-
 /// Ready/total pill for section trailers.
 class CountBadge extends StatelessWidget {
   final int ready;

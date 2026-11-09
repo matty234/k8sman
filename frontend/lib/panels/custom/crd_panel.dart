@@ -13,6 +13,7 @@ import '../panel.dart';
 import 'health.dart';
 import 'schema_browser.dart';
 import 'smart_view.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 /// apiextensions.k8s.io/CustomResourceDefinition: names, versions, conversion,
 /// storage migration state, instances and a searchable schema browser.
@@ -159,18 +160,8 @@ class CrdPanel extends ResourcePanel {
     ]);
   }
 
-  static Widget _warnBox(BuildContext context, String text, {bool error = false}) {
-    final c = severityColor(context, error ? Severity.error : Severity.warn);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6), border: Border.all(color: c.withValues(alpha: 0.35))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(Icons.warning_amber_rounded, size: 14, color: c),
-        const SizedBox(width: 6),
-        Expanded(child: Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: c))),
-      ]),
-    );
-  }
+  static Widget _warnBox(BuildContext context, String text, {bool error = false}) =>
+      Callout(severity: error ? Severity.error : Severity.warn, icon: Icons.warning_amber_rounded, title: text);
 
   Widget _versions(BuildContext context, List<Json> versions) {
     final theme = Theme.of(context);

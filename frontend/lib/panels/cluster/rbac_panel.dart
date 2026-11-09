@@ -13,6 +13,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'logic.dart';
 import 'widgets.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 const rbacGroup = 'rbac.authorization.k8s.io';
 
@@ -275,7 +276,7 @@ class _GrantedRulesState extends State<_GrantedRules> {
               severity: Severity.warn,
               icon: Icons.link_off,
               title: '${widget.kind} "${widget.name}" not found',
-              child: Text('This binding currently grants nothing.', style: Theme.of(context).textTheme.bodySmall),
+              body: 'This binding currently grants nothing.',
             );
           }
           final rules = asMapList(role['rules']);

@@ -3,7 +3,7 @@
 /// - [InspectorHeader]: a headline with a mark, a detail line, an optional
 ///   progress bar, large [InspectorFigure]s, [Insight]s, actions and facts.
 /// - [InsightList] / [InsightLine]: a severity bar, a title, a muted body
-///   and an optional action.
+///   and an optional action; [Callout] for the same outside a header.
 /// - [InspectorSection]: a collapsible section with a [SectionSummary],
 ///   remembered per session in [SectionMemory].
 /// - [InspectorRow]: a compact row (dot, title, subtitle, trailing,
@@ -13,6 +13,7 @@
 ///   and [SharedFetch] for a fetch a header and a section share.
 library;
 
+export 'callout.dart';
 export 'header.dart';
 export 'insights.dart';
 export 'owner_line.dart';

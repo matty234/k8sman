@@ -13,9 +13,10 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../ui/widgets/editorial.dart';
 import '../../util/k8s.dart';
-import '../argocd/argo_common.dart' show ArgoCallout, Hint;
+import '../argocd/argo_common.dart' show Hint;
 import 'wf_common.dart';
 import 'wf_graph.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 /// The selected node per workflow uid, shared by the failed-steps summary
 /// and the graph. Bounded so it doesn't grow with every opened workflow.
@@ -680,10 +681,10 @@ class NodeDetails extends StatelessWidget {
         ]),
         const SizedBox(height: 6),
         if (msg != null)
-          ArgoCallout(
+          Callout(
             severity: node.failed ? Severity.error : (node.isWaiting ? Severity.warn : Severity.info),
             icon: node.failed ? Icons.error_outline : Icons.info_outline,
-            message: msg,
+            title: msg,
           ),
         if (hasPod || node.isWaiting)
           Padding(

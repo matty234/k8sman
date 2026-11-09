@@ -266,42 +266,6 @@ class FlagChip extends StatelessWidget {
   }
 }
 
-/// Bordered message box with an icon, for conditions and errors.
-class ArgoCallout extends StatelessWidget {
-  final Severity severity;
-  final IconData icon;
-  final String? title;
-  final String message;
-  final Widget? trailing;
-  const ArgoCallout({super.key, required this.severity, required this.icon, this.title, required this.message, this.trailing});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final c = severityColor(context, severity);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: c.withValues(alpha: 0.45)),
-      ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 16, color: c)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (title != null) Text(title!, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: c)),
-            Text(message, style: theme.textTheme.bodySmall),
-          ]),
-        ),
-        if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-      ]),
-    );
-  }
-}
-
 /// Muted helper text.
 class Hint extends StatelessWidget {
   final String text;

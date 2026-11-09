@@ -161,46 +161,6 @@ List<String> podFailurePolicySummary(dynamic policy) {
 Widget hint(BuildContext context, String s, {double? size}) =>
     Text(s, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor, fontSize: size));
 
-/// A tinted callout (warning / error / info) with an icon.
-class Callout extends StatelessWidget {
-  final Severity severity;
-  final String title;
-  final String? body;
-  final IconData? icon;
-
-  /// Optional control shown at the right (e.g. an ActionButton).
-  final Widget? action;
-  const Callout({super.key, required this.severity, required this.title, this.body, this.icon, this.action});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final c = severityColor(context, severity);
-    final ic = icon ?? severityIcon(severity);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
-        border: Border(left: BorderSide(color: c, width: 3)),
-      ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(ic, size: 16, color: c),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: theme.textTheme.bodyMedium?.copyWith(color: c, fontWeight: FontWeight.w600)),
-            if (body != null && body!.isNotEmpty)
-              Padding(padding: const EdgeInsets.only(top: 2), child: Text(body!, style: theme.textTheme.bodySmall)),
-          ]),
-        ),
-        if (action != null) ...[const SizedBox(width: 8), action!],
-      ]),
-    );
-  }
-}
-
 /// A segment of a [CountsBar].
 class CountSegment {
   final String label;

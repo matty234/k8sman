@@ -7,12 +7,13 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../argocd/argo_common.dart' show Hint;
-import '../batch/batch_common.dart' show Callout, batchNow, formatRelative, formatSeconds, formatWall, formatLocal;
+import '../batch/batch_common.dart' show batchNow, formatRelative, formatSeconds, formatWall, formatLocal;
 import '../batch/cron.dart';
 import '../panel.dart';
 import 'wf_actions.dart';
 import 'wf_common.dart';
 import 'wf_spec.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 /// argoproj.io CronWorkflow: schedules with next runs, policy, active and
 /// recent workflows, and the workflow it runs.

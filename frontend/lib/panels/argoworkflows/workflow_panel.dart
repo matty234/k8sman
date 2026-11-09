@@ -6,14 +6,14 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../argocd/argo_common.dart' show ArgoCallout, Hint;
-import '../batch/batch_common.dart' show Callout;
+import '../argocd/argo_common.dart' show Hint;
 import '../panel.dart';
 import 'wf_actions.dart';
 import 'wf_common.dart';
 import 'wf_graph.dart';
 import 'wf_graph_view.dart';
 import 'wf_spec.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 /// argoproj.io Workflow: status header, failed steps, parameters, the node
 /// graph with per-step details and logs, and the spec.
@@ -114,7 +114,7 @@ class WorkflowSummary extends StatelessWidget {
       ]),
       const SizedBox(height: 10),
       if (shutdown != null && !workflowCompleted(wf))
-        ArgoCallout(severity: Severity.warn, icon: Icons.stop_circle_outlined, message: 'Shutting down: spec.shutdown is $shutdown.'),
+        Callout(severity: Severity.warn, icon: Icons.stop_circle_outlined, title: 'Shutting down: spec.shutdown is $shutdown.'),
       for (final n in waiting)
         Callout(
           severity: Severity.warn,
@@ -131,10 +131,10 @@ class WorkflowSummary extends StatelessWidget {
                   message: 'Marks the waiting suspend step${waiting.length > 1 ? 's' : ''} as succeeded so the workflow continues.'),
         ),
       if (msg != null && msg.isNotEmpty)
-        ArgoCallout(
+        Callout(
           severity: phase == 'Failed' || phase == 'Error' ? Severity.error : Severity.info,
           icon: phase == 'Failed' || phase == 'Error' ? Icons.error_outline : Icons.info_outline,
-          message: msg,
+          title: msg,
         ),
       FailedSteps(workflow: wf, nodes: nodes, uid: ctx.uid, api: ctx.api),
       if ((phase == 'Failed' || phase == 'Error') && !ctx.app.readOnly)
@@ -189,16 +189,11 @@ class FailedSteps extends StatelessWidget {
     final failed = nodes.values.where((n) => n.failed && !n.isContainer && !n.isJunction && !attempts.contains(n.id)).toList()
       ..sort((a, b) => (a.finishedAt ?? DateTime(0)).compareTo(b.finishedAt ?? DateTime(0)));
     if (failed.isEmpty) return const SizedBox.shrink();
-    final theme = Theme.of(context);
-    final c = severityColor(context, Severity.error);
     final shown = failed.take(6).toList();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6), border: Border.all(color: c.withValues(alpha: 0.35))),
+    return Callout(
+      severity: Severity.error,
+      title: '${failed.length} failed step${failed.length == 1 ? '' : 's'}',
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('${failed.length} failed step${failed.length == 1 ? '' : 's'}', style: theme.textTheme.bodySmall?.copyWith(color: c, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
         for (final n in shown) _row(context, n),
         if (failed.length > shown.length) Hint('… and ${failed.length - shown.length} more (see Steps)'),
       ]),

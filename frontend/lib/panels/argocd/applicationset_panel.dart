@@ -9,6 +9,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'application_panel.dart';
 import 'argo_common.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 class ApplicationSetPanel extends ResourcePanel {
   const ApplicationSetPanel();
@@ -89,7 +90,7 @@ class AppSetSummary extends StatelessWidget {
         ArgoBadge(ArgoStyle(Icons.apps, Theme.of(context).colorScheme.primary, Severity.info), '$count application${count == 1 ? '' : 's'}', large: true),
       ]),
       const SizedBox(height: 10),
-      if (error != null) ArgoCallout(severity: Severity.error, icon: Icons.error_outline, title: 'Generation failed', message: error),
+      if (error != null) Callout(severity: Severity.error, icon: Icons.error_outline, title: 'Generation failed', body: error),
       KeyValueTable([
         ('Generators', generatorSummary(asMapList(spec['generators']))),
         (

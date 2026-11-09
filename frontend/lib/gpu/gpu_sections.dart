@@ -16,6 +16,7 @@ import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
 import 'gpu_api.dart';
 import 'gpu_widgets.dart';
+import '../ui/inspector/inspector.dart' show Callout;
 
 /// Whether a resource name is an NVIDIA GPU resource (whole GPUs, MIG
 /// profiles or shared replicas).
@@ -133,7 +134,7 @@ class _GpuNodeSectionState extends State<_GpuNodeSection> {
                 severity: Severity.warn,
                 icon: Icons.warning_amber,
                 title: '${n.capacity - n.allocatable} of ${n.capacity} GPUs not allocatable',
-                child: Text('The NVIDIA device plugin marked them unhealthy.', style: theme.textTheme.bodySmall),
+                body: 'The NVIDIA device plugin marked them unhealthy.',
               ),
             if (n.idleAllocated > 0)
               Callout(
@@ -229,7 +230,7 @@ class _GpuPodSectionState extends State<_GpuPodSection> {
               if (pod?.unschedulable != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Callout(severity: Severity.warn, icon: Icons.schedule, title: 'Waiting for GPUs', child: Text(pod!.unschedulable!, style: theme.textTheme.bodySmall)),
+                  child: Callout(severity: Severity.warn, icon: Icons.schedule, title: 'Waiting for GPUs', body: pod!.unschedulable!),
                 ),
               for (final d in devices) GpuDeviceTile(d, showPods: false),
               if (inv != null && devices.isEmpty && node != null && node.monitored && !inv.attribution)

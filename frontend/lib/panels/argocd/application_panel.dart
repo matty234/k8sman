@@ -12,6 +12,7 @@ import '../panel.dart';
 import 'app_actions.dart';
 import 'app_resources.dart';
 import 'argo_common.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 class ApplicationPanel extends ResourcePanel {
   const ApplicationPanel();
@@ -128,21 +129,21 @@ class AppStatusSummary extends StatelessWidget {
       }),
       const SizedBox(height: 10),
       for (final c in conds)
-        ArgoCallout(
+        Callout(
           severity: argoConditionSeverity('${c['type']}'),
           icon: argoConditionSeverity('${c['type']}') == Severity.error ? Icons.error_outline : Icons.warning_amber_rounded,
           title: '${c['type']}',
-          message: '${c['message'] ?? ''}',
+          body: '${c['message'] ?? ''}',
         ),
       if (healthMsg != null && healthMsg.isNotEmpty && health != 'Healthy')
-        ArgoCallout(severity: healthStyle(context, health).severity, icon: healthStyle(context, health).icon, message: healthMsg),
+        Callout(severity: healthStyle(context, health).severity, icon: healthStyle(context, health).icon, title: healthMsg),
       if (running)
-        ArgoCallout(
+        Callout(
           severity: Severity.info,
           icon: Icons.sync,
           title: 'Sync running${parseTime(op['startedAt']) != null ? ' for ${elapsed(op['startedAt'], null)}' : ''}',
-          message: '${op['message'] ?? 'Waiting for the application controller…'}',
-          trailing: readOnly ? null : _SmallButton(icon: Icons.stop_circle_outlined, label: 'Terminate', onPressed: () => argoTerminate(context, ctx)),
+          body: '${op['message'] ?? 'Waiting for the application controller…'}',
+          action: readOnly ? null : _SmallButton(icon: Icons.stop_circle_outlined, label: 'Terminate', onPressed: () => argoTerminate(context, ctx)),
         ),
       KeyValueTable([
         (

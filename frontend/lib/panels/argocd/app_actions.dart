@@ -11,6 +11,7 @@ import '../../ui/theme.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'argo_common.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 /// Whether the app has a pending or running operation.
 bool operationInProgress(Json app) {
@@ -161,11 +162,11 @@ class _SyncOptionsDialogState extends State<SyncOptionsDialog> {
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (busy)
-              ArgoCallout(
+              Callout(
                 severity: Severity.warn,
                 icon: Icons.sync_problem,
                 title: 'An operation is already in progress',
-                message: 'Syncing now is refused unless you replace it.',
+                body: 'Syncing now is refused unless you replace it.',
               ),
             Text(
               '$outOfSync out-of-sync resource${outOfSync == 1 ? '' : 's'}${pruneCount > 0 ? ', $pruneCount to prune' : ''}.',

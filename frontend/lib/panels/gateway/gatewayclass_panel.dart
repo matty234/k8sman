@@ -7,6 +7,7 @@ import '../../util/k8s.dart';
 import '../panel.dart';
 import 'gw_model.dart';
 import 'gw_widgets.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
 /// Envoy Gateway's controllerName (see the add-on catalog).
 const envoyGatewayController = 'gateway.envoyproxy.io/gatewayclass-controller';
@@ -74,7 +75,7 @@ class GatewayClassPanel extends ResourcePanel {
       Callout(
         severity: pending ? Severity.warn : Severity.error,
         title: pending ? 'No controller has accepted this class' : 'Rejected by its controller: ${accepted['reason']}',
-        detail: detail,
+        body: detail,
       ),
       if (pending && !ctx.app.readOnly)
         Align(

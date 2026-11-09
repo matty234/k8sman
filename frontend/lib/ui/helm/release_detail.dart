@@ -11,6 +11,7 @@ import '../widgets/editorial.dart' show PageScroll;
 import 'helm_actions.dart';
 import 'helm_api.dart';
 import 'yaml_view.dart';
+import '../inspector/inspector.dart' show Callout;
 
 /// Detail for one release: header with actions, a stuck/failed banner, and
 /// Overview / Values / Manifest / History / Hooks tabs.
@@ -247,27 +248,10 @@ class _Banner extends StatelessWidget {
   const _Banner({required this.severity, required this.icon, required this.title, required this.body, this.action});
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final c = severityColor(context, severity);
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-      padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: c.withValues(alpha: 0.4))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 16, color: c)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 2),
-            Text(body, maxLines: 4, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
-          ]),
-        ),
-        if (action != null) ...[const SizedBox(width: 8), action!],
-      ]),
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Callout(severity: severity, icon: icon, title: title, body: body, action: action),
+      );
 }
 
 class _StuckBanner extends StatelessWidget {

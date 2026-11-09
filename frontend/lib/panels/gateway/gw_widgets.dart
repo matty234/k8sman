@@ -11,8 +11,9 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../network/widgets.dart';
 import 'gw_model.dart';
+import '../../ui/inspector/inspector.dart' show Callout;
 
-export '../network/widgets.dart' show NetFetch, NetTable, Mono, Muted, CopyText, CopyLine, Callout, RefreshButton, spinner, fingerprint;
+export '../network/widgets.dart' show NetFetch, NetTable, Mono, Muted, CopyText, CopyLine, RefreshButton, spinner, fingerprint;
 
 /// Route kinds this cluster serves (TLS/TCP/UDP routes are experimental).
 List<RouteKind> servedRouteKinds(AppState app) => [for (final k in routeKinds) if (app.typeForResource(gwGroup, k.resource) != null) k];
@@ -76,7 +77,7 @@ class DiagCallout extends StatelessWidget {
   const DiagCallout(this.diag, {super.key});
 
   @override
-  Widget build(BuildContext context) => Callout(severity: diagSeverity(diag.level), title: diag.title, detail: diag.detail);
+  Widget build(BuildContext context) => Callout(severity: diagSeverity(diag.level), title: diag.title, body: diag.detail);
 }
 
 /// Dense badge for a condition: "Accepted" / "Not accepted · Reason" / "Pending".
