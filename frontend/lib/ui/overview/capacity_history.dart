@@ -149,7 +149,9 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
 
   @override
   Widget build(BuildContext context) {
-    if (_state == _State.checking || _state == _State.unavailable) return widget.fallback;
+    // While checking, reserve the charts' space if Prometheus was there
+    // last time, so the panel doesn't grow once the answer comes back.
+    if (_state == _State.unavailable || (_state == _State.checking && _prom?.knownHasPrometheus != true)) return widget.fallback;
     final c = widget.capacity;
     final ready = _state == _State.ready;
     final cpu = ready && _cpu != null
@@ -179,7 +181,9 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
             usedText: formatBytes,
           )
         : null;
-    Widget cell(Widget? chart) => chart ?? (ready ? const SizedBox.shrink() : const _ChartSkeleton());
+    // Every cell (chart, skeleton or empty) is the chart's height, so
+    // nothing below moves as data arrives.
+    Widget cell(Widget? chart) => SizedBox(height: historyMeterHeight, child: chart ?? (ready ? null : const _ChartSkeleton()));
     return LayoutBuilder(
       builder: (context, box) {
         final wide = box.maxWidth >= 620;
@@ -204,11 +208,35 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
   }
 }
 
+/// The height of one history meter (header, chart, key).
+const double historyMeterHeight = 156;
+
+/// Placeholders the size of the two history meters, for while the
+/// capacity itself is still loading on a cluster with Prometheus.
+class HistoryPlaceholder extends StatelessWidget {
+  const HistoryPlaceholder({super.key});
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        const cell = SizedBox(height: historyMeterHeight, child: _ChartSkeleton());
+        if (box.maxWidth >= 620) {
+          return const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: cell), SizedBox(width: 28), Expanded(child: cell)]);
+        }
+        return const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [cell, SizedBox(height: 12), cell]);
+      });
+}
+
 class _ChartSkeleton extends StatelessWidget {
   const _ChartSkeleton();
 
   @override
-  Widget build(BuildContext context) => const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [SkeletonBar(width: 160, height: 12), SizedBox(height: 9), SkeletonBar(height: 110)]);
+  Widget build(BuildContext context) => const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SkeletonBar(width: 160, height: 12),
+        SizedBox(height: 12),
+        SkeletonBar(height: 92),
+        SizedBox(height: 10),
+        SkeletonBar(width: 120, height: 8),
+      ]);
 }
 
 class _HistoryMeter extends StatelessWidget {

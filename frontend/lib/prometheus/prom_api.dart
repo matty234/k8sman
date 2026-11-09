@@ -92,7 +92,12 @@ class PromApi {
   Future<PromStatus?> cachedStatus() => discover().then<PromStatus?>((s) => s, onError: (_) => null);
 
   /// True when a reachable Prometheus exists (charts hide otherwise).
-  Future<bool> hasPrometheus() async => (await cachedStatus())?.defaultPrometheus?.reachable ?? false;
+  Future<bool> hasPrometheus() async => _knownHasPrometheus = (await cachedStatus())?.defaultPrometheus?.reachable ?? false;
+
+  /// What the last [hasPrometheus] answered (null before the first), so a
+  /// view can reserve the right space before asking again.
+  bool? get knownHasPrometheus => _knownHasPrometheus;
+  bool? _knownHasPrometheus;
 }
 
 // ---------------------------------------------------------------------------

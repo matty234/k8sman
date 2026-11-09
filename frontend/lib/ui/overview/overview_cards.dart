@@ -5,10 +5,12 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../metrics/metrics_api.dart' show Usage;
 import '../../metrics/quantity.dart' show formatPercent;
 import '../../metrics/widgets.dart' show meterColor, percentColor;
+import '../../prometheus/prom_api.dart' show PromApi;
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
@@ -287,7 +289,11 @@ class CapacityStrip extends StatelessWidget {
       key: c == null ? const ValueKey('pending-capacity') : null,
       decoration: _panel(context),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-      child: c == null ? bars : ClusterHistory(capacity: c, fallback: bars),
+      // Pending on a cluster where Prometheus was found before: hold the
+      // charts' height rather than the bars', so the page doesn't jump.
+      child: c == null
+          ? (PromApi.of(context.read<ApiClient>()).knownHasPrometheus == true ? const HistoryPlaceholder() : bars)
+          : ClusterHistory(capacity: c, fallback: bars),
     );
   }
 }

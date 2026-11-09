@@ -237,6 +237,9 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                       onChanged: _refresh,
                       emptyText: _filter == null ? 'Nothing needs attention.' : 'No issues in this category.',
                       loading: data.loadingSections.isNotEmpty,
+                      // The cards above summarise everything; a filter shows
+                      // its category in full.
+                      preview: _filter == null ? 8 : null,
                     ),
                   ),
                 if (data.isPending('nodes'))

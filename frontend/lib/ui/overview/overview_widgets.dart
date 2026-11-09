@@ -117,7 +117,11 @@ class IssueList extends StatefulWidget {
 
   /// Some sources are still loading, so an empty list isn't "nothing wrong".
   final bool loading;
-  const IssueList({super.key, required this.issues, required this.onChanged, required this.emptyText, this.loading = false});
+
+  /// How many rows show before "Show all" (null: page through all), so a
+  /// long list doesn't push Nodes and events far down the page.
+  final int? preview;
+  const IssueList({super.key, required this.issues, required this.onChanged, required this.emptyText, this.loading = false, this.preview});
 
   @override
   State<IssueList> createState() => _IssueListState();
@@ -127,6 +131,7 @@ class _IssueListState extends State<IssueList> {
   static const _pageSize = 60;
   final _expanded = <String>{};
   int _limit = _pageSize;
+  bool _showAll = false;
 
   static String _heading(IssueSeverity s) => switch (s) {
         IssueSeverity.critical => 'Errors',
@@ -155,7 +160,9 @@ class _IssueListState extends State<IssueList> {
         child: InlineMessage(widget.emptyText, icon: Icons.check_circle_outline),
       );
     }
-    final shown = groups.take(_limit).toList();
+    final preview = widget.preview;
+    final previewing = preview != null && !_showAll && groups.length > preview + 2;
+    final shown = groups.take(previewing ? preview : _limit).toList();
     final counts = <IssueSeverity, int>{};
     for (final i in widget.issues) {
       counts[i.severity] = (counts[i.severity] ?? 0) + 1;
@@ -177,9 +184,25 @@ class _IssueListState extends State<IssueList> {
         onChanged: widget.onChanged,
       ));
     }
+    Widget more(String label, VoidCallback onPressed, {Key? key}) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(key: key, onPressed: onPressed, child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary))),
+          ),
+        );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ...children,
-      if (groups.length > shown.length)
+      if (previewing)
+        more('Show all ${groups.length}', () => setState(() => _showAll = true), key: const ValueKey('issues-show-all'))
+      else if (_showAll && preview != null && groups.length > shown.length)
+        more('Show ${groups.length - shown.length} more', () => setState(() => _limit += _pageSize))
+      else if (_showAll && preview != null)
+        more('Show fewer', () => setState(() {
+              _showAll = false;
+              _limit = _pageSize;
+            }))
+      else if (groups.length > shown.length)
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Align(

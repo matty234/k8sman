@@ -9,7 +9,7 @@ import 'overview_test.dart' show pumpOverview, scenarioFixture;
 
 void main() {
   testWidgets('area cards: title, single row, multi row and count', (tester) async {
-    final (app, _) = await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 1400));
+    final (app, _) = await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 1400), showAllIssues: false);
     app.showView(MainView.overview);
 
     // The title opens the kind's table, and Back returns to the Overview.

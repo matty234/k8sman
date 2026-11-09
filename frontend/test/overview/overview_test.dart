@@ -11,6 +11,7 @@ import 'package:k8sman/prometheus/metric_history_chart.dart';
 import 'package:k8sman/prometheus/prom_api.dart';
 import 'package:k8sman/ui/overview/overview_api.dart';
 import 'package:k8sman/ui/overview/overview_view.dart';
+import 'package:k8sman/ui/overview/overview_widgets.dart' show IssueGroupTile;
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
@@ -57,6 +58,7 @@ Future<(AppState, FakeOverviewApi)> pumpOverview(
   bool readOnly = false,
   String? namespace,
   ApiClient? api,
+  bool showAllIssues = true,
 }) async {
   PageScope.reset(); // Overview's scope is session-wide.
   final client = api ?? RecordingApi();
@@ -79,6 +81,13 @@ Future<(AppState, FakeOverviewApi)> pumpOverview(
   ));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
+  // Long lists show a preview; most tests want every row.
+  final all = find.byKey(const ValueKey('issues-show-all'));
+  if (showAllIssues && all.evaluate().isNotEmpty) {
+    await tester.ensureVisible(all);
+    await tester.tap(all);
+    await tester.pump();
+  }
   return (app, source);
 }
 
@@ -149,6 +158,14 @@ void main() {
     tester.view.physicalSize = const Size(1500, 900);
     await tester.pump();
     await saveScreenshot(tester, 'overview-live-1500');
+  });
+
+  testWidgets('a long issue list previews 8 rows until Show all', (tester) async {
+    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400), showAllIssues: false);
+    expect(find.byType(IssueGroupTile), findsNWidgets(8));
+    await tester.tap(find.byKey(const ValueKey('issues-show-all')));
+    await tester.pump();
+    expect(find.byType(IssueGroupTile).evaluate().length, greaterThan(8));
   });
 
   testWidgets('scenario: grouped by owner, tile filters, expands', (tester) async {
@@ -301,7 +318,7 @@ void main() {
       await tester.pumpWidget(const SizedBox()); // a fresh tree each round
       final prom = FixturePromApi(missing: missing);
       PromApi.debugOverride = (_) => prom;
-      await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400));
+      await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400), showAllIssues: false);
       await settle(tester);
       expect(find.textContaining('3.5 / 12 cores requested · 29%', findRichText: true), findsOneWidget);
       expect(find.byType(AreaChart), missing ? findsNothing : findsNWidgets(2));
