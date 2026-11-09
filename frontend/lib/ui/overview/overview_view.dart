@@ -8,6 +8,7 @@ import '../../metrics/cache.dart';
 import '../../metrics/metrics_api.dart';
 import '../../state/poller.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import 'overview_api.dart';
 import 'overview_cards.dart';
 import 'overview_summary.dart';
@@ -228,7 +229,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                     if (_ns.isAll && (data.isPending('nodes') || (data.capacity?.known ?? false)))
                       CapacityStrip(capacity: data.isPending('nodes') ? null : data.capacity, usage: _usage, nodes: data.nodes.length),
                     if (issues.isNotEmpty || _filter != null || data.loadingSections.isNotEmpty)
-                      OverviewSection(
+                      EditorialSection(
                         title: 'Issues',
                         trailing: _issuesTrailing(context, data, issues.length),
                         child: IssueList(
@@ -242,14 +243,14 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                         ),
                       ),
                     if (data.isPending('nodes'))
-                      const OverviewSection(title: 'Nodes', child: PendingRows())
+                      const EditorialSection(title: 'Nodes', child: PendingRows())
                     else if (data.nodes.isNotEmpty)
-                      OverviewSection(
+                      EditorialSection(
                         title: 'Nodes',
                         trailing: Text('${data.count('nodes', 'ready')}/${data.count('nodes', 'total')} ready'),
                         child: NodeCards(nodes: data.nodes, showRequests: _ns.isAll),
                       ),
-                    OverviewSection(
+                    EditorialSection(
                       title: 'Top warning events',
                       trailing: const Text('last hour'),
                       child: data.isPending('events') ? const PendingRows(rows: 2) : WarningEventList(reasons: data.topWarnings),

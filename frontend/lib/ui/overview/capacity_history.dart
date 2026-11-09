@@ -17,8 +17,8 @@ import '../../prometheus/prom_api.dart';
 import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import 'overview_api.dart';
-import 'overview_cards.dart' show CapacityColumns, capacityFigure, capacityLabel, formatCores, requestedLine;
-import 'overview_widgets.dart' show OverviewSection, SkeletonBar;
+import '../widgets/editorial.dart';
+import 'overview_cards.dart' show CapacityColumns, formatCores, requestedLine;
 
 /// Remembered for the session.
 Duration? _rememberedRange;
@@ -159,7 +159,7 @@ class _ClusterHistoryState extends State<ClusterHistory> with PollingState {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final note = Text(widget.note);
-    Widget section(Widget body, {Widget? picker}) => OverviewSection(
+    Widget section(Widget body, {Widget? picker}) => EditorialSection(
           title: 'Capacity',
           collapsible: false,
           trailing: picker == null ? note : Row(mainAxisSize: MainAxisSize.min, children: [note, const SizedBox(width: 14), picker]),
@@ -299,9 +299,9 @@ class _HistoryMeter extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        capacityLabel(context, label),
+        FigureCaption(label),
         const SizedBox(height: 2),
-        capacityFigure(context, value, unitText, suffix: use == null ? null : '${formatPercent(use)} of allocatable', color: percentColor(context, use)),
+        BigFigure(value, unitText, suffix: use == null ? null : '${formatPercent(use)} of allocatable', color: percentColor(context, use)),
         const SizedBox(height: 2),
         requestedLine(context, amount, req),
         const SizedBox(height: 12),

@@ -21,58 +21,10 @@ import '../../modules/modules.dart' show enabledPages;
 import 'capacity_history.dart';
 import 'overview_api.dart';
 import 'overview_nav.dart';
-import 'overview_widgets.dart' show OverviewSection, SkeletonBar, issueColor, openObject;
+import '../widgets/editorial.dart';
+import 'overview_widgets.dart' show issueColor, openObject;
 
-const _tabular = [FontFeature.tabularFigures()];
-
-/// Lays [children] out in rows of [cols] equal-width cells, each row as tall
-/// as its tallest cell.
-Widget _grid(List<Widget> children, int cols, {double gap = 10, double runGap = 10}) {
-  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-    for (var r = 0; r < children.length; r += cols) ...[
-      if (r > 0) SizedBox(height: runGap),
-      IntrinsicHeight(
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (var c = 0; c < cols; c++) ...[
-            if (c > 0) SizedBox(width: gap),
-            Expanded(child: r + c < children.length ? children[r + c] : const SizedBox.shrink()),
-          ],
-        ]),
-      ),
-    ],
-  ]);
-}
-
-/// A thin horizontal bar: [frac] of the track filled with [color], and
-/// optionally [under] (e.g. requests behind usage) in a fainter tint.
-class _Bar extends StatelessWidget {
-  final double frac;
-  final double? under;
-  final Color color;
-  final double height;
-  const _Bar({required this.frac, required this.color, this.under, this.height = 3});
-
-  @override
-  Widget build(BuildContext context) {
-    final track = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
-    Widget fill(double f, Color c) => FractionallySizedBox(
-          alignment: Alignment.centerLeft,
-          widthFactor: f.clamp(0.0, 1.0),
-          child: DecoratedBox(decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(height))),
-        );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(height),
-      child: SizedBox(
-        height: height,
-        child: Stack(fit: StackFit.expand, children: [
-          ColoredBox(color: track),
-          if (under != null) fill(under!, color.withValues(alpha: 0.35)),
-          fill(frac, color),
-        ]),
-      ),
-    );
-  }
-}
+const _tabular = tabularFigures;
 
 // ---------------------------------------------------------------------------
 // Hero: one status line over the inventory strip
@@ -163,17 +115,17 @@ class _StatusLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hint = theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor, fontFeatures: _tabular);
+    final hint = statusDetailStyle(context);
     final loading = data.loadingSections;
     final healthy = loading.isEmpty && tally.problems == 0;
     final headline = healthy ? 'All healthy' : (tally.problems > 0 ? 'Needs attention' : 'Checking…');
     final mark = healthy
-        ? IssueSeverity.info
+        ? Severity.ok
         : tally.critical > 0
-            ? IssueSeverity.critical
-            : IssueSeverity.warning;
-    final title = theme.textTheme.titleLarge?.copyWith(fontSize: 19, fontWeight: FontWeight.w600, letterSpacing: -0.2, height: 1.2);
+            ? Severity.error
+            : tally.problems > 0
+                ? Severity.warn
+                : Severity.info;
     Widget detail;
     if (healthy) {
       detail = Row(mainAxisSize: MainAxisSize.min, children: [
@@ -198,91 +150,7 @@ class _StatusLine extends StatelessWidget {
       );
     }
     final lines = healthy ? _healthyLines(data) : const <String>[];
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        SizedBox(width: 22, child: Align(alignment: Alignment.centerLeft, child: _StatusMark(severity: healthy ? null : (tally.problems > 0 ? mark : IssueSeverity.info)))),
-        Text(headline, style: title),
-        const SizedBox(width: 14),
-        Flexible(child: Padding(padding: const EdgeInsets.only(top: 2), child: detail)),
-      ]),
-      if (lines.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(left: 22, top: 4),
-          child: Text(lines.join(' · '), style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-        ),
-    ]);
-  }
-}
-
-/// A check when healthy; a dot in the worst severity otherwise. A critical
-/// dot sends out a few slow rings when it appears (none with reduced
-/// motion), then rests: nothing animates on an idle page.
-class _StatusMark extends StatefulWidget {
-  /// Null: healthy. Info: still checking.
-  final IssueSeverity? severity;
-  const _StatusMark({required this.severity});
-
-  @override
-  State<_StatusMark> createState() => _StatusMarkState();
-}
-
-class _StatusMarkState extends State<_StatusMark> with SingleTickerProviderStateMixin {
-  static const _rings = 3;
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800 * _rings));
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _maybePulse(null);
-  }
-
-  @override
-  void didUpdateWidget(_StatusMark old) {
-    super.didUpdateWidget(old);
-    _maybePulse(old.severity);
-  }
-
-  void _maybePulse(IssueSeverity? before) {
-    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    if (widget.severity == IssueSeverity.critical && before != IssueSeverity.critical && !reduce && !_c.isAnimating) _c.forward(from: 0);
-    if (widget.severity != IssueSeverity.critical) _c.stop();
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = widget.severity;
-    if (s == null) return Icon(Icons.check_circle, size: 16, color: severityColor(context, Severity.ok));
-    final color = s == IssueSeverity.info ? Theme.of(context).hintColor : issueColor(context, s);
-    final dot = Container(width: 9, height: 9, decoration: BoxDecoration(color: s == IssueSeverity.info ? null : color, shape: BoxShape.circle, border: s == IssueSeverity.info ? Border.all(color: color, width: 1.5) : null));
-    if (s != IssueSeverity.critical) return dot;
-    return SizedBox(
-      width: 9,
-      height: 9,
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (context, child) {
-          final t = _c.isAnimating ? (_c.value * _rings) % 1 : 0.0;
-          return Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
-            if (t > 0)
-              Positioned(
-                left: -6 * t,
-                top: -6 * t,
-                right: -6 * t,
-                bottom: -6 * t,
-                child: DecoratedBox(decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.35 * (1 - t)))),
-              ),
-            child!,
-          ]);
-        },
-        child: dot,
-      ),
-    );
+    return StatusLine(mark: StatusMark(severity: mark), headline: headline, detail: detail, note: lines.join(' · '));
   }
 }
 
@@ -304,6 +172,25 @@ class _Stat {
   final OverviewTarget? target;
   const _Stat(this.label, this.good, this.total, {this.note, this.bad = false, this.target});
   bool get pending => total == null;
+
+  StatItem item(BuildContext context, NamespaceScope scope) {
+    if (pending) return StatItem(label, null, pendingKey: ValueKey('pending-inventory-$label'));
+    final g = good ?? 0;
+    final t = total ?? 0;
+    final target = this.target;
+    return StatItem(
+      label,
+      '$g',
+      of: bad ? '/ $t' : null,
+      note: note,
+      // Red only when none are ready/bound/succeeded (an outage); partly
+      // ready is amber, so a busy cluster isn't a wall of red.
+      tone: bad ? (g == 0 && t > 0 ? Severity.error : Severity.warn) : null,
+      frac: bad && t > 0 ? g / t : null,
+      noteTone: label.startsWith('jobs'),
+      onTap: target == null ? null : () => openOverviewTarget(context, target, scope),
+    );
+  }
 }
 
 /// One row of large numerals with small labels, divided by hairlines. A
@@ -351,115 +238,8 @@ class StatBlocks extends StatelessWidget {
     return out;
   }
 
-  static const _minCell = 124.0;
-  static const _maxCell = 200.0;
-
   @override
-  Widget build(BuildContext context) {
-    final stats = _stats();
-    if (stats.isEmpty) return const SizedBox.shrink();
-    final separator = AppColors.of(context).separator;
-    return LayoutBuilder(builder: (context, box) {
-      final n = stats.length;
-      final fit = (box.maxWidth / _minCell).floor().clamp(1, 8);
-      // More than fit: spread evenly over the rows. Fewer: each keeps a
-      // comfortable width, left-aligned, rather than stretching apart.
-      final rows = (n / fit).ceil();
-      final cols = (n / rows).ceil();
-      final width = rows > 1 ? box.maxWidth / cols : (box.maxWidth / n).clamp(_minCell, _maxCell);
-      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (var r = 0; r < n; r += cols) ...[
-          if (r > 0) const SizedBox(height: 14),
-          IntrinsicHeight(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              for (var i = r; i < r + cols && i < n; i++)
-                Container(
-                  width: width,
-                  padding: EdgeInsets.only(left: i == r ? 0 : 16, right: 8),
-                  decoration: i == r ? null : BoxDecoration(border: Border(left: BorderSide(color: separator))),
-                  child: _StatBlock(stat: stats[i], scope: scope),
-                ),
-            ]),
-          ),
-        ],
-      ]);
-    });
-  }
-}
-
-class _StatBlock extends StatelessWidget {
-  final _Stat stat;
-  final NamespaceScope scope;
-  const _StatBlock({required this.stat, required this.scope});
-
-  @override
-  Widget build(BuildContext context) {
-    final target = stat.target;
-    if (stat.pending || target == null) return _block(context, hovered: false);
-    return Hoverable(
-      key: ValueKey('stat-${stat.label}'),
-      onTap: () => openOverviewTarget(context, target, scope),
-      builder: (hovered) => _block(context, hovered: hovered),
-    );
-  }
-
-  Widget _block(BuildContext context, {required bool hovered}) {
-    final theme = Theme.of(context);
-    final colors = AppColors.of(context);
-    final good = stat.good ?? 0;
-    final total = stat.total ?? 0;
-    // Red only when none are ready/bound/succeeded (an outage); partly
-    // ready is amber, so a busy cluster isn't a wall of red.
-    final color = issueColor(context, good == 0 && total > 0 ? IssueSeverity.critical : IssueSeverity.warning);
-    final big = theme.textTheme.headlineMedium?.copyWith(
-      fontSize: 30,
-      height: 1.1,
-      fontWeight: FontWeight.w300,
-      letterSpacing: -0.5,
-      fontFeatures: _tabular,
-      color: stat.bad ? color : theme.colorScheme.onSurface,
-    );
-    final label = theme.textTheme.bodySmall?.copyWith(
-      color: hovered ? theme.colorScheme.onSurface : theme.hintColor,
-      decoration: hovered ? TextDecoration.underline : null,
-      decorationColor: theme.hintColor,
-    );
-    return Column(
-      key: stat.pending ? ValueKey('pending-inventory-${stat.label}') : null,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          height: 34,
-          child: stat.pending
-              ? const Align(alignment: Alignment.centerLeft, child: SkeletonBar(width: 44, height: 22))
-              : Text.rich(
-                  TextSpan(children: [
-                    TextSpan(text: '$good', style: big),
-                    if (stat.bad) TextSpan(text: ' / $total', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w400, color: theme.hintColor, fontFeatures: _tabular)),
-                  ]),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-        ),
-        const SizedBox(height: 3),
-        Text.rich(
-          TextSpan(children: [
-            TextSpan(text: stat.label),
-            if (stat.note != null) TextSpan(text: ' · ${stat.note}', style: TextStyle(color: stat.bad && stat.label.startsWith('jobs') ? color : colors.faint, decoration: TextDecoration.none)),
-          ]),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: label,
-        ),
-        // Only a shortfall gets a bar: healthy is the plain number.
-        if (stat.bad && total > 0) ...[
-          const SizedBox(height: 7),
-          SizedBox(width: 56, child: _Bar(frac: good / total, color: color, height: 2.5)),
-        ],
-      ],
-    );
-  }
+  Widget build(BuildContext context) => StatStrip(items: [for (final s in _stats()) s.item(context, scope)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -515,7 +295,7 @@ class CapacityStrip extends StatelessWidget {
     if (c != null) return ClusterHistory(capacity: c, fallback: bars, note: where);
     // Pending on a cluster where Prometheus was found before: hold the
     // charts' height rather than the bars', so the page doesn't jump.
-    return OverviewSection(
+    return EditorialSection(
       key: const ValueKey('pending-capacity'),
       title: 'Capacity',
       collapsible: false,
@@ -555,31 +335,6 @@ class _PendingMeter extends StatelessWidget {
         SizedBox(height: 10),
         SkeletonBar(height: 4),
       ]);
-}
-
-/// The big figure of a capacity column: "29%" or "1.8" with its unit
-/// after it in small type.
-Widget capacityFigure(BuildContext context, String value, String unit, {String? suffix, Color? color}) {
-  final theme = Theme.of(context);
-  final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: _tabular);
-  return Text.rich(
-    TextSpan(children: [
-      TextSpan(
-        text: value,
-        style: theme.textTheme.headlineSmall?.copyWith(fontSize: 26, height: 1.15, fontWeight: FontWeight.w300, letterSpacing: -0.4, fontFeatures: _tabular, color: color),
-      ),
-      TextSpan(text: ' $unit', style: hint?.copyWith(fontSize: 12.5)),
-      if (suffix != null) TextSpan(text: '  ·  $suffix', style: hint?.copyWith(fontSize: 12.5)),
-    ]),
-    maxLines: 1,
-    overflow: TextOverflow.ellipsis,
-  );
-}
-
-/// The small caption over a capacity column ("CPU", "Memory").
-Widget capacityLabel(BuildContext context, String label) {
-  final theme = Theme.of(context);
-  return Text(label, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600, letterSpacing: 0.3));
 }
 
 /// "3.5 / 12 cores requested · 29%".
@@ -632,17 +387,17 @@ class _Meter extends StatelessWidget {
       ].join('\n'),
       waitDuration: const Duration(milliseconds: 400),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        capacityLabel(context, label),
+        FigureCaption(label),
         const SizedBox(height: 2),
         // Live usage when metrics-server has it, else what is left to
         // schedule (the line below says what is requested).
         use != null
-            ? capacityFigure(context, formatPercent(use), 'in use', suffix: usedText, color: percentColor(context, use))
-            : capacityFigure(context, label == 'CPU' ? formatCores(free) : formatBytes(free), label == 'CPU' ? 'cores free to schedule' : 'free to schedule'),
+            ? BigFigure(formatPercent(use), 'in use', suffix: usedText, color: percentColor(context, use))
+            : BigFigure(label == 'CPU' ? formatCores(free) : formatBytes(free), label == 'CPU' ? 'cores free to schedule' : 'free to schedule'),
         const SizedBox(height: 2),
         requestedLine(context, amount, req),
         const SizedBox(height: 10),
-        _Bar(frac: use ?? req ?? 0, under: use == null ? null : req, color: color, height: 4),
+        HairlineBar(frac: use ?? req ?? 0, under: use == null ? null : req, color: color, height: 4),
       ]),
     );
   }
@@ -759,91 +514,40 @@ class AreaCards extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final loading = data.loadingSections;
-    final groups = <(Widget, int)>[];
+    final groups = <Widget>[];
+    final weights = <int>[];
     for (final s in _sections(data)) {
       final cats = data.categories.where((c) => c.section == s).toList();
       final pending = loading.contains(s);
       if (cats.isEmpty && !pending) continue;
-      groups.add((
-        _AreaGroup(
-          section: s,
-          problems: [for (final c in cats) if (c.severity != IssueSeverity.info) c],
-          info: [for (final c in cats) if (c.severity == IssueSeverity.info) c],
-          pending: pending,
-          data: data,
-          selected: selected,
-          onSelect: onSelect,
-          scope: scope,
-        ),
-        cats.length + (pending ? 1 : 0) + 1,
+      groups.add(_AreaGroup(
+        section: s,
+        problems: [for (final c in cats) if (c.severity != IssueSeverity.info) c],
+        info: [for (final c in cats) if (c.severity == IssueSeverity.info) c],
+        pending: pending,
+        data: data,
+        selected: selected,
+        onSelect: onSelect,
+        scope: scope,
       ));
+      weights.add(cats.length + (pending ? 1 : 0) + 1);
     }
     if (groups.isEmpty) return const SizedBox.shrink();
     final allHealthy = _allHealthy(data);
     final healthy = allHealthy ? const <String>[] : _healthyLines(data);
     final tally = _Tally(data);
-    return OverviewSection(
+    return EditorialSection(
       title: allHealthy ? 'Worth a look' : 'Needs attention',
       collapsible: false,
       trailing: tally.problems == 0 ? null : Text(plural(tally.problems, 'problem')),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        LayoutBuilder(builder: (context, box) {
-          final cols = box.maxWidth >= 1040 && groups.length > 1 ? 2 : 1;
-          // Masonry: each group goes to the shorter column, in order.
-          final columns = List.generate(cols, (_) => <Widget>[]);
-          final heights = List.filled(cols, 0);
-          for (final (w, h) in groups) {
-            var c = 0;
-            for (var i = 1; i < cols; i++) {
-              if (heights[i] < heights[c]) c = i;
-            }
-            columns[c].add(w);
-            heights[c] += h;
-          }
-          Widget column(List<Widget> items) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                for (final (i, w) in items.indexed) ...[
-                  if (i > 0) Divider(height: 1, thickness: 1, color: AppColors.of(context).separator.withValues(alpha: 0.6)),
-                  w,
-                ],
-              ]);
-          if (cols == 1) return column(columns[0]);
-          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: column(columns[0])),
-            const SizedBox(width: 48),
-            Expanded(child: column(columns[1])),
-          ]);
-        }),
+        AttentionList(groups: groups, weights: weights),
         if (healthy.isNotEmpty) ...[
           Divider(height: 1, thickness: 1, color: AppColors.of(context).separator.withValues(alpha: 0.6)),
-          Padding(padding: const EdgeInsets.only(top: 12), child: _HealthyLines(lines: healthy, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
+          Padding(padding: const EdgeInsets.only(top: 12), child: HealthyLines(lines: healthy, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
         ],
       ]),
     );
-  }
-}
-
-/// "✓ All 7 workloads healthy · No failing jobs".
-class _HealthyLines extends StatelessWidget {
-  final List<String> lines;
-  final TextStyle? style;
-  const _HealthyLines({required this.lines, this.style});
-
-  @override
-  Widget build(BuildContext context) {
-    final ok = severityColor(context, Severity.ok).withValues(alpha: 0.85);
-    final faint = AppColors.of(context).faint;
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(padding: const EdgeInsets.only(top: 2), child: Icon(Icons.check, size: 13, color: ok)),
-      const SizedBox(width: 8),
-      Expanded(
-        child: Wrap(runSpacing: 2, children: [
-          for (final (i, l) in lines.indexed) ...[
-            if (i > 0) Text('  ·  ', style: style?.copyWith(color: faint)),
-            Text(l, style: style),
-          ],
-        ]),
-      ),
-    ]);
   }
 }
 
@@ -867,41 +571,27 @@ class _AreaGroup extends StatelessWidget {
     required this.scope,
   });
 
+  /// "▎4  CrashLoopBackOff · 4 pods, 2 workloads". Click goes to what the
+  /// row names; the count filters the Issues list, as does the whole row
+  /// when it has nowhere to go.
   Widget _row(BuildContext context, OverviewCategory c) {
     final target = rowTarget(data, c);
-    return _AreaRow(
-      category: c,
-      sublabel: categorySublabel(data, c),
-      selected: selected == c.id,
-      onFilter: () => onSelect(c.id),
-      // A kind the cluster doesn't serve falls back to the Issues filter.
-      onOpen: target == null ? null : () => openOverviewTarget(context, target, scope) ? null : onSelect(c.id),
-    );
-  }
-
-  Widget _title(BuildContext context, OverviewTarget? title) {
-    final theme = Theme.of(context);
-    Widget row(bool hovered) => Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(_sectionIcon(section), size: 14, color: hovered ? theme.colorScheme.onSurface : theme.hintColor),
-          const SizedBox(width: 7),
-          Flexible(
-            child: Text(
-              sectionLabel(section),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontSize: 13,
-                decoration: hovered ? TextDecoration.underline : null,
-                decorationColor: theme.hintColor,
-              ),
-            ),
-          ),
-        ]);
-    if (title == null) return row(false);
-    return Hoverable(
-      key: ValueKey('area-title-$section'),
-      onTap: () => openOverviewTarget(context, title, scope),
-      builder: (hovered) => Tooltip(message: 'Open ${sectionLabel(section)}', waitDuration: const Duration(milliseconds: 600), child: row(hovered)),
+    final isSelected = selected == c.id;
+    void filter() => onSelect(c.id);
+    // A kind the cluster doesn't serve falls back to the Issues filter.
+    final VoidCallback? open = target == null ? null : () => openOverviewTarget(context, target, scope) ? null : onSelect(c.id);
+    return AttentionRow(
+      key: ValueKey('area-row-${c.id}'),
+      severity: c.severity.badge,
+      count: '${c.count}',
+      label: c.label,
+      detail: categorySublabel(data, c),
+      selected: isSelected,
+      onTap: open ?? filter,
+      onCount: open == null ? null : filter,
+      countKey: ValueKey('area-count-${c.id}'),
+      countTooltip: open == null ? (isSelected ? 'Show all issues' : 'Show only ${c.label}') : (isSelected ? 'Show all issues' : 'Show these in Issues'),
+      chevron: open != null,
     );
   }
 
@@ -913,17 +603,11 @@ class _AreaGroup extends StatelessWidget {
     final page = enabledPages(context.read<AppState>()).any((p) => p.view.name == section) ? OverviewTarget.page(MainView(section)) : null;
     final title = titleTarget(data, section) ?? page;
     final healthyLine = _healthyLine(data, section);
-    final count = worst == null
-        ? null
-        : Text(
-            '$total',
-            style: theme.textTheme.titleLarge?.copyWith(fontSize: 20, height: 1.1, fontWeight: FontWeight.w300, color: issueColor(context, worst), fontFeatures: _tabular),
-          );
     final rows = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (problems.isEmpty && !pending && healthyLine != null)
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 4, 6, 4),
-          child: _HealthyLines(lines: [healthyLine], style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+          child: HealthyLines(lines: [healthyLine], style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
         ),
       for (final c in problems) _row(context, c),
       if (pending)
@@ -938,115 +622,15 @@ class _AreaGroup extends StatelessWidget {
         ),
       for (final c in info) _row(context, c),
     ]);
-    return Padding(
+    return AttentionGroup(
       key: ValueKey('area-$section'),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: LayoutBuilder(builder: (context, box) {
-        // A narrow gutter with the area's name and total beside its rows;
-        // when there isn't room, the name sits on top.
-        if (box.maxWidth >= 420) {
-          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(
-              width: 128,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 3, right: 12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _title(context, title),
-                  if (count != null) ...[const SizedBox(height: 4), Padding(padding: const EdgeInsets.only(left: 21), child: count)],
-                ]),
-              ),
-            ),
-            Expanded(child: rows),
-          ]);
-        }
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(children: [
-              Expanded(child: Align(alignment: Alignment.centerLeft, child: _title(context, title))),
-              ?count,
-            ]),
-          ),
-          rows,
-        ]);
-      }),
-    );
-  }
-}
-
-/// "▎4  CrashLoopBackOff · 4 pods, 2 workloads". Click goes to what the row
-/// names ([onOpen]); the count filters the Issues list ([onFilter]), as does
-/// the whole row when it has nowhere to go.
-class _AreaRow extends StatelessWidget {
-  final OverviewCategory category;
-  final String sublabel;
-  final bool selected;
-  final VoidCallback onFilter;
-  final VoidCallback? onOpen;
-  const _AreaRow({required this.category, required this.sublabel, required this.selected, required this.onFilter, this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = AppColors.of(context);
-    final info = category.severity == IssueSeverity.info;
-    final c = issueColor(context, category.severity);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: info ? colors.faint : theme.hintColor);
-    final count = Text(
-      '${category.count}',
-      style: theme.textTheme.bodySmall?.copyWith(
-        fontWeight: FontWeight.w600,
-        fontFeatures: _tabular,
-        color: info ? theme.hintColor : null,
-      ),
-    );
-    return Hoverable(
-      key: ValueKey('area-row-${category.id}'),
-      onTap: onOpen ?? onFilter,
-      builder: (hovered) => Container(
-        padding: const EdgeInsets.fromLTRB(8, 4, 6, 4),
-        decoration: BoxDecoration(
-          color: selected ? colors.selection : (hovered ? colors.hover : null),
-          borderRadius: BorderRadius.circular(5),
-        ),
-        child: Row(children: [
-          // The severity marker: a short bar, hollow for info.
-          Container(
-            width: 3,
-            height: 13,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(2),
-              color: info ? null : c,
-              border: info ? Border.all(color: colors.faint) : null,
-            ),
-          ),
-          const SizedBox(width: 10),
-          SizedBox(
-            width: 22,
-            child: onOpen == null
-                ? Tooltip(message: selected ? 'Show all issues' : 'Show only ${category.label}', waitDuration: const Duration(milliseconds: 600), child: count)
-                : Tooltip(
-                    message: selected ? 'Show all issues' : 'Show these in Issues',
-                    waitDuration: const Duration(milliseconds: 600),
-                    child: GestureDetector(key: ValueKey('area-count-${category.id}'), behavior: HitTestBehavior.opaque, onTap: onFilter, child: count),
-                  ),
-          ),
-          const SizedBox(width: 4),
-          // One line: the detail is what an ellipsis cuts first.
-          Expanded(
-            child: Text.rich(
-              TextSpan(children: [
-                TextSpan(text: category.label, style: TextStyle(color: info ? theme.hintColor : theme.colorScheme.onSurface)),
-                if (sublabel.isNotEmpty) TextSpan(text: ' · $sublabel', style: hint),
-              ]),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(fontSize: 12.5),
-            ),
-          ),
-          if (onOpen != null) Icon(Icons.chevron_right, size: 14, color: hovered ? theme.hintColor : Colors.transparent),
-        ]),
-      ),
+      icon: _sectionIcon(section),
+      title: sectionLabel(section),
+      count: worst == null ? null : total,
+      countColor: worst == null ? null : issueColor(context, worst),
+      onTitleTap: title == null ? null : () => openOverviewTarget(context, title, scope),
+      titleKey: ValueKey('area-title-$section'),
+      rows: rows,
     );
   }
 }
@@ -1077,7 +661,7 @@ class NodeCards extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       LayoutBuilder(builder: (context, box) {
         final cols = (box.maxWidth / 240).floor().clamp(1, 6);
-        return _grid([for (final n in shown) _NodeCard(node: n, showRequests: showRequests)], cols, gap: 28, runGap: 14);
+        return evenGrid([for (final n in shown) _NodeCard(node: n, showRequests: showRequests)], cols, gap: 28, runGap: 14);
       }),
       if (more > 0)
         Align(
@@ -1103,7 +687,6 @@ class _NodeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = AppColors.of(context);
     final sev = !node.ready ? Severity.error : (node.pressure.isNotEmpty || node.cordoned ? Severity.warn : Severity.ok);
     final c = severityColor(context, sev);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
@@ -1111,41 +694,33 @@ class _NodeCard extends StatelessWidget {
     final r = node.resources;
     // Unboxed: a hairline down the left, in the node's colour when it
     // isn't plainly ready.
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: () => openObject(context, ObjectRef(kind: 'Node', name: node.name)),
-        hoverColor: colors.hover,
-        borderRadius: BorderRadius.circular(4),
-        child: Container(
-          decoration: BoxDecoration(border: Border(left: BorderSide(color: sev == Severity.ok ? colors.separator : c, width: 2))),
-          padding: const EdgeInsets.fromLTRB(12, 4, 6, 6),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Tooltip(
-              message: status.isEmpty ? 'Ready' : status.join(', '),
-              waitDuration: const Duration(milliseconds: 600),
-              child: Text(node.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(height: 2),
-            Text.rich(
-              TextSpan(children: [
-                if (status.isNotEmpty) TextSpan(text: '${status.join(', ')} · ', style: TextStyle(color: c)),
-                if (node.roles.isNotEmpty) TextSpan(text: '${node.roles.join(', ')} · '),
-                TextSpan(text: plural(node.pods, 'pod')),
-              ]),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: hint,
-            ),
-            if (showRequests && r.known) ...[
-              const SizedBox(height: 8),
-              _MiniMeter(label: 'CPU', requested: r.cpuRequests, allocatable: r.cpuAllocatable),
-              const SizedBox(height: 4),
-              _MiniMeter(label: 'Mem', requested: r.memoryRequests, allocatable: r.memoryAllocatable),
-            ],
-          ]),
+    return HairlineCell(
+      accent: sev == Severity.ok ? null : c,
+      onTap: () => openObject(context, ObjectRef(kind: 'Node', name: node.name)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Tooltip(
+          message: status.isEmpty ? 'Ready' : status.join(', '),
+          waitDuration: const Duration(milliseconds: 600),
+          child: Text(node.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
         ),
-      ),
+        const SizedBox(height: 2),
+        Text.rich(
+          TextSpan(children: [
+            if (status.isNotEmpty) TextSpan(text: '${status.join(', ')} · ', style: TextStyle(color: c)),
+            if (node.roles.isNotEmpty) TextSpan(text: '${node.roles.join(', ')} · '),
+            TextSpan(text: plural(node.pods, 'pod')),
+          ]),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: hint,
+        ),
+        if (showRequests && r.known) ...[
+          const SizedBox(height: 8),
+          _MiniMeter(label: 'CPU', requested: r.cpuRequests, allocatable: r.cpuAllocatable),
+          const SizedBox(height: 4),
+          _MiniMeter(label: 'Mem', requested: r.memoryRequests, allocatable: r.memoryAllocatable),
+        ],
+      ]),
     );
   }
 }
@@ -1166,7 +741,7 @@ class _MiniMeter extends StatelessWidget {
       waitDuration: const Duration(milliseconds: 400),
       child: Row(children: [
         SizedBox(width: 30, child: Text(label, style: small)),
-        Expanded(child: _Bar(frac: frac, color: meterColor(context, frac), height: 4)),
+        Expanded(child: HairlineBar(frac: frac, color: meterColor(context, frac), height: 4)),
         SizedBox(
           width: 36,
           child: Text(formatPercent(frac), textAlign: TextAlign.right, style: small?.copyWith(color: percentColor(context, frac))),
