@@ -103,12 +103,7 @@ class _GpusViewState extends State<GpusView> with PollingState {
       final items = <Object>[];
       for (final n in sortGpuNodes(inv.nodes, _sort, _ascending)) {
         items.add(n);
-        if (!_isOpen(inv, n)) continue;
-        if (n.devices.isNotEmpty) {
-          items.addAll(n.devices);
-        } else if (n.count > 0) {
-          items.add(GpuNoStats(n));
-        }
+        if (_isOpen(inv, n)) items.addAll(n.devices);
       }
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
@@ -124,15 +119,13 @@ class _GpusViewState extends State<GpusView> with PollingState {
             padding: const EdgeInsets.only(bottom: 12),
             itemCount: items.length + (pending.isEmpty ? 0 : 1),
             itemBuilder: (context, i) {
-              if (i == items.length) return Padding(padding: const EdgeInsets.fromLTRB(12, 16, 12, 0), child: _Pending(pending));
+              if (i == items.length) return Padding(padding: const EdgeInsets.symmetric(horizontal: GpuLayout.hPad), child: _Pending(pending));
               final it = items[i];
               if (it is GpuNode) {
                 return GpuNodeRow(it, key: ValueKey('node:${it.name}'), inv: inv, layout: layout, expanded: _isOpen(inv, it), onToggle: () => setState(() => _toggled[it.name] = !_isOpen(inv, it)));
               }
-              if (it is GpuDevice) {
-                return GpuDeviceRow(it, key: ValueKey('dev:${it.node}/${it.uuid ?? it.gpu}'), layout: layout, history: it.uuid == null ? null : _spark[it.uuid]);
-              }
-              return GpuNoStatsRow((it as GpuNoStats).node, key: ValueKey('nostats:${it.node.name}'));
+              final d = it as GpuDevice;
+              return GpuDeviceRow(d, key: ValueKey('dev:${d.node}/${d.uuid ?? d.gpu}'), layout: layout, history: d.uuid == null ? null : _spark[d.uuid]);
             },
           ),
         ),
@@ -234,17 +227,21 @@ class _Pending extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return DetailSection(
+    final small = theme.textTheme.bodySmall;
+    return EditorialSection(
       title: 'Waiting for GPUs',
-      icon: Icons.schedule,
+      top: 20,
+      collapsible: false,
+      trailing: Text('${pods.length}'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         for (final p in pods)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(width: 260, child: GpuPodLink(namespace: p.namespace, name: p.name)),
-              SizedBox(width: 80, child: Text(p.request, style: theme.textTheme.bodySmall)),
-              Expanded(child: Text(p.unschedulable ?? 'Pending', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
+              Flexible(flex: 2, child: GpuPodLink(namespace: p.namespace, name: p.name)),
+              const SizedBox(width: 12),
+              SizedBox(width: 64, child: Text(p.request, style: small?.copyWith(fontFeatures: tabularFigures))),
+              Expanded(flex: 5, child: Text(p.unschedulable ?? 'Pending', style: small?.copyWith(color: theme.hintColor))),
             ]),
           ),
       ]),

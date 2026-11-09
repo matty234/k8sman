@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/gpu/gpu_api.dart';
@@ -64,7 +65,7 @@ class _GpuPromApi extends PromApi {
   }
 }
 
-Future<void> _pumpView(WidgetTester tester, Size size) async {
+Future<void> _pumpView(WidgetTester tester, Size size, {Brightness brightness = Brightness.dark}) async {
   final api = FakeApiClient();
   final app = AppState(api)
     ..types = testTypes
@@ -74,7 +75,7 @@ Future<void> _pumpView(WidgetTester tester, Size size) async {
   tester.view.devicePixelRatio = 1;
   await tester.pumpWidget(MultiProvider(
     providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
-    child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(Brightness.dark), home: const Scaffold(body: GpusView())),
+    child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(brightness), home: const Scaffold(body: GpusView())),
   ));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
@@ -148,8 +149,7 @@ void main() {
     await saveScreenshot(tester, 'gpus-1200x800');
     expect(find.text('GPU 1'), findsOneWidget);
     expect(find.text('Idle'), findsOneWidget);
-    expect(find.text('4 × Tesla V100 SXM2 32GB · no live stats'), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.expand_more).at(1)); // gpu-node-b's chevron
+    await tester.tap(find.byIcon(Icons.expand_more).first); // gpu-node-b's chevron (gpu-node-a has no devices)
     await tester.pump();
     expect(find.text('GPU 1'), findsNothing);
     await tester.tap(find.byIcon(Icons.chevron_right).first);
@@ -158,6 +158,26 @@ void main() {
     await _pumpView(tester, const Size(800, 600));
     expect(tester.takeException(), isNull);
     await saveScreenshot(tester, 'gpus-800x600');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('every GPU fact on a node row is readable, in a column or the meta line', (tester) async {
+    await loadRealFonts();
+    addTearDown(tester.view.reset);
+    // Wide enough for a Driver column (1100) and too narrow for one (760).
+    for (final w in [1100.0, 760.0]) {
+      await _pumpView(tester, Size(w, 800));
+      final unclipped = tester
+          .renderObjectList<RenderParagraph>(find.byType(RichText))
+          .where((p) => p.text.toPlainText().contains('595.91.07') && !p.didExceedMaxLines);
+      expect(unclipped, isNotEmpty, reason: 'driver readable at width $w');
+      expect(find.textContaining('NVIDIA RTX PRO 4000 Blackwell · 24 GiB'), findsOneWidget);
+    }
+    for (final b in Brightness.values) {
+      await tester.pumpWidget(const SizedBox()); // no theme cross-fade
+      await _pumpView(tester, const Size(1100, 760), brightness: b);
+      await saveScreenshot(tester, 'gpu-cleanup-${b.name}');
+    }
     await tester.pumpWidget(const SizedBox());
   });
 

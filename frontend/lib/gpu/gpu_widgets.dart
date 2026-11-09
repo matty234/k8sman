@@ -197,8 +197,18 @@ class _SparkPainter extends CustomPainter {
 String gpuNodeLine(GpuNode n) => [
       n.productName,
       if (n.memoryMiB > 0) formatBytes(n.memoryMiB * 1024 * 1024),
+      if (gpuDriverLine(n).isNotEmpty) gpuDriverLine(n),
+      ...gpuSharing(n),
+    ].join(' · ');
+
+/// "driver 570.211.01 · CUDA 12.8", or "" when neither is labelled.
+String gpuDriverLine(GpuNode n) => [
       if (n.driverVersion != null) 'driver ${n.driverVersion}',
       if (n.cudaVersion != null) 'CUDA ${n.cudaVersion}',
+    ].join(' · ');
+
+/// MIG and sharing set-up: "MIG single", "time-slicing ×4".
+List<String> gpuSharing(GpuNode n) => [
       if (n.migStrategy != null && n.migStrategy != 'none') 'MIG ${n.migStrategy}',
       if (n.sharingStrategy != null && n.sharingStrategy != 'none') '${n.sharingStrategy} ×${math.max(n.replicas, 1)}',
-    ].join(' · ');
+    ];

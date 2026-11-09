@@ -75,7 +75,7 @@ class UsageCell extends StatelessWidget {
         Expanded(
           child: p == null
               ? const SizedBox.shrink()
-              : _UsageBar(frac: p / 100, color: alert ?? theme.colorScheme.onSurface.withValues(alpha: 0.42)),
+              : UsageBar(frac: p / 100, color: alert ?? theme.colorScheme.onSurface.withValues(alpha: 0.42)),
         ),
         const SizedBox(width: 6),
         SizedBox(
@@ -98,10 +98,11 @@ class UsageCell extends StatelessWidget {
   }
 }
 
-class _UsageBar extends StatelessWidget {
+/// The 3px bar of a usage cell: [frac] (0..1) of the track in [color].
+class UsageBar extends StatelessWidget {
   final double frac;
   final Color color;
-  const _UsageBar({required this.frac, required this.color});
+  const UsageBar({super.key, required this.frac, required this.color});
 
   @override
   Widget build(BuildContext context) {
