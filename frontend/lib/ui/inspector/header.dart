@@ -177,10 +177,17 @@ class HeaderMark extends StatelessWidget {
     if (severity == Severity.ok) return Icon(Icons.check_circle, size: 15, color: severityColor(context, Severity.ok));
     final hollow = severity == Severity.neutral || severity == Severity.info;
     final c = hollow ? Theme.of(context).hintColor : severityColor(context, severity);
-    return Container(
-      width: 9,
-      height: 9,
-      decoration: BoxDecoration(color: hollow ? null : c, shape: BoxShape.circle, border: Border.all(color: c, width: 1.5)),
+    // The same footprint as the check (a 15px icon whose circle is ~12.5px).
+    return SizedBox(
+      width: 15,
+      height: 15,
+      child: Center(
+        child: Container(
+          width: 12.5,
+          height: 12.5,
+          decoration: BoxDecoration(color: hollow ? null : c, shape: BoxShape.circle, border: Border.all(color: c, width: 1.5)),
+        ),
+      ),
     );
   }
 }
