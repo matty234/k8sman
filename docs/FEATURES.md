@@ -115,7 +115,12 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   `rollout restart` / `status` for workloads, with `-n`, `--context` and
   `--kubeconfig` as the app has them. Several rows give one command per
   namespace.
-- Usage columns from metrics-server.
+- Usage columns from metrics-server: Pods and Nodes show CPU and Memory as
+  the value, a small bar and the percentage of the pod's limit (else its
+  request; nodes: allocatable), amber from 70% and red from 90%. Sorting
+  orders by the percentage (pods with neither limit nor request rank below
+  the rest, by value); filter on the value (`cpu>500m`, `memory>1Gi`) or the
+  percentage (`cpu%>80`, `cpu>80%`). Under ~90px wide only the value shows.
 - Empty in this namespace? A **Show all namespaces** button.
 - Clear error states for unreachable, timed-out, unauthorized, forbidden and
   not-found clusters, and for a backend that's down, each with Retry.
@@ -172,7 +177,7 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   - **PersistentVolumeClaim, PersistentVolume, StorageClass**: diagnoses for
     pending and resizing volumes. The PVC table's **Used** column shows how
     full each volume is (from Prometheus, or the kubelets when Prometheus
-    doesn't have it), amber from 80% and red from 90%; filter with `used>80`.
+    doesn't have it) as "12 / 50 Gi", a bar and the percentage, amber from 80% and red from 90%; filter with `used>80` (percent) or `used>10Gi`.
   - **Node, Namespace, ResourceQuota, LimitRange, Event, APIService.**
   - **CustomResourceDefinition**: a schema browser. **Any custom resource**: a
     generic panel that summarises status and conditions.
@@ -280,7 +285,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   (DaemonSet and mirror pods), and anything blocking it. Options cover
   emptyDir data and pods without a controller. Evictions respect
   PodDisruptionBudgets, retrying for up to 5 minutes.
-- **Metrics**: Top, custom metrics, external metrics and a live HPA view.
+- **Metrics (legacy)**: the old Top / Storage / Network / Custom / External
+  page, out of the sidebar and reachable from ⌘K or `:metrics` for one more
+  release. Its content now lives in the tables (usage columns), the Node and
+  Pod inspectors (network rates) and the HPA panel (live metric values).
 - **Helm**: releases, values, manifest, hooks, history diffs, rollback,
   upgrade with a dry-run diff (optionally to an `oci://` chart, with a
   searchable list of the registry's versions using your `helm registry login`

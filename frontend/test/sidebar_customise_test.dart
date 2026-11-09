@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
+import 'package:k8sman/modules/addons_module.dart';
 import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/modules/metrics_module.dart';
 import 'package:k8sman/state/app_state.dart';
@@ -43,7 +44,7 @@ void main() {
       expect(back.isHidden(MainView.security), isTrue);
       expect(back.pins, [_deploy, _podsKs]);
       // Pins land after the last visible entry, not under More.
-      expect(back.entries.indexWhere((e) => e.pin == _deploy), lessThan(back.entries.indexWhere((e) => e.view == MetricsModule.page)));
+      expect(back.entries.indexWhere((e) => e.pin == _deploy), lessThan(back.entries.indexWhere((e) => e.view == HelmModule.page)));
 
       final odd = SidebarConfig.fromJson({
         'items': [
@@ -59,7 +60,8 @@ void main() {
       expect(odd.pins, [const SidebarPin(group: '', kind: 'Pod')]);
       // Every page is present exactly once; ones the file lacked keep their default visibility.
       expect(odd.entries.where((e) => e.view != null).length, SidebarConfig.pages.length);
-      expect(odd.isHidden(MetricsModule.page), isTrue);
+      expect(odd.isHidden(AddonsModule.page), isTrue);
+      expect(odd.entries.any((e) => e.view == MetricsModule.page), isFalse); // legacy: ⌘K only
       expect(odd.isHidden(MainView.overview), isFalse);
       expect(odd.entries.any((e) => e.view == MainView.alerts), isFalse);
       expect(SidebarConfig.fromJson(null).isDefault, isTrue);

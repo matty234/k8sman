@@ -166,8 +166,13 @@ machine.
   metrics-server next to requests and limits, pressure and cordon state.
   Each node's menu cordons, uncordons or **drains** it. A drain shows which
   pods it will evict first, and respects PodDisruptionBudgets.
-- The **Metrics** page has Top pods and nodes, custom and external metrics
-  (for example KEDA), and a live HPA view.
+- The **Pods** and **Nodes** tables show live CPU and memory with a small
+  bar and the percentage of the limit (else the request; for nodes,
+  allocatable), amber from 70% and red from 90%. Sort by it, or filter with
+  `cpu>500m` or `memory%>80`. The **PVC** table's Used column shows
+  "12 / 50 Gi" with a bar. The HPA panel shows each metric's live value
+  (including custom and external metrics, for example KEDA) next to its
+  target.
 - With Prometheus installed, Pod and Node panels gain 1h/6h history charts.
   PrometheusRule panels show live rule state, and ServiceMonitor/PodMonitor
   panels show scrape-target health. k8sman reaches Prometheus through the

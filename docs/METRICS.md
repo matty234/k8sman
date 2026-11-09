@@ -50,10 +50,24 @@ the original. Objects without a sample have no `.k8sman` key, so the
 column is empty and renders as "—". User-defined columns can use it too,
 e.g. `{"name": "CPU/req", "type": "quantity", "query": ".k8sman.usage.cpuMillis"}`.
 
-Default columns: pods get **CPU** and **Memory**; nodes get **CPU**, **CPU%**,
-**Memory**, **Mem%** (plus allocatable as **Alloc CPU** / **Alloc Memory**).
-They use the `quantity` column type: right-aligned, sorted by parsed value,
-"—" when empty, and percentages coloured at ≥70% (amber) and ≥90% (red).
+Pods also get their containers' limits and requests summed
+(`cpuLimitMillis`, `cpuRequestMillis`, `memoryLimitBytes`,
+`memoryRequestBytes`; a limit only when every container has one) and nodes
+their allocatable (`cpuAllocatableMillis`, `memoryAllocatableBytes`). Usage is
+measured against the limit, else the request (nodes: allocatable):
+`cpuBasis`/`memoryBasis` (`limit`, `request` or `allocatable`),
+`cpuBase`/`memoryBase` (cores, bytes) and `cpuPercent`/`memoryPercent` (one
+decimal). This comes from the object itself, so it costs no extra calls.
+
+Default columns: pods and nodes get **CPU** and **Memory** (nodes also
+allocatable as **Alloc CPU** / **Alloc Memory**). They use the `usage` column
+type, whose cell is `{raw, base?, percent?, basis?, unit}` (`raw`/`base` in
+cores or bytes, `unit` `cpu` or `bytes`): the value, a thin bar and the
+percentage, coloured at ≥70% (amber) and ≥90% (red); under ~90px only the
+value. Sorting orders by the percentage, then the value; filters compare the
+value (`cpu>500m`) or, with `%`, the percentage (`cpu%>80`, `cpu>80%`). The
+PVC table's **Used** column uses it too, with `basis: "capacity"`: "12 / 50
+Gi", a bar and the percentage (amber from 80%).
 
 **Live updates.** A pod/node `/api/watch` also re-evaluates its rows every
 15s with fresh usage, without re-listing. It keeps the latest object per UID
@@ -98,8 +112,15 @@ referenced by HPAs, with their selectors (e.g. KEDA's
 - **Deployment / StatefulSet / DaemonSet:** a Usage section with summed usage
   vs summed requests over the pods that have samples, the per-pod spread
   (min / median / max) and the busiest pods.
-- **HPA panel:** a Live metrics section (above).
-- **Metrics page** (nav → Metrics): API status strip; a **Top** tab
+- **HPA panel:** the Metrics section shows each metric's live value (above)
+  next to its target, with a bar of current against target (the tick), the
+  replicas it proposes and which metric is driving; the HPA's own
+  `status.currentMetrics` is shown beside it, and alone when the live call
+  fails.
+- **Node / Pod panels:** live network receive/transmit from the kubelet when
+  there is no Prometheus (with Prometheus the history charts show it).
+- **Metrics page (legacy)**: out of the sidebar, reachable from ⌘K and
+  `:metrics` for one more release. API status strip; a **Top** tab
   (sortable nodes and pods, % of requests/limits, following the namespace
   filter, refreshed every 15s); **Custom metrics** (pick a resource type and
   metric, optional label selector, values per object); **External metrics**

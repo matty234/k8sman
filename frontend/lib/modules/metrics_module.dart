@@ -6,9 +6,12 @@ import '../metrics/metrics_page.dart';
 import '../state/app_state.dart';
 import 'module.dart';
 
-/// Metrics: the Metrics page (top, storage, network, custom and external
-/// metrics, HPAs). The metrics APIs behind it (/api/metrics/*) stay core:
-/// the Nodes page, table usage columns and panels use them too.
+/// Metrics: metrics-server status, and the legacy Metrics page (top,
+/// storage, network, custom and external metrics). The page is retired:
+/// usage lives in the Pods, Nodes and PVC tables, network rates in the
+/// inspector and custom/external values in the HPA panel. It stays reachable
+/// from ⌘K and `:metrics` for one release, out of the sidebar. The metrics
+/// APIs behind it (/api/metrics/*) are core.
 class MetricsModule extends AppModule {
   const MetricsModule();
 
@@ -21,17 +24,17 @@ class MetricsModule extends AppModule {
   String get name => 'Metrics';
 
   @override
-  String get description => 'CPU and memory usage from metrics-server.';
+  String get description => 'CPU and memory usage from metrics-server, in the Pods and Nodes tables.';
 
   @override
   List<AppPage> get pages => [
         AppPage(
           view: page,
           icon: Icons.query_stats,
-          label: 'Metrics',
+          label: 'Metrics (legacy)',
           commands: const ['metrics'],
           after: MainView.access,
-          underMore: true,
+          inSidebar: false,
           builder: (_) => const MetricsPage(),
         ),
       ];

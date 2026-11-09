@@ -27,7 +27,7 @@ class HelmModule extends AppModule {
           icon: Icons.sailing_outlined,
           label: 'Helm',
           commands: const ['helm'],
-          after: const MainView('metrics'),
+          after: MainView.access,
           underMore: true,
           builder: (_) => const HelmView(),
         ),
