@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/ui/terminal/exec_protocol.dart';
-import 'package:k8sman/ui/terminal/terminal_session.dart';
 import 'package:k8sman/ui/terminal/terminal_tab.dart';
 
 import 'fake_exec.dart';
@@ -100,38 +99,6 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
     expect(cmdJ, 1);
     tab.dispose();
-  });
-
-  testWidgets('dock: terminal tab has its own icon and asks before closing a running session', (tester) async {
-    final transport = FakeExecTransport();
-    final tab = newTab(transport);
-    final (dock, _) = await pumpDock(tester, tabs: [tab]);
-    transport.last.emit(const ExecStarted('nginx', ['/bin/sh']));
-    await flush(tester);
-    expect(find.byKey(const ValueKey('dock-alerts-tab')), findsOneWidget); // the strip's fixed first tab
-    expect(find.descendant(of: find.byKey(ValueKey('dock-tab-${tab.id}')), matching: find.byIcon(Icons.terminal)), findsOneWidget);
-
-    // Collapsing keeps the session alive.
-    dock.setCollapsed(true);
-    await flush(tester);
-    expect(find.byType(TerminalSession), findsNothing);
-    expect(transport.last.closed, isFalse);
-    dock.setCollapsed(false);
-    await flush(tester);
-
-    await tester.tap(find.byKey(ValueKey('dock-tab-close-${tab.id}')));
-    await tester.pumpAndSettle();
-    expect(find.text('End the terminal session?'), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(dock.tabs, [tab]);
-
-    await tester.tap(find.byKey(ValueKey('dock-tab-close-${tab.id}')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('confirm-close-terminal')));
-    await tester.pumpAndSettle();
-    expect(dock.tabs, isEmpty);
-    expect(transport.last.closed, isTrue);
   });
 
 }

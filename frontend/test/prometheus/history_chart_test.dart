@@ -8,7 +8,6 @@ import 'package:k8sman/prometheus/metric_history_chart.dart';
 import 'package:k8sman/prometheus/prom_api.dart';
 
 import '../support/harness.dart';
-import '../support/screenshot.dart';
 import 'prom_fixtures.dart';
 
 Map<String, dynamic> devFixture(String name) => Map<String, dynamic>.from(jsonDecode(File('../dev/fixtures/$name').readAsStringSync()) as Map);
@@ -22,7 +21,6 @@ void main() {
   tearDown(() => PromApi.debugOverride = null);
 
   testWidgets('pod panel shows CPU and memory history with hover values', (tester) async {
-    await loadRealFonts();
     await pumpPanel(tester, devFixture('pod-web.json'), size: const Size(560, 1600));
     expect(find.text('Metrics history'), findsOneWidget);
     expect(find.text('CPU'), findsOneWidget);

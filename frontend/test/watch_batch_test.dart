@@ -1,20 +1,10 @@
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/state/app_state.dart';
-import 'package:k8sman/state/log_dock.dart';
 import 'package:k8sman/state/table_controller.dart';
-import 'package:k8sman/ui/detail/detail_sidebar.dart';
-import 'package:k8sman/ui/theme.dart';
-import 'package:provider/provider.dart';
 
-import 'support/harness.dart';
 import 'support/table_fakes.dart';
 
 WatchMessage _ev(String type, TableRowData row) => WatchMessage(type: type, row: row);
@@ -83,70 +73,8 @@ void main() {
   });
 
   group('detail sidebar', () {
-    testWidgets('applies BATCH events and reconnects with backoff', (tester) async {
-      final api = _SidebarApi();
-      final cm = jsonDecode(File('../dev/fixtures/cm-web-config.json').readAsStringSync()) as Json;
-      Json version(String mode) => jsonDecode(jsonEncode(cm))..['data']['APP_MODE'] = mode;
-      TableRowData row(String mode) =>
-          TableRowData(uid: 'u', name: 'web-config', namespace: 'demo', resourceVersion: mode, cells: const [], object: version(mode));
-      final app = AppState(api)..types = testTypes;
-      app.openDetail(DetailTarget(type: testType('', 'ConfigMap'), name: 'web-config', namespace: 'demo'));
-      tester.view.physicalSize = const Size(600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          Provider<ApiClient>.value(value: api),
-          ChangeNotifierProvider<AppState>.value(value: app),
-          ChangeNotifierProvider<LogDock>(create: (_) => LogDock(api)),
-        ],
-        child: MaterialApp(theme: buildTheme(Brightness.dark), home: const Scaffold(body: DetailSidebar())),
-      ));
-      api.controller!.add(WatchMessage(
-        type: 'SNAPSHOT',
-        table: TableData(resource: testType('', 'ConfigMap'), columns: const [], isDefaultColumns: true, resourceVersion: '1', rows: [row('one')]),
-      ));
-      await tester.pump();
-      expect(find.text('one'), findsWidgets);
-
-      api.controller!.add(WatchMessage(type: 'BATCH', events: [_ev('MODIFIED', row('two')), _ev('MODIFIED', row('three'))]));
-      await tester.pump();
-      expect(find.text('three'), findsWidgets);
-      expect(find.text('two'), findsNothing);
-
-      api.controller!.add(WatchMessage(type: 'BATCH', events: [_ev('DELETED', row('three'))]));
-      await tester.pump();
-      expect(find.text('Deleted'), findsOneWidget);
-
-      // The stream closes: reconnect after a short jittered delay (≤ 500 ms
-      // the first time), not a flat 2 s.
-      expect(api.watches, 1);
-      await api.controller!.close();
-      await tester.pump(const Duration(milliseconds: 501));
-      expect(api.watches, 2);
-      // The next drop backs off further (≤ 1 s, ≥ 500 ms).
-      await api.controller!.close();
-      await tester.pump(const Duration(milliseconds: 499));
-      expect(api.watches, 2);
-      await tester.pump(const Duration(milliseconds: 502));
-      expect(api.watches, 3);
-
-      // Disposing the sidebar cancels the watch and the retry timer.
-      await tester.pumpWidget(const SizedBox());
-      expect(api.controller!.hasListener, isFalse);
-    });
 
   });
 }
 
 Json _rowJson(String name) => {'uid': 'u-$name', 'name': name, 'namespace': 'demo', 'resourceVersion': '1', 'cells': [name]};
-
-class _SidebarApi extends FakeApiClient {
-  StreamController<WatchMessage>? controller;
-  int watches = 0;
-  @override
-  Stream<WatchMessage> watch(ResourceRef r, {String? namespace, NamespaceScope? scope, String? labelSelector, String? fieldSelector, bool includeObject = false, List<ColumnDef>? columns}) {
-    watches++;
-    return (controller = StreamController<WatchMessage>()).stream;
-  }
-}

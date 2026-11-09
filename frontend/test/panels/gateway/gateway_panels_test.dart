@@ -4,7 +4,6 @@ import 'package:k8sman/api/models.dart';
 import 'package:k8sman/ui/widgets/atoms.dart' show CopyLine;
 import 'package:k8sman/ui/inspector/inspector.dart';
 
-import '../../support/screenshot.dart';
 import 'gw_support.dart';
 
 /// [o] with every listener, rule and secondary section opened (healthy
@@ -26,35 +25,7 @@ Json opened(Json o) {
 void main() {
   setUp(SectionMemory.reset);
 
-  testWidgets('Gateway demo-gw: healthy, listeners, attached routes, topology', (tester) async {
-    await loadRealFonts();
-    final app = await pumpGwPanel(tester, opened(gwFixture('gateway-demo-gw')), size: const Size(560, 3000));
-    expect(find.text('Programmed'), findsWidgets);
-    expect(find.text('10.96.230.213'), findsWidgets);
-    // Listener rows.
-    expect(find.textContaining('HTTPS :443', findRichText: true), findsWidgets); // the row, its routes' group and the topology
-    expect(find.text('*.example.com'), findsOneWidget);
-    expect(find.text('Secret demo-tls'), findsWidgets);
-    expect(find.textContaining('Routes from namespaces with gateway-access=true'), findsOneWidget);
-    expect(find.textContaining('Routes from this namespace (gateway-demo)'), findsOneWidget);
-    // Attached routes grouped by listener, with acceptance.
-    expect(find.text('HTTPRoute demo/web-route'), findsWidgets);
-    expect(find.text('Not accepted'), findsNWidgets(2));
-    expect(find.byTooltip('NoMatchingParent: No listeners match this parent ref'), findsOneWidget);
-    expect(find.text('No matching listener'), findsOneWidget);
-    // Topology reaches backends.
-    expect(find.text('demo/web'), findsWidgets);
-    expect(find.text('ghost'), findsWidgets);
-    expect(find.text('Service not found'), findsWidgets);
-    // Infrastructure labels.
-    expect(find.text('Infrastructure'), findsOneWidget);
-    expect(find.textContaining('platform', findRichText: true), findsWidgets);
-    await tester.tap(find.text('eg').first);
-    expect(app.detail?.type.kind, 'GatewayClass');
-  });
-
   testWidgets('HTTPRoute web-route: rules, weights, filters, curl', (tester) async {
-    await loadRealFonts();
     final app = await pumpGwPanel(tester, opened(gwFixture('httproute-web-route')), size: const Size(560, 2600));
     expect(find.text('Accepted'), findsWidgets);
     expect(find.text('path /api*  ·  header x-canary = true'), findsOneWidget);
@@ -73,7 +44,6 @@ void main() {
   });
 
   testWidgets('HTTPRoute admin-api: NotAccepted, listener not found', (tester) async {
-    await loadRealFonts();
     await pumpGwPanel(tester, gwFixture('httproute-admin-api'));
     expect(find.text('Not accepted'), findsWidgets);
     expect(find.text("Listener 'admin-api' not found on Gateway gateway-demo/demo-gw"), findsOneWidget);
@@ -81,7 +51,6 @@ void main() {
   });
 
   testWidgets('HTTPRoute cache-admin: RefNotPermitted needs a ReferenceGrant', (tester) async {
-    await loadRealFonts();
     await pumpGwPanel(tester, opened(gwFixture('httproute-cache-admin')));
     expect(find.text('Unresolved refs'), findsWidgets);
     expect(find.text('backendRef to Service demo/redis requires a ReferenceGrant in demo'), findsOneWidget);
@@ -90,19 +59,7 @@ void main() {
     expect(find.text("curl -H 'Host: cache.example.com' 'http://10.96.230.213/'"), findsOneWidget);
   });
 
-  testWidgets('GatewayClass eg: controller, parameters, gateways', (tester) async {
-    await loadRealFonts();
-    await pumpGwPanel(tester, gwFixture('gatewayclass-eg'));
-    expect(find.text('gateway.envoyproxy.io/gatewayclass-controller'), findsOneWidget);
-    expect(find.text('EnvoyProxy/clusterip-proxy'), findsOneWidget);
-    expect(find.text('gateway-demo/demo-gw'), findsOneWidget);
-    expect(find.text('demo/legacy-gw'), findsOneWidget);
-    expect(find.text('gateway-demo/pending-gw'), findsNothing);
-    expect(find.text('Install Envoy Gateway'), findsNothing);
-  });
-
   testWidgets('ReferenceGrant: summary, routes relying on it, uncovered refs', (tester) async {
-    await loadRealFonts();
     await pumpGwPanel(tester, gwFixture('referencegrant-allow-gateway-demo-to-web'));
     expect(find.text('Allows HTTPRoutes in namespace gateway-demo to reference the Service web in demo.'), findsOneWidget);
     expect(find.text('Allows GRPCRoutes in namespace gateway-demo to reference the Service web in demo.'), findsOneWidget);

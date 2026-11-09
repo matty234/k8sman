@@ -7,7 +7,6 @@ import 'package:k8sman/panels/panel.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/detail/yaml_editor.dart' show DiffView;
 
-import '../../support/screenshot.dart';
 import 'argocd_panels_test.dart' hide main;
 import 'fake_argo_diff.dart';
 
@@ -54,7 +53,6 @@ void main() {
   });
 
   testWidgets('out-of-sync diff: modified deployment and resource to prune', (tester) async {
-    await loadRealFonts();
     await pumpArgo(tester, fx('app-helm-guestbook-drift.json'), diffApi: fake());
     expect(tester.takeException(), isNull);
     expect(find.text('Diffs via argocd-server · session'), findsOneWidget);
@@ -79,7 +77,6 @@ void main() {
   });
 
   testWidgets('not connected: strip offers the initial admin password (opt-in)', (tester) async {
-    await loadRealFonts();
     await pumpArgo(tester, fx('app-helm-guestbook-drift.json'), diffApi: fake(auth: 'none'));
     expect(find.text('Connect to the Argo CD API to see diffs'), findsOneWidget);
     expect(toggle(depKey), findsNothing);

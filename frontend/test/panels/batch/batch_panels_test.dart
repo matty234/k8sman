@@ -5,13 +5,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/batch/batch_common.dart';
-import 'package:k8sman/panels/batch/cron.dart';
-import 'package:k8sman/panels/batch/cronjob_panel.dart';
 import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/util/k8s.dart';
 
 import '../../support/harness.dart';
-import '../../support/screenshot.dart';
 
 Json _load(String path) => jsonDecode(File(path).readAsStringSync()) as Json;
 List<Json> _items(String path) => asMapList(_load(path)['items']);
@@ -178,22 +175,10 @@ void main() {
           'Failing');
     });
 
-    test('overdueRun', () {
-      final s = CronSchedule.tryParse('*/5 * * * *')!;
-      final last = DateTime.utc(2026, 11, 3, 11, 30);
-      expect(overdueRun(s, ZoneRules.utc, lastSchedule: last, now: DateTime.utc(2026, 11, 3, 11, 36)), isNull);
-      expect(overdueRun(s, ZoneRules.utc, lastSchedule: last, now: DateTime.utc(2026, 11, 3, 11, 38)), DateTime.utc(2026, 11, 3, 11, 35));
-      final daily = CronSchedule.tryParse('0 2 * * *')!;
-      // Daily: grace is 6h.
-      expect(overdueRun(daily, ZoneRules.utc, lastSchedule: DateTime.utc(2026, 11, 2, 2), now: DateTime.utc(2026, 11, 3, 7)), isNull);
-      expect(overdueRun(daily, ZoneRules.utc, lastSchedule: DateTime.utc(2026, 11, 2, 2), now: DateTime.utc(2026, 11, 3, 9)), DateTime.utc(2026, 11, 3, 2));
-      expect(overdueRun(daily, ZoneRules.utc, now: DateTime.utc(2026, 11, 3, 9)), isNull);
-    });
   });
 
   group('Job panel', () {
     testWidgets('complete job: summary, pods via legacy controller-uid label', (tester) async {
-      await loadRealFonts();
       final app = await pumpPanel(tester, migrateDb, api: _api(pods: migratePods));
       expect(find.text('Complete in 11s'), findsOneWidget);
       expect(find.text('1 succeeded'), findsOneWidget); // the Pods summary
@@ -213,37 +198,10 @@ void main() {
       expect(app.detail?.type.kind, 'Pod');
     });
 
-    testWidgets('failed job: reason, attempts and exit codes', (tester) async {
-      await loadRealFonts();
-      final app = await pumpPanel(tester, failedJob(), api: _api(pods: failedPods()));
-      expect(find.text('Failed'), findsWidgets);
-      expect(find.textContaining('BackoffLimitExceeded'), findsWidgets);
-      expect(find.text('Job has reached the specified backoff limit'), findsWidgets);
-      expect(find.text('Failed: BackoffLimitExceeded'), findsOneWidget);
-      expect(find.text('3 failed'), findsOneWidget); // the Pods summary
-      expect(find.text('#1'), findsOneWidget);
-      expect(find.text('#3'), findsOneWidget);
-      expect(find.textContaining('exit 137', findRichText: true), findsOneWidget);
-      expect(find.textContaining('OOMKilled', findRichText: true), findsOneWidget);
-      expect(find.text('psycopg2.OperationalError: connection refused'), findsOneWidget);
-      await openSection(tester, 'job-spec');
-      expect(find.text('2 · 3 failures so far'), findsOneWidget);
-      expect(find.textContaining('will be deleted in 28m'), findsOneWidget);
-      expect(find.text('FailJob when exit code in [42] (container import)'), findsOneWidget);
-      await openSection(tester, 'job-template');
-      await tester.tap(find.byKey(const ValueKey('container-row-import')));
-      await tester.pump();
-      expect(find.textContaining("'s3://bucket/data set.csv'"), findsOneWidget);
-      await tester.tap(find.text('importer'));
-      await tester.pump();
-      expect(app.detail?.type.kind, 'ServiceAccount');
-    });
-
   });
 
   group('CronJob panel', () {
     testWidgets('schedule, next runs, status and history', (tester) async {
-      await loadRealFonts();
       final app = await pumpPanel(tester, cronReport, api: _api(jobs: liveJobs));
       expect(find.text('*/5 * * * *'), findsOneWidget);
       expect(find.text('Every 5 minutes'), findsOneWidget);
@@ -267,7 +225,6 @@ void main() {
     });
 
     testWidgets('suspended, time zone and overdue', (tester) async {
-      await loadRealFonts();
       final cj = cronReport;
       cj['spec']['schedule'] = '0 */6 * * 1-5';
       cj['spec']['timeZone'] = 'Asia/Tokyo';

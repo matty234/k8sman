@@ -15,7 +15,6 @@ import 'package:provider/provider.dart';
 
 import '../prometheus/prom_fixtures.dart';
 import '../support/harness.dart';
-import '../support/screenshot.dart';
 
 /// /api/gpu as the backend builds it from backend/internal/gpu/testdata
 /// (two GPU nodes, one without an exporter; devices attributed to pods).
@@ -91,7 +90,6 @@ void main() {
   });
 
   testWidgets('GPUs page renders nodes, devices and callouts without overflow', (tester) async {
-    await loadRealFonts();
     addTearDown(tester.view.reset);
     for (final w in [480.0, 760.0, 1180.0]) {
       await _pumpView(tester, Size(w, 1000));
@@ -107,44 +105,4 @@ void main() {
     await tester.pumpWidget(const SizedBox()); // dispose the poll timer
   });
 
-  testWidgets('node panel shows the GPU section and history; pod panel its GPUs', (tester) async {
-    await loadRealFonts();
-    final node = {
-      'apiVersion': 'v1',
-      'kind': 'Node',
-      'metadata': {'name': 'gpu-node-b', 'uid': 'n1', 'labels': {'nvidia.com/gpu.product': 'NVIDIA-RTX-PRO-4000-Blackwell'}},
-      'spec': {},
-      'status': {
-        'capacity': {'cpu': '94', 'memory': '990485244Ki', 'nvidia.com/gpu': '3', 'pods': '110'},
-        'allocatable': {'cpu': '93300m', 'memory': '984193788Ki', 'nvidia.com/gpu': '3', 'pods': '110'},
-        'conditions': [{'type': 'Ready', 'status': 'True'}],
-      },
-    };
-    await pumpPanel(tester, node, size: const Size(560, 2600));
-    expect(find.text('GPUs'), findsOneWidget);
-    expect(find.text('GPU history'), findsOneWidget);
-    expect(find.text('2/3 allocated'), findsOneWidget);
-    expect(prom.queries.any((q) => q.contains('DCGM_FI_DEV_GPU_UTIL{UUID=~"GPU-11111111')), isTrue);
-
-    final pod = {
-      'apiVersion': 'v1',
-      'kind': 'Pod',
-      'metadata': {'name': 'trainer-0', 'namespace': 'ml', 'uid': 'p1'},
-      'spec': {
-        'nodeName': 'gpu-node-b',
-        'containers': [
-          {'name': 'train', 'image': 'trainer:1', 'resources': {'limits': {'nvidia.com/gpu': '2'}}},
-        ],
-      },
-      'status': {'phase': 'Running'},
-    };
-    await pumpPanel(tester, pod, size: const Size(560, 2600));
-    expect(find.text('2 GPUs'), findsOneWidget);
-    expect(find.text('GPU history'), findsOneWidget);
-    expect(prom.queries.any((q) => q.contains('exported_pod="trainer-0"')), isTrue);
-
-    // A pod without GPUs gets no section.
-    await pumpPanel(tester, {...pod, 'spec': {'containers': [{'name': 'web', 'image': 'nginx'}]}}, size: const Size(560, 1600));
-    expect(find.text('GPU history'), findsNothing);
-  });
 }

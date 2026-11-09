@@ -1,12 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/harness.dart';
-import '../../support/screenshot.dart';
 import 'net_support.dart';
 
 void main() {
   testWidgets('netpol: explanation and selected pods', (tester) async {
-    await loadRealFonts();
     final app = await pumpPanel(tester, devFixture('netpol-web-allow-frontend'),
         api: FakeApiClient(itemsByResource: {'pods': demoPods()}, itemsFilter: labelSelectorFilter));
     expect(find.text('Applies to pods matching app=web in demo (2 pods).'), findsOneWidget);

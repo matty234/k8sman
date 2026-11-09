@@ -5,7 +5,6 @@ import 'package:k8sman/panels/network/ingress_panel.dart';
 import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/harness.dart';
-import '../../support/screenshot.dart';
 import 'net_support.dart';
 
 Json ingressWithExtras() {
@@ -45,7 +44,6 @@ void main() {
   setUp(SectionMemory.reset);
 
   testWidgets('ingress: rules, named port resolution, missing TLS secret', (tester) async {
-    await loadRealFonts();
     final app = await pumpPanel(tester, devFixture('ingress-web'),
         api: FakeApiClient(objects: {'services/demo/web': devFixture('svc-web')}));
     expect(find.text('web.demo.local'), findsWidgets);

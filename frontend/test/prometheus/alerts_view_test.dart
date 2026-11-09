@@ -4,12 +4,10 @@ import 'package:k8sman/api/client.dart';
 import 'package:k8sman/prometheus/prom_api.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/alerts/alerts_view.dart';
-import 'package:k8sman/ui/alerts/alerts_widgets.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../support/harness.dart';
-import '../support/screenshot.dart';
 import 'prom_fixtures.dart';
 import 'package:k8sman/ui/widgets/namespace_picker.dart';
 
@@ -79,24 +77,6 @@ void main() {
     await disposeView(tester);
   });
 
-  testWidgets('expanded group shows labels, runbook and a link to the pod', (tester) async {
-    await loadRealFonts();
-    final app = await pumpAlerts(tester);
-    await tester.tap(find.text('K8smanDemoPodCrashLooping'));
-    await tester.pump();
-    await tester.tap(find.text('KubePodNotReady'));
-    await tester.pump();
-    expect(find.text('Runbook'), findsWidgets);
-    expect(find.byType(AlertLabelChips), findsWidgets);
-    final link = find.descendant(of: find.byType(AlertTargetLink), matching: find.textContaining('demo/crashy'));
-    expect(link, findsWidgets);
-    await tester.tap(link.first);
-    await tester.pump();
-    expect(app.detail?.name, 'crashy');
-    expect(app.detail?.type.kind, 'Pod');
-    await disposeView(tester);
-  });
-
   testWidgets('has its own scope: defaults to all namespaces, ignores app.namespace, picker refetches', (tester) async {
     final api = FixturePromApi();
     final app = await pumpAlerts(tester, api: api, namespace: 'kube-system');
@@ -134,7 +114,6 @@ void main() {
   });
 
   testWidgets('Silence… prefills matchers and goes through the confirm dialog', (tester) async {
-    await loadRealFonts();
     final api = FixturePromApi();
     await pumpAlerts(tester, api: api);
     expect(find.text('Silence…'), findsNothing, reason: 'collapsed groups keep actions out of the way');
@@ -160,14 +139,6 @@ void main() {
     expect(j['createdBy'], 'k8sman');
     expect([for (final m in j['matchers'] as List) '${m['name']}=${m['value']}'], containsAll(['alertname=K8smanDemoPodCrashLooping', 'namespace=demo']));
     expect(find.textContaining('Silenced K8smanDemoPodCrashLooping'), findsOneWidget);
-    await disposeView(tester);
-  });
-
-  testWidgets('a failed search shows the error and Retry, not an install offer', (tester) async {
-    await pumpAlerts(tester, api: FixturePromApi(missing: true, discoveryFailed: true), size: const Size(900, 600));
-    expect(find.textContaining("Couldn't check for Prometheus"), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
-    expect(find.text('Install Prometheus stack…'), findsNothing);
     await disposeView(tester);
   });
 

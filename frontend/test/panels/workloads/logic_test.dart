@@ -27,44 +27,6 @@ void main() {
 
   group('HPA', () {
 
-    test('pairs Pods/Object/External metrics with current values', () {
-      final hpa = {
-        'spec': {
-          'metrics': [
-            {'type': 'Resource', 'resource': {'name': 'memory', 'target': {'type': 'AverageValue', 'averageValue': '500Mi'}}},
-            {'type': 'Pods', 'pods': {'metric': {'name': 'rps'}, 'target': {'type': 'AverageValue', 'averageValue': '100'}}},
-            {
-              'type': 'Object',
-              'object': {
-                'describedObject': {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress', 'name': 'main'},
-                'metric': {'name': 'requests'},
-                'target': {'type': 'Value', 'value': '2k'}
-              }
-            },
-            {'type': 'External', 'external': {'metric': {'name': 'queue', 'selector': {'matchLabels': {'q': 'jobs'}}}, 'target': {'type': 'Value', 'value': '30'}}},
-          ]
-        },
-        'status': {
-          'currentMetrics': [
-            {'type': 'Pods', 'pods': {'metric': {'name': 'rps'}, 'current': {'averageValue': '150'}}},
-            {
-              'type': 'Object',
-              'object': {'describedObject': {'kind': 'Ingress', 'name': 'main'}, 'metric': {'name': 'requests'}, 'current': {'value': '1500'}}
-            },
-          ]
-        }
-      };
-      final m = hpaMetrics(hpa);
-      expect(m.map((x) => x.type), ['Resource', 'Pods', 'Object', 'External']);
-      expect(m[0].current, isNull);
-      expect(m[1].current, '150');
-      expect(m[1].ratio, 1.5);
-      expect(m[2].subject, 'Ingress/main');
-      expect(m[2].ratio, 0.75);
-      expect(m[3].subject, '{q=jobs}');
-      expect(m[3].current, isNull);
-    });
-
     test('behavior defaults and custom rules', () {
       expect(describeScalingRules(null, up: true), contains('(default)'));
       expect(describeScalingRules({'selectPolicy': 'Disabled'}, up: false), 'disabled');

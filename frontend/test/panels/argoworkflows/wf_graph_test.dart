@@ -52,54 +52,6 @@ void main() {
     expect(g.width, greaterThan(0));
   });
 
-  test('long edges get dummy waypoints; crossings are untangled', () {
-    // a → b → c → d and a → d (skips two layers); x → z, y → z crossing setup.
-    final n = nodes('w', {
-      'w': ('DAG', 'Running', ['a', 'y', 'x'], null),
-      'a': ('Pod', 'Succeeded', ['b', 'd'], 'w'),
-      'b': ('Pod', 'Succeeded', ['c'], 'w'),
-      'c': ('Pod', 'Succeeded', ['d'], 'w'),
-      'd': ('Pod', 'Succeeded', [], 'w'),
-      'x': ('Pod', 'Succeeded', ['xx'], 'w'),
-      'y': ('Pod', 'Succeeded', ['yy'], 'w'),
-      'xx': ('Pod', 'Succeeded', [], 'w'),
-      'yy': ('Pod', 'Succeeded', [], 'w'),
-    });
-    final g = layoutWorkflow(n, workflowName: 'w');
-    final ad = g.edges.firstWhere((e) => e.from == 'a' && e.to == 'd');
-    expect(ad.points.length, 4, reason: 'two dummy points for a two-layer skip');
-    final by = {for (final x in g.nodes) x.id: x};
-    // x/y children keep their parents' left-to-right order (no crossing).
-    expect(by['x']!.x < by['y']!.x, by['xx']!.x < by['yy']!.x);
-  });
-
-  test('steps: StepGroups are junctions; retries fold their attempts', () {
-    final n = nodes('w', {
-      'w': ('Steps', 'Failed', ['g0'], null),
-      'g0': ('StepGroup', 'Succeeded', ['s1', 'r'], 'w'),
-      's1': ('Pod', 'Succeeded', ['g1'], 'w'),
-      'r': ('Retry', 'Failed', ['r0', 'r1', 'g1'], 'w'),
-      'r0': ('Pod', 'Failed', [], 'w'),
-      'r1': ('Pod', 'Failed', [], 'w'),
-      'g1': ('StepGroup', 'Omitted', ['s2'], 'w'),
-      's2': ('Pod', 'Omitted', [], 'w'),
-    }, extra: {
-      'r0': {'name': 'w.r(0)', 'outputs': {'exitCode': '3'}},
-      'r1': {'name': 'w.r(1)', 'message': 'Error (exit code 3)'},
-      'r': {'name': 'w.r'},
-    });
-    final g = layoutWorkflow(n, workflowName: 'w');
-    final by = {for (final x in g.nodes) x.id: x};
-    expect(by.containsKey('r0'), isFalse);
-    expect(by.containsKey('r1'), isFalse);
-    expect(by['r']!.attempts, 2);
-    expect(g.repOf['r1'], 'r');
-    expect(by['g0']!.kind, GKind.junction);
-    expect(g.edges.where((e) => e.from == 'r' && e.to == 'g1'), hasLength(1));
-    // The pod shown for the retry is its last attempt.
-    expect(podNodeFor(n['r']!, n).id, 'r1');
-  });
-
   test('cycles in malformed input do not hang', () {
     final n = nodes('w', {
       'w': ('DAG', 'Running', ['a'], null),

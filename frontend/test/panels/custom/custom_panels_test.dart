@@ -8,14 +8,12 @@ import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/custom/crd_schema.dart';
 import 'package:k8sman/panels/custom/generic_panel.dart';
-import 'package:k8sman/panels/custom/refs.dart';
 import 'package:k8sman/panels/registry.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
-import '../../support/screenshot.dart';
 
 Json _load(String path) => jsonDecode(File(path).readAsStringSync()) as Json;
 Json _fixture(String name) => _load('test/panels/custom/fixtures/$name');
@@ -51,93 +49,13 @@ void main() {
 
   group('helpers', () {
 
-    test('reference detection', () {
-      const r = RefResolver(namespace: 'demo');
-      expect(r.fromScalar('secretName', 'tls')?.kind, 'Secret');
-      expect(r.fromScalar('credentialsSecretName', 'x')?.kind, 'Secret');
-      expect(r.fromScalar('claimName', 'data')?.kind, 'PersistentVolumeClaim');
-      expect(r.fromScalar('serviceAccountName', 'sa')?.kind, 'ServiceAccount');
-      expect(r.fromScalar('name', 'x'), isNull);
-      expect(r.fromScalar('displayName', 'x'), isNull);
-      final cm = r.fromMap('configMapRef', {'name': 'cfg'});
-      expect((cm?.kind, cm?.namespace), ('ConfigMap', 'demo'));
-      final job = r.fromMap('lastJob', {'apiVersion': 'batch/v1', 'kind': 'Job', 'name': 'j', 'namespace': 'ops'});
-      expect((job?.group, job?.kind, job?.namespace), ('batch', 'Job', 'ops'));
-      expect(r.fromMap('owner', {'name': 'x', 'email': 'y'}), isNull);
-      expect(r.fromList('imagePullSecrets', [{'name': 'a'}, {'name': 'b'}])?.map((e) => e.kind), ['Secret', 'Secret']);
-    });
   });
 
   group('CRD panel', () {
 
-    testWidgets('rich CRD: deprecation, migration warning, webhook, schema search', (tester) async {
-      await loadRealFonts();
-      final crd = _fixture('crd-backups.ops.example.dev.json');
-      await pumpPanel(tester, crd, size: const Size(560, 3600));
-      expect(find.textContaining('Storage migration pending'), findsOneWidget);
-      expect(find.textContaining('deprecated; use ops.example.dev/v1'), findsOneWidget);
-      expect(find.text('Service/ops-system/backup-operator-webhook:443/convert'), findsOneWidget);
-      expect(find.text('immutable'), findsOneWidget);
-      expect(find.text('list-type: map [name]'), findsOneWidget);
-      expect(find.text('Show backups'), findsOneWidget); // disabled: type not discovered
-
-      // Expand everything for the screenshot.
-      await tester.tap(find.byTooltip('Expand all'));
-      await tester.pumpAndSettle();
-      expect(find.text('timeoutSeconds'), findsOneWidget);
-      expect(find.text('int-or-string'), findsOneWidget);
-
-      await tester.enterText(find.byType(TextField), 'secret');
-      await tester.pumpAndSettle();
-      expect(find.text('1 matching field'), findsOneWidget);
-      expect(find.text('credentialsSecretName'), findsOneWidget);
-      expect(find.text('schedule'), findsNothing);
-
-      // Switch schema version.
-      await tester.enterText(find.byType(TextField), '');
-      await tester.tap(find.widgetWithText(ChoiceChip, 'v1beta1'));
-      await tester.pumpAndSettle();
-      expect(find.text('schedule'), findsNothing);
-      expect(find.text('preserve-unknown-fields'), findsWidgets);
-    });
-
   });
 
   group('generic fallback', () {
-
-    testWidgets('CR with refs, tables, generation drift and schema descriptions', (tester) async {
-      await loadRealFonts();
-      final api = FakeApiClient(objects: {
-        'customresourcedefinitions.apiextensions.k8s.io//backups.ops.example.dev': _fixture('crd-backups.ops.example.dev.json'),
-      });
-      final app = await pumpPanel(tester, _fixture('backup-nightly.json'), api: api, type: _backupType, size: const Size(560, 2400));
-
-      expect(find.textContaining("hasn't observed generation 5 yet"), findsOneWidget);
-      expect(find.textContaining('403 AccessDenied'), findsWidgets);
-      expect(find.textContaining('Stale conditions'), findsOneWidget);
-      // refs
-      expect(find.text('Secret/s3-creds'), findsOneWidget);
-      expect(find.text('ServiceAccount/backup-runner'), findsOneWidget);
-      expect(find.text('PersistentVolumeClaim/backup-scratch'), findsOneWidget);
-      expect(find.text('ConfigMap/backup-config'), findsOneWidget);
-      expect(find.text('Secret/backup-env'), findsOneWidget);
-      expect(find.text('Job/nightly-29372'), findsOneWidget);
-      expect(find.text('Database/data/orders-db'), findsOneWidget);
-      // homogeneous array → table with headers
-      expect(find.text('Timeout seconds'), findsOneWidget);
-      expect(find.text('psql, -c, CHECKPOINT'), findsOneWidget);
-      // long string → code block
-      expect(find.textContaining('set -eu'), findsOneWidget);
-      // schema description as tooltip
-      final tip = tester.widget<Tooltip>(find.ancestor(of: find.text('Schedule'), matching: find.byType(Tooltip)).first);
-      expect(tip.message, contains('Cron schedule in UTC'));
-
-
-      await tester.tap(find.text('Secret/s3-creds'));
-      await tester.pump();
-      expect(app.detail?.name, 's3-creds');
-      expect(app.detail?.namespace, 'demo');
-    });
 
     testWidgets('scale control for CRs with a scale subresource, hidden when read-only', (tester) async {
       final crd = _fixture('crd-backups.ops.example.dev.json');

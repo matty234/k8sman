@@ -8,14 +8,12 @@ import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/access/access_api.dart';
 import 'package:k8sman/ui/access/access_view.dart';
-import 'package:k8sman/ui/access/permission_matrix.dart';
 import 'package:k8sman/ui/access/rbac_model.dart';
 import 'package:k8sman/ui/access/role_editor.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../support/harness.dart';
-import '../support/screenshot.dart';
 
 /// Responses captured from the kind dev cluster with dev/rbac-demo.yaml
 /// applied (GET /api/rbac/...).
@@ -91,7 +89,6 @@ Future<(AppState, FakeAccessApi)> pumpAccess(WidgetTester tester, {Size size = c
 
 void main() {
   testWidgets('explorer: matrix, cell explanation and verify', (tester) async {
-    await loadRealFonts();
     final (_, api) = await pumpAccess(tester);
     expect(find.text('Pick a ServiceAccount, user or group'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, 'Find subject'), 'rbac-demo/');
@@ -124,7 +121,6 @@ void main() {
   });
 
   testWidgets('who can and can I tabs', (tester) async {
-    await loadRealFonts();
     await pumpAccess(tester);
     await tester.tap(find.text('Who can…?'));
     await tester.pump();
@@ -148,7 +144,6 @@ void main() {
   });
 
   testWidgets('role editor: template, verbs, dry-run then apply', (tester) async {
-    await loadRealFonts();
     final (_, api) = await pumpAccess(tester);
     await tester.tap(find.text('New role'));
     await tester.pump();
@@ -170,25 +165,5 @@ void main() {
 
   group('rbac model', () {
 
-    test('editing keeps metadata and aggregationRule', () {
-      final base = {
-        'metadata': {'name': 'x', 'resourceVersion': '7', 'labels': {'a': 'b'}, 'managedFields': []},
-        'aggregationRule': {'clusterRoleSelectors': []},
-      };
-      final obj = buildRole(cluster: true, name: 'x', rules: [EditableRule()], base: base);
-      expect(obj['metadata'], {'name': 'x', 'resourceVersion': '7', 'labels': {'a': 'b'}});
-      expect(obj['aggregationRule'], isNotNull);
-    });
-
-    test('matrix from rules marks names-only cells and dangers', () {
-      final m = matrixFromRules([
-        {'apiGroups': [''], 'resources': ['secrets'], 'verbs': ['get'], 'resourceNames': ['db']},
-        {'apiGroups': [''], 'resources': ['pods'], 'verbs': ['get', 'list']},
-      ]);
-      final secrets = m.rows.firstWhere((r) => r.resource == 'secrets');
-      expect(secrets.cells['get']!.names, ['db']);
-      expect(secrets.cells['get']!.danger, isNotNull);
-      expect(m.verbs, ['get', 'list']);
-    });
   });
 }

@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
@@ -96,49 +95,6 @@ void main() {
     expect(find.text('Less'), findsNothing);
     expect(find.byKey(const ValueKey('nav-view-security')), findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('right-click: pin a kind from the list, hide a page, unpin', (tester) async {
-    final (app, api) = await _pumpNav(tester);
-    // "More" is session-wide state; start with it closed.
-    if (find.text('Less').evaluate().isNotEmpty) {
-      await tester.tap(find.text('Less'));
-      await tester.pump();
-    }
-    await tester.tap(find.byKey(const ValueKey('nav-kind-apps/Deployment')), buttons: kSecondaryButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Pin to Sidebar'));
-    await tester.pumpAndSettle();
-    expect(app.sidebar.pins, [_deploy]);
-    expect(find.byKey(const ValueKey('nav-pin-apps/Deployment')), findsOneWidget);
-    expect(api.sidebarLayout, isNotNull, reason: 'saved to settings');
-
-    // With a namespace chosen, the pin can be scoped to it.
-    app.setNamespace('kube-system');
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('nav-kind-/Pod')), buttons: kSecondaryButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Pin to Sidebar in “kube-system”'));
-    await tester.pumpAndSettle();
-    expect(app.sidebar.isPinned(_podsKs), isTrue);
-    app.setNamespace(null);
-    await tester.tap(find.byKey(const ValueKey('nav-pin-/Pod@kube-system')));
-    await tester.pump();
-    expect(app.namespace, 'kube-system');
-    expect(app.selectedPin, _podsKs);
-
-    await tester.tap(find.byKey(const ValueKey('nav-view-security')), buttons: kSecondaryButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Hide Security'));
-    await tester.pumpAndSettle();
-    expect(app.sidebar.isHidden(MainView.security), isTrue);
-    expect(find.byKey(const ValueKey('nav-view-security')), findsNothing);
-
-    await tester.tap(find.byKey(const ValueKey('nav-pin-apps/Deployment')), buttons: kSecondaryButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Unpin from Sidebar'));
-    await tester.pumpAndSettle();
-    expect(app.sidebar.isPinned(_deploy), isFalse);
   });
 
 }

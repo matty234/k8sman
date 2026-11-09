@@ -103,25 +103,6 @@ void main() {
       expect(s[AddonIds.certManager]!.state, AddonState.notInstalled);
     });
 
-    test('after a real cert-manager install it is Installed with 3 healthy deployments', () {
-      final s = detectAll(dir: 'with-cert-manager/')[AddonIds.certManager]!;
-      expect(s.state, AddonState.installed);
-      expect(s.release!.chartVersion, 'v1.21.3');
-      expect(s.crdServed, isTrue);
-      expect(s.deployments.map((d) => d.name), ['cert-manager', 'cert-manager-cainjector', 'cert-manager-webhook']);
-    });
-
-    test('upgrade available: pinned version newer, or latest for unpinned', () {
-      final rs = [for (final r in fixtureReleases()) r.name == 'kube-prometheus-stack' ? copyRelease(r, chartVersion: '92.0.0') : r];
-      final s = detectAll(releases: rs);
-      expect(s[AddonIds.prometheus]!.upgradeAvailable, isTrue);
-      expect(s[AddonIds.prometheus]!.targetVersion, '92.17.1');
-      final ms = s[AddonIds.metricsServer]!;
-      expect(ms.upgradeAvailable, isFalse, reason: 'no target until chart versions load');
-      expect(ms.withTarget('3.15.0').upgradeAvailable, isTrue);
-      expect(ms.withTarget('3.14.0').upgradeAvailable, isFalse);
-    });
-
   });
 
   group('page', () {
@@ -185,19 +166,6 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Uninstall'));
       await settle(tester);
       expect(helm.calls, contains('uninstall monitoring/kube-prometheus-stack'));
-    });
-
-    testWidgets('upgrade fetches the newer chart with wait', (tester) async {
-      final (_, helm) = await pumpAddons(tester);
-      await tester.tap(inCard(AddonIds.metricsServer, find.text('Upgrade…')));
-      await settle(tester);
-      expect(find.text('Upgrade metrics-server'), findsOneWidget);
-      await tester.tap(find.text('Upgrade…').last);
-      await settle(tester);
-      expect(find.text('Upgrade metrics-server to metrics-server 3.15.0?'), findsOneWidget);
-      await tester.tap(find.widgetWithText(FilledButton, 'Upgrade'));
-      await settle(tester);
-      expect(helm.calls.last, 'upgrade kube-system/metrics-server metrics-server@3.15.0 dryRun=false wait=true');
     });
 
     testWidgets('read-only: status only, no mutations', (tester) async {

@@ -12,7 +12,6 @@ import 'package:provider/provider.dart';
 
 import '../support/harness.dart';
 import '../metrics/metrics_fakes.dart';
-import '../support/screenshot.dart';
 
 Json _node() => jsonDecode(File('../dev/fixtures/node-k8sman-dev-control-plane.json').readAsStringSync());
 List<Json> _pods() => [for (final p in jsonDecode(File('test/nodes/pods.json').readAsStringSync())) Map<String, dynamic>.from(p)];
@@ -41,7 +40,6 @@ void main() {
   });
 
   testWidgets('a node expands into its pods, problem pods first, grouped by pool', (tester) async {
-    await loadRealFonts();
     // Three nodes in two pools; all the pods are on the control plane.
     final nodes = _nodes();
     final spare = _node()..['metadata']['name'] = 'worker-2';

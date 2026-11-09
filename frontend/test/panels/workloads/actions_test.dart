@@ -11,8 +11,8 @@ import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
-import '../../support/screenshot.dart';
 import 'support.dart';
+import '../../support/screenshot.dart';
 
 /// Like harness.pumpPanel, but lets the test set AppState.readOnly first.
 Future<AppState> pumpWorkload(WidgetTester tester, Json object, ApiClient api, {bool readOnly = false}) async {
@@ -44,6 +44,7 @@ Future<AppState> pumpWorkload(WidgetTester tester, Json object, ApiClient api, {
 }
 
 void main() {
+  setUpAll(loadRealFonts);
   late List<Json> pods;
   setUpAll(() => pods = loadLocal('pods-demo.json'));
   setUp(SectionMemory.reset);
@@ -56,7 +57,6 @@ void main() {
       });
 
   testWidgets('Deployment shows scale control, HPA note, per-revision rollback and pod menus', (tester) async {
-    await loadRealFonts();
     await pumpWorkload(tester, loadFixture('deploy-web.json'), api());
 
     expect(find.byType(ScaleControl), findsOneWidget);
@@ -97,7 +97,6 @@ void main() {
   });
 
   testWidgets('paused Deployment says so with Resume', (tester) async {
-    await loadRealFonts();
     final d = clone(loadFixture('deploy-web.json'), (c) => c['spec']['paused'] = true);
     await pumpWorkload(tester, d, api());
     expect(find.text('Paused'), findsOneWidget);

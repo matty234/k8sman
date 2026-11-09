@@ -13,7 +13,6 @@ import 'package:k8sman/util/k8s.dart';
 import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
-import '../../support/screenshot.dart';
 
 Json _load(String path) => jsonDecode(File(path).readAsStringSync()) as Json;
 Json get cronReport => _load('../dev/fixtures/cronjob-report.json');
@@ -97,7 +96,6 @@ void main() {
 
   group('CronJob controls', () {
     testWidgets('suspended: Resume in the callout and Run now beside next runs', (tester) async {
-      await loadRealFonts();
       final api = _ActionApi([...liveJobs]);
       await _pump(tester, suspendedCron(), api);
       expect(find.widgetWithText(OutlinedButton, 'Resume'), findsOneWidget);

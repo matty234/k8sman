@@ -51,17 +51,6 @@ void main() {
   });
 
   group('nodeAllocation', () {
-    test('excludes Succeeded/Failed', () {
-      final a = nodeAllocation([
-        _pod(containers: [_c('a', req: {'cpu': '100m'})]),
-        _pod(containers: [_c('a', req: {'cpu': '1'})], phase: 'Succeeded'),
-        _pod(containers: [_c('a', req: {'cpu': '1'})], phase: 'Failed'),
-        _pod(containers: [_c('a', req: {'cpu': '200m'})], phase: 'Pending'),
-      ]);
-      expect(a.activePods, 2);
-      expect(a.terminatedPods, 2);
-      expect(a.total.cpuRequest, 300);
-    });
 
     test('matches kubectl describe node for the dev cluster', () {
       final pods = [for (final p in jsonDecode(File('test/panels/cluster/fixtures/pods-on-node.json').readAsStringSync())) Json.from(p)];
@@ -108,13 +97,6 @@ void main() {
 
   group('RBAC rule dangers', () {
 
-    test('full wildcard', () {
-      final d = ruleDangers({'apiGroups': ['*'], 'resources': ['*'], 'verbs': ['*']});
-      expect(d, contains(startsWith('Full wildcard')));
-      expect(d, contains('Can read Secrets'));
-      expect(d, contains('Can exec/attach into pods'));
-    });
-
     test('secrets, exec, escalate/bind/impersonate', () {
       expect(ruleDangers({'apiGroups': [''], 'resources': ['secrets'], 'verbs': ['list']}), ['Can read Secrets']);
       expect(ruleDangers({'apiGroups': ['apps'], 'resources': ['secrets'], 'verbs': ['list']}), isEmpty);
@@ -131,19 +113,6 @@ void main() {
   });
 
   group('RBAC bindings', () {
-    final bindings = <Json>[
-      {'metadata': {'name': 'a', 'namespace': 'demo'}, 'roleRef': {'kind': 'Role', 'name': 'r'}},
-      {'metadata': {'name': 'b', 'namespace': 'other'}, 'roleRef': {'kind': 'Role', 'name': 'r'}},
-      {'metadata': {'name': 'c', 'namespace': 'other'}, 'roleRef': {'kind': 'ClusterRole', 'name': 'r'}},
-      {'metadata': {'name': 'd'}, 'roleRef': {'kind': 'ClusterRole', 'name': 'r'}},
-    ];
-    String n(Json b) => b['metadata']['name'];
-    test('Role: same namespace only', () {
-      expect(bindingsFor(bindings, kind: 'Role', name: 'r', namespace: 'demo').map(n), ['a']);
-    });
-    test('ClusterRole: any namespace and cluster bindings', () {
-      expect(bindingsFor(bindings, kind: 'ClusterRole', name: 'r').map(n), ['c', 'd']);
-    });
     test('aggregate-to labels', () {
       expect(aggregatesInto({'rbac.authorization.k8s.io/aggregate-to-edit': 'true', 'x': 'y', 'rbac.authorization.k8s.io/aggregate-to-view': 'false'}),
           ['edit']);

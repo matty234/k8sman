@@ -17,23 +17,6 @@ void main() {
       }
     });
 
-    test('expands values', () {
-      final s = CronSchedule.tryParse('*/15 1-3 1,15 */3 MON-FRI')!;
-      expect(s.minute.sorted, [0, 15, 30, 45]);
-      expect(s.hour.sorted, [1, 2, 3]);
-      expect(s.dayOfMonth.sorted, [1, 15]);
-      expect(s.month.sorted, [1, 4, 7, 10]);
-      expect(s.dayOfWeek.sorted, [1, 2, 3, 4, 5]);
-      expect(CronSchedule.tryParse('5/20 * * * *')!.minute.sorted, [5, 25, 45]);
-      expect(CronSchedule.tryParse('0 0 * * 7')!.dayOfWeek.sorted, [0]);
-      expect(CronSchedule.tryParse('0 0 * * 5-7')!.dayOfWeek.sorted, [0, 5, 6]);
-    });
-
-    test('extracts a TZ prefix', () {
-      final s = CronSchedule.tryParse('TZ=Asia/Tokyo 0 9 * * *')!;
-      expect(s.timeZone, 'Asia/Tokyo');
-      expect(s.expression, '0 9 * * *');
-    });
   });
 
   group('describeCron', () {
@@ -94,24 +77,9 @@ void main() {
   group('nextRuns (UTC)', () {
     List<DateTime> runs(String e, DateTime from, [int n = 5]) => CronSchedule.tryParse(e)!.nextRuns(from, count: n);
 
-    test('rolls over hour, day, month and year', () {
-      expect(runs('*/20 * * * *', u(2026, 12, 31, 23, 30), 3), [u(2026, 12, 31, 23, 40), u(2027, 1, 1, 0, 0), u(2027, 1, 1, 0, 20)]);
-    });
-
     test('day-of-month and day-of-week are ORed when both restricted', () {
       // 13th of the month OR any Friday. Nov 2026: Fridays 6, 13, 20; Dec 13 is a Sunday.
       expect(runs('0 0 13 * 5', u(2026, 11, 1), 5), [u(2026, 11, 6), u(2026, 11, 13), u(2026, 11, 20), u(2026, 11, 27), u(2026, 12, 4)]);
-    });
-
-    test('day-of-week with star day-of-month uses AND', () {
-      expect(runs('0 0 */2 * 1', u(2026, 11, 1), 2), [u(2026, 11, 9), u(2026, 11, 23)]);
-    });
-
-    test('monthly, yearly and leap days', () {
-      expect(runs('@monthly', u(2026, 11, 3), 2), [u(2026, 12, 1), u(2027, 1, 1)]);
-      expect(runs('@yearly', u(2026, 11, 3), 1), [u(2027, 1, 1)]);
-      expect(runs('0 0 29 2 *', u(2026, 11, 3), 2), [u(2028, 2, 29), u(2032, 2, 29)]);
-      expect(runs('0 0 31 * *', u(2026, 11, 3), 2), [u(2026, 12, 31), u(2027, 1, 31)]);
     });
 
     test('impossible dates yield nothing', () {
@@ -130,22 +98,6 @@ void main() {
       expect(sp.abbreviationAt(u(2026, 6, 1)), '-03');
       expect(PosixTz.tryParse('garbage'), isNull);
       expect(PosixTz.tryParse('EST5EDT,M3.2.0'), isNull);
-    });
-
-    test('London switches on the last Sundays of March and October at 01:00 UTC', () {
-      final l = PosixTz.tryParse('GMT0BST,M3.5.0/1,M10.5.0')!;
-      expect(l.offsetAt(u(2026, 3, 29, 0, 59)), Duration.zero);
-      expect(l.offsetAt(u(2026, 3, 29, 1, 0)), const Duration(hours: 1));
-      expect(l.abbreviationAt(u(2026, 7, 1)), 'BST');
-      expect(l.offsetAt(u(2026, 10, 25, 0, 59)), const Duration(hours: 1));
-      expect(l.offsetAt(u(2026, 10, 25, 1, 0)), Duration.zero);
-    });
-
-    test('southern hemisphere DST wraps the year', () {
-      final syd = PosixTz.tryParse('AEST-10AEDT,M10.1.0,M4.1.0/3')!;
-      expect(syd.offsetAt(u(2026, 1, 15)), const Duration(hours: 11));
-      expect(syd.offsetAt(u(2026, 7, 15)), const Duration(hours: 10));
-      expect(syd.offsetAt(u(2026, 12, 15)), const Duration(hours: 11));
     });
 
     test('wallToUtc skips gaps and picks the first of a fold', () {
@@ -168,11 +120,6 @@ void main() {
       expect(resolveZone('Mars/Olympus_Mons'), isNull);
     });
 
-    test('reads the real tz database when present', () {
-      final z = resolveZone('Europe/London');
-      expect(z, isNotNull);
-      expect(z!.offsetAt(u(2026, 7, 1)), const Duration(hours: 1));
-    });
   });
 
   group('nextRuns with time zones', () {

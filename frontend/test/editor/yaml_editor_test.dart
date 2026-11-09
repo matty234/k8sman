@@ -7,8 +7,8 @@ import 'package:k8sman/ui/detail/yaml_editor.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 import 'package:re_editor/re_editor.dart';
-
 import '../support/screenshot.dart';
+
 
 const _yaml = '''apiVersion: apps/v1
 kind: Deployment
@@ -57,9 +57,9 @@ Future<_EditApi> _pump(WidgetTester tester, {String rv = '100'}) async {
 }
 
 void main() {
+  setUpAll(loadRealFonts);
 
   testWidgets('edit → review → apply runs dry-run then apply', (tester) async {
-    await loadRealFonts();
     final api = await _pump(tester);
     await tester.tap(find.text('Edit'));
     await tester.pumpAndSettle();

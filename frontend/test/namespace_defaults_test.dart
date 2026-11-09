@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/ui/settings/settings_page.dart';
 
 import 'support/fixture_api.dart';
-import 'support/screenshot.dart';
 
 /// The fixture context's kubeconfig namespace is `demo`; settings.json
 /// stand-ins for the allowlist and the default namespace.
@@ -29,7 +28,6 @@ class _Api extends FixtureApi {
 
 void main() {
   testWidgets('a fresh launch opens in all namespaces; an allowlist limits the picker and labels All', (tester) async {
-    await loadRealFonts();
     final api = _Api();
     final (app, _) = await pumpShell(tester, api, size: const Size(1300, 850));
     // Not the kubeconfig's `demo`: all namespaces is the default now.

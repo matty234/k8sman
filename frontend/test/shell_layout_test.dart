@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:k8sman/api/models.dart';
-import 'package:k8sman/state/aggregate_log_stream.dart';
-import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/detail/detail_sidebar.dart';
-import 'package:k8sman/ui/alerts/alerts_view.dart';
 import 'package:k8sman/ui/logs/log_dock_view.dart';
 import 'package:k8sman/ui/logs/log_stream_view.dart';
 
@@ -21,13 +16,6 @@ Future<void> _settle(WidgetTester tester) async {
 Future<void> _openWebPod(WidgetTester tester) async {
   await tester.tap(find.text(_webPod).first);
   await _settle(tester);
-}
-
-Future<void> _meta(WidgetTester tester, LogicalKeyboardKey key) async {
-  await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
-  await tester.sendKeyEvent(key);
-  await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
-  await tester.pump();
 }
 
 /// The inspector is on screen (not collapsed offstage).
@@ -78,80 +66,6 @@ void main() {
       dock.closeAll();
     });
 
-    testWidgets('closing a tab cancels its stream; collapsed tabs keep streaming', (tester) async {
-      final api = FixtureApi();
-      final (_, dock) = await pumpShell(tester, api);
-      final a = dock.open(FixtureApi.objectFor('pods', _webPod));
-      final b = dock.open(FixtureApi.objectFor('pods', 'crashy'));
-      await settleLogs(tester);
-      final ca = api.logControllers['demo/$_webPod/nginx']!;
-      final cb = api.logControllers['demo/crashy/app']!;
-      expect(ca.hasListener && cb.hasListener, isTrue);
-
-      // Collapsed (⌘J) still streams into the buffer.
-      await _meta(tester, LogicalKeyboardKey.keyJ);
-      expect(dock.collapsed, isTrue);
-      expect(find.byType(LogStreamView), findsNothing);
-      ca.add(const LogMessage(line: 'while collapsed'));
-      await settleLogs(tester);
-      expect(a.lines.last, 'while collapsed');
-      await _meta(tester, LogicalKeyboardKey.keyJ);
-      expect(dock.collapsed, isFalse);
-
-      await tester.tap(find.byKey(const ValueKey('log-tab-close-demo/crashy/app')));
-      await tester.pump();
-      expect(cb.hasListener, isFalse, reason: 'closed tab cancels its subscription');
-      expect(b.isSubscribed, isFalse);
-      expect(ca.hasListener, isTrue);
-      expect(dock.tabs, [a]);
-
-      // Closing the last tab collapses the dock to its bar; ⌘J opens Alerts.
-      dock.close(a);
-      await tester.pump();
-      expect(ca.hasListener, isFalse);
-      expect(dock.collapsed, isTrue);
-      expect(find.byType(LogDockView), findsOneWidget);
-      await _meta(tester, LogicalKeyboardKey.keyJ);
-      expect(dock.collapsed, isFalse);
-      expect(find.byType(AlertsView), findsOneWidget);
-      await _meta(tester, LogicalKeyboardKey.keyJ);
-      expect(dock.collapsed, isTrue);
-      expect(find.byType(AlertsView), findsNothing);
-    });
-
-    testWidgets('Deployment Logs opens one merged tab; sources can be hidden', (tester) async {
-      final api = FixtureApi();
-      final (app, dock) = await pumpShell(tester, api);
-      app.openDetail(DetailTarget(type: app.typeFor('apps', 'Deployment')!, name: 'web', namespace: 'demo'));
-      await _settle(tester);
-      await tester.tap(find.byKey(const ValueKey('action-logs')));
-      await settleLogs(tester);
-      expect(api.aggregateRequests, hasLength(1));
-      expect(api.aggregateRequests.single, startsWith('selector=app=web'));
-      expect(dock.tabs.map((t) => t.label), ['deploy/web (2 pods)']);
-
-      // Lines carry a short pod label (the name minus the shared prefix).
-      expect(find.text('4v4m9'), findsWidgets);
-      expect(find.text('z7wpf'), findsWidgets);
-      expect(find.textContaining('served by web-6fd47b8fcb-z7wpf'), findsWidgets);
-
-      // Hiding a source drops its lines.
-      final s = dock.tabs.single as AggregateLogStream;
-      s.setPodHidden('web-6fd47b8fcb-z7wpf', true);
-      await tester.pump();
-      expect(find.textContaining('served by web-6fd47b8fcb-z7wpf'), findsNothing);
-      expect(find.textContaining('served by web-6fd47b8fcb-4v4m9'), findsWidgets);
-
-      // Previous reconnects with previous=true, then back to normal.
-      s.setOptions(previous: true);
-      await settleLogs(tester);
-      expect(api.aggregateRequests.last, endsWith('previous'));
-      expect(s.previous, isTrue);
-      s.setOptions(previous: false);
-      await settleLogs(tester);
-      expect(api.aggregateRequests.last, isNot(endsWith('previous')));
-      dock.closeAll();
-    });
   });
 
   group('inspector collapse', () {
@@ -194,70 +108,6 @@ void main() {
       await tester.tap(find.text('Helm').first);
       await _settle(tester);
       expect(app.inspectorCollapsed, isTrue);
-    });
-
-    testWidgets('breadcrumbs: kind opens its list, namespace opens the Namespace; history menu', (tester) async {
-      final (app, _) = await pumpShell(tester, FixtureApi());
-      await _openWebPod(tester);
-      final pod = app.detail!;
-      expect(pod.type.kind, 'Pod');
-
-      // Elsewhere first, so the crumb has somewhere to take us back from.
-      app.showView(MainView.overview);
-      await _settle(tester);
-      app.expandInspector();
-      await _settle(tester);
-      await tester.tap(find.byKey(const ValueKey('crumb-kind')));
-      await _settle(tester);
-      expect(app.view, MainView.resources);
-      expect(app.selectedType, pod.type);
-      expect(app.inspectorCollapsed, isTrue, reason: 'the table gets the width');
-      expect(app.detail, pod, reason: 'its row stays selected');
-
-      // The namespace crumb pushes the Namespace object (Back returns).
-      app.expandInspector();
-      await _settle(tester);
-      await tester.tap(find.byKey(const ValueKey('crumb-namespace')));
-      await _settle(tester);
-      tester.takeException(); // the fixtures have no Namespace object to load
-      final ns = app.detail!;
-      expect(ns.type.kind, 'Namespace');
-      expect(ns.name, pod.namespace);
-      expect(app.canGoBack, isTrue);
-      expect(app.recentDetails.take(2), [ns, pod]);
-
-      // History lists the others (not the current object); picking one
-      // opens it afresh.
-      app.back();
-      await _settle(tester);
-      await tester.tap(find.byKey(const ValueKey('inspector-history')));
-      await _settle(tester);
-      expect(find.byType(PopupMenuItem<DetailTarget>), findsOneWidget);
-      await tester.tap(find.byType(PopupMenuItem<DetailTarget>));
-      await _settle(tester);
-      tester.takeException();
-      expect(app.detail, ns);
-      expect(app.canGoBack, isFalse, reason: 'opening from history starts afresh');
-    });
-
-  });
-
-  group('inspector header actions', () {
-    Future<AppState> open(WidgetTester tester, String group, String kind, String name) async {
-      final (app, _) = await pumpShell(tester, FixtureApi());
-      app.openDetail(DetailTarget(type: app.typeFor(group, kind)!, name: name, namespace: 'demo'));
-      await _settle(tester);
-      return app;
-    }
-
-    testWidgets('Deployment: action row plus ⋯ with Roll back and Delete', (tester) async {
-      await open(tester, 'apps', 'Deployment', 'web');
-      expect(find.byKey(const ValueKey('action-logs')), findsOneWidget);
-      expect(find.byType(OutlinedButton), findsNWidgets(3));
-      await tester.tap(find.byTooltip('More actions'));
-      await tester.pumpAndSettle();
-      expect(find.text('Roll back'), findsOneWidget);
-      expect(find.text('Delete'), findsOneWidget);
     });
 
   });

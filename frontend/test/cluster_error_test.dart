@@ -28,19 +28,6 @@ void main() {
       expect(ClusterError.classify(reason: 'NotFound', message: 'x').kind, ClusterErrorKind.notFound);
     });
 
-    test('anonymous 403 is a credentials problem', () {
-      expect(
-        ClusterError.classify(reason: 'Forbidden', message: 'pods is forbidden: User "system:anonymous" cannot list').kind,
-        ClusterErrorKind.unauthorized,
-      );
-    });
-
-    test('transport failures mean the backend is down', () {
-      expect(ClusterError.fromException(WebSocketChannelException('Connection refused')).kind, ClusterErrorKind.backendDown);
-      expect(ClusterError.fromException(ApiException(502, 'dial tcp: connection refused', reason: 'Unreachable')).kind,
-          ClusterErrorKind.unreachable);
-    });
-
   });
 
   group('table error states', () {

@@ -2,12 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 
 import '../../support/harness.dart';
-import '../../support/screenshot.dart';
 import 'net_support.dart';
 
 void main() {
   testWidgets('endpointslice: service link, ports, endpoints', (tester) async {
-    await loadRealFonts();
     final slice = devFixture('endpointslice-web');
     // Add a terminating endpoint with zone + hints to exercise the badges.
     (slice['endpoints'] as List).add({
@@ -33,7 +31,6 @@ void main() {
   });
 
   testWidgets('legacy endpoints: ready vs not-ready addresses', (tester) async {
-    await loadRealFonts();
     final ep = Map<String, dynamic>.from(netFixture('endpoints-web') as Map);
     final subset = (ep['subsets'] as List).first as Json;
     subset['notReadyAddresses'] = [

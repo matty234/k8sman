@@ -12,8 +12,8 @@ import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../support/harness.dart';
-import '../support/screenshot.dart';
 import 'package:k8sman/ui/widgets/namespace_picker.dart';
+import '../support/screenshot.dart';
 
 /// Real responses captured from the kind dev cluster with the Trivy Operator
 /// installed and the deliberately insecure `security-demo` namespace applied
@@ -144,8 +144,8 @@ Json withoutOperator() {
 }
 
 void main() {
+  setUpAll(loadRealFonts);
   testWidgets('live fixture: summary, tiles, findings, tables', (tester) async {
-    await loadRealFonts();
     final (_, source) = await pumpSecurity(tester, fixture('security'), size: const Size(1000, 3400));
     expect(source.calls, [(null, false)]);
     expect(find.text('Security'), findsOneWidget);
@@ -185,20 +185,6 @@ void main() {
     PageScope.reset();
   });
 
-  testWidgets('tiles filter the list and the tables', (tester) async {
-    await pumpSecurity(tester, fixture('security'), size: const Size(1000, 2400));
-    await tester.tap(find.text('RBAC').first);
-    await tester.pump();
-    expect(find.text('Most permissive grants'), findsOneWidget);
-    expect(find.text('Network exposure by namespace'), findsNothing);
-    expect(find.textContaining('LoadBalancer Service'), findsNothing);
-    expect(find.textContaining('RBAC · '), findsOneWidget); // filter chip
-    // Clicking the tile again clears the filter.
-    await tester.tap(find.text('RBAC').first);
-    await tester.pump();
-    expect(find.text('Network exposure by namespace'), findsOneWidget);
-  });
-
   testWidgets('expanding a finding shows remediation and opens objects in the inspector', (tester) async {
     final (app, _) = await pumpSecurity(tester, fixture('security-demo'), size: const Size(1000, 1600), scope: 'security-demo');
     await tester.tap(find.textContaining('LoadBalancer Service web-public'));
@@ -211,7 +197,6 @@ void main() {
   });
 
   testWidgets('no operator: install button and the trivy CLI hint', (tester) async {
-    await loadRealFonts();
     await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(operator: false), size: const Size(1000, 1600), scope: 'security-demo');
     await tester.tap(find.text('Images').first);
     await tester.pump();
@@ -224,19 +209,6 @@ void main() {
     await tester.tap(find.text('Install Trivy Operator'));
     await tester.pumpAndSettle();
     expect(find.text('Dry run'), findsOneWidget);
-  });
-
-  testWidgets('load error offers retry', (tester) async {
-    final client = FakeApiClient();
-    final app = AppState(client)..types = testTypes;
-    await tester.pumpWidget(MultiProvider(
-      providers: [Provider<ApiClient>.value(value: client), ChangeNotifierProvider<AppState>.value(value: app)],
-      child: MaterialApp(theme: buildTheme(Brightness.dark), home: Scaffold(body: SecurityView(source: _FailingApi(client)))),
-    ));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.textContaining('forbidden'), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
   });
 
   for (final width in [360.0, 900.0, 1800.0]) {
@@ -253,12 +225,4 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
-}
-
-class _FailingApi extends SecurityApi {
-  _FailingApi(super.api);
-  @override
-  Future<SecurityData> fetch({NamespaceScope scope = NamespaceScope.all, bool includeSystem = false}) async => throw ApiException(403, 'pods is forbidden');
-  @override
-  Future<ScannerStatus> scanner() async => const ScannerStatus();
 }

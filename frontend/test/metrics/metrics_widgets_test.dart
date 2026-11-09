@@ -12,7 +12,6 @@ import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../support/harness.dart';
-import '../support/screenshot.dart';
 import 'metrics_fakes.dart';
 import 'package:k8sman/ui/widgets/namespace_picker.dart';
 
@@ -49,7 +48,6 @@ Future<void> _resize(WidgetTester tester, double w, double h) async {
 void main() {
   group('Nodes page', () {
     testWidgets('shows usage meters next to requests', (tester) async {
-      await loadRealFonts();
       await _pumpPage(tester, const NodesView(), MetricsFakeApi());
       expect(find.text('CPU'), findsOneWidget);
       expect(find.text('Memory'), findsOneWidget);
@@ -79,7 +77,6 @@ void main() {
   });
 
   testWidgets('Pod panel: per-container usage and pod total', (tester) async {
-    await loadRealFonts();
     final pod = _fixture('test/metrics/fixtures/pod-web.json');
     await pumpPanel(tester, pod, api: MetricsFakeApi(), size: const Size(560, 2600));
     await tester.pumpAndSettle();
@@ -93,7 +90,6 @@ void main() {
   });
 
   testWidgets('HPA panel: live current values next to the targets, and the driving metric', (tester) async {
-    await loadRealFonts();
     final hpa = _fixture('test/metrics/fixtures/hpa-web-object.json');
     await pumpPanel(tester, hpa, api: MetricsFakeApi(), size: const Size(560, 1800));
     // One Metrics section: the External metric's live value (custom/external

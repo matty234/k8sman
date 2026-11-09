@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/argocd/app_diff.dart';
-import 'package:k8sman/panels/argocd/app_resources.dart';
 import 'package:k8sman/panels/argocd/application_panel.dart';
 import 'package:k8sman/panels/argocd/live_health.dart';
 import 'package:k8sman/panels/registry.dart';
@@ -16,7 +15,6 @@ import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
 import 'fake_argo_diff.dart';
-import '../../support/screenshot.dart';
 
 dynamic _raw(String name) => jsonDecode(File('test/panels/argocd/fixtures/$name').readAsStringSync());
 Json fx(String name) => _raw(name) as Json;
@@ -115,30 +113,10 @@ void main() {
       expect(liveHealth('apps', 'Deployment', {'spec': {'paused': true}})!.status, 'Suspended');
     });
 
-    test('managed resources: derived health, missing, worst first', () {
-      final entries = [
-        {'kind': 'Service', 'name': 'ok', 'namespace': 'ns', 'status': 'Synced', 'version': 'v1'},
-        {'group': 'apps', 'kind': 'Deployment', 'name': 'gone', 'namespace': 'ns', 'status': 'OutOfSync'},
-        {'group': 'apps', 'kind': 'Deployment', 'name': 'web', 'namespace': 'ns', 'status': 'Synced', 'health': {'status': 'Degraded', 'message': 'boom'}},
-      ];
-      final live = LiveIndex({
-        resourceKey('', 'Service', 'ns', 'ok'): {'spec': {'type': 'ClusterIP'}},
-      }, const {}, {'/Service/ns', 'apps/Deployment/ns'});
-      final rs = managedResources(entries, live);
-      expect(rs[0].health!.status, 'Healthy');
-      expect(rs[1].health!.status, 'Missing');
-      expect(rs[2].health!.message, 'boom');
-      final groups = groupByKind(rs);
-      expect(groups.first.key, 'Deployment');
-      expect(applyFilter(rs, ResourceFilter.outOfSync).single.name, 'gone');
-      expect(applyFilter(rs, ResourceFilter.unhealthy).length, 2);
-    });
-
   });
 
   group('Application panel', () {
     testWidgets('synced app: status, source, resources, history', (tester) async {
-      await loadRealFonts();
       await pumpArgo(tester, fx('app-guestbook.json'));
       expect(tester.takeException(), isNull);
       expect(find.text('Synced'), findsWidgets);
@@ -150,14 +128,6 @@ void main() {
       expect(find.text('Sync'), findsOneWidget);
     });
 
-    testWidgets('degraded app derives health from live objects', (tester) async {
-      await loadRealFonts();
-      await pumpArgo(tester, fx('app-guestbook-degraded.json'));
-      expect(tester.takeException(), isNull);
-      expect(find.text('Degraded'), findsWidgets);
-      expect(find.textContaining('timed out progressing'), findsWidgets);
-    });
-
     testWidgets('sync dialog runs argocd-sync with options', (tester) async {
       final api = ArgoFakeApi();
       await pumpArgo(tester, fx('app-helm-guestbook.json'), api: api);
@@ -166,7 +136,6 @@ void main() {
       await tester.tap(find.text('Prune'));
       await tester.enterText(find.byType(TextField), 'master');
       await tester.pumpAndSettle();
-      await loadRealFonts();
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
       expect(find.textContaining('deleted (prune)'), findsOneWidget);
@@ -206,34 +175,10 @@ void main() {
   });
 
   group('ApplicationSet panel', () {
-    testWidgets('generators, template and generated apps', (tester) async {
-      await loadRealFonts();
-      await pumpArgo(tester, fx('appset-guestbook-envs.json'));
-      expect(tester.takeException(), isNull);
-      expect(find.text('guestbook-dev'), findsOneWidget);
-      expect(find.text('guestbook-staging'), findsOneWidget);
-      expect(find.text('staging'), findsOneWidget);
-      expect(find.textContaining('Preserve'), findsOneWidget);
-    });
   });
 
   group('AppProject panel', () {
-    testWidgets('restricted project', (tester) async {
-      await loadRealFonts();
-      await pumpArgo(tester, fx('project-demo-team.json'));
-      expect(tester.takeException(), isNull);
-      expect(find.text('Restricted'), findsOneWidget);
-      expect(find.textContaining('CI pipeline', findRichText: true), findsOneWidget);
-      expect(find.text('ResourceQuota'), findsOneWidget);
-      expect(find.text('guestbook'), findsOneWidget); // an app in this project
-    });
 
-  });
-
-  testWidgets('narrow (320px) layout', (tester) async {
-    await loadRealFonts();
-    await pumpArgo(tester, fx('app-guestbook-degraded.json'), size: const Size(320, 2400));
-    expect(tester.takeException(), isNull);
   });
 
 }

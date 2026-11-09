@@ -6,7 +6,6 @@ import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/util/k8s.dart';
 
 import '../../support/harness.dart';
-import '../../support/screenshot.dart';
 import 'net_support.dart';
 
 FakeApiClient api({List<Json>? slices, List<Json>? pods}) => FakeApiClient(
@@ -21,7 +20,6 @@ void main() {
   setUp(SectionMemory.reset);
 
   testWidgets('web: ports resolve named targetPort, endpoints, access hints', (tester) async {
-    await loadRealFonts();
     final app = await pumpPanel(tester, devFixture('svc-web'), api: api());
     expect(find.textContaining('http → 8080', findRichText: true), findsOneWidget);
     expect(find.text('web.demo.svc.cluster.local'), findsOneWidget);

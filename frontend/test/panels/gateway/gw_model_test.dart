@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/panels/gateway/gw_model.dart';
 import 'package:k8sman/panels/gateway/routed_by.dart';
 
-import '../../support/screenshot.dart';
 import 'gw_support.dart';
 
 RouteObj route(String fixture) => RouteObj(routeKindOf('${gwFixture(fixture)['kind']}')!, gwFixture(fixture));
@@ -51,7 +50,6 @@ void main() {
     });
 
     testWidgets('Service web lists routes that send it traffic', (tester) async {
-      await loadRealFonts();
       final svc = Map<String, dynamic>.from((gwFixtureRaw('services-demo') as List).first as Map);
       final app = await pumpGwPanel(tester, svc);
       expect(find.text('Routed by'), findsOneWidget);

@@ -9,7 +9,6 @@ import 'package:k8sman/state/table_query.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:k8sman/util/k8s.dart';
 
-import '../support/screenshot.dart';
 import '../support/table_fakes.dart';
 
 const _cpu = ColumnDef(name: 'CPU', query: '.k8sman.usage', type: 'usage');
@@ -25,7 +24,6 @@ Map<String, dynamic> _usage(double raw, {double? base, String? basis, String uni
 
 void main() {
   testWidgets('Pods usage cells: value, bar and % (amber ≥70, red ≥90), sorted by %, filterable, narrow keeps the value', (tester) async {
-    await loadRealFonts();
     final pods = TableData.fromJson(jsonDecode(File('../dev/fixtures/api-table-pods.json').readAsStringSync()));
     // CPU against the limit (or request); one pod has neither.
     final cpu = <String, Map<String, dynamic>>{

@@ -10,8 +10,8 @@ import 'package:k8sman/state/log_dock.dart';
 import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
-import '../../support/screenshot.dart';
 import 'wf_support.dart';
+import '../../support/screenshot.dart';
 
 // Fixtures: the dev kind cluster running dev/argo-workflows/samples.yaml on
 // Argo Workflows v4.0.1. wf-build-failed: the build-and-test DAG whose
@@ -39,8 +39,8 @@ Json pod(String name, String nodeId) => {
     };
 
 void main() {
+  setUpAll(loadRealFonts);
   testWidgets('failed workflow: summary, failed step, graph, node details and logs', (tester) async {
-    await loadRealFonts();
     final wf = wfFixture('wf-build-failed.json');
     final api = FakeApiClient(
       itemsByResource: {
@@ -90,7 +90,6 @@ void main() {
   });
 
   testWidgets('cron workflow: schedules, next runs in its time zone, history', (tester) async {
-    await loadRealFonts();
     batchNow = () => DateTime.utc(2026, 7, 1, 10, 7);
     addTearDown(() => batchNow = DateTime.now);
     final cron = wfFixture('cron-nightly-report.json');

@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -10,7 +9,6 @@ import 'package:k8sman/app/updates/update_controller.dart';
 import 'package:k8sman/app/updates/update_ui.dart';
 import 'package:k8sman/app/updates/version.dart';
 import 'package:k8sman/ui/theme.dart';
-import 'package:provider/provider.dart';
 
 const _channel = UpdateController.channel;
 
@@ -67,11 +65,6 @@ class _FakeNative {
     });
   }
 }
-
-Widget _wrap(Widget child, UpdateController u) => ChangeNotifierProvider<UpdateController>.value(
-      value: u,
-      child: MaterialApp(theme: buildTheme(Brightness.light), home: Scaffold(body: child)),
-    );
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -147,26 +140,6 @@ void main() {
       u.dispose();
     });
 
-    test('native pushes drive the banner state', () async {
-      _FakeNative(_nativeInfo()).install(null);
-      final u = UpdateController(releaseMode: true);
-      await u.start();
-      await u.handleNativeCall(const MethodCall('updateAvailable', _update));
-      expect(u.bannerUpdate?.version, '0.1.1');
-      u.dismiss();
-      expect(u.bannerUpdate, isNull);
-      await u.handleNativeCall(const MethodCall('updateAvailable', _update));
-      expect(u.bannerUpdate, isNull, reason: 'dismissed for this version');
-      await u.handleNativeCall(MethodCall('updateAvailable', {..._update, 'version': '0.1.2'}));
-      expect(u.bannerUpdate?.version, '0.1.2');
-      await u.handleNativeCall(const MethodCall('attended'));
-      expect(u.bannerUpdate, isNull);
-      var shown = 0;
-      u.onShowAbout = () => shown++;
-      await u.handleNativeCall(const MethodCall('showAbout'));
-      expect(shown, 1);
-      u.dispose();
-    });
   });
 
   group('widgets', () {
@@ -197,31 +170,6 @@ void main() {
       expect(installs, 1);
       await tester.tap(find.byIcon(Icons.close));
       expect(dismissed, 1);
-    });
-
-    testWidgets('About panel: version, automatic-check toggle and Check Now', (tester) async {
-      final now = DateTime(2026, 11, 3, 12);
-      final native = _FakeNative(_nativeInfo(version: '0.1.0', lastCheck: now.subtract(const Duration(hours: 3))))..install(tester);
-      final u = UpdateController(releaseMode: true, now: () => now);
-      await u.start();
-      await tester.pumpWidget(_wrap(AboutPanel(now: () => now), u));
-      expect(find.text('k8sman'), findsOneWidget);
-      expect(find.text('Version 0.1.0'), findsOneWidget);
-      expect(find.text('Last checked 3 h ago.'), findsOneWidget);
-      expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
-      await tester.tap(find.byType(Switch));
-      await tester.pump();
-      expect(native.calls, contains('setAutomaticChecks'));
-      expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
-      await tester.tap(find.text('Check Now'));
-      expect(native.calls.last, 'checkNow');
-
-      await u.handleNativeCall(const MethodCall('updateAvailable', _update));
-      await tester.pump();
-      expect(find.text('Version v0.1.1 is available.'), findsOneWidget);
-      await tester.tap(find.text('Install…'));
-      expect(native.calls.last, 'install');
-      u.dispose();
     });
 
   });

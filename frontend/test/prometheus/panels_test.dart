@@ -6,7 +6,6 @@ import 'package:k8sman/prometheus/prom_api.dart';
 import 'package:k8sman/state/app_state.dart';
 
 import '../support/harness.dart';
-import '../support/screenshot.dart';
 import 'prom_fixtures.dart';
 
 const _g = 'monitoring.coreos.com';
@@ -28,7 +27,6 @@ void main() {
   tearDown(() => PromApi.debugOverride = null);
 
   testWidgets('PrometheusRule shows groups, rules and live state', (tester) async {
-    await loadRealFonts();
     final app = await pumpPanel(tester, obj('prometheusrule-k8sman-demo'), type: ruleType, size: const Size(560, 1500));
     expect(tester.takeException(), isNull);
     expect(find.text('k8sman-demo.alerts'), findsOneWidget);
@@ -45,7 +43,6 @@ void main() {
   });
 
   testWidgets('ServiceMonitor links matching services and shows target health', (tester) async {
-    await loadRealFonts();
     final api = FakeApiClient(itemsByResource: {'services': items('services-demo')}, itemsFilter: (r, i, sel, _) => sel == null || (i['metadata']?['labels']?['app'] == 'web'));
     final app = await pumpPanel(tester, obj('servicemonitor-web'), type: smType, api: api, size: const Size(560, 1100));
     expect(tester.takeException(), isNull);
@@ -60,7 +57,6 @@ void main() {
   });
 
   testWidgets('Prometheus and Alertmanager CRs show config and live status', (tester) async {
-    await loadRealFonts();
     await pumpPanel(tester, obj('prometheus'), type: promType, size: const Size(560, 1300));
     expect(tester.takeException(), isNull);
     expect(find.text('2d'), findsOneWidget);

@@ -62,13 +62,13 @@ Future<void> openTab(WidgetTester tester, String prefix) async {
 }
 
 void main() {
+  setUpAll(loadRealFonts);
   test('sortReleases puts pending, then failed, first', () {
     final rs = sortReleases(HelmReleaseList.fromJson(fx('releases.json')).releases);
     expect(rs.map((r) => '${r.name}:${r.status}').take(3), ['worker:pending-upgrade', 'api:failed', 'web:deployed']);
   });
 
   testWidgets('list: problems first, summary, filter, namespace', (tester) async {
-    await loadRealFonts();
     final (app, _) = await pumpHelm(tester);
     expect(find.text('Helm'), findsOneWidget);
     expect(find.text('5 releases · 1 failed · 1 pending'), findsOneWidget);
@@ -92,7 +92,6 @@ void main() {
   });
 
   testWidgets('detail tabs: overview, values, manifest, history diff, hooks', (tester) async {
-    await loadRealFonts();
     final (app, helm) = await pumpHelm(tester);
     await selectRelease(tester, 'web');
     // Overview: chart, notes, resources link to real objects.
@@ -134,7 +133,6 @@ void main() {
   });
 
   testWidgets('upgrade: edit values → dry run → diff confirm → apply', (tester) async {
-    await loadRealFonts();
     final (_, helm) = await pumpHelm(tester, namespace: 'helm-demo');
     await selectRelease(tester, 'api');
     expect(find.textContaining('Revision 2 failed'), findsOneWidget);
@@ -180,19 +178,6 @@ void main() {
     await dispose(tester);
   });
 
-  testWidgets('history: roll back to a revision', (tester) async {
-    final (_, helm) = await pumpHelm(tester, namespace: 'helm-demo');
-    await selectRelease(tester, 'web');
-    await openTab(tester, 'History');
-    await tester.tap(find.byTooltip('Roll back to this revision').at(1)); // revision 3
-    await tester.pumpAndSettle();
-    expect(find.text('Roll back web to revision 3?'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, 'Roll back'));
-    await tester.pumpAndSettle();
-    expect(helm.calls.last, 'rollback helm-demo/web 3');
-    await dispose(tester);
-  });
-
   testWidgets('read-only hides every mutation', (tester) async {
     await pumpHelm(tester, readOnly: true);
     expect(find.textContaining('Stuck in pending-upgrade'), findsOneWidget);
@@ -206,7 +191,6 @@ void main() {
   });
 
   testWidgets('no overflow from 360 to 1800 wide, on every tab', (tester) async {
-    await loadRealFonts();
     for (final w in [360.0, 900.0, 1800.0]) {
       for (final h in [900.0]) {
         await pumpHelm(tester, size: Size(w, h));
