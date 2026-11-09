@@ -8,6 +8,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
+import '../../util/json.dart';
 
 /// Clock used for derived timings (overridable in tests).
 DateTime Function() batchNow = DateTime.now;
@@ -26,10 +27,8 @@ String formatRelative(DateTime t, {DateTime? now}) {
     s = '${abs.inSeconds}s';
   } else if (abs.inMinutes < 60) {
     s = '${abs.inMinutes}m';
-  } else if (abs.inHours < 24) {
-    s = abs.inMinutes % 60 == 0 ? '${abs.inHours}h' : '${abs.inHours}h${abs.inMinutes % 60}m';
   } else {
-    s = abs.inHours % 24 == 0 ? '${abs.inDays}d' : '${abs.inDays}d${abs.inHours % 24}h';
+    s = formatDuration(abs, style: DurationStyle.trimmed);
   }
   return d.isNegative ? '$s ago' : 'in $s';
 }
@@ -42,28 +41,12 @@ const _mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oc
 String formatWall(DateTime wall, {bool seconds = false}) =>
     '${_wd[wall.weekday - 1]} ${_two(wall.day)} ${_mon[wall.month - 1]} ${_two(wall.hour)}:${_two(wall.minute)}${seconds ? ':${_two(wall.second)}' : ''}';
 
-/// Local "2026-11-03 11:22:57".
-String formatLocal(DateTime t) {
-  final l = t.toLocal();
-  return '${l.year}-${_two(l.month)}-${_two(l.day)} ${_two(l.hour)}:${_two(l.minute)}:${_two(l.second)}';
-}
-
 /// Seconds as "600s (10m)".
 String formatSeconds(int s) {
   if (s < 60) return '${s}s';
   return '${s}s (${formatDuration(Duration(seconds: s))})';
 }
 
-/// Seconds as a short span for one-line summaries: "45s", "10m", "1h30m",
-/// "2h", "1d6h".
-String shortSeconds(int s) {
-  if (s < 60) return '${s}s';
-  if (s < 3600) return s % 60 == 0 ? '${s ~/ 60}m' : '${s ~/ 60}m${s % 60}s';
-  if (s < 86400) return (s ~/ 60) % 60 == 0 ? '${s ~/ 3600}h' : '${s ~/ 3600}h${(s ~/ 60) % 60}m';
-  return (s ~/ 3600) % 24 == 0 ? '${s ~/ 86400}d' : '${s ~/ 86400}d${(s ~/ 3600) % 24}h';
-}
-
-int _int(dynamic v) => v is num ? v.toInt() : 0;
 
 /// Derived Job state.
 class JobState {
@@ -110,7 +93,7 @@ JobState deriveJobState(Json job) {
   if (dig<bool>(job, ['spec', 'suspend']) == true || suspended != null) {
     return JobState('Suspended', Severity.warn, reason: suspended?['reason'] as String?, message: suspended?['message'] as String?);
   }
-  if (_int(status['active']) > 0) return const JobState('Running', Severity.info);
+  if (asInt(status['active']) > 0) return const JobState('Running', Severity.info);
   return const JobState('Pending', Severity.warn);
 }
 
@@ -127,7 +110,7 @@ Duration? jobDuration(Json job, {DateTime? now}) {
 
 /// "succeeded/completions", e.g. "1/1", or "3" for work-queue jobs.
 String jobCompletions(Json job) {
-  final s = _int(dig(job, ['status', 'succeeded']));
+  final s = asInt(dig(job, ['status', 'succeeded']));
   final c = dig<num>(job, ['spec', 'completions']);
   return c == null ? '$s' : '$s/${c.toInt()}';
 }

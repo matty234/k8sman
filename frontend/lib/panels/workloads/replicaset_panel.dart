@@ -33,10 +33,10 @@ class ReplicaSetPanel extends ResourcePanel {
     final st = ctx.status;
     final owners = ownerRefs(ctx.object);
     final byDeployment = owners.any((o) => o.kind == 'Deployment');
-    final desired = asInt(spec['replicas']) ?? 1;
-    final ready = asInt(st['readyReplicas']) ?? 0;
-    final available = asInt(st['availableReplicas']) ?? 0;
-    final current = asInt(st['replicas']) ?? 0;
+    final desired = asIntOrNull(spec['replicas']) ?? 1;
+    final ready = asIntOrNull(st['readyReplicas']) ?? 0;
+    final available = asIntOrNull(st['availableReplicas']) ?? 0;
+    final current = asIntOrNull(st['replicas']) ?? 0;
     final rev = dig<String>(ctx.metadata, ['annotations', revisionAnnotation]);
     final oldRevision = desired == 0 && byDeployment;
     final failure = asMapList(st['conditions']).where((c) => c['type'] == 'ReplicaFailure' && c['status'] == 'True').firstOrNull;

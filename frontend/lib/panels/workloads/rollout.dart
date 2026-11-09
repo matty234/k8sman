@@ -24,12 +24,12 @@ RolloutStatus deriveRolloutStatus(Json d) {
   final conds = asMapList(status['conditions']);
   Json? cond(String type) => conds.where((c) => c['type'] == type).firstOrNull;
 
-  final generation = asInt(dig(d, ['metadata', 'generation'])) ?? 0;
-  final observed = asInt(status['observedGeneration']) ?? 0;
-  final desired = asInt(spec['replicas']) ?? 1;
-  final updated = asInt(status['updatedReplicas']) ?? 0;
-  final replicas = asInt(status['replicas']) ?? 0;
-  final available = asInt(status['availableReplicas']) ?? 0;
+  final generation = asIntOrNull(dig(d, ['metadata', 'generation'])) ?? 0;
+  final observed = asIntOrNull(status['observedGeneration']) ?? 0;
+  final desired = asIntOrNull(spec['replicas']) ?? 1;
+  final updated = asIntOrNull(status['updatedReplicas']) ?? 0;
+  final replicas = asIntOrNull(status['replicas']) ?? 0;
+  final available = asIntOrNull(status['availableReplicas']) ?? 0;
 
   if (spec['paused'] == true) {
     return RolloutStatus('Paused', Severity.warn, 'Rollout is paused; template changes will not roll out. $updated of $desired updated.');
@@ -78,12 +78,12 @@ WorkloadHeadline deploymentHeadline(Json d) {
   final status = asMap(d['status']);
   final conds = asMapList(status['conditions']);
   Json? cond(String type) => conds.where((c) => c['type'] == type).firstOrNull;
-  final generation = asInt(dig(d, ['metadata', 'generation'])) ?? 0;
-  final observed = asInt(status['observedGeneration']) ?? 0;
-  final desired = asInt(spec['replicas']) ?? 1;
-  final updated = asInt(status['updatedReplicas']) ?? 0;
-  final replicas = asInt(status['replicas']) ?? 0;
-  final available = asInt(status['availableReplicas']) ?? 0;
+  final generation = asIntOrNull(dig(d, ['metadata', 'generation'])) ?? 0;
+  final observed = asIntOrNull(status['observedGeneration']) ?? 0;
+  final desired = asIntOrNull(spec['replicas']) ?? 1;
+  final updated = asIntOrNull(status['updatedReplicas']) ?? 0;
+  final replicas = asIntOrNull(status['replicas']) ?? 0;
+  final available = asIntOrNull(status['availableReplicas']) ?? 0;
   final rev = dig<String>(d, ['metadata', 'annotations', revisionAnnotation]);
   final progress = desired == 0 ? null : (updated / desired).clamp(0.0, 1.0);
   final updatedText = '$updated/$desired updated';

@@ -50,7 +50,7 @@ class ConfigMapPanel extends ResourcePanel {
       InspectorSection(
         id: 'cm-data',
         title: 'Data',
-        trailing: SectionSummary(keys.isEmpty ? 'empty' : '${plural(keys.length, 'key')} · ${formatSize(dataBytes)}'),
+        trailing: SectionSummary(keys.isEmpty ? 'empty' : '${plural(keys.length, 'key')} · ${formatBytes(dataBytes)}'),
         child: keys.isEmpty
             ? InlineMessage(binKeys.isEmpty ? 'This ConfigMap has no data.' : 'No text data; see Binary data.')
             : TrimmedList(trimAbove: 12, keep: 10, [
@@ -70,7 +70,7 @@ class ConfigMapPanel extends ResourcePanel {
           id: 'cm-binary',
           title: 'Binary data',
           initiallyExpanded: false,
-          trailing: SectionSummary('${plural(binKeys.length, 'key')} · ${formatSize(binaryBytes)}'),
+          trailing: SectionSummary('${plural(binKeys.length, 'key')} · ${formatBytes(binaryBytes)}'),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final k in binKeys) _BinaryEntry(name: k, value: binary[k])]),
         ),
     ];
@@ -107,7 +107,7 @@ class DataEntry extends StatelessWidget {
               ? Text(v.trim(), style: monoStyle(context, size: 11, color: theme.hintColor))
               : Text(plural(lines, 'line')),
       trailing: [
-        Text([if (format != ValueFormat.plain) format.name, formatSize(utf8Size(v))].join(' · ')),
+        Text([if (format != ValueFormat.plain) format.name, formatBytes(utf8Size(v))].join(' · ')),
       ],
       actions: [RowAction(icon: Icons.copy, tooltip: 'Copy value', onTap: () => copyToClipboard(context, v))],
       details: (context) => LongValue(prettyValue(v, format)),
@@ -129,7 +129,7 @@ class _BinaryEntry extends StatelessWidget {
       title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
       subtitle: bytes == null || bytes.isEmpty ? null : Text(hexPreview(bytes, max: 24), style: monoStyle(context, size: 11, color: theme.hintColor)),
       trailing: [
-        Text(bytes == null ? 'invalid base64' : formatSize(bytes.length),
+        Text(bytes == null ? 'invalid base64' : formatBytes(bytes.length),
             style: bytes == null ? TextStyle(color: severityColor(context, Severity.error)) : null),
       ],
     );

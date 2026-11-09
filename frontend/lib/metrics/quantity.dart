@@ -63,15 +63,6 @@ String formatPercent(double? frac) {
   return '${p.round()}%';
 }
 
-/// CPU for usage readouts: `0.4m` → "<1m", `850m` → "850m", `3455` → "3.46".
-String formatCpuUsage(double? millis) {
-  if (millis == null) return '—';
-  if (millis > 0 && millis < 1) return '<1m';
-  if (millis < 1000) return '${millis.round()}m';
-  final cores = millis / 1000;
-  return cores >= 10 ? cores.toStringAsFixed(1) : cores.toStringAsFixed(2);
-}
-
 /// Memory for usage readouts ("7.2 MiB"), or "—".
 String formatMemUsage(double? bytes) => bytes == null ? '—' : formatBytes(bytes);
 

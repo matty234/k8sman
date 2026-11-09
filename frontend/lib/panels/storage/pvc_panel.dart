@@ -11,6 +11,7 @@ import '../../util/text.dart';
 import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'common.dart';
+import '../../util/json.dart';
 
 class PvcPanel extends ResourcePanel {
   const PvcPanel();
@@ -28,7 +29,7 @@ class PvcPanel extends ResourcePanel {
     final conditions = asMapList(status['conditions']);
     final volumeName = spec['volumeName'] as String?;
     final ds = asMap(spec['dataSourceRef'] ?? spec['dataSource']);
-    final modes = _strings(status['accessModes']).isNotEmpty ? _strings(status['accessModes']) : _strings(spec['accessModes']);
+    final modes = asStrings(status['accessModes']).isNotEmpty ? asStrings(status['accessModes']) : asStrings(spec['accessModes']);
     final trueConds = [for (final c in conditions) if (c['status'] == 'True') '${c['type']}'];
     final mountsKey = 'pvc-mounts:${identityHashCode(ctx.api)}:${ctx.namespace}/${ctx.name}';
     Future<List<PvcMount>> mounts() => SharedFetch.get(mountsKey, () async => findMounts(await ctx.api.items(podResource, namespace: ctx.namespace), ctx.name));
@@ -51,7 +52,7 @@ class PvcPanel extends ResourcePanel {
           api: ctx.api,
           namespace: ctx.namespace ?? '',
           claimName: ctx.name,
-          accessModes: _strings(spec['accessModes']),
+          accessModes: asStrings(spec['accessModes']),
           load: mounts,
         ),
       ),
@@ -98,7 +99,6 @@ class PvcPanel extends ResourcePanel {
   }
 }
 
-List<String> _strings(dynamic v) => [for (final e in (v is List ? v : const [])) '$e'];
 
 /// "1Gi" as a big figure: the number, then its unit small.
 InspectorFigure _quantityFigure(dynamic q, String label, {Severity severity = Severity.neutral, String? tooltip}) {
@@ -125,7 +125,7 @@ class PvcStatusHeader extends StatelessWidget {
     final requested = dig<dynamic>(spec, ['resources', 'requests', 'storage']);
     final limit = dig<dynamic>(spec, ['resources', 'limits', 'storage']);
     final capacity = dig<dynamic>(status, ['capacity', 'storage']);
-    final modes = _strings(status['accessModes']).isNotEmpty ? _strings(status['accessModes']) : _strings(spec['accessModes']);
+    final modes = asStrings(status['accessModes']).isNotEmpty ? asStrings(status['accessModes']) : asStrings(spec['accessModes']);
     final scName = spec['storageClassName'] as String?;
     final volumeName = spec['volumeName'] as String?;
     final selectedNode = dig<String>(ctx.metadata, ['annotations', 'volume.kubernetes.io/selected-node']);

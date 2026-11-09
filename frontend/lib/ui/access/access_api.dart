@@ -7,11 +7,10 @@ import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../util/k8s.dart';
+import '../../util/json.dart';
 
 const rbacApiGroup = 'rbac.authorization.k8s.io';
 
-String _s(dynamic v) => v == null ? '' : '$v';
-List<String> _strs(dynamic v) => v is List ? [for (final e in v) '$e'] : const [];
 List<int> _ints(dynamic v) => v is List ? [for (final e in v) (e as num).toInt()] : const [];
 
 /// A User, Group or ServiceAccount.
@@ -31,8 +30,8 @@ class RbacSubject {
         namespace = null;
 
   factory RbacSubject.fromJson(Json j) {
-    final ns = _s(j['namespace']);
-    return RbacSubject(kind: _s(j['kind']), name: _s(j['name']), namespace: ns.isEmpty ? null : ns);
+    final ns = asStr(j['namespace']);
+    return RbacSubject(kind: asStr(j['kind']), name: asStr(j['name']), namespace: ns.isEmpty ? null : ns);
   }
 
   bool get isServiceAccount => kind == 'ServiceAccount';
@@ -98,8 +97,8 @@ class RbacRef {
   final String? namespace;
   const RbacRef(this.kind, this.name, [this.namespace]);
   factory RbacRef.fromJson(Json j) {
-    final ns = _s(j['namespace']);
-    return RbacRef(_s(j['kind']), _s(j['name']), ns.isEmpty ? null : ns);
+    final ns = asStr(j['namespace']);
+    return RbacRef(asStr(j['kind']), asStr(j['name']), ns.isEmpty ? null : ns);
   }
   bool get isEmpty => kind.isEmpty;
   ObjectRef get objectRef => ObjectRef(group: rbacApiGroup, kind: kind, name: name, namespace: namespace);
@@ -118,11 +117,11 @@ class PolicyRuleData {
   final List<String> nonResourceURLs;
   const PolicyRuleData({this.verbs = const [], this.apiGroups = const [], this.resources = const [], this.resourceNames = const [], this.nonResourceURLs = const []});
   factory PolicyRuleData.fromJson(Json j) => PolicyRuleData(
-        verbs: _strs(j['verbs']),
-        apiGroups: _strs(j['apiGroups']),
-        resources: _strs(j['resources']),
-        resourceNames: _strs(j['resourceNames']),
-        nonResourceURLs: _strs(j['nonResourceURLs']),
+        verbs: asStrings(j['verbs']),
+        apiGroups: asStrings(j['apiGroups']),
+        resources: asStrings(j['resources']),
+        resourceNames: asStrings(j['resourceNames']),
+        nonResourceURLs: asStrings(j['nonResourceURLs']),
       );
 
   /// One line: "get, list on pods, pods/log (core) names: a, b".
@@ -164,12 +163,12 @@ class GrantPath {
       binding: RbacRef.fromJson(asMap(j['binding'])),
       role: RbacRef.fromJson(asMap(j['role'])),
       roleMissing: j['roleMissing'] == true,
-      subject: _s(sub['kind']).isEmpty ? null : RbacSubject.fromJson(sub),
-      scope: _s(j['scope']),
+      subject: asStr(sub['kind']).isEmpty ? null : RbacSubject.fromJson(sub),
+      scope: asStr(j['scope']),
       rule: PolicyRuleData.fromJson(asMap(r['rule'])),
       source: RbacRef.fromJson(asMap(r['source'])),
       index: (r['index'] as num?)?.toInt() ?? 0,
-      via: _strs(r['via']),
+      via: asStrings(r['via']),
     );
   }
 
@@ -182,7 +181,7 @@ class MatrixCell {
   final List<String> names;
   final String? danger;
   const MatrixCell({this.paths = const [], this.names = const [], this.danger});
-  factory MatrixCell.fromJson(Json j) => MatrixCell(paths: _ints(j['paths']), names: _strs(j['names']), danger: j['danger'] as String?);
+  factory MatrixCell.fromJson(Json j) => MatrixCell(paths: _ints(j['paths']), names: asStrings(j['names']), danger: j['danger'] as String?);
 
   /// Allowed only for specific objects (resourceNames).
   bool get limited => names.isNotEmpty;
@@ -198,12 +197,12 @@ class MatrixRow {
   final Map<String, MatrixCell> cells;
   const MatrixRow({required this.group, required this.resource, this.kind = '', this.namespaced = true, this.virtual = false, this.verbs = const [], this.cells = const {}});
   factory MatrixRow.fromJson(Json j) => MatrixRow(
-        group: _s(j['group']),
-        resource: _s(j['resource']),
-        kind: _s(j['kind']),
+        group: asStr(j['group']),
+        resource: asStr(j['resource']),
+        kind: asStr(j['kind']),
         namespaced: j['namespaced'] == true,
         virtual: j['virtual'] == true,
-        verbs: _strs(j['verbs']),
+        verbs: asStrings(j['verbs']),
         cells: {for (final e in asMap(j['cells']).entries) e.key: MatrixCell.fromJson(asMap(e.value))},
       );
 
@@ -227,7 +226,7 @@ class NonResourceGrant {
   final List<String> verbs;
   final List<int> paths;
   const NonResourceGrant(this.urls, this.verbs, this.paths);
-  factory NonResourceGrant.fromJson(Json j) => NonResourceGrant(_strs(j['urls']), _strs(j['verbs']), _ints(j['paths']));
+  factory NonResourceGrant.fromJson(Json j) => NonResourceGrant(asStrings(j['urls']), asStrings(j['verbs']), _ints(j['paths']));
 }
 
 class BindingSummary {
@@ -243,7 +242,7 @@ class BindingSummary {
         role: RbacRef.fromJson(asMap(j['role'])),
         roleMissing: j['roleMissing'] == true,
         subject: RbacSubject.fromJson(asMap(j['subject'])),
-        scope: _s(j['scope']),
+        scope: asStr(j['scope']),
         inherited: j['inherited'] == true,
       );
 }
@@ -252,7 +251,7 @@ class Identity {
   final String user;
   final List<String> groups;
   const Identity(this.user, this.groups);
-  factory Identity.fromJson(Json j) => Identity(_s(j['user']), _strs(j['groups']));
+  factory Identity.fromJson(Json j) => Identity(asStr(j['user']), asStrings(j['groups']));
 }
 
 /// A subject's effective permissions as a resource × verb matrix.
@@ -285,14 +284,14 @@ class PermissionMatrixData {
   factory PermissionMatrixData.fromJson(Json j) => PermissionMatrixData(
         subject: j['subject'] is Map ? RbacSubject.fromJson(asMap(j['subject'])) : null,
         identity: Identity.fromJson(asMap(j['identity'])),
-        namespace: _s(j['namespace']),
-        verbs: _strs(j['verbs']),
+        namespace: asStr(j['namespace']),
+        verbs: asStrings(j['verbs']),
         rows: [for (final r in asMapList(j['rows'])) MatrixRow.fromJson(r)],
         paths: [for (final p in asMapList(j['paths'])) GrantPath.fromJson(p)],
         nonResource: [for (final n in asMapList(j['nonResource'])) NonResourceGrant.fromJson(n)],
         fullWildcard: j['fullWildcard'] == true,
         bindings: [for (final b in asMapList(j['bindings'])) BindingSummary.fromJson(b)],
-        roleBindingNamespaces: _strs(j['roleBindingNamespaces']),
+        roleBindingNamespaces: asStrings(j['roleBindingNamespaces']),
         missingRoles: [for (final r in asMapList(j['missingRoles'])) RbacRef.fromJson(r)],
       );
 
@@ -312,9 +311,9 @@ class WhoCanEntry {
         subject: RbacSubject.fromJson(asMap(j['subject'])),
         paths: [for (final p in asMapList(j['paths'])) GrantPath.fromJson(p)],
         partial: j['partial'] == true,
-        names: _strs(j['names']),
+        names: asStrings(j['names']),
         fullWildcard: j['fullWildcard'] == true,
-        scopes: _strs(j['scopes']),
+        scopes: asStrings(j['scopes']),
       );
 }
 
@@ -375,14 +374,14 @@ class SelfAccess {
   const SelfAccess({this.identity, this.identitySource = '', this.identityError, required this.evaluatedIn, required this.matrix, this.incomplete = false, this.evaluationError, this.readOnly = false, this.context = ''});
   factory SelfAccess.fromJson(Json j) => SelfAccess(
         identity: j['identity'] is Map ? Identity.fromJson(asMap(j['identity'])) : null,
-        identitySource: _s(j['identitySource']),
+        identitySource: asStr(j['identitySource']),
         identityError: j['identityError'] as String?,
-        evaluatedIn: _s(j['evaluatedIn']),
+        evaluatedIn: asStr(j['evaluatedIn']),
         matrix: PermissionMatrixData.fromJson(asMap(j['matrix'])),
         incomplete: j['incomplete'] == true,
         evaluationError: j['evaluationError'] as String?,
         readOnly: j['readOnly'] == true,
-        context: _s(j['context']),
+        context: asStr(j['context']),
       );
 }
 
@@ -403,7 +402,7 @@ class CheckResult {
     return CheckResult(
       allowed: j['allowed'] == true,
       denied: j['denied'] == true,
-      reason: _s(j['reason']),
+      reason: asStr(j['reason']),
       evaluationError: j['evaluationError'] as String?,
       identity: j['identity'] is Map ? Identity.fromJson(asMap(j['identity'])) : null,
       resolverAllowed: res == null ? null : res['allowed'] == true,
@@ -421,7 +420,7 @@ class ApplyResult {
   final String context;
   const ApplyResult({this.dryRun = false, this.created = false, this.before = '', this.after = '', this.context = ''});
   factory ApplyResult.fromJson(Json j) =>
-      ApplyResult(dryRun: j['dryRun'] == true, created: j['created'] == true, before: _s(j['before']), after: _s(j['after']), context: _s(j['context']));
+      ApplyResult(dryRun: j['dryRun'] == true, created: j['created'] == true, before: asStr(j['before']), after: asStr(j['after']), context: asStr(j['context']));
 }
 
 /// A served resource or subresource, for pickers and matrix rows.
@@ -435,12 +434,12 @@ class ApiResourceInfo {
   final bool virtual;
   const ApiResourceInfo({required this.group, this.version = '', required this.resource, this.kind = '', this.namespaced = true, this.verbs = const [], this.virtual = false});
   factory ApiResourceInfo.fromJson(Json j) => ApiResourceInfo(
-        group: _s(j['group']),
-        version: _s(j['version']),
-        resource: _s(j['resource']),
-        kind: _s(j['kind']),
+        group: asStr(j['group']),
+        version: asStr(j['version']),
+        resource: asStr(j['resource']),
+        kind: asStr(j['kind']),
         namespaced: j['namespaced'] == true,
-        verbs: _strs(j['verbs']),
+        verbs: asStrings(j['verbs']),
         virtual: j['virtual'] == true,
       );
   String get groupLabel => group.isEmpty ? 'core' : group;

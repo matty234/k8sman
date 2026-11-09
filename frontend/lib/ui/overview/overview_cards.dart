@@ -265,13 +265,6 @@ class StatBlocks extends StatelessWidget {
 // Capacity: cluster requests (and usage) against allocatable
 // ---------------------------------------------------------------------------
 
-/// Cores with at most one decimal ("12.4", "32").
-String formatCores(double millis) {
-  final c = millis / 1000;
-  if (c == c.roundToDouble()) return c.toStringAsFixed(0);
-  return c < 10 ? c.toStringAsFixed(c < 1 ? 2 : 1) : c.toStringAsFixed(1);
-}
-
 /// The Capacity section: CPU and memory history (Prometheus), or plain
 /// bars of requests (and live usage) against allocatable without it.
 class CapacityStrip extends StatelessWidget {

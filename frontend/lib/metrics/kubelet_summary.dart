@@ -8,8 +8,8 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../util/k8s.dart';
 import '../state/namespace_scope.dart';
+import '../util/json.dart';
 
-double? _num(dynamic v) => (v as num?)?.toDouble();
 
 /// One mounted PVC's filesystem usage.
 class KubeletVolume {
@@ -39,11 +39,11 @@ class KubeletVolume {
     claim: '${j['claim'] ?? ''}',
     pod: '${j['pod'] ?? ''}',
     node: '${j['node'] ?? ''}',
-    used: _num(j['usedBytes']),
-    capacity: _num(j['capacityBytes']),
-    available: _num(j['availableBytes']),
-    inodes: _num(j['inodes']),
-    inodesUsed: _num(j['inodesUsed']),
+    used: asDouble(j['usedBytes']),
+    capacity: asDouble(j['capacityBytes']),
+    available: asDouble(j['availableBytes']),
+    inodes: asDouble(j['inodes']),
+    inodesUsed: asDouble(j['inodesUsed']),
   );
 
   String get key => '$namespace/$claim';
@@ -63,8 +63,8 @@ class NetThroughput {
     return NetThroughput(
       namespace: ns == null || ns.isEmpty ? null : ns,
       name: '${j['name'] ?? ''}',
-      rx: _num(j['rxBytesPerSec']),
-      tx: _num(j['txBytesPerSec']),
+      rx: asDouble(j['rxBytesPerSec']),
+      tx: asDouble(j['txBytesPerSec']),
     );
   }
 

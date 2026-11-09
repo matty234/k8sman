@@ -149,7 +149,7 @@ class _SecretBodyState extends State<SecretBody> {
         id: 'secret-data',
         title: 'Data',
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          Flexible(child: SectionSummary(keys.isEmpty ? 'empty' : '${plural(keys.length, 'key')} · ${formatSize(total)}')),
+          Flexible(child: SectionSummary(keys.isEmpty ? 'empty' : '${plural(keys.length, 'key')} · ${formatBytes(total)}')),
           if (keys.isNotEmpty) ...[
             const SizedBox(width: 10),
             Hoverable(
@@ -174,7 +174,7 @@ class _SecretBodyState extends State<SecretBody> {
   Widget _keyRow(BuildContext context, String key, dynamic raw, DecodedValue? d) {
     final theme = Theme.of(context);
     final revealed = _isRevealed(key);
-    final meta = d == null ? 'invalid base64' : (d.isBinary ? 'binary · ${formatSize(d.length)}' : formatSize(d.length));
+    final meta = d == null ? 'invalid base64' : (d.isBinary ? 'binary · ${formatBytes(d.length)}' : formatBytes(d.length));
     final inline = revealed && d != null && !d.isBinary && !d.text!.contains('\n') && d.text!.length <= 60;
     Widget? body;
     if (revealed && d != null && !inline) {

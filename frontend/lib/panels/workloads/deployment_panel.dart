@@ -40,11 +40,11 @@ class DeploymentPanel extends ResourcePanel {
     final head = deploymentHeadline(ctx.object);
     final strategy = asMap(spec['strategy']);
     final ru = asMap(strategy['rollingUpdate']);
-    final desired = asInt(spec['replicas']) ?? 1;
-    final ready = asInt(st['readyReplicas']) ?? 0;
-    final updated = asInt(st['updatedReplicas']) ?? 0;
-    final available = asInt(st['availableReplicas']) ?? 0;
-    final unavailable = asInt(st['unavailableReplicas']) ?? (desired - available).clamp(0, desired);
+    final desired = asIntOrNull(spec['replicas']) ?? 1;
+    final ready = asIntOrNull(st['readyReplicas']) ?? 0;
+    final updated = asIntOrNull(st['updatedReplicas']) ?? 0;
+    final available = asIntOrNull(st['availableReplicas']) ?? 0;
+    final unavailable = asIntOrNull(st['unavailableReplicas']) ?? (desired - available).clamp(0, desired);
     final key = workloadRefreshKey(ctx);
     final rev = dig<String>(ctx.metadata, ['annotations', revisionAnnotation]);
     final paused = spec['paused'] == true;
@@ -222,8 +222,8 @@ class _RevisionRow extends StatelessWidget {
     final colors = AppColors.of(context);
     final name = '${dig(rs, ['metadata', 'name'])}';
     final ns = dig<String>(rs, ['metadata', 'namespace']);
-    final desired = asInt(dig(rs, ['spec', 'replicas'])) ?? 0;
-    final ready = asInt(dig(rs, ['status', 'readyReplicas'])) ?? 0;
+    final desired = asIntOrNull(dig(rs, ['spec', 'replicas'])) ?? 0;
+    final ready = asIntOrNull(dig(rs, ['status', 'readyReplicas'])) ?? 0;
     final prevImages = previous == null ? const <String, String>{} : templateImages(previous!);
     final inits = initContainerNames(rs);
     // Init container images only when they changed, to keep rows compact.

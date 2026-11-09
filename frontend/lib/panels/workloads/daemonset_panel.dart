@@ -18,12 +18,12 @@ import 'widgets/util.dart';
 
 (String, Severity) daemonSetStatus(Json ds) {
   final st = asMap(ds['status']);
-  final desired = asInt(st['desiredNumberScheduled']) ?? 0;
-  final ready = asInt(st['numberReady']) ?? 0;
-  final updated = asInt(st['updatedNumberScheduled']) ?? 0;
-  final mis = asInt(st['numberMisscheduled']) ?? 0;
-  final gen = asInt(dig(ds, ['metadata', 'generation'])) ?? 0;
-  final observed = asInt(st['observedGeneration']) ?? 0;
+  final desired = asIntOrNull(st['desiredNumberScheduled']) ?? 0;
+  final ready = asIntOrNull(st['numberReady']) ?? 0;
+  final updated = asIntOrNull(st['updatedNumberScheduled']) ?? 0;
+  final mis = asIntOrNull(st['numberMisscheduled']) ?? 0;
+  final gen = asIntOrNull(dig(ds, ['metadata', 'generation'])) ?? 0;
+  final observed = asIntOrNull(st['observedGeneration']) ?? 0;
   if (gen > observed) return ('Waiting for controller', Severity.warn);
   if (desired == 0) return ('No eligible nodes', Severity.warn);
   if (updated < desired) return ('Rolling: $updated of $desired nodes updated', Severity.warn);
@@ -36,10 +36,10 @@ import 'widgets/util.dart';
 /// (2/3 nodes updated), "No eligible nodes", …
 WorkloadHeadline daemonSetHeadline(Json ds) {
   final st = asMap(ds['status']);
-  final desired = asInt(st['desiredNumberScheduled']) ?? 0;
-  final ready = asInt(st['numberReady']) ?? 0;
-  final updated = asInt(st['updatedNumberScheduled']) ?? 0;
-  final mis = asInt(st['numberMisscheduled']) ?? 0;
+  final desired = asIntOrNull(st['desiredNumberScheduled']) ?? 0;
+  final ready = asIntOrNull(st['numberReady']) ?? 0;
+  final updated = asIntOrNull(st['updatedNumberScheduled']) ?? 0;
+  final mis = asIntOrNull(st['numberMisscheduled']) ?? 0;
   final (text, sev) = daemonSetStatus(ds);
   if (text.startsWith('Rolling')) {
     return WorkloadHeadline('Rolling out', Severity.info, detail: '$updated/$desired nodes updated', progress: desired == 0 ? null : updated / desired);
@@ -75,12 +75,12 @@ class DaemonSetPanel extends ResourcePanel {
     final ru = asMap(strat['rollingUpdate']);
     final onDelete = strat['type'] == 'OnDelete';
     final podSpec = asMap(dig(spec, ['template', 'spec']));
-    final desired = asInt(st['desiredNumberScheduled']) ?? 0;
-    final ready = asInt(st['numberReady']) ?? 0;
-    final updated = asInt(st['updatedNumberScheduled']) ?? 0;
-    final available = asInt(st['numberAvailable']) ?? 0;
-    final unavailable = asInt(st['numberUnavailable']) ?? (desired - available).clamp(0, desired);
-    final mis = asInt(st['numberMisscheduled']) ?? 0;
+    final desired = asIntOrNull(st['desiredNumberScheduled']) ?? 0;
+    final ready = asIntOrNull(st['numberReady']) ?? 0;
+    final updated = asIntOrNull(st['updatedNumberScheduled']) ?? 0;
+    final available = asIntOrNull(st['numberAvailable']) ?? 0;
+    final unavailable = asIntOrNull(st['numberUnavailable']) ?? (desired - available).clamp(0, desired);
+    final mis = asIntOrNull(st['numberMisscheduled']) ?? 0;
     return [
       InspectorHeader(
         headline: head.text,

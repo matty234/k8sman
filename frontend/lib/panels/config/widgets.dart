@@ -9,7 +9,6 @@ import '../../util/text.dart';
 import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'usage.dart';
-import 'values.dart';
 
 /// Values longer than this are trimmed behind "Show all N lines".
 const kCollapseLines = 30;
@@ -85,7 +84,7 @@ IconData usageIcon(UsageKind k) => switch (k) {
 
 /// "1.2 KiB" as a big figure: the number, then its unit small.
 InspectorFigure sizeFigure(int bytes, String label) {
-  final parts = formatSize(bytes).split(' ');
+  final parts = formatBytes(bytes).split(' ');
   return InspectorFigure(parts.first, label, of: parts.length > 1 ? ' ${parts.sublist(1).join(' ')}' : null, tooltip: '$bytes bytes');
 }
 

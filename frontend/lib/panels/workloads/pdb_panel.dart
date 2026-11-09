@@ -22,10 +22,10 @@ class PdbPanel extends ResourcePanel {
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final spec = ctx.spec;
     final st = ctx.status;
-    final allowed = asInt(st['disruptionsAllowed']);
-    final currentHealthy = asInt(st['currentHealthy']) ?? 0;
-    final desiredHealthy = asInt(st['desiredHealthy']) ?? 0;
-    final expected = asInt(st['expectedPods']) ?? 0;
+    final allowed = asIntOrNull(st['disruptionsAllowed']);
+    final currentHealthy = asIntOrNull(st['currentHealthy']) ?? 0;
+    final desiredHealthy = asIntOrNull(st['desiredHealthy']) ?? 0;
+    final expected = asIntOrNull(st['expectedPods']) ?? 0;
     final disrupted = asMap(st['disruptedPods']);
     final (headline, sev) = allowed == null
         ? ('No status yet', Severity.neutral)

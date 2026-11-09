@@ -108,7 +108,7 @@ class WorkflowSummary extends StatelessWidget {
         const SizedBox(width: 12),
         if (dur != null)
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(formatRunDuration(dur), style: monoStyle(context, size: 14).copyWith(fontWeight: FontWeight.w600)),
+            Text(formatDuration(dur, style: DurationStyle.padded), style: monoStyle(context, size: 14).copyWith(fontWeight: FontWeight.w600)),
             Text(status['finishedAt'] == null ? 'running' : 'duration', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
           ]),
       ]),
@@ -164,7 +164,7 @@ class WorkflowSummary extends StatelessWidget {
         ('Resubmitted from', from == null ? null : ResourceLink(ObjectRef(group: wfGroup, kind: 'Workflow', name: from, namespace: ctx.namespace), label: from)),
         ('Started', status['startedAt'] == null ? null : formatLocalTime(parseTime(status['startedAt']))),
         ('Finished', status['finishedAt'] == null ? null : formatLocalTime(parseTime(status['finishedAt']))),
-        ('Estimated', status['estimatedDuration'] is num && status['finishedAt'] == null ? formatRunDuration(Duration(seconds: (status['estimatedDuration'] as num).toInt())) : null),
+        ('Estimated', status['estimatedDuration'] is num && status['finishedAt'] == null ? formatDuration(Duration(seconds: (status['estimatedDuration'] as num).toInt()), style: DurationStyle.padded) : null),
         ('Resources', formatResourcesDuration(status['resourcesDuration'])),
         ('Creator', labels[labelCreator] as String? ?? dig<String>(ctx.metadata, ['annotations', 'workflows.argoproj.io/creator'])),
         ('Archived', labels['workflows.argoproj.io/workflow-archiving-status'] as String?),

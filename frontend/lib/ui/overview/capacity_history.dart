@@ -18,7 +18,7 @@ import '../../state/poller.dart';
 import '../../util/k8s.dart';
 import 'overview_api.dart';
 import '../widgets/editorial.dart';
-import 'overview_cards.dart' show CapacityColumns, formatCores, requestedLine;
+import 'overview_cards.dart' show CapacityColumns, requestedLine;
 
 /// Remembered for the session.
 Duration? _rememberedRange;

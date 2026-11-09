@@ -11,6 +11,7 @@ import '../../api/models.dart';
 import '../../state/cluster_error.dart';
 import '../../util/k8s.dart';
 import '../widgets/partial_banner.dart' show parsePartialErrors;
+import '../../util/json.dart';
 
 /// Talks to the backend behind an [ApiClient], reusing its base URL. Tests
 /// subclass this to serve canned JSON.
@@ -76,13 +77,11 @@ enum SecSeverity {
       };
 }
 
-int _int(dynamic v) => (v as num?)?.toInt() ?? 0;
-String _str(dynamic v) => v == null ? '' : '$v';
 List<Json> _maps(dynamic v) => asMapList(v);
 
 ObjectRef refFromJson(Json j) {
-  final ns = _str(j['namespace']);
-  return ObjectRef(group: _str(j['group']), kind: _str(j['kind']), name: _str(j['name']), namespace: ns.isEmpty ? null : ns);
+  final ns = asStr(j['namespace']);
+  return ObjectRef(group: asStr(j['group']), kind: asStr(j['kind']), name: asStr(j['name']), namespace: ns.isEmpty ? null : ns);
 }
 
 class SecCategory {
@@ -93,10 +92,10 @@ class SecCategory {
   const SecCategory({required this.id, required this.title, required this.total, required this.counts});
 
   factory SecCategory.fromJson(Json j) => SecCategory(
-        id: _str(j['id']),
-        title: _str(j['title']),
-        total: _int(j['total']),
-        counts: {for (final e in asMap(j['counts']).entries) SecSeverity.parse(e.key): _int(e.value)},
+        id: asStr(j['id']),
+        title: asStr(j['title']),
+        total: asInt(j['total']),
+        counts: {for (final e in asMap(j['counts']).entries) SecSeverity.parse(e.key): asInt(e.value)},
       );
 
   int count(SecSeverity s) => counts[s] ?? 0;
@@ -131,14 +130,14 @@ class SecFinding {
   });
 
   factory SecFinding.fromJson(Json j) => SecFinding(
-        id: _str(j['id']),
-        check: _str(j['check']),
+        id: asStr(j['id']),
+        check: asStr(j['check']),
         severity: SecSeverity.parse(j['severity']),
-        category: _str(j['category']),
-        title: _str(j['title']),
-        detail: _str(j['detail']),
-        remediation: _str(j['remediation']),
-        namespace: _str(j['namespace']).isEmpty ? null : _str(j['namespace']),
+        category: asStr(j['category']),
+        title: asStr(j['title']),
+        detail: asStr(j['detail']),
+        remediation: asStr(j['remediation']),
+        namespace: asStr(j['namespace']).isEmpty ? null : asStr(j['namespace']),
         objects: [for (final o in _maps(j['objects'])) refFromJson(o)],
         checks: [for (final c in (j['checks'] as List? ?? const [])) '$c'],
       );
@@ -157,12 +156,12 @@ class SecIgnoreRule {
   const SecIgnoreRule({required this.check, this.namespace, this.kind, this.name, this.reason = '', this.at = ''});
 
   factory SecIgnoreRule.fromJson(Json j) => SecIgnoreRule(
-        check: _str(j['check']),
-        namespace: _str(j['namespace']).isEmpty ? null : _str(j['namespace']),
-        kind: _str(j['kind']).isEmpty ? null : _str(j['kind']),
-        name: _str(j['name']).isEmpty ? null : _str(j['name']),
-        reason: _str(j['reason']),
-        at: _str(j['at']),
+        check: asStr(j['check']),
+        namespace: asStr(j['namespace']).isEmpty ? null : asStr(j['namespace']),
+        kind: asStr(j['kind']).isEmpty ? null : asStr(j['kind']),
+        name: asStr(j['name']).isEmpty ? null : asStr(j['name']),
+        reason: asStr(j['reason']),
+        at: asStr(j['at']),
       );
 
   Json toJson() => {
@@ -218,9 +217,9 @@ class GrantSubject {
   const GrantSubject({required this.kind, required this.name, this.namespace, this.exists, this.used});
 
   factory GrantSubject.fromJson(Json j) => GrantSubject(
-        kind: _str(j['kind']),
-        name: _str(j['name']),
-        namespace: _str(j['namespace']).isEmpty ? null : _str(j['namespace']),
+        kind: asStr(j['kind']),
+        name: asStr(j['name']),
+        namespace: asStr(j['namespace']).isEmpty ? null : asStr(j['namespace']),
         exists: j['exists'] as bool?,
         used: j['used'] as bool?,
       );
@@ -255,9 +254,9 @@ class Grant {
         binding: refFromJson(asMap(j['binding'])),
         role: refFromJson(asMap(j['role'])),
         roleMissing: j['roleMissing'] == true,
-        scope: _str(j['scope']),
+        scope: asStr(j['scope']),
         subjects: [for (final s in _maps(j['subjects'])) GrantSubject.fromJson(s)],
-        score: _int(j['score']),
+        score: asInt(j['score']),
         reasons: [for (final r in (j['reasons'] as List? ?? const [])) '$r'],
         unused: j['unused'] == true,
         system: j['system'] == true,
@@ -290,15 +289,15 @@ class NamespaceNetwork {
   });
 
   factory NamespaceNetwork.fromJson(Json j) => NamespaceNetwork(
-        namespace: _str(j['namespace']),
-        policies: _int(j['policies']),
-        workloads: _int(j['workloads']),
-        ingress: _str(j['ingress']),
-        egress: _str(j['egress']),
-        ingressOpen: _int(j['ingressOpen']),
-        egressOpen: _int(j['egressOpen']),
-        exposed: _int(j['exposed']),
-        psa: _str(j['psa']).isEmpty ? null : _str(j['psa']),
+        namespace: asStr(j['namespace']),
+        policies: asInt(j['policies']),
+        workloads: asInt(j['workloads']),
+        ingress: asStr(j['ingress']),
+        egress: asStr(j['egress']),
+        ingressOpen: asInt(j['ingressOpen']),
+        egressOpen: asInt(j['egressOpen']),
+        exposed: asInt(j['exposed']),
+        psa: asStr(j['psa']).isEmpty ? null : asStr(j['psa']),
       );
 }
 
@@ -307,13 +306,13 @@ class VulnCounts {
   const VulnCounts({this.critical = 0, this.high = 0, this.medium = 0, this.low = 0, this.unknown = 0, this.fixableCritical = 0, this.fixableHigh = 0});
 
   factory VulnCounts.fromJson(Json j) => VulnCounts(
-        critical: _int(j['critical']),
-        high: _int(j['high']),
-        medium: _int(j['medium']),
-        low: _int(j['low']),
-        unknown: _int(j['unknown']),
-        fixableCritical: _int(j['fixableCritical']),
-        fixableHigh: _int(j['fixableHigh']),
+        critical: asInt(j['critical']),
+        high: asInt(j['high']),
+        medium: asInt(j['medium']),
+        low: asInt(j['low']),
+        unknown: asInt(j['unknown']),
+        fixableCritical: asInt(j['fixableCritical']),
+        fixableHigh: asInt(j['fixableHigh']),
       );
 
   int get fixable => fixableCritical + fixableHigh;
@@ -343,13 +342,13 @@ class Cve {
   });
 
   factory Cve.fromJson(Json j) => Cve(
-        id: _str(j['id']),
+        id: asStr(j['id']),
         severity: SecSeverity.parse(j['severity']),
-        package: _str(j['package']),
-        installed: _str(j['installed']),
-        fixed: _str(j['fixed']).isEmpty ? null : _str(j['fixed']),
-        title: _str(j['title']),
-        link: _str(j['link']).isEmpty ? null : _str(j['link']),
+        package: asStr(j['package']),
+        installed: asStr(j['installed']),
+        fixed: asStr(j['fixed']).isEmpty ? null : asStr(j['fixed']),
+        title: asStr(j['title']),
+        link: asStr(j['link']).isEmpty ? null : asStr(j['link']),
         score: (j['score'] as num?)?.toDouble() ?? 0,
         images: [for (final i in (j['images'] as List? ?? const [])) '$i'],
       );
@@ -375,7 +374,7 @@ class ImageSummary {
   });
 
   factory ImageSummary.fromJson(Json j) => ImageSummary(
-        image: _str(j['image']),
+        image: asStr(j['image']),
         workloads: [for (final w in _maps(j['workloads'])) refFromJson(w)],
         scanned: j['scanned'] == true,
         source: j['source'] as String?,
@@ -445,10 +444,10 @@ class SecurityData {
   factory SecurityData.fromJson(Json j) {
     final sources = asMap(j['sources']);
     return SecurityData(
-      generatedAt: _str(j['generatedAt']),
-      namespace: _str(j['namespace']),
+      generatedAt: asStr(j['generatedAt']),
+      namespace: asStr(j['namespace']),
       includeSystem: j['includeSystem'] == true,
-      score: _int(j['score']),
+      score: asInt(j['score']),
       categories: [for (final c in _maps(j['categories'])) SecCategory.fromJson(c)],
       findings: [for (final f in _maps(j['findings'])) SecFinding.fromJson(f)],
       ignored: [for (final f in _maps(j['ignored'])) SecIgnored(SecFinding.fromJson(f), SecIgnoreRule.fromJson(asMap(f['rule'])))],
@@ -500,8 +499,8 @@ class ScannerStatus {
       operatorReports: [for (final r in (op['reports'] as List? ?? const [])) '$r'],
       trivyAvailable: t['available'] == true,
       trivyPath: t['path'] as String?,
-      trivyVersion: _str(t['version']).isEmpty ? null : _str(t['version']),
-      installHint: _str(j['installHint']).isEmpty ? const ScannerStatus().installHint : _str(j['installHint']),
+      trivyVersion: asStr(t['version']).isEmpty ? null : asStr(t['version']),
+      installHint: asStr(j['installHint']).isEmpty ? const ScannerStatus().installHint : asStr(j['installHint']),
     );
   }
 }
@@ -518,12 +517,12 @@ class ScanResult {
   const ScanResult({required this.image, required this.scannedAt, required this.counts, this.cached = false, this.os, this.vulnerabilities = const [], this.total = 0});
 
   factory ScanResult.fromJson(Json j) => ScanResult(
-        image: _str(j['image']),
-        scannedAt: _str(j['scannedAt']),
+        image: asStr(j['image']),
+        scannedAt: asStr(j['scannedAt']),
         cached: j['cached'] == true,
         os: j['os'] as String?,
         counts: VulnCounts.fromJson(asMap(j['counts'])),
         vulnerabilities: [for (final v in _maps(j['vulnerabilities'])) Cve.fromJson(v)],
-        total: _int(j['total']),
+        total: asInt(j['total']),
       );
 }

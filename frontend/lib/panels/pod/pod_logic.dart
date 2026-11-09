@@ -109,11 +109,6 @@ String? exitCodeHint(int code) => switch (code) {
       _ => code > 128 && code < 160 ? 'killed by signal ${code - 128}' : null,
     };
 
-String _ago(dynamic ts) {
-  final t = parseTime(ts);
-  return t == null ? '' : '${formatAge(t)} ago';
-}
-
 /// Short description of a terminated state: "Error · exit 3 · 2m ago".
 String describeTerminated(Json t, {bool withAge = true}) {
   final code = (t['exitCode'] as num?)?.toInt();
@@ -121,7 +116,7 @@ String describeTerminated(Json t, {bool withAge = true}) {
     if (t['reason'] != null) '${t['reason']}',
     if (code != null) 'exit $code',
     if (t['signal'] != null) 'signal ${t['signal']}',
-    if (withAge && _ago(t['finishedAt']).isNotEmpty) _ago(t['finishedAt']),
+    if (withAge && formatAgo(parseTime(t['finishedAt'])).isNotEmpty) formatAgo(parseTime(t['finishedAt'])),
   ];
   return parts.join(' · ');
 }
@@ -140,7 +135,7 @@ List<Insight> podInsights(Json pod) {
     final grace = dig<num>(pod, ['metadata', 'deletionGracePeriodSeconds']);
     final finalizers = dig<List>(pod, ['metadata', 'finalizers']) ?? const [];
     out.add(Insight(Severity.warn, 'Pod is terminating', [
-      'deletion requested ${_ago(del)}',
+      'deletion requested ${formatAgo(parseTime(del))}',
       if (grace != null) 'grace period ${grace}s',
       if (finalizers.isNotEmpty) 'finalizers: ${finalizers.join(', ')}',
     ].join(' · ')));
@@ -173,7 +168,7 @@ List<Insight> podInsights(Json pod) {
           out.add(Insight(
             Severity.error,
             '$who is in CrashLoopBackOff: restarted ${c.restarts} time${c.restarts == 1 ? '' : 's'}'
-            '${lt.isEmpty ? '' : ', last exit code ${code ?? '?'} (${lt['reason'] ?? 'Error'}) ${_ago(lt['finishedAt'])}'}',
+            '${lt.isEmpty ? '' : ', last exit code ${code ?? '?'} (${lt['reason'] ?? 'Error'}) ${formatAgo(parseTime(lt['finishedAt']))}'}',
             [
               if (oom) 'killed for exceeding its memory limit${_memLimit(c)}',
               if (!oom && hint != null) 'exit $code: $hint',
@@ -202,7 +197,7 @@ List<Insight> podInsights(Json pod) {
       }
     } else if (c.isRunning) {
       if (c.kind == ContainerKind.init) {
-        out.add(Insight(Severity.warn, '$who is still running', 'started ${_ago(c.running['startedAt'])}; regular containers start after it completes'));
+        out.add(Insight(Severity.warn, '$who is still running', 'started ${formatAgo(parseTime(c.running['startedAt']))}; regular containers start after it completes'));
       } else if (c.kind != ContainerKind.ephemeral && !c.ready) {
         final started = c.status['started'];
         final startup = asMap(c.spec['startupProbe']);

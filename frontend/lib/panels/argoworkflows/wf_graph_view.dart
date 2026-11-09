@@ -551,7 +551,7 @@ class _GraphNode extends StatelessWidget {
                 )),
             if (!container && (dur != null || n.template.isNotEmpty))
               Text(
-                [if (n.type != 'Pod' && n.type != 'Retry') n.type, if (dur != null && !muted) formatRunDuration(dur), if (muted) n.phase.toLowerCase()].join(' · '),
+                [if (n.type != 'Pod' && n.type != 'Retry') n.type, if (dur != null && !muted) formatDuration(dur, style: DurationStyle.padded), if (muted) n.phase.toLowerCase()].join(' · '),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontSize: 10, height: 1.2),
@@ -620,7 +620,7 @@ class _NodeList extends StatelessWidget {
                 if (n.type != 'Pod') Padding(padding: const EdgeInsets.only(left: 6), child: Text(n.type, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor))),
                 SizedBox(
                   width: 64,
-                  child: Text(dur == null || n.skipped ? '' : formatRunDuration(dur),
+                  child: Text(dur == null || n.skipped ? '' : formatDuration(dur, style: DurationStyle.padded),
                       textAlign: TextAlign.right, style: monoStyle(context, size: 11, color: theme.hintColor)),
                 ),
               ]),
@@ -722,13 +722,13 @@ class NodeDetails extends StatelessWidget {
           ),
           if (raw['startedAt'] != null) ('Started', formatLocalTime(parseTime(raw['startedAt']))),
           if (raw['finishedAt'] != null) ('Finished', formatLocalTime(parseTime(raw['finishedAt']))),
-          if (dur != null && !node.skipped) ('Duration', formatRunDuration(dur) + (raw['finishedAt'] == null ? ' (running)' : '')),
+          if (dur != null && !node.skipped) ('Duration', formatDuration(dur, style: DurationStyle.padded) + (raw['finishedAt'] == null ? ' (running)' : '')),
           if (formatResourcesDuration(raw['resourcesDuration']).isNotEmpty) ('Resources', formatResourcesDuration(raw['resourcesDuration'])),
           if (podNode.exitCode != null)
             ('Exit code', Text(podNode.exitCode!, style: monoStyle(context, size: 12, color: podNode.exitCode == '0' ? null : severityColor(context, Severity.error)))),
           if (raw['hostNodeName'] != null) ('Node', ResourceLink(ObjectRef(kind: 'Node', name: '${raw['hostNodeName']}'), label: '${raw['hostNodeName']}')),
           if (raw['estimatedDuration'] is num && raw['finishedAt'] == null)
-            ('Estimated', formatRunDuration(Duration(seconds: (raw['estimatedDuration'] as num).toInt()))),
+            ('Estimated', formatDuration(Duration(seconds: (raw['estimatedDuration'] as num).toInt()), style: DurationStyle.padded)),
           if (raw['memoizationStatus'] is Map) ('Memoized', dig(raw, ['memoizationStatus', 'hit']) == true ? 'cache hit' : 'cache miss'),
         ], keyWidth: 100),
         if (attempts.length > 1) ...[
@@ -812,12 +812,8 @@ String artifactLocation(Json a) {
   return '';
 }
 
-String formatLocalTime(DateTime? t) {
-  if (t == null) return '';
-  final l = t.toLocal();
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${l.year}-${two(l.month)}-${two(l.day)} ${two(l.hour)}:${two(l.minute)}:${two(l.second)}  (${formatAge(t)} ago)';
-}
+
+String formatLocalTime(DateTime? t) => t == null ? '' : '${formatLocal(t)}  (${formatAgo(t)})';
 
 /// A link to the step's pod once found (looked up once per node).
 class _PodLink extends StatefulWidget {

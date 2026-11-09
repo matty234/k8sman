@@ -8,7 +8,6 @@ import '../panels/cluster/logic.dart' show PodResources;
 import '../util/k8s.dart';
 import 'cache.dart';
 import 'metrics_api.dart';
-import 'quantity.dart';
 import 'widgets.dart';
 import '../state/poller.dart';
 

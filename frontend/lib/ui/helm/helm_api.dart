@@ -8,10 +8,8 @@ import '../../api/backend_http.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../util/k8s.dart';
+import '../../util/json.dart';
 
-String _s(dynamic v) => v == null ? '' : '$v';
-int _i(dynamic v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0;
-List<String> _strings(dynamic v) => [for (final x in (v as List? ?? const [])) '$x'];
 
 /// Status → badge severity.
 Severity helmStatusSeverity(String status) => switch (status) {
@@ -47,15 +45,15 @@ class HelmRelease {
   });
 
   factory HelmRelease.fromJson(Json j) => HelmRelease(
-        name: _s(j['name']),
-        namespace: _s(j['namespace']),
-        revision: _i(j['revision']),
-        status: _s(j['status']),
-        chart: _s(j['chart']),
-        chartVersion: _s(j['chartVersion']),
-        appVersion: _s(j['appVersion']),
-        updated: DateTime.tryParse(_s(j['updated'])),
-        description: _s(j['description']),
+        name: asStr(j['name']),
+        namespace: asStr(j['namespace']),
+        revision: asInt(j['revision']),
+        status: asStr(j['status']),
+        chart: asStr(j['chart']),
+        chartVersion: asStr(j['chartVersion']),
+        appVersion: asStr(j['appVersion']),
+        updated: DateTime.tryParse(asStr(j['updated'])),
+        description: asStr(j['description']),
       );
 
   String get key => '$namespace/$name';
@@ -72,8 +70,8 @@ class HelmReleaseList {
   const HelmReleaseList(this.releases, {this.failed = 0, this.pending = 0});
   factory HelmReleaseList.fromJson(Json j) => HelmReleaseList(
         [for (final r in (j['releases'] as List? ?? const [])) HelmRelease.fromJson(Map<String, dynamic>.from(r))],
-        failed: _i(j['failed']),
-        pending: _i(j['pending']),
+        failed: asInt(j['failed']),
+        pending: asInt(j['pending']),
       );
 }
 
@@ -94,11 +92,11 @@ class HelmDependency {
   final bool embedded;
   const HelmDependency({required this.name, this.version = '', this.repository = '', this.condition = '', this.alias = '', this.embedded = false});
   factory HelmDependency.fromJson(Json j) => HelmDependency(
-        name: _s(j['name']),
-        version: _s(j['version']),
-        repository: _s(j['repository']),
-        condition: _s(j['condition']),
-        alias: _s(j['alias']),
+        name: asStr(j['name']),
+        version: asStr(j['version']),
+        repository: asStr(j['repository']),
+        condition: asStr(j['condition']),
+        alias: asStr(j['alias']),
         embedded: j['embedded'] == true,
       );
 }
@@ -124,17 +122,17 @@ class HelmChartInfo {
     this.dependencies = const [],
   });
   factory HelmChartInfo.fromJson(Json j) => HelmChartInfo(
-        name: _s(j['name']),
-        version: _s(j['version']),
-        appVersion: _s(j['appVersion']),
-        description: _s(j['description']),
-        home: _s(j['home']),
-        icon: _s(j['icon']),
-        apiVersion: _s(j['apiVersion']),
-        type: _s(j['type']),
-        kubeVersion: _s(j['kubeVersion']),
-        sources: _strings(j['sources']),
-        keywords: _strings(j['keywords']),
+        name: asStr(j['name']),
+        version: asStr(j['version']),
+        appVersion: asStr(j['appVersion']),
+        description: asStr(j['description']),
+        home: asStr(j['home']),
+        icon: asStr(j['icon']),
+        apiVersion: asStr(j['apiVersion']),
+        type: asStr(j['type']),
+        kubeVersion: asStr(j['kubeVersion']),
+        sources: asStrings(j['sources']),
+        keywords: asStrings(j['keywords']),
         deprecated: j['deprecated'] == true,
         dependencies: [for (final d in (j['dependencies'] as List? ?? const [])) HelmDependency.fromJson(Map<String, dynamic>.from(d))],
       );
@@ -159,17 +157,17 @@ class HelmHook {
     this.completedAt,
   });
   factory HelmHook.fromJson(Json j) => HelmHook(
-        name: _s(j['name']),
-        kind: _s(j['kind']),
-        group: _s(j['group']),
-        path: _s(j['path']),
-        phase: _s(j['phase']),
-        manifest: _s(j['manifest']),
-        events: _strings(j['events']),
-        deletePolicies: _strings(j['deletePolicies']),
-        weight: _i(j['weight']),
-        startedAt: DateTime.tryParse(_s(j['startedAt'])),
-        completedAt: DateTime.tryParse(_s(j['completedAt'])),
+        name: asStr(j['name']),
+        kind: asStr(j['kind']),
+        group: asStr(j['group']),
+        path: asStr(j['path']),
+        phase: asStr(j['phase']),
+        manifest: asStr(j['manifest']),
+        events: asStrings(j['events']),
+        deletePolicies: asStrings(j['deletePolicies']),
+        weight: asInt(j['weight']),
+        startedAt: DateTime.tryParse(asStr(j['startedAt'])),
+        completedAt: DateTime.tryParse(asStr(j['completedAt'])),
       );
 }
 
@@ -183,7 +181,7 @@ class HelmStuck {
   final String remedy;
   const HelmStuck({required this.status, required this.revision, required this.rollbackTo, required this.remedy});
   factory HelmStuck.fromJson(Json j) =>
-      HelmStuck(status: _s(j['status']), revision: _i(j['revision']), rollbackTo: _i(j['rollbackTo']), remedy: _s(j['remedy']));
+      HelmStuck(status: asStr(j['status']), revision: asInt(j['revision']), rollbackTo: asInt(j['rollbackTo']), remedy: asStr(j['remedy']));
 }
 
 class HelmReleaseDetail {
@@ -216,21 +214,21 @@ class HelmReleaseDetail {
 
   factory HelmReleaseDetail.fromJson(Json j) => HelmReleaseDetail(
         release: HelmRelease.fromJson(j),
-        latestRevision: _i(j['latestRevision']),
-        firstDeployed: DateTime.tryParse(_s(j['firstDeployed'])),
-        lastDeployed: DateTime.tryParse(_s(j['lastDeployed'])),
-        notes: _s(j['notes']),
-        values: _s(j['values']),
-        computedValues: _s(j['computedValues']),
-        manifest: _s(j['manifest']),
+        latestRevision: asInt(j['latestRevision']),
+        firstDeployed: DateTime.tryParse(asStr(j['firstDeployed'])),
+        lastDeployed: DateTime.tryParse(asStr(j['lastDeployed'])),
+        notes: asStr(j['notes']),
+        values: asStr(j['values']),
+        computedValues: asStr(j['computedValues']),
+        manifest: asStr(j['manifest']),
         chart: HelmChartInfo.fromJson(Map<String, dynamic>.from(j['chartInfo'] ?? const {})),
         hooks: [for (final h in (j['hooks'] as List? ?? const [])) HelmHook.fromJson(Map<String, dynamic>.from(h))],
         resources: [
           for (final r in (j['resources'] as List? ?? const []))
-            ObjectRef(group: _s(r['group']), kind: _s(r['kind']), name: _s(r['name']), namespace: (r['namespace'] as String?)?.isEmpty == true ? null : r['namespace'] as String?),
+            ObjectRef(group: asStr(r['group']), kind: asStr(r['kind']), name: asStr(r['name']), namespace: (r['namespace'] as String?)?.isEmpty == true ? null : r['namespace'] as String?),
         ],
         stuck: j['stuck'] is Map ? HelmStuck.fromJson(Map<String, dynamic>.from(j['stuck'])) : null,
-        upgradeBlocked: _s(j['upgradeBlocked']),
+        upgradeBlocked: asStr(j['upgradeBlocked']),
       );
 
   bool get isLatest => release.revision == latestRevision;
@@ -241,7 +239,7 @@ class HelmRevisionText {
   final String status, chart, manifest, values;
   const HelmRevisionText({required this.revision, this.status = '', this.chart = '', this.manifest = '', this.values = ''});
   factory HelmRevisionText.fromJson(Json j) =>
-      HelmRevisionText(revision: _i(j['revision']), status: _s(j['status']), chart: _s(j['chart']), manifest: _s(j['manifest']), values: _s(j['values']));
+      HelmRevisionText(revision: asInt(j['revision']), status: asStr(j['status']), chart: asStr(j['chart']), manifest: asStr(j['manifest']), values: asStr(j['values']));
 }
 
 class HelmDiff {
@@ -260,13 +258,13 @@ class HelmResult {
   final String manifest, currentManifest, notes;
   const HelmResult({required this.message, this.dryRun = false, this.context = '', this.release, this.manifest = '', this.currentManifest = '', this.notes = ''});
   factory HelmResult.fromJson(Json j) => HelmResult(
-        message: _s(j['message']),
+        message: asStr(j['message']),
         dryRun: j['dryRun'] == true,
-        context: _s(j['context']),
+        context: asStr(j['context']),
         release: j['release'] is Map ? HelmRelease.fromJson(Map<String, dynamic>.from(j['release'])) : null,
-        manifest: _s(j['manifest']),
-        currentManifest: _s(j['currentManifest']),
-        notes: _s(j['notes']),
+        manifest: asStr(j['manifest']),
+        currentManifest: asStr(j['currentManifest']),
+        notes: asStr(j['notes']),
       );
 }
 
@@ -282,10 +280,10 @@ class HelmChartVersion {
   final bool deprecated, prerelease;
   const HelmChartVersion({required this.version, this.appVersion = '', this.description = '', this.created, this.deprecated = false, this.prerelease = false});
   factory HelmChartVersion.fromJson(Json j) => HelmChartVersion(
-        version: _s(j['version']),
-        appVersion: _s(j['appVersion']),
-        description: _s(j['description']),
-        created: DateTime.tryParse(_s(j['created'])),
+        version: asStr(j['version']),
+        appVersion: asStr(j['appVersion']),
+        description: asStr(j['description']),
+        created: DateTime.tryParse(asStr(j['created'])),
         deprecated: j['deprecated'] == true,
         prerelease: j['prerelease'] == true,
       );

@@ -8,9 +8,7 @@ import '../../../ui/theme.dart';
 import '../../../ui/widgets/common.dart';
 import '../../../util/k8s.dart';
 import '../../panel.dart';
-
-/// `int` from a JSON number (or numeric string), else null.
-int? asInt(dynamic v) => v is int ? v : (v is num ? v.toInt() : (v is String ? int.tryParse(v) : null));
+export '../../../util/json.dart' show asIntOrNull;
 
 /// Natural compare so `web-2` sorts before `web-10`.
 int naturalCompare(String a, String b) {

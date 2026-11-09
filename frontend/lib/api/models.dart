@@ -1,6 +1,8 @@
 /// Data models mirroring the Go backend's JSON (see /API.md).
 library;
 
+import '../util/json.dart';
+
 typedef Json = Map<String, dynamic>;
 
 /// Identifies a resource collection. [version] may be null to let the
@@ -476,7 +478,6 @@ class PortForward {
   String get target => '$kind/$name:$port';
 }
 
-List<String> _strings(Object? v) => [for (final e in (v as List? ?? const [])) '$e'];
 
 /// `GET /api/nodes/drain-plan`: what a drain would evict, skip, or refuse.
 class DrainPlan {
@@ -486,7 +487,7 @@ class DrainPlan {
   final List<String> blockers;
   const DrainPlan({required this.node, this.evict = const [], this.warnings = const [], this.blockers = const []});
   factory DrainPlan.fromJson(Json j) =>
-      DrainPlan(node: '${j['node'] ?? ''}', evict: _strings(j['evict']), warnings: _strings(j['warnings']), blockers: _strings(j['blockers']));
+      DrainPlan(node: '${j['node'] ?? ''}', evict: asStrings(j['evict']), warnings: asStrings(j['warnings']), blockers: asStrings(j['blockers']));
 }
 
 /// `POST /api/nodes/drain`: the pods evicted, and why it stopped short if it did.
@@ -496,5 +497,5 @@ class DrainResult {
   final String? error;
   const DrainResult({required this.node, this.evicted = const [], this.error});
   factory DrainResult.fromJson(Json j) =>
-      DrainResult(node: '${j['node'] ?? ''}', evicted: _strings(j['evicted']), error: (j['error'] as String?)?.isEmpty ?? true ? null : j['error'] as String);
+      DrainResult(node: '${j['node'] ?? ''}', evicted: asStrings(j['evicted']), error: (j['error'] as String?)?.isEmpty ?? true ? null : j['error'] as String);
 }

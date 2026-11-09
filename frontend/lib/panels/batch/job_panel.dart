@@ -11,8 +11,8 @@ import '../../ui/logs/open_logs.dart';
 import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'batch_common.dart';
+import '../../util/json.dart';
 
-int _int(dynamic v) => v is num ? v.toInt() : 0;
 
 class JobPanel extends ResourcePanel {
   const JobPanel();
@@ -33,9 +33,9 @@ class JobPanel extends ResourcePanel {
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final spec = ctx.spec;
     final status = ctx.status;
-    final failed = _int(status['failed']);
-    final active = _int(status['active']);
-    final succeeded = _int(status['succeeded']);
+    final failed = asInt(status['failed']);
+    final active = asInt(status['active']);
+    final succeeded = asInt(status['succeeded']);
     final st = deriveJobState(ctx.object);
     final template = asMap(spec['template']);
     final conditions = asMapList(status['conditions']);
@@ -105,8 +105,8 @@ String jobSpecSummary(Json spec) {
     'parallelism ${(spec['parallelism'] as num?)?.toInt() ?? 1}',
     'backoff ${(spec['backoffLimit'] as num?)?.toInt() ?? 6}',
     if (spec['completionMode'] == 'Indexed') 'indexed',
-    if (deadline != null) 'deadline ${shortSeconds(deadline)}',
-    if (ttl != null) 'TTL ${shortSeconds(ttl)}',
+    if (deadline != null) 'deadline ${formatDuration(Duration(seconds: deadline), style: DurationStyle.trimmed)}',
+    if (ttl != null) 'TTL ${formatDuration(Duration(seconds: ttl), style: DurationStyle.trimmed)}',
   ].join(' · ');
 }
 
@@ -126,11 +126,11 @@ class JobStatusHeader extends StatelessWidget {
     final status = ctx.status;
     final st = deriveJobState(job);
 
-    final succeeded = _int(status['succeeded']);
-    final failed = _int(status['failed']);
-    final active = _int(status['active']);
-    final ready = status['ready'] is num ? _int(status['ready']) : null;
-    final terminating = _int(status['terminating']);
+    final succeeded = asInt(status['succeeded']);
+    final failed = asInt(status['failed']);
+    final active = asInt(status['active']);
+    final ready = status['ready'] is num ? asInt(status['ready']) : null;
+    final terminating = asInt(status['terminating']);
     final completions = (spec['completions'] as num?)?.toInt();
     final backoff = (spec['backoffLimit'] as num?)?.toInt() ?? 6;
     final deadline = (spec['activeDeadlineSeconds'] as num?)?.toInt();
@@ -163,7 +163,7 @@ class JobStatusHeader extends StatelessWidget {
       final left = start.add(Duration(seconds: deadline)).difference(now);
       if (left.inSeconds < deadline * 0.1) {
         deadlineInsight = Insight(Severity.warn, left.isNegative ? 'Past its active deadline' : 'Active deadline in ${formatDuration(left)}',
-            'activeDeadlineSeconds is ${shortSeconds(deadline)}; the job fails with DeadlineExceeded when it runs out.');
+            'activeDeadlineSeconds is ${formatDuration(Duration(seconds: deadline), style: DurationStyle.trimmed)}; the job fails with DeadlineExceeded when it runs out.');
       }
     }
     final failedIdx = status['failedIndexes'] as String?;
@@ -242,7 +242,7 @@ class JobSpecTable extends StatelessWidget {
     final spec = asMap(job['spec']);
     final status = asMap(job['status']);
     final st = deriveJobState(job);
-    final failed = _int(status['failed']);
+    final failed = asInt(status['failed']);
     final completions = (spec['completions'] as num?)?.toInt();
     final parallelism = (spec['parallelism'] as num?)?.toInt() ?? 1;
     final backoff = (spec['backoffLimit'] as num?)?.toInt() ?? 6;
@@ -503,13 +503,13 @@ class _ContainerStateLine extends StatelessWidget {
     final wait = asMap(dig(s, ['state', 'waiting']));
     final running = asMap(dig(s, ['state', 'running']));
     final last = asMap(dig(s, ['lastState', 'terminated']));
-    final restarts = _int(s['restartCount']);
+    final restarts = asInt(s['restartCount']);
 
     final parts = <InlineSpan>[];
     Color? color;
     String? message;
     if (term.isNotEmpty) {
-      final code = _int(term['exitCode']);
+      final code = asInt(term['exitCode']);
       final sig = term['signal'] != null ? ' signal ${term['signal']}' : '';
       color = code == 0 ? null : severityColor(context, Severity.error);
       parts.add(TextSpan(text: 'exit $code$sig', style: TextStyle(color: color, fontWeight: FontWeight.w600)));

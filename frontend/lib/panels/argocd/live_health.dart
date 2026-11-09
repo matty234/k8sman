@@ -6,6 +6,7 @@ library;
 
 import '../../api/models.dart';
 import '../../util/k8s.dart';
+import '../../util/json.dart';
 
 class LiveHealth {
   final String status; // Healthy | Progressing | Degraded | Suspended | Missing | Unknown
@@ -16,7 +17,6 @@ class LiveHealth {
   String toString() => message == null ? status : '$status: $message';
 }
 
-int _int(dynamic v) => v is num ? v.toInt() : 0;
 
 Json? _cond(Json obj, String type) {
   for (final c in asMapList(dig(obj, ['status', 'conditions']))) {
@@ -30,8 +30,8 @@ Json? _cond(Json obj, String type) {
 LiveHealth? liveHealth(String group, String kind, Json obj) {
   final spec = asMap(obj['spec']);
   final st = asMap(obj['status']);
-  final gen = _int(dig(obj, ['metadata', 'generation']));
-  final observed = _int(st['observedGeneration']);
+  final gen = asInt(dig(obj, ['metadata', 'generation']));
+  final observed = asInt(st['observedGeneration']);
   switch ('$group/$kind') {
     case 'apps/Deployment':
       if (spec['paused'] == true) return const LiveHealth('Suspended', 'Deployment is paused');
@@ -40,18 +40,18 @@ LiveHealth? liveHealth(String group, String kind, Json obj) {
         return LiveHealth('Degraded', '${progressing?['message'] ?? 'Deployment exceeded its progress deadline'}');
       }
       if (gen > observed) return const LiveHealth('Progressing', 'Waiting for rollout to finish: observed generation is behind');
-      final want = spec['replicas'] == null ? 1 : _int(spec['replicas']);
-      final updated = _int(st['updatedReplicas']);
-      final replicas = _int(st['replicas']);
-      final available = _int(st['availableReplicas']);
+      final want = spec['replicas'] == null ? 1 : asInt(spec['replicas']);
+      final updated = asInt(st['updatedReplicas']);
+      final replicas = asInt(st['replicas']);
+      final available = asInt(st['availableReplicas']);
       if (updated < want) return LiveHealth('Progressing', 'Waiting for rollout to finish: $updated of $want new replicas updated');
       if (replicas > updated) return LiveHealth('Progressing', 'Waiting for rollout to finish: ${replicas - updated} old replicas pending termination');
       if (available < updated) return LiveHealth('Progressing', 'Waiting for rollout to finish: $available of $updated updated replicas available');
       return const LiveHealth('Healthy');
     case 'apps/StatefulSet':
       if (gen > observed) return const LiveHealth('Progressing', 'Waiting for statefulset spec update to be observed');
-      final want = spec['replicas'] == null ? 1 : _int(spec['replicas']);
-      final ready = _int(st['readyReplicas']);
+      final want = spec['replicas'] == null ? 1 : asInt(spec['replicas']);
+      final ready = asInt(st['readyReplicas']);
       if (ready < want) return LiveHealth('Progressing', 'Waiting for $want pods to be ready ($ready ready)');
       final strategy = dig<String>(spec, ['updateStrategy', 'type']) ?? 'RollingUpdate';
       if (strategy == 'RollingUpdate' && st['updateRevision'] != null && st['updateRevision'] != st['currentRevision']) {
@@ -60,15 +60,15 @@ LiveHealth? liveHealth(String group, String kind, Json obj) {
       return const LiveHealth('Healthy');
     case 'apps/DaemonSet':
       if (gen > observed) return const LiveHealth('Progressing', 'Waiting for daemon set spec update to be observed');
-      final desired = _int(st['desiredNumberScheduled']);
-      if (_int(st['updatedNumberScheduled']) < desired) return const LiveHealth('Progressing', 'Waiting for daemon set rollout to finish');
-      if (_int(st['numberAvailable']) < desired) return const LiveHealth('Progressing', 'Waiting for daemon set pods to be available');
+      final desired = asInt(st['desiredNumberScheduled']);
+      if (asInt(st['updatedNumberScheduled']) < desired) return const LiveHealth('Progressing', 'Waiting for daemon set rollout to finish');
+      if (asInt(st['numberAvailable']) < desired) return const LiveHealth('Progressing', 'Waiting for daemon set pods to be available');
       return const LiveHealth('Healthy');
     case 'apps/ReplicaSet':
       final failure = _cond(obj, 'ReplicaFailure');
       if (failure?['status'] == 'True') return LiveHealth('Degraded', '${failure?['message'] ?? 'ReplicaFailure'}');
-      final want = spec['replicas'] == null ? 1 : _int(spec['replicas']);
-      final available = _int(st['availableReplicas']);
+      final want = spec['replicas'] == null ? 1 : asInt(spec['replicas']);
+      final available = asInt(st['availableReplicas']);
       if (available < want) return LiveHealth('Progressing', 'Waiting for rollout to finish: $available of $want replicas available');
       return const LiveHealth('Healthy');
     case '/Pod':

@@ -7,7 +7,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../argocd/argo_common.dart' show Hint;
-import '../batch/batch_common.dart' show batchNow, formatRelative, formatSeconds, formatWall, formatLocal;
+import '../batch/batch_common.dart' show batchNow, formatRelative, formatSeconds, formatWall;
 import '../batch/cron.dart';
 import '../panel.dart';
 import 'wf_actions.dart';

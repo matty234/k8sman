@@ -54,8 +54,6 @@ int lineCount(String v) {
 
 int utf8Size(String v) => utf8.encode(v).length;
 
-String formatSize(int bytes) => bytes < 1024 ? '$bytes B' : formatBytes(bytes.toDouble());
-
 /// Decodes a base64 data value; null when invalid.
 Uint8List? decodeBase64(dynamic v) {
   if (v is! String) return null;

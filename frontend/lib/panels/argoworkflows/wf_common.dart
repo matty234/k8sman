@@ -107,15 +107,6 @@ Duration? runDuration(dynamic startedAt, dynamic finishedAt, {DateTime? now}) {
   return d.isNegative ? Duration.zero : d;
 }
 
-/// `3m20s`, `2h05m`, `4d3h` (seconds kept below an hour).
-String formatRunDuration(Duration d) {
-  final s = d.inSeconds;
-  if (s < 60) return '${s}s';
-  if (s < 3600) return '${s ~/ 60}m${(s % 60).toString().padLeft(2, '0')}s';
-  if (s < 86400) return '${s ~/ 3600}h${((s % 3600) ~/ 60).toString().padLeft(2, '0')}m';
-  return '${s ~/ 86400}d${(s % 86400) ~/ 3600}h';
-}
-
 /// `resourcesDuration` ({cpu: 12, memory: 30, nvidia.com/gpu: 4}) as
 /// "12s cpu · 30s memory".
 String formatResourcesDuration(dynamic rd) {
@@ -123,7 +114,7 @@ String formatResourcesDuration(dynamic rd) {
   if (m.isEmpty) return '';
   return [
     for (final e in m.entries)
-      if (e.value is num) '${formatRunDuration(Duration(seconds: (e.value as num).toInt()))} ${e.key}',
+      if (e.value is num) '${formatDuration(Duration(seconds: (e.value as num).toInt()), style: DurationStyle.padded)} ${e.key}',
   ].join(' · ');
 }
 
@@ -308,7 +299,7 @@ class WorkflowRow extends StatelessWidget {
           ),
           if (!narrow && progress != null) SizedBox(width: 44, child: Text(progress, textAlign: TextAlign.right, style: hintStyle)),
           SizedBox(width: narrow ? 56 : 70, child: Text(started == null ? '' : formatAge(started), textAlign: TextAlign.right, style: hintStyle)),
-          SizedBox(width: 64, child: Text(d == null ? '' : formatRunDuration(d), textAlign: TextAlign.right, style: monoStyle(context, size: 11.5, color: theme.hintColor))),
+          SizedBox(width: 64, child: Text(d == null ? '' : formatDuration(d, style: DurationStyle.padded), textAlign: TextAlign.right, style: monoStyle(context, size: 11.5, color: theme.hintColor))),
         ]),
       );
     });

@@ -36,7 +36,7 @@ List<Json> hpasTargeting(List<Json> hpas, Json obj) {
 /// the desired count.
 (String, Object?) replicasFact(PanelContext ctx) {
   final control = scaleControlFor(ctx);
-  final desired = asInt(ctx.spec['replicas']) ?? 1;
+  final desired = asIntOrNull(ctx.spec['replicas']) ?? 1;
   return ('Replicas', control == null ? '$desired desired' : scaleFact(control));
 }
 

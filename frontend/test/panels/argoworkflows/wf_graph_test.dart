@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/argoworkflows/wf_common.dart';
+import 'package:k8sman/util/format.dart';
 import 'package:k8sman/panels/argoworkflows/wf_graph.dart';
 
 import 'wf_support.dart';
@@ -168,10 +169,10 @@ void main() {
   });
 
   test('durations', () {
-    expect(formatRunDuration(const Duration(seconds: 42)), '42s');
-    expect(formatRunDuration(const Duration(seconds: 200)), '3m20s');
-    expect(formatRunDuration(const Duration(hours: 2, minutes: 5)), '2h05m');
-    expect(formatRunDuration(const Duration(days: 3, hours: 4)), '3d4h');
+    expect(formatDuration(const Duration(seconds: 42), style: DurationStyle.padded), '42s');
+    expect(formatDuration(const Duration(seconds: 200), style: DurationStyle.padded), '3m20s');
+    expect(formatDuration(const Duration(hours: 2, minutes: 5), style: DurationStyle.padded), '2h05m');
+    expect(formatDuration(const Duration(days: 3, hours: 4), style: DurationStyle.padded), '3d4h');
     expect(formatResourcesDuration({'cpu': 12, 'memory': 90}), '12s cpu · 1m30s memory');
   });
 

@@ -142,7 +142,7 @@ class CronJobPanel extends ResourcePanel {
         trailing: SectionSummary([
           policy,
           'keep ${ctx.spec['successfulJobsHistoryLimit'] ?? 3} ok / ${ctx.spec['failedJobsHistoryLimit'] ?? 1} failed',
-          if (deadline is num) 'deadline ${shortSeconds(deadline.toInt())}',
+          if (deadline is num) 'deadline ${formatDuration(Duration(seconds: deadline.toInt()), style: DurationStyle.trimmed)}',
         ].join(' · ')),
         child: _CronSpec(ctx.object),
       ),

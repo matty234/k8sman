@@ -4,6 +4,7 @@ library;
 
 import '../../api/models.dart';
 import '../../util/k8s.dart';
+import '../../util/json.dart';
 
 const rbacGroup = 'rbac.authorization.k8s.io';
 
@@ -103,25 +104,24 @@ class RuleSummary {
   String toString() => '$verbs → $targets';
 }
 
-List<String> _strings(dynamic v) => v is List ? [for (final e in v) '$e'] : const [];
 
 /// Summarises role rules. Rules with identical verbs are merged.
 List<RuleSummary> summarizeRules(List<Json> rules) {
   final byVerbs = <String, List<String>>{};
   final wild = <String, bool>{};
   for (final r in rules) {
-    final verbsList = _strings(r['verbs']);
+    final verbsList = asStrings(r['verbs']);
     final verbs = verbsList.contains('*') ? '*' : verbsList.join(', ');
-    final groups = _strings(r['apiGroups']);
-    final names = _strings(r['resourceNames']);
+    final groups = asStrings(r['apiGroups']);
+    final names = asStrings(r['resourceNames']);
     final targets = <String>[];
-    for (final res in _strings(r['resources'])) {
+    for (final res in asStrings(r['resources'])) {
       for (final g in groups.isEmpty ? [''] : groups) {
         final qualified = g.isEmpty ? res : '$res.$g';
         targets.add(names.isEmpty ? qualified : '$qualified[${names.join(',')}]');
       }
     }
-    for (final u in _strings(r['nonResourceURLs'])) {
+    for (final u in asStrings(r['nonResourceURLs'])) {
       targets.add(u);
     }
     if (targets.isEmpty) continue;
@@ -192,17 +192,17 @@ List<EffectivePermission> effectivePermissions(List<(BindingMatch, Json)> grante
   final byTarget = <String, EffectivePermission>{};
   for (final (m, role) in granted) {
     for (final r in asMapList(role['rules'])) {
-      final verbs = _strings(r['verbs']).toSet();
-      final groups = _strings(r['apiGroups']);
-      final names = _strings(r['resourceNames']);
+      final verbs = asStrings(r['verbs']).toSet();
+      final groups = asStrings(r['apiGroups']);
+      final names = asStrings(r['resourceNames']);
       final targets = <String>[
-        for (final res in _strings(r['resources']))
+        for (final res in asStrings(r['resources']))
           for (final g in groups.isEmpty ? [''] : groups)
             () {
               final q = g.isEmpty || g == '*' && res == '*' ? res : '$res.$g';
               return names.isEmpty ? q : '$q[${names.join(',')}]';
             }(),
-        ..._strings(r['nonResourceURLs']),
+        ...asStrings(r['nonResourceURLs']),
       ];
       for (final t in targets) {
         final p = byTarget.putIfAbsent(t, () => EffectivePermission(t));

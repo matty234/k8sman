@@ -122,8 +122,8 @@ String _field(String type) => switch (type) {
   final able = cond('AbleToScale');
   final active = cond('ScalingActive');
   final limited = cond('ScalingLimited');
-  final cur = asInt(dig(hpa, ['status', 'currentReplicas'])) ?? 0;
-  final max = asInt(dig(hpa, ['spec', 'maxReplicas'])) ?? 0;
+  final cur = asIntOrNull(dig(hpa, ['status', 'currentReplicas'])) ?? 0;
+  final max = asIntOrNull(dig(hpa, ['spec', 'maxReplicas'])) ?? 0;
   if (able?['status'] == 'False') return ('Unable to scale', Severity.error, able?['reason'] as String?);
   if (active?['status'] == 'False') {
     final reason = active?['reason'] as String?;
@@ -156,10 +156,10 @@ class HpaPanel extends ResourcePanel {
     final scalingActive = asMapList(st['conditions']).where((c) => c['type'] == 'ScalingActive').firstOrNull;
     final lastScale = st['lastScaleTime'];
     final theme = Theme.of(context);
-    final min = asInt(spec['minReplicas']) ?? 1;
-    final max = asInt(spec['maxReplicas']) ?? 1;
-    final current = asInt(st['currentReplicas']) ?? 0;
-    final desired = asInt(st['desiredReplicas']);
+    final min = asIntOrNull(spec['minReplicas']) ?? 1;
+    final max = asIntOrNull(spec['maxReplicas']) ?? 1;
+    final current = asIntOrNull(st['currentReplicas']) ?? 0;
+    final desired = asIntOrNull(st['desiredReplicas']);
     final desiredComputed = desired != null && scalingActive?['status'] != 'False';
     final behavior = asMap(spec['behavior']);
     final insights = conditionInsights(asMapList(st['conditions']), errors: sev == Severity.error ? const {'AbleToScale', 'ScalingActive'} : const {});

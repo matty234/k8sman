@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../ui/theme.dart';
+import '../../util/format.dart';
 import 'update_controller.dart';
 
 const repoUrl = 'https://github.com/matty234/k8sman';
@@ -200,7 +201,7 @@ class UpdateStatus extends StatelessWidget {
                     ? 'Could not check: ${u.lastError}'
                     : info.lastCheck == null
                     ? 'Not checked yet.'
-                    : 'Last checked ${_ago(now().difference(info.lastCheck!))}.',
+                    : 'Last checked ${formatAgoProse(now().difference(info.lastCheck!))}.',
             style: faint,
           ),
         ),
@@ -213,9 +214,3 @@ class UpdateStatus extends StatelessWidget {
   }
 }
 
-String _ago(Duration d) {
-  if (d.inMinutes < 1) return 'just now';
-  if (d.inHours < 1) return '${d.inMinutes} min ago';
-  if (d.inDays < 1) return '${d.inHours} h ago';
-  return d.inDays == 1 ? 'yesterday' : '${d.inDays} days ago';
-}

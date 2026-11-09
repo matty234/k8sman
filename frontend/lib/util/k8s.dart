@@ -3,6 +3,8 @@ library;
 
 import '../api/models.dart';
 
+export 'format.dart';
+
 /// Safe nested lookup: `dig(obj, ['spec', 'template', 'spec'])`.
 /// Integer path segments index into lists.
 T? dig<T>(dynamic obj, List<Object> path) {
@@ -23,25 +25,6 @@ Json asMap(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dyna
 List<Json> asMapList(dynamic v) => v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : <Json>[];
 
 DateTime? parseTime(dynamic v) => v is String ? DateTime.tryParse(v) : null;
-
-/// kubectl-style short age: 45s, 12m, 3h, 5d, 2y.
-String formatAge(DateTime? t, {DateTime? now}) {
-  if (t == null) return '';
-  var d = (now ?? DateTime.now()).toUtc().difference(t.toUtc());
-  if (d.isNegative) d = Duration.zero;
-  if (d.inSeconds < 60) return '${d.inSeconds}s';
-  if (d.inMinutes < 60) return '${d.inMinutes}m';
-  if (d.inHours < 24) return d.inMinutes % 60 == 0 || d.inHours >= 10 ? '${d.inHours}h' : '${d.inHours}h${d.inMinutes % 60}m';
-  if (d.inDays < 365) return '${d.inDays}d';
-  return '${d.inDays ~/ 365}y${d.inDays % 365}d';
-}
-
-String formatDuration(Duration d) {
-  if (d.inSeconds < 60) return '${d.inSeconds}s';
-  if (d.inMinutes < 60) return '${d.inMinutes}m${d.inSeconds % 60}s';
-  if (d.inHours < 24) return '${d.inHours}h${d.inMinutes % 60}m';
-  return '${d.inDays}d${d.inHours % 24}h';
-}
 
 /// Parse a CPU quantity to millicores ("250m" → 250, "1.5" → 1500).
 double? parseCpuMillis(dynamic q) {
@@ -70,23 +53,16 @@ double? parseBytes(dynamic q) {
   return double.tryParse(s);
 }
 
-String formatBytes(double? b) {
+String formatBytes(num? b) {
   if (b == null) return '';
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
   var i = 0;
-  var v = b;
+  var v = b.toDouble();
   while (v >= 1024 && i < units.length - 1) {
     v /= 1024;
     i++;
   }
   return '${v >= 10 || i == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(1)} ${units[i]}';
-}
-
-String formatCpu(double? millis) {
-  if (millis == null) return '';
-  if (millis < 1000) return '${millis.toStringAsFixed(0)}m';
-  final cores = millis / 1000;
-  return cores == cores.roundToDouble() ? cores.toStringAsFixed(0) : cores.toStringAsFixed(2);
 }
 
 /// Render a LabelSelector ({matchLabels, matchExpressions}) or a plain
