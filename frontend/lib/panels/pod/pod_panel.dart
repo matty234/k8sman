@@ -28,6 +28,9 @@ class PodPanel extends ResourcePanel {
   Set<String> get kinds => {'/Pod'};
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final pod = ctx.object;
     final containers = podContainers(pod);

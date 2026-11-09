@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
 import '../../metrics/pod_usage.dart';
+import '../../ui/detail/owner_line.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -158,8 +159,8 @@ class _FigureRow extends StatelessWidget {
   }
 }
 
-/// Where the pod runs, as caption/value pairs that wrap: node, pod and host
-/// IPs, service account, host namespaces and live usage.
+/// Its owner, then where the pod runs, as caption/value pairs that wrap:
+/// node, pod and host IPs, service account, host namespaces and live usage.
 class _Facts extends StatelessWidget {
   final PanelContext ctx;
   const _Facts(this.ctx);
@@ -179,6 +180,7 @@ class _Facts extends StatelessWidget {
     final warn = severityColor(context, Severity.warn);
 
     return KeyValueTable(keyWidth: 64, [
+      ?ownerFact(ctx.object),
       (
         'Node',
         node == null

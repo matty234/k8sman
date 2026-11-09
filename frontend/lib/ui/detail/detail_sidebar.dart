@@ -23,6 +23,7 @@ import '../widgets/group_icon.dart';
 import '../portforward/portforward_dialog.dart';
 import '../resource_nav.dart' show kindIconWidget;
 import 'metadata_section.dart';
+import 'owner_line.dart';
 import 'owned_section.dart';
 import 'yaml_editor.dart';
 import '../keys.dart';
@@ -215,9 +216,12 @@ class _LiveObjectState extends State<_LiveObject> {
                         key: PageStorageKey('overview-${ctx!.uid}'),
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                          MetadataSection(ctx: ctx),
+                          // The owner up top (unless the panel's status
+                          // header has it); the rest of the metadata last.
+                          OverviewTopLine(ctx.object, showOwner: !panel.ownerInHeader),
                           ..._safeSections(context, panel, ctx),
                           if (!panel.showsOwned && ctx.uid.isNotEmpty) OwnedSection(key: ValueKey('owned-${ctx.uid}'), uid: ctx.uid, namespace: ctx.namespace),
+                          MetadataSection(key: ValueKey('metadata-${ctx.uid}'), ctx: ctx),
                         ]),
                       )),
                       for (final x in extraTabs) Builder(builder: (c) => x.builder(c, ctx)),

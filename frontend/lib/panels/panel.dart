@@ -32,8 +32,9 @@ class PanelTab {
   const PanelTab({required this.label, this.icon, required this.builder});
 }
 
-/// Renders kind-specific detail sections. The shell always renders the
-/// shared Metadata section first, then [buildSections] in order.
+/// Renders kind-specific detail sections. The shell renders a quiet owner
+/// line first (see [ownerInHeader]), then [buildSections] in order, then
+/// the shared Metadata section, collapsed.
 ///
 /// Sections are rebuilt whenever the object changes (live watch), so any
 /// stateful child must be keyed stably (e.g. `ValueKey(ctx.uid)`) and must
@@ -50,6 +51,11 @@ abstract class ResourcePanel {
   /// (a Deployment's ReplicaSets and Pods), so the shell skips its generic
   /// "Owns" section.
   bool get showsOwned => false;
+
+  /// True when the panel's status header shows the object's owner (with
+  /// `OwnerLine` / `ownerFact` from `ui/detail/owner_line.dart`), so the
+  /// shell skips its quiet "Owned by" line at the top of the Overview.
+  bool get ownerInHeader => false;
 
   /// Optional extra tabs (e.g. Logs for pods).
   List<PanelTab> tabs(PanelContext ctx) => const [];
