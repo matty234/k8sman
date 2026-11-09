@@ -119,6 +119,15 @@ func TestRememberedNamespaces(t *testing.T) {
 	if _, ok := st.Get().Namespaces["dev"]; ok {
 		t.Fatal("empty list should forget the context")
 	}
+
+	// Favourites are stored separately, per context.
+	if rec, _ := do(t, s, "PUT", "/api/settings/favourite-namespaces", `{"context":"dev","namespaces":["team-a"]}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("put favourites: %d %s", rec.Code, rec.Body)
+	}
+	rec, _ = do(t, s, "GET", "/api/settings/favourite-namespaces?context=dev", "")
+	if !strings.Contains(rec.Body.String(), `"namespaces":["team-a"]`) || len(st.Get().Namespaces["dev"]) != 0 {
+		t.Fatalf("get favourites: %s", rec.Body)
+	}
 }
 
 func TestUpdateStatusSubresource(t *testing.T) {

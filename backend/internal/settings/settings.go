@@ -64,6 +64,8 @@ type Settings struct {
 	// Namespaces maps kube context → namespaces the user added by hand
 	// (for clusters where Namespaces can't be listed), in the order added.
 	Namespaces map[string][]string `json:"namespaces,omitempty"`
+	// FavouriteNamespaces maps kube context → starred namespaces.
+	FavouriteNamespaces map[string][]string `json:"favouriteNamespaces,omitempty"`
 }
 
 // ViewVersion is the view record version this build writes.
@@ -324,6 +326,7 @@ func (st *Store) Get() Settings {
 	out.Views = slices.Clone(st.s.Views)
 	out.ModuleSettings = cloneModuleSettings(st.s.ModuleSettings)
 	out.Namespaces = cloneNamespaces(st.s.Namespaces)
+	out.FavouriteNamespaces = cloneNamespaces(st.s.FavouriteNamespaces)
 	return out
 }
 
@@ -346,6 +349,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	next.Views = slices.Clone(st.s.Views)
 	next.ModuleSettings = cloneModuleSettings(st.s.ModuleSettings)
 	next.Namespaces = cloneNamespaces(st.s.Namespaces)
+	next.FavouriteNamespaces = cloneNamespaces(st.s.FavouriteNamespaces)
 	fn(&next)
 	if err := st.write(next); err != nil {
 		return err
@@ -685,5 +689,23 @@ func (st *Store) SetNamespaces(context string, namespaces []string) error {
 			s.Namespaces = map[string][]string{}
 		}
 		s.Namespaces[context] = slices.Clone(namespaces)
+	})
+}
+
+// SetFavouriteNamespaces saves the starred namespaces for a kube context
+// (empty forgets them).
+func (st *Store) SetFavouriteNamespaces(context string, namespaces []string) error {
+	return st.Update(func(s *Settings) {
+		if len(namespaces) == 0 {
+			delete(s.FavouriteNamespaces, context)
+			if len(s.FavouriteNamespaces) == 0 {
+				s.FavouriteNamespaces = nil
+			}
+			return
+		}
+		if s.FavouriteNamespaces == nil {
+			s.FavouriteNamespaces = map[string][]string{}
+		}
+		s.FavouriteNamespaces[context] = slices.Clone(namespaces)
 	})
 }
