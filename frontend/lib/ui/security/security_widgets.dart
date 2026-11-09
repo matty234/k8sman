@@ -7,6 +7,7 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../resource_nav.dart' show showSidebarMenu;
 import '../widgets/editorial.dart';
 import 'security_api.dart';
 
@@ -161,7 +162,8 @@ class SummaryLine extends StatelessWidget {
         tooltip: 'A rough posture score: 100 with no findings; each critical costs ~9 points, high ~4, medium ~1.5.',
         tone: score < 50 ? Severity.error : (score < 80 ? Severity.warn : null),
       ),
-      StatItem(data.findings.length == 1 ? 'finding' : 'findings', '${data.findings.length}', note: partial ? 'so far' : null),
+      StatItem(data.findings.length == 1 ? 'finding' : 'findings', '${data.findings.length}',
+          note: (partial || data.ignored.isNotEmpty) ? [if (partial) 'so far', if (data.ignored.isNotEmpty) '(${data.ignored.length} ignored)'].join(' ') : null),
       for (final s in SecSeverity.values.take(3))
         if (data.countAll(s) > 0) StatItem(s.name, '${data.countAll(s)}', color: sevColor(context, s)),
     ]);
@@ -320,7 +322,8 @@ class FindingList extends StatefulWidget {
   /// Hide each finding's namespace (the page is scoped to one).
   final bool hideNamespace;
   final Set<String> pending;
-  const FindingList({super.key, required this.findings, required this.categories, this.grouped = true, this.hideNamespace = false, this.pending = const {}});
+  final void Function(SecFinding finding)? onIgnore;
+  const FindingList({super.key, required this.findings, required this.categories, this.grouped = true, this.hideNamespace = false, this.pending = const {}, this.onIgnore});
 
   @override
   State<FindingList> createState() => _FindingListState();
@@ -364,6 +367,7 @@ class _FindingListState extends State<FindingList> {
             key: ValueKey(f.id),
             finding: f,
             hideNamespace: widget.hideNamespace,
+            onIgnore: widget.onIgnore == null ? null : () => widget.onIgnore!(f),
             expanded: _expanded.contains(f.id),
             onToggle: () => setState(() => _expanded.contains(f.id) ? _expanded.remove(f.id) : _expanded.add(f.id)),
           ),
@@ -390,7 +394,10 @@ class FindingTile extends StatelessWidget {
   final bool expanded;
   final bool hideNamespace;
   final VoidCallback onToggle;
-  const FindingTile({super.key, required this.finding, required this.expanded, required this.onToggle, this.hideNamespace = false});
+
+  /// Offers "Ignore…" (hover button and right-click) when set.
+  final VoidCallback? onIgnore;
+  const FindingTile({super.key, required this.finding, required this.expanded, required this.onToggle, this.hideNamespace = false, this.onIgnore});
 
   @override
   Widget build(BuildContext context) {
@@ -398,8 +405,10 @@ class FindingTile extends StatelessWidget {
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     final f = finding;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      InkWell(
+      Hoverable(
+        builder: (hovered) => InkWell(
         onTap: onToggle,
+        onSecondaryTapUp: onIgnore == null ? null : (d) => showSidebarMenu(context, d.globalPosition, [('Ignore…', onIgnore!)]),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -419,8 +428,25 @@ class FindingTile extends StatelessWidget {
                 child: Padding(padding: const EdgeInsets.only(top: 2), child: Text(f.namespace!, maxLines: 1, overflow: TextOverflow.ellipsis, style: hint)),
               ),
             ],
+            if (onIgnore != null)
+              Visibility(
+                visible: hovered,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: Tooltip(
+                  message: 'Ignore…',
+                  child: InkWell(
+                    key: ValueKey('ignore-${f.id}'),
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: onIgnore,
+                    child: Padding(padding: const EdgeInsets.fromLTRB(8, 1, 2, 1), child: Icon(Icons.visibility_off_outlined, size: 15, color: theme.hintColor)),
+                  ),
+                ),
+              ),
           ]),
         ),
+      ),
       ),
       if (expanded)
         Padding(

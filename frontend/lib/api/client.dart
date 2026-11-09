@@ -193,6 +193,17 @@ class ApiClient {
     await _send('PUT', 'settings/favourite-namespaces', const {}, {'context': ?context, 'namespaces': namespaces});
   }
 
+  /// The Security findings ignored in [context] (default: the current one).
+  Future<List<Json>> getSecurityIgnores({String? context}) async {
+    final j = await _get('settings/security-ignores', {'context': context}) as Json;
+    return [for (final r in (j['ignores'] as List? ?? const [])) Map<String, dynamic>.from(r as Map)];
+  }
+
+  /// Replaces the ignore rules for [context].
+  Future<void> putSecurityIgnores(List<Json> ignores, {String? context}) async {
+    await _send('PUT', 'settings/security-ignores', const {}, {'context': ?context, 'ignores': ignores});
+  }
+
   /// One connection step for the current context: `reach` (does anything
   /// answer at the server address? fails in ~10 s) or `auth` (do the
   /// credentials work? runs the exec plugin, which may wait for a browser

@@ -36,6 +36,9 @@ String securityReportForAgent(
   if (d.pending.isNotEmpty) {
     b.writeln('- **Partial:** ${d.pending.join(', ')} still loading; the score and findings leave them out.');
   }
+  if (d.ignored.isNotEmpty) {
+    b.writeln('- **Ignored:** ${d.ignored.length} findings the user chose to ignore are left out of the score and this list.');
+  }
   if (d.errors.isNotEmpty) {
     b.writeln('- **Incomplete data:** could not list ${d.errors.keys.join(', ')} (permissions?), so some checks are missing.');
   }

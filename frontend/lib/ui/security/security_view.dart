@@ -9,6 +9,7 @@ import '../access/access_view.dart';
 import '../widgets/common.dart';
 import '../widgets/editorial.dart' show PageScroll;
 import 'ai_summary.dart';
+import 'ignore_ui.dart';
 import 'security_api.dart';
 import 'security_widgets.dart';
 import '../widgets/namespace_picker.dart';
@@ -37,6 +38,7 @@ class _SecurityViewState extends State<SecurityView> {
   Object? _error;
   bool _loading = false;
   bool _includeSystem = false;
+  bool _showIgnored = false;
   String? _filter;
   DateTime? _updatedAt;
   int _seq = 0;
@@ -122,6 +124,26 @@ class _SecurityViewState extends State<SecurityView> {
       _quickStep = 0;
     });
     _refresh();
+  }
+
+  Future<void> _ignore(SecFinding f) async {
+    final data = _data;
+    if (data == null) return;
+    final rules = await showIgnoreDialog(context, f, data.findings);
+    if (rules == null || !mounted) return;
+    await _changeIgnores(() => source.addIgnores([for (final r in rules) SecIgnoreRule(check: r.check, namespace: r.namespace, kind: r.kind, name: r.name, reason: r.reason, at: DateTime.now().toUtc().toIso8601String())]));
+  }
+
+  Future<void> _unignore(SecFinding f) => _changeIgnores(() => source.unignore(f));
+
+  Future<void> _changeIgnores(Future<void> Function() change) async {
+    try {
+      await change();
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+      return;
+    }
+    if (mounted) await _refresh();
   }
 
   Future<void> _scan(String image) async {
@@ -258,6 +280,7 @@ class _SecurityViewState extends State<SecurityView> {
     final findings = filter == null ? data.findings : data.findings.where((f) => f.category == filter).toList();
     bool show(String id) => filter == null || filter == id;
     final pending = data.pending;
+    final ignored = filter == null ? data.ignored : data.ignored.where((i) => i.finding.category == filter).toList();
     // A section whose category is still loading keeps its place with
     // placeholder rows rather than reading as empty.
     Widget pendingSection(String id, String title) => DetailSection(
@@ -281,7 +304,7 @@ class _SecurityViewState extends State<SecurityView> {
       const SizedBox(height: 14),
       DetailSection(
         title: 'Findings',
-        trailing: _findingsTrailing(context, data, findings.length),
+        trailing: _findingsTrailing(context, data, findings.length, ignored.length),
         child: FindingList(
           key: ValueKey('findings-$filter'),
           findings: findings,
@@ -289,8 +312,18 @@ class _SecurityViewState extends State<SecurityView> {
           grouped: filter == null,
           hideNamespace: _ns.single != null,
           pending: {for (final p in pending) if (show(p)) p},
+          onIgnore: _ignore,
         ),
       ),
+      if (_showIgnored && ignored.isNotEmpty)
+        DetailSection(
+          title: 'Ignored',
+          child: IgnoredList(
+            items: ignored,
+            coveredBy: (r) => data.ignored.where((i) => i.rule.sameTarget(r)).length,
+            onUnignore: _unignore,
+          ),
+        ),
       if (show('network') && data.isPending('network'))
         pendingSection('network', 'Network exposure by namespace')
       else if (show('network'))
@@ -348,12 +381,30 @@ class _SecurityViewState extends State<SecurityView> {
     return '$scanned of ${images.length} scanned';
   }
 
-  Widget _findingsTrailing(BuildContext context, SecurityData data, int shown) {
+  Widget _findingsTrailing(BuildContext context, SecurityData data, int shown, int ignored) {
     final theme = Theme.of(context);
     final filter = _filter;
-    if (filter == null) return Text('${data.findings.length}', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor));
+    final hint = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor);
+    // Never silent: the ignored count shows whenever it is not zero.
+    final toggle = (filter == null ? data.ignored.length : ignored) == 0
+        ? null
+        : Tooltip(
+            message: _showIgnored ? 'Hide the ignored findings' : 'Show the ignored findings',
+            child: InkWell(
+              key: const ValueKey('toggle-ignored'),
+              borderRadius: BorderRadius.circular(4),
+              onTap: () => setState(() => _showIgnored = !_showIgnored),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Text('${filter == null ? data.ignored.length : ignored} ignored', style: hint?.copyWith(decoration: _showIgnored ? TextDecoration.underline : null)),
+              ),
+            ),
+          );
+    if (filter == null) {
+      return Row(mainAxisSize: MainAxisSize.min, children: [Text('${data.findings.length}', style: hint), ?toggle]);
+    }
     final label = data.categories.where((c) => c.id == filter).map((c) => c.title).firstOrNull ?? filter;
-    return InputChip(
+    final chip = InputChip(
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       label: Text('$label · $shown', style: theme.textTheme.labelSmall),
@@ -361,6 +412,7 @@ class _SecurityViewState extends State<SecurityView> {
       deleteButtonTooltipMessage: 'Show all findings',
       onPressed: () => setState(() => _filter = null),
     );
+    return toggle == null ? chip : Row(mainAxisSize: MainAxisSize.min, children: [chip, toggle]);
   }
 
   static String _errorText(Object e) => e is ApiException ? e.message : '$e';

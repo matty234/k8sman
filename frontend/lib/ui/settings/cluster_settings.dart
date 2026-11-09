@@ -8,6 +8,7 @@ import '../../util/k8s.dart' show Severity;
 import '../context_badge.dart';
 import '../resource_nav.dart' show lockContext;
 import '../theme.dart';
+import '../security/security_api.dart';
 import '../widgets/common.dart';
 import 'settings_widgets.dart';
 
@@ -45,6 +46,14 @@ List<SettingItem> clusterSettings() => [
             'whatever it is called here. Click one to copy it.',
         keywords: const ['links', 'share', 'fingerprint', 'hash', 'cluster', 'mapping', 'always open'],
         child: (_) => const _LinkClusters(),
+      ),
+      SettingItem.row(
+        key: const ValueKey('settings-security-ignores'),
+        group: 'Security',
+        label: 'Ignored findings',
+        description: 'Security findings you chose to ignore in the current context. Removing a rule brings its findings back.',
+        keywords: const ['security', 'ignore', 'ignored', 'findings', 'suppress', 'rules'],
+        child: (_) => const _SecurityIgnores(),
       ),
       SettingItem(
         key: const ValueKey('settings-remote-icons'),
@@ -214,6 +223,84 @@ class _LinkClusters extends StatelessWidget {
             ),
           ]),
       ],
+    ]);
+  }
+}
+
+/// The current context's Security ignore rules, each with a remove button.
+class _SecurityIgnores extends StatefulWidget {
+  const _SecurityIgnores();
+
+  @override
+  State<_SecurityIgnores> createState() => _SecurityIgnoresState();
+}
+
+class _SecurityIgnoresState extends State<_SecurityIgnores> {
+  late final SecurityApi _api = SecurityApi(context.read<ApiClient>());
+  List<SecIgnoreRule>? _rules;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await _api.ignores();
+      if (mounted) setState(() => _rules = r);
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
+  }
+
+  Future<void> _remove(SecIgnoreRule r) async {
+    try {
+      await _api.removeIgnore(r);
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+      return;
+    }
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final faint = theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).faint);
+    if (_error != null) return InlineMessage('Could not load ignore rules: $_error', isError: true);
+    final rules = _rules;
+    if (rules == null) return const SizedBox.shrink();
+    if (rules.isEmpty) return const SettingsEmpty('Nothing ignored in this context.');
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final (i, r) in rules.indexed)
+        SizedBox(
+          height: 34,
+          child: Row(children: [
+            Expanded(
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(text: r.check, style: monoStyle(context, size: 12)),
+                  TextSpan(text: '   ${r.scope}', style: theme.textTheme.bodySmall),
+                  if (r.reason.isNotEmpty) TextSpan(text: '   ${r.reason}', style: faint),
+                ]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Tooltip(
+              message: 'Stop ignoring',
+              child: IconButton(
+                key: ValueKey('remove-ignore-$i'),
+                visualDensity: VisualDensity.compact,
+                iconSize: 14,
+                icon: const Icon(Icons.close),
+                onPressed: () => _remove(r),
+              ),
+            ),
+          ]),
+        ),
     ]);
   }
 }

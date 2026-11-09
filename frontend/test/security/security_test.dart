@@ -25,13 +25,36 @@ class FakeSecurityApi extends SecurityApi {
   Json scannerResponse;
   final List<(String?, bool)> calls = [];
   final List<String> scans = [];
+
+  /// Ignore rules, applied to [response] as the backend does: the findings
+  /// they cover move to `ignored`.
+  final List<SecIgnoreRule> rules = [];
   FakeSecurityApi(this.response, this.scannerResponse, ApiClient api) : super(api);
 
   @override
   Future<SecurityData> fetch({NamespaceScope scope = NamespaceScope.all, bool includeSystem = false}) async {
     calls.add((scope.single, includeSystem));
-    return SecurityData.fromJson(response);
+    if (rules.isEmpty) return SecurityData.fromJson(response);
+    final findings = <Json>[], ignored = <Json>[];
+    for (final f in (response['findings'] as List).cast<Json>()) {
+      final sf = SecFinding.fromJson(f);
+      if (ignoredBy(rules, sf)) {
+        ignored.add({...f, 'rule': rules.firstWhere((r) => r.relevantTo(sf)).toJson()});
+      } else {
+        findings.add(f);
+      }
+    }
+    return SecurityData.fromJson({...response, 'findings': findings, 'ignored': ignored});
   }
+
+  @override
+  Future<List<SecIgnoreRule>> ignores() async => [...rules];
+
+  @override
+  Future<void> addIgnores(List<SecIgnoreRule> add) async => rules.addAll(add);
+
+  @override
+  Future<void> unignore(SecFinding f) async => rules.removeWhere((r) => r.relevantTo(f));
 
   @override
   Future<ScannerStatus> scanner() async => ScannerStatus.fromJson(scannerResponse);

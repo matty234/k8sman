@@ -28,6 +28,20 @@ class SecurityApi {
     return SecurityData.fromJson(jsonObjectBody(await _http.get('', q)));
   }
 
+  /// The ignore rules of the current context.
+  Future<List<SecIgnoreRule>> ignores() async => [for (final r in await api.getSecurityIgnores()) SecIgnoreRule.fromJson(r)];
+
+  Future<void> _setIgnores(List<SecIgnoreRule> rules) => api.putSecurityIgnores([for (final r in rules) r.toJson()]);
+
+  /// Adds [rules] to the current context's ignore rules.
+  Future<void> addIgnores(List<SecIgnoreRule> rules) async => _setIgnores([...await ignores(), ...rules]);
+
+  /// Removes every rule that contributes to ignoring [f].
+  Future<void> unignore(SecFinding f) async => _setIgnores([for (final r in await ignores()) if (!r.relevantTo(f)) r]);
+
+  /// Removes one rule (the settings list).
+  Future<void> removeIgnore(SecIgnoreRule rule) async => _setIgnores([for (final r in await ignores()) if (!r.sameTarget(rule)) r]);
+
   Future<ScannerStatus> scanner() async => ScannerStatus.fromJson(jsonObjectBody(await _http.get('/scanner')));
 
   Future<ScanResult> scan(String image, {bool force = false}) async =>
@@ -128,6 +142,71 @@ class SecFinding {
         objects: [for (final o in _maps(j['objects'])) refFromJson(o)],
         checks: [for (final c in (j['checks'] as List? ?? const [])) '$c'],
       );
+}
+
+/// What an ignore rule covers, mirroring the backend's `security.IgnoreRule`:
+/// a check everywhere, in one namespace, or one target object ([kind] and
+/// [name], in the object's [namespace]).
+class SecIgnoreRule {
+  final String check;
+  final String? namespace;
+  final String? kind;
+  final String? name;
+  final String reason;
+  final String at;
+  const SecIgnoreRule({required this.check, this.namespace, this.kind, this.name, this.reason = '', this.at = ''});
+
+  factory SecIgnoreRule.fromJson(Json j) => SecIgnoreRule(
+        check: _str(j['check']),
+        namespace: _str(j['namespace']).isEmpty ? null : _str(j['namespace']),
+        kind: _str(j['kind']).isEmpty ? null : _str(j['kind']),
+        name: _str(j['name']).isEmpty ? null : _str(j['name']),
+        reason: _str(j['reason']),
+        at: _str(j['at']),
+      );
+
+  Json toJson() => {
+        'check': check,
+        if (namespace != null) 'namespace': namespace,
+        if (kind != null) 'kind': kind,
+        if (name != null) 'name': name,
+        if (reason.isNotEmpty) 'reason': reason,
+        if (at.isNotEmpty) 'at': at,
+      };
+
+  bool get isObject => kind != null && name != null;
+
+  bool sameTarget(SecIgnoreRule o) => check == o.check && namespace == o.namespace && kind == o.kind && name == o.name;
+
+  bool _coversObject(ObjectRef o) => isObject && o.kind == kind && o.name == name && (namespace == null || namespace == o.namespace);
+
+  /// Whether this rule contributes to ignoring [f].
+  bool relevantTo(SecFinding f) {
+    if (check != f.check) return false;
+    return isObject ? f.objects.any(_coversObject) : (namespace == null || namespace == f.namespace);
+  }
+
+  /// A short description of the scope, for lists.
+  String get scope {
+    if (isObject) return '$kind ${namespace != null ? '$namespace/' : ''}$name';
+    return namespace != null ? 'in $namespace' : 'everywhere';
+  }
+}
+
+/// Whether [rules] ignore [f]: a rule for its check (everywhere or in its
+/// namespace), or object rules that between them cover every one of its
+/// objects. Mirrors the backend's `security.Ignoring`.
+bool ignoredBy(List<SecIgnoreRule> rules, SecFinding f) {
+  final mine = [for (final r in rules) if (r.check == f.check) r];
+  if (mine.any((r) => !r.isObject && (r.namespace == null || r.namespace == f.namespace))) return true;
+  return f.objects.isNotEmpty && f.objects.every((o) => mine.any((r) => r._coversObject(o)));
+}
+
+/// A finding hidden by [rule].
+class SecIgnored {
+  final SecFinding finding;
+  final SecIgnoreRule rule;
+  const SecIgnored(this.finding, this.rule);
 }
 
 class GrantSubject {
@@ -323,6 +402,10 @@ class SecurityData {
   final int score;
   final List<SecCategory> categories;
   final List<SecFinding> findings;
+
+  /// Findings hidden by the context's ignore rules: they are not in
+  /// [findings], the category counts or the score.
+  final List<SecIgnored> ignored;
   final List<Grant> permissive;
   final List<NamespaceNetwork> network;
   final List<ImageSummary> images;
@@ -347,6 +430,7 @@ class SecurityData {
     required this.categories,
     required this.findings,
     this.includeSystem = false,
+    this.ignored = const [],
     this.permissive = const [],
     this.network = const [],
     this.images = const [],
@@ -367,6 +451,7 @@ class SecurityData {
       score: _int(j['score']),
       categories: [for (final c in _maps(j['categories'])) SecCategory.fromJson(c)],
       findings: [for (final f in _maps(j['findings'])) SecFinding.fromJson(f)],
+      ignored: [for (final f in _maps(j['ignored'])) SecIgnored(SecFinding.fromJson(f), SecIgnoreRule.fromJson(asMap(f['rule'])))],
       permissive: [for (final g in _maps(j['permissive'])) Grant.fromJson(g)],
       network: [for (final n in _maps(j['network'])) NamespaceNetwork.fromJson(n)],
       images: [for (final i in _maps(j['images'])) ImageSummary.fromJson(i)],
