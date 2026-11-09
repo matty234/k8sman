@@ -1040,7 +1040,13 @@ class PaletteLauncher extends StatelessWidget {
             Expanded(child: Text('Search or jump to…', style: hint, overflow: TextOverflow.ellipsis, maxLines: 1)),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(border: Border.all(color: colors.separator), borderRadius: BorderRadius.circular(4)),
+              // Translucent, so the keycap sits on the field in light and dark
+              // (the opaque separator colour is tuned for the page, not the field).
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.12), width: 0.5),
+                borderRadius: BorderRadius.circular(4),
+              ),
               child: Text(shortcutLabel('K'), style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
             ),
           ]),
