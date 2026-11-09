@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -632,5 +633,26 @@ func TestDiscoveryIsCached(t *testing.T) {
 	serve(t, h, "GET", "/api/prom/status?refresh=true", "")
 	if len(up.seen) == n {
 		t.Error("refresh=true should re-probe")
+	}
+}
+
+func TestManualInstanceWithPathPrefix(t *testing.T) {
+	h, up := testHandler(t, false)
+	// Mimir-style: no buildinfo, the API lives under /prometheus.
+	up.json("mimir-qf:8080/prometheus/api/v1/query", `{"status":"success","data":{"resultType":"vector","result":[]}}`)
+	e := h.env()
+	e.settings = Settings{Prometheus: &Endpoint{Namespace: "mimir", Service: "mimir-qf", Port: "8080", PathPrefix: "prometheus/"}}
+	h.env = func() env { return e }
+	s := decode[Status](t, serve(t, h, "GET", "/api/prom/status", ""))
+	if len(s.Prometheus) != 2 || s.Prometheus[0].ID != "mimir/mimir-qf" || !s.Prometheus[0].Default || !s.Prometheus[0].Reachable || s.Prometheus[1].Default {
+		t.Fatalf("instances = %+v", s.Prometheus)
+	}
+	if rec := serve(t, h, "GET", "/api/prom/query?query=up", ""); rec.Code != 200 {
+		t.Fatalf("query: %d %s", rec.Code, rec.Body)
+	}
+	if !slices.ContainsFunc(up.seen, func(r string) bool {
+		return strings.HasPrefix(r, "GET mimir/mimir-qf:8080/prometheus/api/v1/query?query=up")
+	}) {
+		t.Errorf("query not sent under the prefix: %v", up.seen)
 	}
 }

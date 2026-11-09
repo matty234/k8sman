@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -80,6 +81,8 @@ type env struct {
 	dyn   dynamic.Interface
 	typed kubernetes.Interface
 	req   requester
+	// settings are the user's manual instances (see Settings).
+	settings Settings
 }
 
 // discoverer caches discovery per kube context.
@@ -177,6 +180,11 @@ func discover(ctx context.Context, e env) *Status {
 			found = fromServices(kind, services.Items)
 		}
 		sortInstances(found)
+		if ep := e.settings.endpoint(kind); !ep.empty() {
+			// The manual instance leads and is the default.
+			manual := ep.instance(kind)
+			found = append([]*Instance{manual}, slices.DeleteFunc(found, func(in *Instance) bool { return in.ID == manual.ID })...)
+		}
 		if kind == KindPrometheus {
 			s.Prometheus = found
 		} else {
@@ -375,6 +383,10 @@ func pickDefault(l []*Instance) {
 		}
 		return r
 	}
+	if l[0].Source == "settings" {
+		l[0].Default = true
+		return
+	}
 	best := l[0]
 	for _, in := range l[1:] {
 		if rank(in) < rank(best) {
@@ -393,6 +405,13 @@ func probe(ctx context.Context, r requester, in *Instance) {
 	case KindPrometheus:
 		var data json.RawMessage
 		data, _, err = promGet(ctx, r, in, "/api/v1/status/buildinfo", url.Values{})
+		if err != nil && in.Source == "settings" {
+			// Mimir and friends may not serve buildinfo: any answer to a
+			// trivial query shows the address works.
+			if _, _, qerr := promGet(ctx, r, in, "/api/v1/query", url.Values{"query": {"vector(1)"}}); qerr == nil {
+				err, data = nil, nil
+			}
+		}
 		if err == nil {
 			var bi struct {
 				Version string `json:"version"`

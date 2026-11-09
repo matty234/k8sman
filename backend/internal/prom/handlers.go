@@ -27,7 +27,15 @@ type Handler struct {
 }
 
 func envFor(c *cluster.Clients) env {
-	return env{key: c.Context, dyn: c.Dynamic, typed: c.Typed, req: restRequester{rc: c.Typed.CoreV1().RESTClient()}}
+	e := env{key: c.Context, dyn: c.Dynamic, typed: c.Typed, req: restRequester{rc: c.Typed.CoreV1().RESTClient()}}
+	if SettingsSource != nil {
+		e.settings = SettingsSource(c.Context)
+		// A changed override must not be served from the old discovery.
+		if b, _ := json.Marshal(e.settings); len(b) > 2 {
+			e.key += "|" + string(b)
+		}
+	}
+	return e
 }
 
 // Register mounts the Prometheus endpoints on mux. Mutations (silences)

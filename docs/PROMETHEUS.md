@@ -42,6 +42,29 @@ document covers only what comes from Prometheus and Alertmanager.
    the `monitoring` namespace. Every endpoint accepts
    `?instance=<namespace>/<name>`.
 
+#### Manual address
+
+For setups discovery doesn't recognise (Grafana Mimir, Thanos query-frontend,
+VictoriaMetrics, anything serving the Prometheus API under a path such as
+`/prometheus`), Settings > Integrations > Prometheus takes a Service per
+kube context (`moduleSettings.prometheus`):
+
+    {"prometheus":   {"namespace": "mimir", "service": "mimir-query-frontend", "port": "8080", "pathPrefix": "/prometheus"},
+     "alertmanager": {"namespace": "...", "service": "...", "port": "9093", "pathPrefix": "..."},
+     "defaultRange": "1h"}
+
+`port` is a number or name (default 9090 / 9093). `pathPrefix` is added to
+every request (query, query_range, alerts, rules, targets, silences) where the
+proxy URL is built (`Instance.ProxyPath`). A manual instance has `source:
+"settings"`, leads its list and is the default; discovered instances stay
+listed. It is probed with buildinfo (`<prefix>/api/v1/status/buildinfo`),
+falling back to `<prefix>/api/v1/query?query=vector(1)` because Mimir may not
+serve buildinfo. Settings > Integrations shows whether it answers. With both
+endpoints empty discovery is unchanged. `defaultRange` (`10m`, `15m`, `1h`,
+`6h`, `1d`, `1w`) is the history charts' first range; picking another on a
+chart changes only that view for the session. Long ranges keep about 240
+points (1w = 42m step), and the Overview chart refreshes every 10m on 1w.
+
 Discovery is cached per kube context for 30s (10s when nothing was found or
 something failed); `GET /api/prom/status?refresh=true` re-runs it.
 
