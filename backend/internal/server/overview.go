@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -55,7 +57,8 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	ns := scope.String() // "" = all, "a" or a set "a,b" (see listScope)
 
-	l := s.startOverview(s.mgr.Clients(), ns)
+	c := s.mgr.Clients()
+	l := s.overviewRuns.get(fmt.Sprintf("%p|%s", c, ns), func() *OverviewLists { return s.startOverview(c, ns) })
 	res, errs, ok := l.respond(r.Context(), wait)
 	if !ok {
 		return
@@ -127,9 +130,57 @@ func (s *Server) startOverview(c *cluster.Clients, ns string) *OverviewLists {
 	}
 	go func() {
 		l.wg.Wait()
+		l.mu.Lock()
+		l.finished = time.Now()
+		l.mu.Unlock()
 		cancel()
 	}()
 	return l
+}
+
+// overviewReuse is how long a finished run still answers requests, so the
+// follow-up fetch right after one doesn't start every source again. Short,
+// so the normal 10s poll sees fresh data.
+const overviewReuse = time.Second
+
+// overviewRuns holds the overview run in flight (or just finished) per
+// context and namespace scope; requests attach to it instead of starting
+// the same slow sources again.
+type overviewRuns struct {
+	mu sync.Mutex
+	m  map[string]*OverviewLists
+}
+
+// get returns the run for key, calling start (under the lock, so only one
+// request starts it) when there is none or the last one is over.
+func (o *overviewRuns) get(key string, start func() *OverviewLists) *OverviewLists {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.m == nil {
+		o.m = map[string]*OverviewLists{}
+	}
+	for k, l := range o.m {
+		if l.expired() {
+			delete(o.m, k)
+		}
+	}
+	if l := o.m[key]; l != nil {
+		return l
+	}
+	l := start()
+	o.m[key] = l
+	return l
+}
+
+// expired: finished more than overviewReuse ago, or past the hard limit
+// (a source that ignores its context never finishes).
+func (l *OverviewLists) expired() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.finished.IsZero() {
+		return time.Since(l.finished) > overviewReuse
+	}
+	return time.Since(l.started) > overviewHardWait+time.Second
 }
 
 // listInto lists one core type and stores it with set, under the lock.

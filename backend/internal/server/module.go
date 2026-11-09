@@ -305,10 +305,13 @@ type OverviewLists struct {
 	pending map[string]int // source label -> goroutines still running
 	// podsDone is closed when the "pods" source has finished.
 	podsDone chan struct{}
+	// started, and finished once every source is done (zero until then).
+	started  time.Time
+	finished time.Time
 }
 
 func newOverviewLists(ctx context.Context, c *cluster.Clients, ns string) *OverviewLists {
-	return &OverviewLists{Ctx: ctx, Clients: c, Namespace: ns, errs: map[string]error{}, pending: map[string]int{}, podsDone: make(chan struct{})}
+	return &OverviewLists{Ctx: ctx, Clients: c, Namespace: ns, errs: map[string]error{}, pending: map[string]int{}, podsDone: make(chan struct{}), started: time.Now()}
 }
 
 // overviewSourceLabels maps source names onto the labels reported in the

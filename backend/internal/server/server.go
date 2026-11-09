@@ -44,6 +44,8 @@ type Server struct {
 	token    string
 	// modules are the built-in integrations (see module.go).
 	modules []Module
+	// overviewRuns shares one in-flight overview run per context and scope.
+	overviewRuns overviewRuns
 }
 
 // Options configures optional server behaviour.

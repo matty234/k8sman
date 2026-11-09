@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,7 +24,9 @@ func TestOverviewSoftDeadlinePartial(t *testing.T) {
 	release := make(chan struct{})
 	l.Go("pods", func() (func(*overview.Input), error) {
 		time.Sleep(80 * time.Millisecond) // later than the soft deadline
-		return func(in *overview.Input) { in.Pods = []corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "d"}}} }, nil
+		return func(in *overview.Input) {
+			in.Pods = []corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "d"}}}
+		}, nil
 	})
 	l.Go("deployments", func() (func(*overview.Input), error) {
 		return func(in *overview.Input) { in.Deployments = []appsv1.Deployment{{}} }, nil
@@ -51,5 +54,22 @@ func TestOverviewSoftDeadlinePartial(t *testing.T) {
 	l.wg.Wait()
 	if in, _ := l.snapshot(); len(in.Pending) != 0 || len(in.Alerts) != 1 {
 		t.Fatalf("after the late source: pending=%v alerts=%d", in.Pending, len(in.Alerts))
+	}
+
+	// Requests within the reuse window share one run: the sources start once.
+	var runs overviewRuns
+	var started atomic.Int32
+	start := func() *OverviewLists {
+		n := newOverviewLists(context.Background(), nil, "")
+		n.Go("pods", func() (func(*overview.Input), error) {
+			started.Add(1)
+			return nil, nil
+		})
+		return n
+	}
+	a, b := runs.get("k|", start), runs.get("k|", start)
+	a.wg.Wait()
+	if c := runs.get("k|", start); a != b || a != c || started.Load() != 1 {
+		t.Fatalf("runs not shared: started %d times", started.Load())
 	}
 }
