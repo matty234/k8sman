@@ -228,27 +228,27 @@ class _KubeconfigPickerState extends State<KubeconfigPicker> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: app.switchingKubeconfig ? null : () => _open(ctx),
+            // A quiet subtitle under the context name (aligned with it, past
+            // the 20px badge): the file the contexts come from, with the
+            // chevron only on hover.
             child: Container(
-              height: 24,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(color: _hover ? colors.hover : null, borderRadius: BorderRadius.circular(6)),
+              height: 20,
+              padding: const EdgeInsets.only(left: 36, right: 8),
+              decoration: BoxDecoration(color: _hover ? colors.hover : null, borderRadius: BorderRadius.circular(5)),
               child: Row(children: [
-                SizedBox(
-                  width: 20,
-                  child: app.switchingKubeconfig
-                      ? const Center(child: SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.5)))
-                      : Icon(Icons.description_outlined, size: 14, color: theme.hintColor),
-                ),
-                const SizedBox(width: 8),
+                if (app.switchingKubeconfig) ...[
+                  const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                  const SizedBox(width: 6),
+                ],
                 Expanded(
                   child: Text(
                     label,
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                    style: theme.textTheme.bodySmall?.copyWith(color: colors.faint, fontSize: 11.5),
                   ),
                 ),
-                Icon(Icons.unfold_more, size: 12, color: theme.hintColor),
+                if (_hover) Icon(Icons.unfold_more, size: 12, color: theme.hintColor),
               ]),
             ),
           ),
