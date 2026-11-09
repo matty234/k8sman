@@ -62,13 +62,13 @@ class UsageCell extends StatelessWidget {
       }
       // The bar and percentage keep their place (blank without a base) so
       // values line up down the column.
-      // The value takes a right-aligned slot sized to the column (so values
-      // and bars line up down it), and the bar fills what's left.
-      // Wide enough for the text (snapped up to a 16px step so rows with
-      // similar values share a slot), and at least a third of the cell.
-      final measured = (TextPainter(text: TextSpan(text: u.text, style: style), maxLines: 1, textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout()).width;
+      // The value takes a right-aligned slot the same width on every row of
+      // the column (sized for the widest value of its unit, not this row's
+      // text), so the bars start and end in the same place down the column.
+      final template = u.text.contains('B') ? '000.0 MiB' : '0000m';
+      final measured = (TextPainter(text: TextSpan(text: template, style: style), maxLines: 1, textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout()).width;
       final room = box.maxWidth - _pctWidth - 12 - 16; // keep 16px for the bar
-      final valueWidth = math.min(room, math.max((box.maxWidth - _pctWidth) / 3, (measured / 16).ceil() * 16.0));
+      final valueWidth = math.min(room, math.max((box.maxWidth - _pctWidth) / 3, measured.ceilToDouble()));
       return Row(children: [
         SizedBox(width: valueWidth, child: valueText),
         const SizedBox(width: 6),
@@ -77,6 +77,7 @@ class UsageCell extends StatelessWidget {
               ? const SizedBox.shrink()
               : _UsageBar(frac: p / 100, color: alert ?? theme.colorScheme.onSurface.withValues(alpha: 0.42)),
         ),
+        const SizedBox(width: 6),
         SizedBox(
           width: _pctWidth,
           child: p == null
