@@ -103,7 +103,9 @@ class _TableFilterFieldState extends State<TableFilterField> {
           focusNode: focus,
           decoration: InputDecoration(
             prefixIcon: const Icon(Icons.search, size: 15),
-            hintText: 'Filter  (or status=…, !text, /regex/)',
+            // Short so it fits; the syntax (status=…, !text, /regex/) is in the
+            // suggestions list and the ? help.
+            hintText: 'Filter',
             enabledBorder: regexError == null ? null : OutlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.error)),
             focusedBorder: regexError == null ? null : OutlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.error, width: 2)),
             suffixIcon: regexError == null

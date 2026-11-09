@@ -20,6 +20,7 @@ import '../../util/node_os.dart';
 import '../../util/pod.dart';
 import '../theme.dart';
 import 'drain_dialog.dart';
+import '../row_context_menu.dart' show showRowContextMenu;
 import '../widgets/common.dart';
 import '../widgets/editorial.dart';
 import '../widgets/node_os_icon.dart';
@@ -737,6 +738,10 @@ class _NodeRow extends StatelessWidget {
     return Hoverable(
       cursor: SystemMouseCursors.basic,
       onTap: type == null ? null : () => app.openDetail(DetailTarget(type: type, name: n.name)),
+      // The same menu as a table row: cordon, drain, copy link, kubectl…
+      onSecondaryTapUp: type == null
+          ? null
+          : (d) => showRowContextMenu(context, d.globalPosition, type, TableRowData(uid: n.name, name: n.name, resourceVersion: '', cells: const [])),
       builder: (hovered) => Container(
         height: 44,
         margin: const EdgeInsets.fromLTRB(6, 2, 6, 0),
@@ -864,6 +869,9 @@ class _PodRow extends StatelessWidget {
     return Hoverable(
       cursor: SystemMouseCursors.basic,
       onTap: type == null ? null : () => app.openDetail(DetailTarget(type: type, name: name, namespace: ns)),
+      onSecondaryTapUp: type == null
+          ? null
+          : (d) => showRowContextMenu(context, d.globalPosition, type, TableRowData(uid: '$ns/$name', name: name, namespace: ns, resourceVersion: '', cells: const [])),
       builder: (hovered) => Container(
         height: 30,
         margin: const EdgeInsets.symmetric(horizontal: 6),

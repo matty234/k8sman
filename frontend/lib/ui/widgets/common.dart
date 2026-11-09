@@ -111,8 +111,11 @@ class _DetailSectionState extends State<DetailSection> {
 class Hoverable extends StatefulWidget {
   final Widget Function(bool hovered) builder;
   final VoidCallback? onTap;
+
+  /// Right-click (or two-finger click), e.g. for a context menu.
+  final GestureTapUpCallback? onSecondaryTapUp;
   final MouseCursor? cursor;
-  const Hoverable({super.key, required this.builder, this.onTap, this.cursor});
+  const Hoverable({super.key, required this.builder, this.onTap, this.onSecondaryTapUp, this.cursor});
 
   @override
   State<Hoverable> createState() => _HoverableState();
@@ -130,6 +133,7 @@ class _HoverableState extends State<Hoverable> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
+        onSecondaryTapUp: widget.onSecondaryTapUp,
         // Clickable things aren't selectable text: inside a SelectionArea
         // (the inspector) their text would otherwise show the I-beam cursor
         // over the click cursor, and a click could start a selection.
