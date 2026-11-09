@@ -453,6 +453,27 @@ Errors:
 - **422** `Invalid`: bad values YAML, a bad `repo`, or an upgrade that isn't safe from the stored chart. Helm doesn't persist subcharts in the release, so when the current manifest contains resources rendered from subcharts (`# Source: <chart>/charts/...`), re-rendering would delete them. `upgradeBlocked` on the release explains this, and the UI disables "Edit values".
 - Upgrades and installs aren't cancelled if the HTTP client disconnects, since cancelling midway is exactly what leaves a release stuck.
 
+#### Charts: repositories, Artifact Hub and updates
+
+The Helm page's charts browser. Repositories are the user's own `helm repo` configuration: `repositories.yaml` and the repository cache, located exactly like the helm CLI does (`HELM_REPOSITORY_CONFIG`, `HELM_REPOSITORY_CACHE`, `HELM_CONFIG_HOME`/`HELM_CACHE_HOME` and the XDG/OS defaults). Writes take helm's `repositories.lock` and keep the file at mode 0600. Usernames, passwords and certificate paths are used for fetching but never returned. Every request for an index or chart is sent with `User-Agent: k8sman` and a timeout. Code: `backend/internal/helm/repos.go`, `artifacthub.go`, `updates.go`; Dart client `frontend/lib/ui/helm/market/market_api.dart`.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/helm/repos` | `{repositories:[{name, url, updated? (index file mtime), charts? (count), hasCredentials?, insecureSkipTLSVerify?}], configPath, cachePath, registries:[{host}], registryConfig}`. `registries` are the hosts in helm's `registry/config.json` (read-only, host names only) |
+| POST | `/api/helm/repos/update` | `{name}`: downloads the index into the helm cache, like `helm repo update <name>`. Returns the repository |
+| POST | `/api/helm/repos/add` | `{name, url, username?, password?, passCredentialsAll?, insecureSkipTLSVerify?}`, like `helm repo add`: the index is downloaded first (so a wrong URL is refused), then the entry is written. 422 when the name exists. Refused (403) when the context is read-only |
+| POST | `/api/helm/repos/remove` | `{name}`, like `helm repo remove` (also deletes the cached index). Refused (403) when read-only |
+| GET | `/api/helm/repos/charts[?repo=]` | `{charts:[{repo, repoURL, name, version, appVersion?, description?, icon?, keywords?, deprecated?, created?}], notCached:[repo], errors?:{repo: message}}`: the latest stable version of every chart in the cached indexes (parsed indexes are kept in memory until the file changes) |
+| GET | `/api/helm/repos/chart?repo=&chart=[&version=]` | a chart detail (below) from the cached index |
+| GET | `/api/helm/repos/chart/files?repo=&chart=[&version=]` | `{version, readme, values}`: the chart's `README.md` and default `values.yaml`, read from its archive (downloaded with the repository's credentials; 30 s timeout; cached in memory) |
+| GET/PUT | `/api/helm/artifacthub/settings` | `{enabled}`: the global opt-in (settings.json `artifactHub`, default off). Search terms are sent to artifacthub.io, so every other `artifacthub` route answers 403 `ArtifactHubDisabled` until it is on |
+| GET | `/api/helm/artifacthub/search?q=[&offset=&limit=]` | `{packages:[{packageId, name, version, appVersion?, description?, icon?, stars, deprecated?, repo, repoDisplay?, repoURL, publisher?, official?, verified?}], total}`. Proxies `GET https://artifacthub.io/api/v1/packages/search?kind=0&ts_query_web=` (`total` from its `Pagination-Total-Count`); an empty `q` lists the most starred |
+| GET | `/api/helm/artifacthub/package?repo=&chart=[&version=]` | a chart detail from `GET /api/v1/packages/helm/{repo}/{name}[/{version}]`, with `packageId` and `readme` |
+| GET | `/api/helm/artifacthub/values?packageId=&version=` | `{version, values}` from `GET /api/v1/packages/{packageID}/{version}/values` |
+| GET | `/api/helm/updates?chart=<name>@<version>[&chart=…]` | `{updates:{"<name>@<version>": {chart, installed, latest, source: "repo"\|"artifacthub", repo, repoURL}}}`: a newer stable version (any newer one if the installed version is a pre-release) of each installed chart. A configured repository counts only if its index also lists the installed version; Artifact Hub is asked (when enabled) only when no repository does, checking the first few packages of that exact name. Answers are cached 30 minutes |
+
+A chart detail is `{source: "repo"|"artifacthub", repo, repoDisplay?, repoURL, name, version, appVersion?, description?, icon?, home?, keywords?, maintainers:[{name, email?, url?}], links:[{name, url}], deprecated?, kubeVersion?, type?, license?, versions:[{version, appVersion?, created?, prerelease?}], packageId?, readme?, official?, verified?}`. `repoURL` is what `/api/helm/install` and `/api/helm/upgrade` take as `repo` (an https repository, or for OCI packages on Artifact Hub the `oci://` reference). Artifact Hub responses are cached in memory for 10 minutes; requests time out after 15 s.
+
 ## Security overview
 
 | Method | Path | Purpose |

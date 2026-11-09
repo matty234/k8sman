@@ -33,6 +33,9 @@ type Settings struct {
 	// (chart icon URLs and website favicons). nil = automatic: on for local
 	// clusters (kind, k3d, minikube, Docker Desktop, …), off otherwise.
 	RemoteIcons *bool `json:"remoteIcons,omitempty"`
+	// ArtifactHub lets the Helm charts browser search Artifact Hub
+	// (artifacthub.io), which sends it the search terms. Off unless chosen.
+	ArtifactHub bool `json:"artifactHub,omitempty"`
 	// ArgoCDTokens and ArgoCDUseCLI are where releases before the module
 	// settings kept Argo CD auth (kube context → API token, and kube
 	// context → "use the argocd CLI's login"). They are only read, to move

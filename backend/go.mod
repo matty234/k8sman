@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/creack/pty v1.1.24
+	github.com/gofrs/flock v0.12.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/itchyny/gojq v0.12.17
 	golang.org/x/net v0.41.0

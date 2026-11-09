@@ -6,6 +6,7 @@ import '../../app/kubeconfig_picker.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart' show Severity;
 import '../context_badge.dart';
+import '../helm/market/artifacthub_setting.dart';
 import '../resource_nav.dart' show lockContext;
 import '../theme.dart';
 import '../security/security_api.dart';
@@ -66,6 +67,7 @@ List<SettingItem> clusterSettings() => [
         keywords: const ['icons', 'favicon', 'remote', 'privacy', 'network', 'crd'],
         builder: (_) => const _RemoteIcons(),
       ),
+      artifactHubSetting(),
     ];
 
 class _KubeconfigFiles extends StatefulWidget {

@@ -20,7 +20,10 @@ class HelmReleaseDetailPane extends StatefulWidget {
 
   /// Called after a mutation so the list refreshes.
   final VoidCallback onChanged;
-  const HelmReleaseDetailPane({super.key, required this.api, required this.release, required this.onChanged});
+
+  /// Shown after the status (e.g. "1.4.2 available").
+  final Widget? badge;
+  const HelmReleaseDetailPane({super.key, required this.api, required this.release, required this.onChanged, this.badge});
 
   @override
   State<HelmReleaseDetailPane> createState() => _HelmReleaseDetailPaneState();
@@ -83,7 +86,7 @@ class _HelmReleaseDetailPaneState extends State<HelmReleaseDetailPane> {
     return DefaultTabController(
       length: 5,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _Header(detail: d, history: history, api: widget.api, onChanged: _changed),
+        _Header(detail: d, history: history, api: widget.api, onChanged: _changed, badge: widget.badge),
         if (d.stuck != null) _StuckBanner(detail: d, api: widget.api, onChanged: _changed),
         if (d.stuck == null && d.release.failed) _FailedBanner(detail: d),
         TabBar(
@@ -120,7 +123,8 @@ class _Header extends StatelessWidget {
   final List<HelmRelease> history;
   final HelmApi api;
   final void Function(HelmResult?) onChanged;
-  const _Header({required this.detail, required this.history, required this.api, required this.onChanged});
+  final Widget? badge;
+  const _Header({required this.detail, required this.history, required this.api, required this.onChanged, this.badge});
 
   @override
   Widget build(BuildContext context) {
@@ -197,6 +201,7 @@ class _Header extends StatelessWidget {
         Flexible(child: Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium)),
         const SizedBox(width: 8),
         Flexible(child: StatusBadge(r.status, severity: helmStatusSeverity(r.status))),
+        if (badge != null) ...[const SizedBox(width: 8), Flexible(child: badge!)],
       ]),
       const SizedBox(height: 2),
       Text(

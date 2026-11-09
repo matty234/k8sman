@@ -35,6 +35,7 @@ func (m *helmModule) Routes(r httpx.Router, d Deps) {
 	r.HandleFunc("POST /api/helm/install", m.handleHelmInstall)
 	r.HandleFunc("GET /api/helm/chart-versions", m.handleHelmChartVersions)
 	r.HandleFunc("GET /api/helm/oci/versions", m.handleHelmOCIVersions)
+	m.marketRoutes(r)
 }
 
 // config builds a Helm action configuration on the active context.

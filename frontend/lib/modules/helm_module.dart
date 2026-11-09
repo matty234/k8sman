@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
-import '../ui/helm/helm_view.dart';
+import '../ui/helm/helm_page.dart';
 import 'module.dart';
 
 /// Helm: the Helm page (releases, values, history diffs, rollback, upgrade,
@@ -18,7 +18,7 @@ class HelmModule extends AppModule {
   String get name => 'Helm';
 
   @override
-  String get description => 'Releases: values, manifests, history, upgrades and rollbacks.';
+  String get description => 'Releases (values, manifests, history, upgrades and rollbacks), charts from your repositories or Artifact Hub, and repositories.';
 
   @override
   List<AppPage> get pages => [
@@ -29,7 +29,7 @@ class HelmModule extends AppModule {
           commands: const ['helm'],
           after: MainView.access,
           underMore: true,
-          builder: (_) => const HelmView(),
+          builder: (_) => const HelmPage(),
         ),
       ];
 }

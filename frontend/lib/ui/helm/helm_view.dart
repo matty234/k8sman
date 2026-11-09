@@ -11,6 +11,8 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/namespace_picker.dart';
 import 'helm_api.dart';
+import 'market/market_actions.dart';
+import 'market/market_api.dart';
 import 'release_detail.dart';
 import '../../state/poller.dart';
 
@@ -19,7 +21,14 @@ import '../../state/poller.dart';
 class HelmView extends StatefulWidget {
   /// Injected in tests; defaults to a [HelmApi] on the app's [ApiClient].
   final HelmApi? api;
-  const HelmView({super.key, this.api});
+
+  /// Looks up newer chart versions; defaults to one on the app's
+  /// [ApiClient] (none when [api] is injected without it, as in tests).
+  final HelmMarketApi? market;
+
+  /// The Releases / Charts / Repositories switch (see HelmPage).
+  final Widget Function(bool compact)? modeSwitch;
+  const HelmView({super.key, this.api, this.market, this.modeSwitch});
 
   @override
   State<HelmView> createState() => _HelmViewState();
@@ -36,8 +45,26 @@ class _HelmViewState extends State<HelmView> with PollingState {
       return null;
     }
   }
+  late final HelmMarketApi? _market = widget.market ?? _providedMarket() ?? (widget.api == null && _provided() == null ? HelmMarketApi(context.read<ApiClient>()) : null);
+
+  HelmMarketApi? _providedMarket() {
+    try {
+      return Provider.of<HelmMarketApi>(context, listen: false);
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
   HelmReleaseList? _list;
   Object? _error;
+
+  /// Newer chart versions by [chartUpdateKey], kept across visits and
+  /// refreshed at most every [_updatesTTL]; never blocks the list.
+  static Map<String, ChartUpdate> _updates = const {};
+  static String _updatesFor = '';
+  static DateTime? _updatesAt;
+  static const _updatesTTL = Duration(minutes: 10);
+  bool _checkingUpdates = false;
   String _filter = '';
   String? _selected; // namespace/name
   String? _loadedNs;
@@ -64,10 +91,41 @@ class _HelmViewState extends State<HelmView> with PollingState {
         _error = null;
         _loadedNs = ns;
       });
+      _checkUpdates(l.releases);
     } catch (e) {
       if (mounted && seq == _seq) setState(() => _error = e);
     }
   }
+
+  Future<void> _checkUpdates(List<HelmRelease> releases, {bool force = false}) async {
+    final market = _market;
+    if (market == null || _checkingUpdates) return;
+    final keys = ({for (final r in releases) chartUpdateKey(r)}.toList()..sort()).join(',');
+    final fresh = _updatesAt != null && DateTime.now().difference(_updatesAt!) < _updatesTTL;
+    if (!force && fresh && keys == _updatesFor) return;
+    _checkingUpdates = true;
+    try {
+      final u = await market.updates(releases);
+      _updates = u;
+      _updatesFor = keys;
+      _updatesAt = DateTime.now();
+      if (mounted) setState(() {});
+    } catch (_) {
+      // Quiet: the badges are a hint, not part of the list.
+    } finally {
+      _checkingUpdates = false;
+    }
+  }
+
+  Future<void> _upgrade(HelmRelease r, ChartUpdate u) async {
+    if (await upgradeReleaseTo(context, r, repoURL: u.repoURL, chart: u.chart, version: u.latest, api: _api)) {
+      await _refresh();
+      final l = _list;
+      if (l != null) _checkUpdates(l.releases, force: true);
+    }
+  }
+
+  ChartUpdate? _updateOf(HelmRelease r) => _updates[chartUpdateKey(r)];
 
   bool _matches(HelmRelease r) {
     // A namespace set is listed across all namespaces and narrowed here.
@@ -109,6 +167,7 @@ class _HelmViewState extends State<HelmView> with PollingState {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         PageHeader(
           title: 'Helm',
+          afterTitle: widget.modeSwitch?.call(box.maxWidth < 760),
           subtitle: l == null ? null : _Subtitle(l),
           actions: [
             IconButton(tooltip: 'Refresh', iconSize: 18, icon: const Icon(Icons.refresh), onPressed: _refresh),
@@ -140,11 +199,21 @@ class _HelmViewState extends State<HelmView> with PollingState {
                         showNamespace: app.namespace == null,
                         selected: selected?.key,
                         onSelect: (r) => setState(() => _selected = r.key),
+                        updateOf: _updateOf,
+                        onUpgrade: app.readOnly ? null : _upgrade,
                         emptyText: 'No releases match "$_filter"',
                       ),
                       detail: selected == null
                           ? Center(child: Text('Select a release', style: TextStyle(color: theme.hintColor)))
-                          : HelmReleaseDetailPane(key: ValueKey(selected.key), api: _api, release: selected, onChanged: _refresh),
+                          : HelmReleaseDetailPane(
+                              key: ValueKey(selected.key),
+                              api: _api,
+                              release: selected,
+                              onChanged: _refresh,
+                              badge: _updateOf(selected) == null
+                                  ? null
+                                  : UpdateBadge(_updateOf(selected)!, onTap: app.readOnly ? null : () => _upgrade(selected!, _updateOf(selected)!)),
+                            ),
                     ),
         ),
       ]);
@@ -242,7 +311,17 @@ class _ReleaseTable extends StatefulWidget {
   final String? selected;
   final ValueChanged<HelmRelease> onSelect;
   final String emptyText;
-  const _ReleaseTable({required this.releases, required this.showNamespace, required this.selected, required this.onSelect, required this.emptyText});
+  final ChartUpdate? Function(HelmRelease) updateOf;
+  final void Function(HelmRelease, ChartUpdate)? onUpgrade;
+  const _ReleaseTable({
+    required this.releases,
+    required this.showNamespace,
+    required this.selected,
+    required this.onSelect,
+    required this.emptyText,
+    required this.updateOf,
+    this.onUpgrade,
+  });
 
   @override
   State<_ReleaseTable> createState() => _ReleaseTableState();
@@ -338,6 +417,8 @@ class _ReleaseTableState extends State<_ReleaseTable> {
                         layout: layout,
                         striped: i.isOdd,
                         selected: r.key == widget.selected,
+                        update: widget.updateOf(r),
+                        onUpgrade: widget.onUpgrade == null ? null : (u) => widget.onUpgrade!(r, u),
                         onTap: () {
                           _focus.requestFocus();
                           widget.onSelect(r);
@@ -358,7 +439,9 @@ class _ReleaseRow extends StatelessWidget {
   final Map<_Col, double> layout;
   final bool striped, selected;
   final VoidCallback onTap;
-  const _ReleaseRow({required this.r, required this.cols, required this.layout, required this.striped, required this.selected, required this.onTap});
+  final ChartUpdate? update;
+  final ValueChanged<ChartUpdate>? onUpgrade;
+  const _ReleaseRow({required this.r, required this.cols, required this.layout, required this.striped, required this.selected, required this.onTap, this.update, this.onUpgrade});
 
   @override
   Widget build(BuildContext context) {
@@ -367,7 +450,13 @@ class _ReleaseRow extends StatelessWidget {
     final small = theme.textTheme.bodySmall;
     final dim = small?.copyWith(color: theme.hintColor);
     Widget cell(_Col c) => switch (c) {
-          _Col.name => Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+          _Col.name => Row(children: [
+              Flexible(child: Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500))),
+              if (update != null) ...[
+                const SizedBox(width: 6),
+                UpdateBadge(update!, compact: true, onTap: onUpgrade == null ? null : () => onUpgrade!(update!)),
+              ],
+            ]),
           _Col.namespace => Text(r.namespace, maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
           _Col.chart => Text(r.chartRef, maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
           _Col.app => Text(r.appVersion, maxLines: 1, overflow: TextOverflow.ellipsis, style: dim),
