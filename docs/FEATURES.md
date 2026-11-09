@@ -240,8 +240,12 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 
 ## Pages
 
-- **Overview**: cluster health grouped by owning workload, with quick fixes and
-  top warning events.
+- **Overview** (the page the app opens on at launch, unless a saved view is
+  set to open instead): cluster health grouped by owning workload, with quick
+  fixes and top warning events. It appears as soon as pods are listed;
+  slower sources (other workload kinds, nodes, alerts, Argo CD, ...) show
+  placeholders in their tiles and sections, never "All healthy", and fill
+  in within a few seconds.
 - **Alerts** (in the bottom dock): Alertmanager alerts, silences (create,
   expire, "why is this silenced?") and runbook links.
 - **Nodes**: a sortable list grouped by role, with health, allocation and live

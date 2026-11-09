@@ -299,7 +299,7 @@ class _SettingsPageState extends State<SettingsPage> {
           key: const ValueKey('settings-launch'),
           group: 'Launch',
           label: 'Open at launch',
-          description: 'Reconnect to the context you used last, or open a saved view.',
+          description: 'Opens the Overview on the context you used last, or a saved view.',
           keywords: const ['startup', 'start', 'launch view', 'saved view', 'reconnect'],
           trailing: (context) => const _LaunchViewSelect(),
         ),
@@ -418,7 +418,7 @@ class _LaunchViewSelect extends StatelessWidget {
       key: const ValueKey('launch-view-select'),
       value: ids.contains(app.launchViewId) ? app.launchViewId : '',
       options: [
-        ('', Text('The last context', style: small)),
+        ('', Text('Overview, on the last context', style: small)),
         for (final v in app.savedViews) (v.id, Text(v.name, style: small, overflow: TextOverflow.ellipsis)),
       ],
       onChanged: (id) => app.setLaunchView(id).catchError((Object e) {

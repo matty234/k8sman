@@ -53,13 +53,42 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
     });
   }
 
+  /// The backend answers early with what it has and lists the rest in
+  /// `pending`; while something is pending, fetch again after these delays
+  /// (the last repeats) instead of waiting for the normal interval.
+  static const _quickDelays = [Duration(milliseconds: 700), Duration(milliseconds: 1500), Duration(seconds: 3)];
+  Timer? _quick;
+  int _quickStep = 0;
+
+  void _scheduleQuick(OverviewData data) {
+    _quick?.cancel();
+    _quick = null;
+    if (data.pending.isEmpty) {
+      _quickStep = 0;
+      return;
+    }
+    final delay = _quickDelays[_quickStep.clamp(0, _quickDelays.length - 1)];
+    _quickStep++;
+    _quick = Timer(delay, () {
+      if (mounted && !_paused && !_loading) _refresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _quick?.cancel();
+    super.dispose();
+  }
+
   Future<void> _refresh() async {
     final seq = ++_seq;
     final ns = _ns;
+    _quick?.cancel();
     setState(() => _loading = true);
     try {
       final data = await source.fetch(scope: ns);
       if (!mounted || seq != _seq) return;
+      _scheduleQuick(data);
       setState(() {
         _data = data;
         _error = null;
@@ -98,6 +127,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
         setState(() {
           _ns = ns;
           _data = null; // don't show another scope's numbers
+          _quickStep = 0;
         });
         _refresh();
       },
@@ -168,9 +198,12 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                     issues: issues,
                     onChanged: _refresh,
                     emptyText: _filter == null ? 'Nothing needs attention.' : 'No issues in this category.',
+                    loading: data.loadingSections.isNotEmpty,
                   ),
                 ),
-                if (data.nodes.isNotEmpty)
+                if (data.isPending('nodes'))
+                  const DetailSection(title: 'Nodes', icon: Icons.dns_outlined, child: PendingRows())
+                else if (data.nodes.isNotEmpty)
                   DetailSection(
                     title: 'Nodes',
                     icon: Icons.dns_outlined,
@@ -184,7 +217,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                   title: 'Top warning events',
                   icon: Icons.notifications_active_outlined,
                   trailing: Text('last hour', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-                  child: WarningEventList(reasons: data.topWarnings),
+                  child: data.isPending('events') ? const PendingRows(rows: 2) : WarningEventList(reasons: data.topWarnings),
                 ),
               ],
             ),

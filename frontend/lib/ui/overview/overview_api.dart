@@ -186,6 +186,11 @@ class OverviewData {
   /// analysed.
   final Map<String, ClusterError> partialErrors;
 
+  /// Sources the backend had not finished when it answered (`deployments`,
+  /// `alerts`, `argocd`, ...). What they feed is unknown, not zero: tiles
+  /// and sections for them show placeholders until a later fetch has them.
+  final Set<String> pending;
+
   const OverviewData({
     this.generatedAt,
     this.namespace = '',
@@ -196,6 +201,7 @@ class OverviewData {
     this.topWarnings = const [],
     this.errors = const {},
     this.partialErrors = const {},
+    this.pending = const {},
   });
 
   factory OverviewData.fromJson(Json j) => OverviewData(
@@ -208,7 +214,33 @@ class OverviewData {
         topWarnings: [for (final w in asMapList(j['topWarnings'])) WarningReason.fromJson(w)],
         errors: {for (final e in asMap(j['errors']).entries) e.key: '${e.value}'},
         partialErrors: parsePartialErrors(j['partialErrors']),
+        pending: {for (final p in (j['pending'] as List?) ?? const []) '$p'},
       );
+
+  /// Whether source [name] is still loading.
+  bool isPending(String name) => pending.contains(name);
+
+  /// Summary-tile sections (the backend's category sections) with a source
+  /// still loading, in display order.
+  List<String> get loadingSections {
+    const sources = {
+      'nodes': ['nodes'],
+      'alerts': ['alerts'],
+      'workloads': ['deployments', 'statefulsets', 'daemonsets'],
+      'jobs': ['jobs', 'cronjobs', 'workflows'],
+      'storage': ['pvcs'],
+      'argocd': ['argocd'],
+      'network': ['gateway'],
+    };
+    final known = {for (final v in sources.values) ...v, 'pods', 'replicasets', 'events'};
+    return [
+      for (final e in sources.entries)
+        if (e.value.any(pending.contains)) e.key,
+      // A module's own section (e.g. hubble).
+      for (final p in pending.toList()..sort())
+        if (!known.contains(p)) p,
+    ];
+  }
 
   int count(String type, String field) => (dig<num>(counts, [type, field]) ?? 0).toInt();
 

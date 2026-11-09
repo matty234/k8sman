@@ -1024,9 +1024,20 @@ class AppState extends ChangeNotifier {
     await loadSidebar();
     await loadDisabledModules();
     await loadKubeconfigs();
+    // With no launch view (or one that couldn't open) the first launch lands
+    // on the Overview, unless the user hid it from the sidebar. Context
+    // switches keep the current page: only the launch decides.
+    void openOverviewAtLaunch() {
+      if (again || error != null || sidebar.isHidden(MainView.overview)) return;
+      view = MainView.overview;
+      notifyListeners();
+    }
+
+    if (launch == null) openOverviewAtLaunch();
     if (launch != null && error == null) {
       final r = await openView(launch);
       if (r != ViewOpenResult.opened) {
+        openOverviewAtLaunch();
         viewNotice = switch (r) {
           ViewOpenResult.missingContext => 'View “${launch.name}” wasn\'t opened at launch: context ${launch.context?.name} was not found.',
           ViewOpenResult.notServed => 'View “${launch.name}” wasn\'t opened at launch: ${currentContext.isEmpty ? 'the cluster' : currentContext} doesn\'t serve ${launch.kind}.',

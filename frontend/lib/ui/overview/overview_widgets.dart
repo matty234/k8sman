@@ -107,8 +107,13 @@ class InventoryStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final items = <(String, String, String?)>[];
-    void add(String type, String label, String good, {String? extra}) {
+    // A null value is a placeholder: the source is still loading.
+    final items = <(String, String?, String?)>[];
+    void add(String type, String label, String good, String source, {String? extra}) {
+      if (data.isPending(source)) {
+        items.add((label, null, null));
+        return;
+      }
       final total = data.count(type, 'total');
       if (total == 0) return;
       items.add((label, '${data.count(type, good)}/$total', extra));
@@ -119,29 +124,96 @@ class InventoryStrip extends StatelessWidget {
       final completed = data.count('pods', 'completed');
       items.add(('pods ready', '${data.count('pods', 'ready')}/${pods - completed}', completed > 0 ? '+$completed completed' : null));
     }
-    add('deployments', 'deployments', 'healthy');
-    add('statefulSets', 'statefulsets', 'healthy');
-    add('daemonSets', 'daemonsets', 'healthy');
+    add('deployments', 'deployments', 'healthy', 'deployments');
+    add('statefulSets', 'statefulsets', 'healthy', 'statefulsets');
+    add('daemonSets', 'daemonsets', 'healthy', 'daemonsets');
     final jobs = data.count('jobs', 'total');
-    if (jobs > 0) {
+    if (data.isPending('jobs')) {
+      items.add(('jobs succeeded', null, null));
+    } else if (jobs > 0) {
       final failed = data.count('jobs', 'failed');
       items.add(('jobs succeeded', '${data.count('jobs', 'succeeded')}/$jobs', failed > 0 ? '$failed failed' : null));
     }
     final cron = data.count('cronJobs', 'total');
-    if (cron > 0) items.add((cron == 1 ? 'cronjob' : 'cronjobs', '$cron', null));
-    add('nodes', 'nodes ready', 'ready');
-    add('pvcs', 'PVCs bound', 'bound');
+    if (data.isPending('cronjobs')) {
+      items.add(('cronjobs', null, null));
+    } else if (cron > 0) {
+      items.add((cron == 1 ? 'cronjob' : 'cronjobs', '$cron', null));
+    }
+    add('nodes', 'nodes ready', 'ready', 'nodes');
+    add('pvcs', 'PVCs bound', 'bound', 'pvcs');
 
     final numStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: const [FontFeature.tabularFigures()]);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     return Wrap(spacing: 18, runSpacing: 4, children: [
       for (final (label, value, extra) in items)
-        Text.rich(TextSpan(children: [
-          TextSpan(text: value, style: numStyle),
-          TextSpan(text: ' $label', style: hint),
-          if (extra != null) TextSpan(text: ' ($extra)', style: hint),
-        ])),
+        if (value == null)
+          Row(key: ValueKey('pending-inventory-$label'), mainAxisSize: MainAxisSize.min, children: [
+            const SkeletonBar(width: 28, height: 12),
+            Text(' $label', style: hint),
+          ])
+        else
+          Text.rich(TextSpan(children: [
+            TextSpan(text: value, style: numStyle),
+            TextSpan(text: ' $label', style: hint),
+            if (extra != null) TextSpan(text: ' ($extra)', style: hint),
+          ])),
     ]);
+  }
+}
+
+/// A quiet grey bar standing in for a value that is still loading.
+class SkeletonBar extends StatelessWidget {
+  final double? width;
+  final double height;
+  const SkeletonBar({super.key, this.width, this.height = 12});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(4)),
+    );
+  }
+}
+
+String _sectionLabel(String section) => switch (section) {
+      'nodes' => 'Nodes',
+      'alerts' => 'Alerts',
+      'workloads' => 'Workloads',
+      'jobs' => 'Jobs',
+      'storage' => 'Storage',
+      'argocd' => 'Argo CD',
+      'network' => 'Network',
+      _ => section.isEmpty ? section : '${section[0].toUpperCase()}${section.substring(1)}',
+    };
+
+/// Stands where a summary tile would be while its section's source loads,
+/// the same size as a loaded tile.
+class _PendingTile extends StatelessWidget {
+  final String section;
+  const _PendingTile({required this.section});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      key: ValueKey('pending-tile-$section'),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      padding: const EdgeInsets.fromLTRB(15, 10, 10, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Same height as the tile's headlineSmall count.
+        SizedBox(height: (theme.textTheme.headlineSmall?.fontSize ?? 24) * 1.1, child: const Align(alignment: Alignment.centerLeft, child: SkeletonBar(width: 36, height: 18))),
+        const SizedBox(height: 6),
+        Text('${_sectionLabel(section)}…', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: theme.hintColor)),
+        Text('Loading', maxLines: 1, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+      ]),
+    );
   }
 }
 
@@ -160,13 +232,16 @@ class SummaryTiles extends StatelessWidget {
   Widget build(BuildContext context) {
     final problems = data.categories.where((c) => c.severity != IssueSeverity.info).toList();
     final info = data.categories.where((c) => c.severity == IssueSeverity.info).toList();
+    final loading = data.loadingSections;
     return LayoutBuilder(builder: (context, box) {
       // 2 to 6 columns; tiles stretch to fill each row.
       const gap = 10.0;
       final cols = (box.maxWidth / 190).floor().clamp(2, 6);
       final w = ((box.maxWidth - gap * (cols - 1)) / cols).floorToDouble();
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (problems.isEmpty)
+        // Never "All healthy" while a source is still loading: its problems
+        // are unknown. Its sections show a placeholder tile instead.
+        if (problems.isEmpty && loading.isEmpty)
           _HealthyTile(data: data, namespace: namespace)
         else
           Wrap(spacing: gap, runSpacing: gap, children: [
@@ -175,6 +250,7 @@ class SummaryTiles extends StatelessWidget {
                 width: w,
                 child: _CategoryTile(category: c, sublabel: _sublabel(c), selected: selected == c.id, onTap: () => onSelect(c.id)),
               ),
+            for (final s in loading) SizedBox(width: w, child: _PendingTile(section: s)),
           ]),
         if (info.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -333,7 +409,10 @@ class IssueList extends StatefulWidget {
   final List<OverviewIssue> issues;
   final VoidCallback onChanged;
   final String emptyText;
-  const IssueList({super.key, required this.issues, required this.onChanged, required this.emptyText});
+
+  /// Some sources are still loading, so an empty list isn't "nothing wrong".
+  final bool loading;
+  const IssueList({super.key, required this.issues, required this.onChanged, required this.emptyText, this.loading = false});
 
   @override
   State<IssueList> createState() => _IssueListState();
@@ -348,6 +427,17 @@ class _IssueListState extends State<IssueList> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final groups = groupIssues(widget.issues);
+    if (groups.isEmpty && widget.loading) {
+      return Padding(
+        key: const ValueKey('pending-issues'),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(children: [
+          const SkeletonBar(width: 120, height: 12),
+          const SizedBox(width: 10),
+          Text('Still checking…', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+        ]),
+      );
+    }
     if (groups.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -628,6 +718,19 @@ class _NodeChip extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Warning events
 // ---------------------------------------------------------------------------
+
+/// Placeholder rows for a section whose list is still loading.
+class PendingRows extends StatelessWidget {
+  final int rows;
+  const PendingRows({super.key, this.rows = 1});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(key: const ValueKey('pending-rows'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (var i = 0; i < rows; i++) const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: SkeletonBar(height: 14)),
+    ]);
+  }
+}
 
 class WarningEventList extends StatelessWidget {
   final List<WarningReason> reasons;
