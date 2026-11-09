@@ -12,8 +12,10 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import 'editorial.dart' show TitleRule, tabularFigures;
+import 'error_notice.dart';
 
 export 'async.dart';
+export 'error_notice.dart';
 
 /// A titled, collapsible block in the detail sidebar. Every panel section
 /// should be one of these.
@@ -769,10 +771,12 @@ class InlineMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Errors read in plain language, the raw text under Details.
+    if (isError) return ErrorNotice(text);
     final theme = Theme.of(context);
-    final c = isError ? theme.colorScheme.error : theme.hintColor;
+    final c = theme.hintColor;
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(padding: const EdgeInsets.only(top: 1), child: Icon(isError ? Icons.error_outline : icon, size: 14, color: c)),
+      Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 14, color: c)),
       const SizedBox(width: 6),
       Expanded(child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: c))),
     ]);

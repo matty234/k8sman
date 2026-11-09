@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
@@ -30,7 +29,7 @@ class HelmReleaseDetailPane extends StatefulWidget {
 class _HelmReleaseDetailPaneState extends State<HelmReleaseDetailPane> {
   HelmReleaseDetail? _detail;
   List<HelmRelease>? _history;
-  String? _error;
+  Object? _error;
   bool _computed = false;
 
   HelmRelease get _r => widget.release;
@@ -63,10 +62,8 @@ class _HelmReleaseDetailPaneState extends State<HelmReleaseDetailPane> {
         _history = results[1] as List<HelmRelease>;
         _error = null;
       });
-    } on ApiException catch (e) {
-      if (mounted && key == _r.key) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted && key == _r.key) setState(() => _error = '$e');
+      if (mounted && key == _r.key) setState(() => _error = e);
     }
   }
 
@@ -80,9 +77,7 @@ class _HelmReleaseDetailPaneState extends State<HelmReleaseDetailPane> {
   Widget build(BuildContext context) {
     final d = _detail;
     if (d == null) {
-      return Center(
-        child: _error != null ? Padding(padding: const EdgeInsets.all(16), child: InlineMessage(_error!, isError: true)) : const CircularProgressIndicator(),
-      );
+      return _error != null ? LoadFailure(_error!, title: "Couldn't load release ${widget.release.name}", onRetry: _load) : const Center(child: CircularProgressIndicator());
     }
     final history = _history ?? const <HelmRelease>[];
     return DefaultTabController(

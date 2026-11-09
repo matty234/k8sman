@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../state/cluster_error.dart';
-import '../../util/k8s.dart' show Severity;
-import '../theme.dart';
+import 'error_notice.dart';
 
 /// `partialErrors` of a response (tables, Overview, Security, …): namespaces
 /// of a namespace set that could not be read, by namespace.
@@ -18,39 +17,24 @@ Map<String, ClusterError> parsePartialErrors(Object? json) => {
     };
 
 /// Shown over what was read when some namespaces of a set can't be (RBAC,
-/// deleted): "No access to team-5 (forbidden). Showing the other
-/// namespaces." Tables and pages share it.
+/// deleted): one amber notice, "Couldn't read 2 namespaces · team-5,
+/// team-6: not allowed. Showing the other namespaces.", the raw messages
+/// under Details. Tables and pages share it.
 class PartialBanner extends StatelessWidget {
   final Map<String, ClusterError> errors;
   const PartialBanner({super.key, required this.errors});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final byWhy = <String, List<String>>{};
-    for (final e in errors.entries) {
-      final why = switch (e.value.kind) {
-        ClusterErrorKind.forbidden => 'forbidden',
-        ClusterErrorKind.notFound => 'not found',
-        _ => 'unavailable',
-      };
-      (byWhy[why] ??= []).add(e.key);
-    }
-    final text = [for (final e in byWhy.entries) '${(e.value..sort()).join(', ')} (${e.key})'].join('; ');
-    return Container(
+    final names = errors.keys.toList()..sort();
+    return Padding(
       key: const ValueKey('partial-banner'),
-      color: severityColor(context, Severity.warn).withValues(alpha: 0.12),
-      padding: const EdgeInsets.fromLTRB(14, 5, 8, 5),
-      child: Row(children: [
-        Icon(Icons.lock_outline, size: 14, color: severityColor(context, Severity.warn)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Tooltip(
-            message: [for (final e in errors.entries) '${e.key}: ${e.value.message}'].join('\n'),
-            child: Text('No access to $text. Showing the other namespaces.', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
-          ),
-        ),
-      ]),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      child: ErrorNotice.parts(
+        {for (final n in names) n: errors[n]!},
+        title: names.length == 1 ? "Couldn't read namespace ${names.single}" : "Couldn't read ${names.length} namespaces",
+        note: 'Showing the other namespaces.',
+      ),
     );
   }
 }

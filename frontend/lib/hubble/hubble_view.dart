@@ -29,7 +29,7 @@ enum _Tab { map, flows, drops, reach }
 
 class _HubbleViewState extends State<HubbleView> {
   HubbleStatus? _status;
-  String? _error;
+  Object? _error;
   _Tab _tab = _Tab.map;
   final _from = TextEditingController();
   final _to = TextEditingController();
@@ -64,7 +64,7 @@ class _HubbleViewState extends State<HubbleView> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e is ApiException ? e.message : '$e');
+      if (mounted) setState(() => _error = e);
     }
   }
 
@@ -108,10 +108,11 @@ class _HubbleViewState extends State<HubbleView> {
         ],
       ),
       const Divider(),
-      if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: InlineMessage(_error!, isError: true)),
+      if (_error != null && s != null)
+        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 0), child: ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last status.', onRetry: () => _load(refresh: true))),
       Expanded(
         child: s == null
-            ? (_error == null ? const Center(child: CircularProgressIndicator()) : const SizedBox.shrink())
+            ? (_error == null ? const Center(child: CircularProgressIndicator()) : LoadFailure(_error!, onRetry: () => _load(refresh: true)))
             : !s.connected
                 ? _NotConnected(status: s, onRetry: () => _load(refresh: true))
                 : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -504,7 +505,7 @@ class _ReachView extends StatefulWidget {
 
 class _ReachViewState extends State<_ReachView> {
   Connectivity? _result;
-  String? _error;
+  Object? _error;
   bool _busy = false;
   (String, String)? _checked;
 
@@ -532,7 +533,7 @@ class _ReachViewState extends State<_ReachView> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e is ApiException ? e.message : '$e';
+          _error = e;
           _result = null;
           _checked = null;
         });
@@ -563,7 +564,7 @@ class _ReachViewState extends State<_ReachView> {
           FilledButton(onPressed: _busy ? null : _check, child: _busy ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Check')),
         ]),
       ),
-      if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 8), child: InlineMessage(_error!, isError: true)),
+      if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 8), child: ErrorNotice(_error!)),
       if (_result != null && checked != null) ...[
         _ReachSummary(result: _result!),
         Container(height: 1, color: AppColors.of(context).separator),

@@ -224,7 +224,7 @@ List<Json> orderNodePods(NodeSummary n, List<Json> pods, Map<String, PodUsage>? 
 
 class _NodesViewState extends State<NodesView> with PollingState {
   List<NodeSummary>? _nodes;
-  String? _error;
+  Object? _error;
   String _filter = '';
   DateTime? _updated;
   Map<String, NodeUsage>? _usage;
@@ -378,7 +378,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
         _updated = DateTime.now();
       });
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = e);
     }
     await Future.wait([usage, podUsage]);
   }
@@ -463,12 +463,14 @@ class _NodesViewState extends State<NodesView> with PollingState {
         ],
       ),
       const Divider(),
+      // A failed refresh, under the header; the last result stays below.
+      if (_error != null && nodes != null)
+        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 0), child: ErrorNotice(_error!, note: 'Showing the last result.', onRetry: _refresh)),
       // Cluster-wide summary strip (wraps on narrow widths).
       if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 10), child: _Summary(nodes, _usage, _metricsError, loading: _usageLoading)),
-      if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: InlineMessage(_error!, isError: true)),
       Expanded(
         child: visible == null
-            ? const Center(child: CircularProgressIndicator())
+            ? (_error != null ? LoadFailure(_error!, onRetry: _refresh) : const Center(child: CircularProgressIndicator()))
             : visible.isEmpty
                 ? Center(child: Text('No nodes', style: TextStyle(color: theme.hintColor)))
                 : LayoutBuilder(builder: (context, box) {

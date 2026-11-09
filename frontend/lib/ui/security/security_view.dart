@@ -157,7 +157,7 @@ class _SecurityViewState extends State<SecurityView> {
       setState(() => _scans[image] = r);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _scanErrors[image] = 'Scan failed: ${_errorText(e)}');
+      setState(() => _scanErrors[image] = 'Scan failed: $e');
     } finally {
       if (mounted) setState(() => _scanning.remove(image));
     }
@@ -180,29 +180,29 @@ class _SecurityViewState extends State<SecurityView> {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         header,
         const Divider(),
-        Expanded(
-          child: Center(
-            child: _error == null
-                ? const CircularProgressIndicator()
-                : ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 460),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        InlineMessage('Could not load the security overview: ${_errorText(_error!)}', isError: true),
-                        const SizedBox(height: 12),
-                        FilledButton.tonal(onPressed: _refresh, child: const Text('Retry')),
-                      ]),
-                    ),
-                  ),
-          ),
-        ),
+        Expanded(child: _error == null ? const Center(child: CircularProgressIndicator()) : LoadFailure(_error!, onRetry: _refresh)),
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       header,
       const Divider(),
       if (data.partialErrors.isNotEmpty) PartialBanner(errors: data.partialErrors),
+      // Page-level failures: under the header, in the content's inset.
+      if (_error != null || data.errors.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (_error != null) ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last result.', onRetry: _refresh),
+            if (_error != null && data.errors.isNotEmpty) const SizedBox(height: 10),
+            if (data.errors.isNotEmpty)
+              ErrorNotice.parts(
+                data.errors,
+                title: data.errors.length == 1 ? "Couldn't list ${data.errors.keys.single}" : "Couldn't list ${data.errors.length} kinds",
+                note: 'Findings cover the rest.',
+                onRetry: _refresh,
+              ),
+          ]),
+        ),
       Expanded(
         child: PageScroll(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: _body(context, data)),
       ),
@@ -291,14 +291,6 @@ class _SecurityViewState extends State<SecurityView> {
     final images = [for (final i in data.images) _scans[i.image] != null ? i.withScan(_scans[i.image]!) : i];
     return [
       SummaryLine(data: data),
-      if (_error != null) ...[
-        const SizedBox(height: 8),
-        InlineMessage('Refresh failed: ${_errorText(_error!)}. Showing the last result.', isError: true),
-      ],
-      for (final e in data.errors.entries) ...[
-        const SizedBox(height: 6),
-        InlineMessage('Could not list ${e.key}: ${e.value}', icon: Icons.lock_outline),
-      ],
       const SizedBox(height: 14),
       CategoryTiles(categories: data.categories, pending: pending, selected: filter, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
       const SizedBox(height: 14),
@@ -415,5 +407,4 @@ class _SecurityViewState extends State<SecurityView> {
     return toggle == null ? chip : Row(mainAxisSize: MainAxisSize.min, children: [chip, toggle]);
   }
 
-  static String _errorText(Object e) => e is ApiException ? e.message : '$e';
 }

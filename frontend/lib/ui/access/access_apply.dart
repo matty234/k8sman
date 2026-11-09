@@ -13,8 +13,8 @@ import '../../util/k8s.dart';
 import '../detail/yaml_editor.dart' show DiffView;
 import '../theme.dart';
 import 'access_api.dart';
-import 'access_widgets.dart';
 import 'rbac_model.dart';
+import '../../api/error_info.dart' show errorText;
 
 /// Explains an apply failure. Escalation refusals get a plain-English
 /// headline; everything else shows the API server's message.

@@ -26,7 +26,7 @@ class PortForwardView extends StatefulWidget {
 
 class _PortForwardViewState extends State<PortForwardView> with PollingState {
   List<PortForward>? _forwards;
-  String? _error;
+  Object? _error;
 
   /// Forwards the user started that open the browser once they are active.
   final _openWhenActive = <String>{};
@@ -52,7 +52,7 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
       }
       if (mounted) setState(() => (_forwards = f, _error = null));
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = e);
     }
   }
 
@@ -106,7 +106,6 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
           subtitle: fs == null ? null : Text('$active active · ${fs.length} saved'),
           actions: [stopAll, help],
         ),
-      if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: InlineMessage(_error!, isError: true)),
       if (_api.removedForwards > 0 && !_goneDismissed)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
@@ -130,9 +129,11 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
           ]),
         ),
       docked ? Divider(height: 1, color: AppColors.of(context).separator) : const Divider(),
+      if (_error != null && fs != null)
+        Padding(padding: EdgeInsets.fromLTRB(docked ? 12 : 16, 10, docked ? 12 : 16, 2), child: ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last result.', onRetry: _refresh)),
       Expanded(
         child: fs == null
-            ? const Center(child: CircularProgressIndicator())
+            ? (_error != null ? LoadFailure(_error!, onRetry: _refresh) : const Center(child: CircularProgressIndicator()))
             : fs.isEmpty
                 ? Center(
                     child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -291,7 +292,14 @@ class _ForwardCard extends StatelessWidget {
             if (pf.error != null && pf.error!.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(pf.error!, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, pf.state == 'active' ? Severity.warn : Severity.error))),
+                // Colour on the icon only: the text stays readable.
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1, right: 5),
+                    child: Icon(severityIcon(pf.state == 'active' ? Severity.warn : Severity.error), size: 13, color: severityColor(context, pf.state == 'active' ? Severity.warn : Severity.error)),
+                  ),
+                  Expanded(child: Text(pf.error!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant))),
+                ]),
               ),
           ]),
         ),

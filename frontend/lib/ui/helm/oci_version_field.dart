@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../addons/addon_status.dart' show compareChartVersions, sameChartVersion;
-import '../../api/client.dart';
 import '../../util/k8s.dart' show Severity;
 import '../theme.dart';
 import '../widgets/searchable_picker.dart';
 import 'helm_api.dart';
+import '../../api/error_info.dart' show errorText;
 
 /// Version picker for an `oci://` chart reference: fetches the registry's
 /// tags and shows a searchable dropdown with [current] marked and newer
@@ -62,7 +62,7 @@ class _OciVersionFieldState extends State<OciVersionField> {
         final v = await widget.api.ociVersions(ref);
         if (mounted && ref == widget.ref) setState(() => _versions = v);
       } catch (e) {
-        if (mounted && ref == widget.ref) setState(() => _error = e is ApiException ? e.message : '$e');
+        if (mounted && ref == widget.ref) setState(() => _error = errorText(e));
       }
     });
   }

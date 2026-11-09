@@ -16,7 +16,6 @@ import '../widgets/editorial.dart';
 import '../widgets/searchable_picker.dart';
 import 'access_api.dart';
 import 'access_apply.dart';
-import 'access_widgets.dart';
 import 'permission_matrix.dart';
 import 'rbac_model.dart';
 
@@ -197,7 +196,7 @@ class _RoleEditorState extends State<RoleEditor> {
               icon: Icons.merge_type),
         ),
       if (_resourcesError != null)
-        Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 8), child: InlineMessage('Could not load API resources for the pickers: ${errorText(_resourcesError!)}', isError: true)),
+        Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 8), child: ErrorNotice(_resourcesError!, title: "Couldn't load API resources for the pickers", severity: Severity.warn)),
       const Divider(),
       Expanded(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

@@ -7,7 +7,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../api/client.dart';
 import '../api/models.dart';
 import '../state/app_state.dart';
 import '../ui/theme.dart';
@@ -18,6 +17,7 @@ import 'flow_list.dart' show dropReasonLabel;
 import 'hubble_api.dart';
 import 'traffic_model.dart';
 import 'traffic_painters.dart';
+import '../api/error_info.dart' show errorText;
 
 /// How often the map is fetched while it is on screen.
 const mapRefresh = Duration(seconds: 2);
@@ -121,7 +121,7 @@ class _TrafficMapViewState extends State<TrafficMapView> {
         });
       }
     } catch (e) {
-      if (mounted && gen == _gen) setState(() => _error = e is ApiException ? e.message : '$e');
+      if (mounted && gen == _gen) setState(() => _error = errorText(e));
     } finally {
       _fetching = false;
       if (mounted && _onScreen) {

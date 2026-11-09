@@ -35,7 +35,7 @@ final _latestCache = <String, String?>{};
 class _AddonsViewState extends State<AddonsView> {
   late final HelmApi _helm = widget.api ?? helmApiOf(context);
   List<AddonStatus>? _statuses;
-  String? _error;
+  Object? _error;
   bool _scanning = false;
   int _seq = 0;
   String? _context;
@@ -57,10 +57,8 @@ class _AddonsViewState extends State<AddonsView> {
       if (!mounted || seq != _seq) return;
       setState(() => (_statuses = [for (final x in s) x.addon.version == null ? x.withTarget(_latestCache[_key(x.addon)]) : x], _error = null, _scanning = false));
       unawaited(_loadLatest(seq));
-    } on ApiException catch (e) {
-      if (mounted && seq == _seq) setState(() => (_error = e.message, _scanning = false));
     } catch (e) {
-      if (mounted && seq == _seq) setState(() => (_error = '$e', _scanning = false));
+      if (mounted && seq == _seq) setState(() => (_error = e, _scanning = false));
     }
   }
 
@@ -176,7 +174,7 @@ class _AddonsViewState extends State<AddonsView> {
       const Divider(),
       Expanded(
         child: st == null
-            ? Center(child: _error == null ? const CircularProgressIndicator() : Padding(padding: const EdgeInsets.all(16), child: InlineMessage(_error!, isError: true)))
+            ? (_error == null ? const Center(child: CircularProgressIndicator()) : LoadFailure(_error!, onRetry: () => _scan(rediscover: true)))
             : LayoutBuilder(builder: (context, box) {
                 const pad = 20.0;
                 final cols = ((box.maxWidth - 2 * pad + 32) / (340 + 32)).floor().clamp(1, 4);
@@ -189,7 +187,7 @@ class _AddonsViewState extends State<AddonsView> {
                       onUninstall: () => _uninstall(a),
                     );
                 return PageScroll(padding: const EdgeInsets.fromLTRB(pad, 14, pad, 24), children: [
-                  if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: InlineMessage(_error!, isError: true)),
+                  if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last result.', onRetry: () => _scan(rediscover: true))),
                   if (app.readOnly)
                     InlineMessage('Read-only mode: k8sman was started with --read-only, so add-ons can\'t be installed, upgraded or removed here.', icon: Icons.lock_outline)
                   else

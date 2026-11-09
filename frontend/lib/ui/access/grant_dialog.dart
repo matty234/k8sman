@@ -200,7 +200,7 @@ class _GrantDialogState extends State<GrantDialog> {
           Expanded(
             flex: 5,
             child: PageScroll(padding: const EdgeInsets.fromLTRB(20, 4, 16, 16), children: [
-              if (_loadError != null) InlineMessage('Could not load roles and bindings: ${errorText(_loadError!)}', isError: true),
+              if (_loadError != null) ErrorNotice(_loadError!, title: "Couldn't load roles and bindings"),
               label('Who'),
               Row(children: [
                 SegmentedButton<String>(

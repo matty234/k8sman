@@ -37,7 +37,7 @@ class _HelmViewState extends State<HelmView> with PollingState {
     }
   }
   HelmReleaseList? _list;
-  String? _error;
+  Object? _error;
   String _filter = '';
   String? _selected; // namespace/name
   String? _loadedNs;
@@ -64,10 +64,8 @@ class _HelmViewState extends State<HelmView> with PollingState {
         _error = null;
         _loadedNs = ns;
       });
-    } on ApiException catch (e) {
-      if (mounted && seq == _seq) setState(() => _error = e.message);
     } catch (e) {
-      if (mounted && seq == _seq) setState(() => _error = '$e');
+      if (mounted && seq == _seq) setState(() => _error = e);
     }
   }
 
@@ -127,10 +125,11 @@ class _HelmViewState extends State<HelmView> with PollingState {
           ],
         ),
         const Divider(),
-        if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 0), child: InlineMessage(_error!, isError: true)),
+        if (_error != null && visible != null)
+          Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last result.', onRetry: _refresh)),
         Expanded(
           child: visible == null
-              ? Center(child: _error == null ? const CircularProgressIndicator() : const SizedBox.shrink())
+              ? (_error == null ? const Center(child: CircularProgressIndicator()) : LoadFailure(_error!, onRetry: _refresh))
               : all!.isEmpty
                   ? _Empty(namespace: app.namespace)
                   : _MasterDetail(

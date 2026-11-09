@@ -419,8 +419,9 @@ class _ExplorerTabState extends State<_ExplorerTab> {
           ),
         ),
       ),
-      if (_subjectsError != null) Padding(padding: const EdgeInsets.all(10), child: InlineMessage('Could not list RBAC: ${errorText(_subjectsError!)}', isError: true)),
-      if (s?.serviceAccountsError != null) Padding(padding: const EdgeInsets.fromLTRB(10, 0, 10, 6), child: InlineMessage('ServiceAccounts: ${s!.serviceAccountsError}', icon: Icons.lock_outline)),
+      if (_subjectsError != null) Padding(padding: const EdgeInsets.all(10), child: ErrorNotice(_subjectsError!, title: "Couldn't list RBAC", onRetry: _loadSubjects)),
+      if (s?.serviceAccountsError != null)
+        Padding(padding: const EdgeInsets.fromLTRB(10, 0, 10, 6), child: ErrorNotice(s!.serviceAccountsError!, title: "Couldn't list ServiceAccounts", severity: Severity.warn)),
       Expanded(
         child: s == null && _subjectsError == null
             ? const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
@@ -529,12 +530,12 @@ class _ExplorerTabState extends State<_ExplorerTab> {
             for (final g in d.identity.groups) Tooltip(message: wellKnownGroup(g) ?? g, child: Chipish(text: g)),
           ]),
         ),
-      if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8), child: InlineMessage(errorText(_error!), isError: true)),
+      if (_error != null && d != null) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8), child: ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last result.', onRetry: _loadMatrix)),
       if (d != null) ..._callouts(context, d),
       const Divider(height: 1),
       Expanded(
         child: d == null
-            ? (_error == null ? const Center(child: CircularProgressIndicator()) : const SizedBox.shrink())
+            ? (_error == null ? const Center(child: CircularProgressIndicator()) : LoadFailure(_error!, onRetry: _loadMatrix))
             : ResizableSplit(
                 endWidth: _sideWidth,
                 onEndChanged: (w) => setState(() => _sideWidth = w),
@@ -805,7 +806,7 @@ class _WhoCanTabState extends State<_WhoCanTab> {
         child: FutureBuilder<WhoCanResult>(
           future: _result,
           builder: (context, snap) {
-            if (snap.hasError) return Padding(padding: const EdgeInsets.all(16), child: InlineMessage(errorText(snap.error!), isError: true));
+            if (snap.hasError) return Padding(padding: const EdgeInsets.all(16), child: ErrorNotice(snap.error!));
             if (!snap.hasData) return const Center(child: CircularProgressIndicator());
             return _results(context, snap.data!);
           },
@@ -935,7 +936,7 @@ class _CanITabState extends State<_CanITab> {
     return FutureBuilder<SelfAccess>(
       future: _future,
       builder: (context, snap) {
-        if (snap.hasError) return Padding(padding: const EdgeInsets.all(16), child: InlineMessage(errorText(snap.error!), isError: true));
+        if (snap.hasError) return Padding(padding: const EdgeInsets.all(16), child: ErrorNotice(snap.error!));
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
         return _body(context, snap.data!);
       },

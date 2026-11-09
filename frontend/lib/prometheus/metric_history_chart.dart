@@ -16,6 +16,7 @@ import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
 import 'pod_markers.dart';
 import 'prom_api.dart';
+import '../api/error_info.dart' show errorText;
 
 // ---------------------------------------------------------------------------
 // One-line entry points for panels
@@ -513,7 +514,7 @@ class _MetricHistoryChartState extends State<MetricHistoryChart> {
         ]);
         Widget body;
         if (snap.hasError) {
-          body = _ChartMessage('Query failed: ${snap.error is ApiException ? (snap.error as ApiException).message : snap.error}', height: widget.height);
+          body = _ChartMessage('Query failed: ${errorText(snap.error!)}', height: widget.height);
         } else if (data == null) {
           body = SizedBox(height: widget.height, child: const Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))));
         } else if (series.isEmpty) {

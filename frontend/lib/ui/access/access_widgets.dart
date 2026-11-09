@@ -4,7 +4,6 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../../api/client.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -257,7 +256,7 @@ class _CellExplanationState extends State<CellExplanation> {
           builder: (context, snap) {
             if (snap.hasError) {
               final e = snap.error!;
-              return Padding(padding: const EdgeInsets.only(top: 8), child: InlineMessage(e is ApiException ? e.message : '$e', isError: true));
+              return Padding(padding: const EdgeInsets.only(top: 8), child: ErrorNotice(e));
             }
             if (!snap.hasData) return const Padding(padding: EdgeInsets.only(top: 8), child: SectionSpinner());
             return Padding(padding: const EdgeInsets.only(top: 8), child: CheckResultView(snap.data!, request: _request));
@@ -377,4 +376,3 @@ class MatrixLegend extends StatelessWidget {
   }
 }
 
-String errorText(Object e) => e is ApiException ? e.message : '$e';

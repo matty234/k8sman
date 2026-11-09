@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import '../ui/widgets/common.dart';
 import 'metric_history_chart.dart' show historyRanges;
 import 'prom_api.dart';
+import '../api/error_info.dart' show errorText;
 
 const _id = 'prometheus';
 
@@ -96,7 +97,7 @@ class _PrometheusSettingsFormState extends State<PrometheusSettingsForm> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e is ApiException ? e.message : '$e');
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 

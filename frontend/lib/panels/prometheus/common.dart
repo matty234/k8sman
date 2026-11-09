@@ -20,7 +20,7 @@ class LiveStateMessage extends StatelessWidget {
     if (e is ApiException && e.status == 404 && e.reason == 'NotFound') {
       return const InlineMessage('Live state needs a reachable Prometheus; none was found.', icon: Icons.cloud_off_outlined);
     }
-    return InlineMessage('Live state unavailable: ${e is ApiException ? e.message : e}', icon: Icons.cloud_off_outlined);
+    return ErrorNotice(e, title: 'Live state unavailable', severity: Severity.warn);
   }
 }
 

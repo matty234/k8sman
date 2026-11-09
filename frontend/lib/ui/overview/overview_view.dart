@@ -7,6 +7,7 @@ import '../../api/client.dart';
 import '../../metrics/cache.dart';
 import '../../metrics/metrics_api.dart';
 import '../../state/poller.dart';
+import '../../util/k8s.dart' show Severity;
 import '../../app/window_chrome.dart' show toolbarRowHeight;
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -176,23 +177,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
           // Faint, like the rule over a critical wash: a full rule here would
           // vanish the moment a critical cluster finishes loading.
           Divider(color: AppColors.of(context).separator.withValues(alpha: 0.3)),
-          Expanded(
-            child: Center(
-              child: _error == null
-                  ? const CircularProgressIndicator()
-                  : SizedBox(
-                      width: 460,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          InlineMessage('Could not load the overview: ${_errorText(_error!)}', isError: true),
-                          const SizedBox(height: 12),
-                          FilledButton.tonal(onPressed: _refresh, child: const Text('Retry')),
-                        ],
-                      ),
-                    ),
-            ),
-          ),
+          Expanded(child: _error == null ? const Center(child: CircularProgressIndicator()) : LoadFailure(_error!, onRetry: _refresh)),
         ],
       );
     }
@@ -202,12 +187,34 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
     // under the (transparent) header down into the hero, and the header's
     // divider fades to a faint hairline so it reads as one wash.
     final wash = overviewWashes(data);
+    // Lists without a section of their own (nodes and events show theirs
+    // in place) collapse into one notice.
+    final otherErrors = <String, Object>{
+      for (final e in data.errors.entries)
+        if (e.key != 'nodes' && e.key != 'events') e.key: e.value,
+    };
     final page = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         header,
         if (wash) Divider(color: AppColors.of(context).separator.withValues(alpha: 0.3)) else const Divider(),
         if (data.partialErrors.isNotEmpty) PartialBanner(errors: data.partialErrors),
+        // Page-level failures: under the header, in the content's inset.
+        if (_error != null || otherErrors.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(_inset, 12, _inset, 0),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (_error != null) ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last result.', onRetry: _refresh),
+              if (_error != null && otherErrors.isNotEmpty) const SizedBox(height: 10),
+              if (otherErrors.isNotEmpty)
+                ErrorNotice.parts(
+                  otherErrors,
+                  title: otherErrors.length == 1 ? "Couldn't list ${otherErrors.keys.single}" : "Couldn't list ${otherErrors.length} kinds",
+                  note: 'The rest is shown.',
+                  onRetry: _refresh,
+                ),
+            ]),
+          ),
         Expanded(
           // Laid out in full (not a lazy ListView), so the scrollbar keeps
           // one size instead of re-estimating as sections scroll in.
@@ -223,14 +230,6 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: _inset),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      InlineMessage('Refresh failed: ${_errorText(_error!)}. Showing the last result.', isError: true),
-                    ],
-                    for (final e in data.errors.entries) ...[
-                      const SizedBox(height: 8),
-                      InlineMessage('Could not list ${e.key}: ${e.value}', icon: Icons.lock_outline),
-                    ],
                     AreaCards(data: data, scope: _ns, selected: _filter, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
                     // Requests only cover the pods in scope, so cluster capacity
                     // is shown for all namespaces only.
@@ -252,6 +251,8 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                       ),
                     if (data.isPending('nodes'))
                       const EditorialSection(title: 'Nodes', child: PendingRows())
+                    else if (data.errors['nodes'] case final e?)
+                      EditorialSection(title: 'Nodes', child: ErrorNotice(e, severity: Severity.warn, onRetry: _refresh))
                     else if (data.nodes.isNotEmpty)
                       EditorialSection(
                         title: 'Nodes',
@@ -261,7 +262,11 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                     EditorialSection(
                       title: 'Top warning events',
                       trailing: const Text('last hour'),
-                      child: data.isPending('events') ? const PendingRows(rows: 2) : WarningEventList(reasons: data.topWarnings),
+                      child: data.isPending('events')
+                          ? const PendingRows(rows: 2)
+                          : data.errors['events'] != null
+                              ? ErrorNotice(data.errors['events']!, severity: Severity.warn, onRetry: _refresh)
+                              : WarningEventList(reasons: data.topWarnings),
                     ),
                   ]),
                 ),
@@ -299,5 +304,4 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
     );
   }
 
-  static String _errorText(Object e) => e is ApiException ? e.message : '$e';
 }

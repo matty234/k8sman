@@ -236,32 +236,12 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
         ),
       );
     } else if (data == null) {
-      body = Center(
-        child: _error == null
-            ? const CircularProgressIndicator()
-            : SizedBox(
-                width: 460,
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  InlineMessage('Could not load alerts: ${_errorText(_error!)}', isError: true),
-                  const SizedBox(height: 12),
-                  FilledButton.tonal(onPressed: _refresh, child: const Text('Retry')),
-                ]),
-              ),
-      );
+      body = _error == null ? const Center(child: CircularProgressIndicator()) : LoadFailure(_error!, onRetry: _refresh);
     } else if (data.stackMissing) {
       body = const _StackMissing();
     } else if (data.alertmanager == null && data.prometheus == null) {
       // The search failed: don't offer to install a stack that may exist.
-      body = Center(
-        child: SizedBox(
-          width: 460,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            InlineMessage("Couldn't check for Prometheus and Alertmanager: ${data.discoveryError}", isError: true),
-            const SizedBox(height: 12),
-            FilledButton.tonal(onPressed: () => _refresh(rediscover: true), child: const Text('Retry')),
-          ]),
-        ),
-      );
+      body = LoadFailure(data.discoveryError ?? 'Unknown error', title: "Couldn't check for Prometheus and Alertmanager", onRetry: () => _refresh(rediscover: true));
     } else {
       body = _content(context, app, data, scoped);
     }
@@ -286,14 +266,19 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
       _Tab(label: 'Silences', count: activeSilences, selected: _silencesTab, onTap: () => setState(() => _silencesTab = true)),
     ]);
 
+    // Page-level failures lead the page, above its headline.
+    final failed = {for (final e in data.errors.entries) e.key == 'alertmanager' ? 'Alertmanager' : 'Prometheus': e.value};
+    final failures = <Widget>[
+      if (_error != null) ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last result.', onRetry: _refresh),
+      if (failed.isNotEmpty) ErrorNotice.parts(failed, title: "Couldn't read from ${failed.keys.join(' or ')}", onRetry: _refresh),
+    ];
     final messages = <Widget>[
-      if (_error != null) InlineMessage('Refresh failed: ${_errorText(_error!)}. Showing the last result.', isError: true),
-      for (final e in data.errors.entries) InlineMessage('${e.key == 'alertmanager' ? 'Alertmanager' : 'Prometheus'}: ${e.value}', isError: true),
       if (data.alertmanager == null && data.prometheus != null)
         const InlineMessage('No Alertmanager found: showing alerts straight from Prometheus. Silences need an Alertmanager.'),
     ];
 
     final children = <Widget>[
+      for (final f in failures) ...[f, const SizedBox(height: 10)],
       // The page's headline, as on the Overview (not in the narrow dock).
       if (!widget.docked) ...[_statusLine(context, scoped), const SizedBox(height: 18)],
       tabs,
@@ -409,7 +394,6 @@ class _AlertsViewState extends State<AlertsView> with PollingState {
     ]);
   }
 
-  static String _errorText(Object e) => e is ApiException ? e.message : '$e';
 }
 
 class _Tab extends StatelessWidget {

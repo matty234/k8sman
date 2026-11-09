@@ -5,6 +5,7 @@ import '../api/client.dart';
 import '../modules/modules.dart';
 import '../state/app_state.dart';
 import '../ui/widgets/common.dart';
+import '../api/error_info.dart' show errorText;
 
 const _id = 'hubble';
 
@@ -82,7 +83,7 @@ class _HubbleSettingsFormState extends State<HubbleSettingsForm> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e is ApiException ? e.message : '$e');
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 

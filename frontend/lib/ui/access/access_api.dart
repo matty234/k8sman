@@ -8,6 +8,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../util/k8s.dart';
 import '../../util/json.dart';
+import '../../api/error_info.dart' show errorText;
 
 const rbacApiGroup = 'rbac.authorization.k8s.io';
 
@@ -488,6 +489,6 @@ class AccessApi {
 /// True when the API server refused because the user would grant
 /// permissions they don't hold (RBAC escalation prevention).
 bool isEscalationError(Object e) {
-  final m = e is ApiException ? e.message : '$e';
+  final m = errorText(e);
   return m.contains('attempting to grant RBAC permissions not currently held') || m.contains('escalate');
 }

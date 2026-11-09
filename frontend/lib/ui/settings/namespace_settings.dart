@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/namespace_picker.dart';
 import 'settings_widgets.dart';
+import '../../api/error_info.dart' show errorText;
 
 /// Settings ▸ Clusters ▸ Namespaces: where the current context opens, and
 /// the namespaces it is limited to (for multi-tenant clusters).
@@ -44,7 +45,7 @@ class _DefaultNamespace extends StatelessWidget {
       try {
         await app.setDefaultNamespace(mode, namespaces);
       } catch (e) {
-        if (context.mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Could not save: ${e is ApiException ? e.message : e}')));
+        if (context.mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Could not save: ${errorText(e)}')));
       }
     }
 
@@ -115,7 +116,7 @@ class _AllowedNamespacesState extends State<_AllowedNamespaces> {
       await context.read<AppState>().setAllowedNamespaces(list);
       if (mounted) setState(() => _error = null);
     } catch (e) {
-      if (mounted) setState(() => _error = e is ApiException ? e.message : '$e');
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 
@@ -153,7 +154,7 @@ class _AllowedNamespacesState extends State<_AllowedNamespaces> {
         }
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e is ApiException ? e.message : '$e');
+      if (mounted) setState(() => _error = errorText(e));
     } finally {
       if (mounted) setState(() => _suggesting = false);
     }

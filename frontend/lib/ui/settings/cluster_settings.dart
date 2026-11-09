@@ -12,6 +12,7 @@ import '../security/security_api.dart';
 import '../widgets/common.dart';
 import 'namespace_settings.dart';
 import 'settings_widgets.dart';
+import '../../api/error_info.dart' show errorText;
 
 /// Settings ▸ Clusters: the kubeconfig, read-only contexts, namespaces and icons.
 List<SettingItem> clusterSettings() => [
@@ -335,7 +336,7 @@ class _RemoteIconsState extends State<_RemoteIcons> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e is ApiException ? e.message : '$e');
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 
