@@ -120,7 +120,7 @@ void main() {
     // Back to the summary: legend and bindings.
     await tester.tap(find.byTooltip('Close'));
     await tester.pump();
-    expect(find.text('GRANTED BY'), findsOneWidget);
+    expect(find.text('Granted by'), findsOneWidget);
     expect(find.text('demo-reader'), findsWidgets);
     await saveScreenshot(tester, 'access-explorer');
   });

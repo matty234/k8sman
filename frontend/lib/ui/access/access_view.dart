@@ -13,6 +13,7 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import '../widgets/searchable_picker.dart';
 import 'access_api.dart';
 import 'access_apply.dart';
@@ -607,23 +608,35 @@ class _ExplorerTabState extends State<_ExplorerTab> {
   Widget _summary(BuildContext context, PermissionMatrixData d) {
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    final head = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600);
     final app = context.read<AppState>();
-    return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 16), children: [
-      Text('${d.grantedCells} permission${d.grantedCells == 1 ? '' : 's'} ${d.namespace.isEmpty ? 'cluster-wide' : 'in ${d.namespace}'}', style: theme.textTheme.titleSmall),
-      if (d.dangerousCells > 0) Text('${d.dangerousCells} sensitive', style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.warn))),
-      const SizedBox(height: 6),
+    // The count as a big figure, the lists under the app's section heading.
+    return PageScroll(padding: const EdgeInsets.fromLTRB(16, 12, 14, 16), children: [
+      FigureCaption(d.namespace.isEmpty ? 'Cluster-wide' : 'In ${d.namespace}'),
+      const SizedBox(height: 2),
+      BigFigure(
+        '${d.grantedCells}',
+        d.grantedCells == 1 ? 'permission' : 'permissions',
+      ),
+      if (d.dangerousCells > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text('${d.dangerousCells} sensitive', style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.warn))),
+        ),
+      const SizedBox(height: 10),
       const MatrixLegend(),
       const SizedBox(height: 6),
       Text('Hover a cell for the reason; click it for every grant and to verify with the API server.', style: hint),
-      const SizedBox(height: 14),
-      Text('GRANTED BY', style: head),
-      const SizedBox(height: 4),
-      BindingList(d.bindings, onRemove: app.readOnly ? null : _remove),
+      EditorialSection(
+        title: 'Granted by',
+        top: 20,
+        collapsible: false,
+        trailing: Text('${d.bindings.length}'),
+        child: BindingList(d.bindings, onRemove: app.readOnly ? null : _remove),
+      ),
       if (d.nonResource.isNotEmpty) ...[
-        const SizedBox(height: 14),
-        Text('NON-RESOURCE URLS', style: head),
-        const SizedBox(height: 4),
+        const SizedBox(height: 18),
+        const SectionHeader(title: 'Non-resource URLs'),
+        const SizedBox(height: 6),
         for (final n in d.nonResource)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
@@ -999,7 +1012,7 @@ class _CanITabState extends State<_CanITab> {
           SizedBox(
             width: 310,
             child: _cell == null
-                ? ListView(padding: const EdgeInsets.all(14), children: [
+                ? PageScroll(padding: const EdgeInsets.all(14), children: [
                     const MatrixLegend(),
                     const SizedBox(height: 8),
                     Text('Click a cell to ask the API server directly (SelfSubjectAccessReview) and compare with the RBAC bindings.', style: hint),
