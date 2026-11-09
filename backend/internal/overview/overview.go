@@ -223,6 +223,24 @@ type NodeHealth struct {
 	Roles    []string `json:"roles,omitempty"`
 	Version  string   `json:"version,omitempty"`
 	Pods     int      `json:"pods"`
+	Resources
+}
+
+// Resources is CPU (millicores) and memory (bytes) allocatable on nodes and
+// requested by the non-terminated pods scheduled on them (as in kubectl
+// describe node). Requests only cover the pods in the namespace scope.
+type Resources struct {
+	CPUAllocatable    int64 `json:"cpuAllocatable"`
+	CPURequests       int64 `json:"cpuRequests"`
+	MemoryAllocatable int64 `json:"memoryAllocatable"`
+	MemoryRequests    int64 `json:"memoryRequests"`
+}
+
+func (r *Resources) add(o Resources) {
+	r.CPUAllocatable += o.CPUAllocatable
+	r.CPURequests += o.CPURequests
+	r.MemoryAllocatable += o.MemoryAllocatable
+	r.MemoryRequests += o.MemoryRequests
 }
 
 // ObjectRef names an event's involved object.
@@ -246,14 +264,16 @@ type EventReason struct {
 
 // Result is the GET /api/overview payload.
 type Result struct {
-	GeneratedAt string            `json:"generatedAt"`
-	Namespace   string            `json:"namespace"`
-	Counts      Counts            `json:"counts"`
-	Categories  []Category        `json:"categories"`
-	Issues      []Issue           `json:"issues"`
-	Nodes       []NodeHealth      `json:"nodes"`
-	TopWarnings []EventReason     `json:"topWarnings"`
-	Errors      map[string]string `json:"errors,omitempty"`
+	GeneratedAt string        `json:"generatedAt"`
+	Namespace   string        `json:"namespace"`
+	Counts      Counts        `json:"counts"`
+	Categories  []Category    `json:"categories"`
+	Issues      []Issue       `json:"issues"`
+	Nodes       []NodeHealth  `json:"nodes"`
+	TopWarnings []EventReason `json:"topWarnings"`
+	// Capacity sums Resources over every node; nil when no node was listed.
+	Capacity *Resources        `json:"capacity,omitempty"`
+	Errors   map[string]string `json:"errors,omitempty"`
 	// Pending lists the sources still loading: their counts, issues and
 	// tiles are unknown (not zero) and must not be shown as healthy.
 	Pending []string `json:"pending,omitempty"`
@@ -1117,19 +1137,60 @@ func (a *analyzer) cronOverdue(cj *batchv1.CronJob) (bool, time.Time) {
 
 var pressureConds = []corev1.NodeConditionType{corev1.NodeMemoryPressure, corev1.NodeDiskPressure, corev1.NodePIDPressure, corev1.NodeNetworkUnavailable}
 
+// podRequests is a pod's effective CPU (millicores) and memory (bytes)
+// request, as the scheduler counts it: its containers plus sidecar init
+// containers, or the largest init container (with the sidecars started
+// before it) when that is more, plus the pod overhead.
+func podRequests(p *corev1.Pod) (cpu, mem int64) {
+	for _, c := range p.Spec.Containers {
+		cpu += c.Resources.Requests.Cpu().MilliValue()
+		mem += c.Resources.Requests.Memory().Value()
+	}
+	var sideCPU, sideMem, initCPU, initMem int64
+	for _, c := range p.Spec.InitContainers {
+		rc, rm := c.Resources.Requests.Cpu().MilliValue(), c.Resources.Requests.Memory().Value()
+		if c.RestartPolicy != nil && *c.RestartPolicy == corev1.ContainerRestartPolicyAlways {
+			sideCPU += rc
+			sideMem += rm
+			rc, rm = sideCPU, sideMem
+		} else {
+			rc, rm = rc+sideCPU, rm+sideMem
+		}
+		initCPU, initMem = max(initCPU, rc), max(initMem, rm)
+	}
+	cpu, mem = max(cpu+sideCPU, initCPU), max(mem+sideMem, initMem)
+	cpu += p.Spec.Overhead.Cpu().MilliValue()
+	mem += p.Spec.Overhead.Memory().Value()
+	return cpu, mem
+}
+
 func (a *analyzer) nodes() {
 	c := &a.res.Counts.Nodes
 	podsOn := map[string]int{}
+	reqOn := map[string]Resources{}
 	for i := range a.in.Pods {
 		p := &a.in.Pods[i]
 		if p.Spec.NodeName != "" && p.Status.Phase != corev1.PodSucceeded && p.Status.Phase != corev1.PodFailed {
 			podsOn[p.Spec.NodeName]++
+			if len(a.in.Nodes) > 0 {
+				cpu, mem := podRequests(p)
+				r := reqOn[p.Spec.NodeName]
+				r.CPURequests += cpu
+				r.MemoryRequests += mem
+				reqOn[p.Spec.NodeName] = r
+			}
 		}
 	}
 	for i := range a.in.Nodes {
 		n := &a.in.Nodes[i]
 		c.Total++
-		h := NodeHealth{Name: n.Name, Cordoned: n.Spec.Unschedulable, Version: n.Status.NodeInfo.KubeletVersion, Pods: podsOn[n.Name]}
+		h := NodeHealth{Name: n.Name, Cordoned: n.Spec.Unschedulable, Version: n.Status.NodeInfo.KubeletVersion, Pods: podsOn[n.Name], Resources: reqOn[n.Name]}
+		h.CPUAllocatable = n.Status.Allocatable.Cpu().MilliValue()
+		h.MemoryAllocatable = n.Status.Allocatable.Memory().Value()
+		if a.res.Capacity == nil {
+			a.res.Capacity = &Resources{}
+		}
+		a.res.Capacity.add(h.Resources)
 		for l := range n.Labels {
 			if r, ok := strings.CutPrefix(l, "node-role.kubernetes.io/"); ok && r != "" {
 				h.Roles = append(h.Roles, r)

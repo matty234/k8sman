@@ -46,7 +46,9 @@ func readyCond(ready bool, since time.Duration) corev1.PodCondition {
 func runningPod(ns, name string, age time.Duration, owners ...metav1.OwnerReference) corev1.Pod {
 	return corev1.Pod{
 		ObjectMeta: meta(ns, name, age, owners...),
-		Spec:       corev1.PodSpec{NodeName: "node-1", Containers: []corev1.Container{{Name: "app"}}},
+		Spec: corev1.PodSpec{NodeName: "node-1", Containers: []corev1.Container{{Name: "app", Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("250m"), corev1.ResourceMemory: resource.MustParse("256Mi")},
+		}}}},
 		Status: corev1.PodStatus{
 			Phase:      corev1.PodRunning,
 			Conditions: []corev1.PodCondition{readyCond(true, age)},
@@ -265,14 +267,14 @@ func scenario() Input {
 	}
 	nodes := []corev1.Node{
 		{ObjectMeta: metav1.ObjectMeta{Name: "node-1", Labels: map[string]string{"node-role.kubernetes.io/control-plane": ""}},
-			Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}}}},
+			Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4"), corev1.ResourceMemory: resource.MustParse("16Gi")}, Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}}}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "node-2"},
-			Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{
+			Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4"), corev1.ResourceMemory: resource.MustParse("16Gi")}, Conditions: []corev1.NodeCondition{
 				{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
 				{Type: corev1.NodeDiskPressure, Status: corev1.ConditionTrue, Reason: "KubeletHasDiskPressure", Message: "kubelet has disk pressure", LastTransitionTime: ago(7 * time.Minute)},
 			}}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "node-3", CreationTimestamp: ago(48 * time.Hour)}, Spec: corev1.NodeSpec{Unschedulable: true},
-			Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionUnknown,
+			Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4"), corev1.ResourceMemory: resource.MustParse("16Gi")}, Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionUnknown,
 				Reason: "NodeStatusUnknown", Message: "Kubelet stopped posting node status.", LastTransitionTime: ago(12 * time.Minute)}}}},
 	}
 	pvcs := []corev1.PersistentVolumeClaim{
@@ -570,5 +572,41 @@ func TestCronNotOverdueWhenRecentlyRun(t *testing.T) {
 	}}
 	if res := Analyze(in); len(res.Issues) != 0 {
 		t.Fatalf("issues = %+v", res.Issues)
+	}
+}
+
+func TestCapacity(t *testing.T) {
+	req := func(cpu, mem string) corev1.ResourceRequirements {
+		return corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(cpu), corev1.ResourceMemory: resource.MustParse(mem)}}
+	}
+	web := runningPod("shop", "web", time.Hour) // 250m, 256Mi on node-1
+	// A sidecar (100m) runs beside the app (200m); the 1-CPU init container
+	// alone is more, so the pod counts 1 CPU (+100m for its sidecar).
+	init := runningPod("shop", "init", time.Hour)
+	init.Spec.NodeName = "node-2"
+	init.Spec.Containers[0].Resources = req("200m", "1Gi")
+	init.Spec.InitContainers = []corev1.Container{
+		{Name: "proxy", RestartPolicy: ptr(corev1.ContainerRestartPolicyAlways), Resources: req("100m", "64Mi")},
+		{Name: "migrate", Resources: req("1", "128Mi")},
+	}
+	done := runningPod("shop", "done", time.Hour)
+	done.Status.Phase = corev1.PodSucceeded // finished pods hold nothing
+	unscheduled := runningPod("shop", "pending", time.Hour)
+	unscheduled.Spec.NodeName = ""
+	node := func(name string) corev1.Node {
+		return corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}, Status: corev1.NodeStatus{
+			Allocatable: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("3500m"), corev1.ResourceMemory: resource.MustParse("8Gi")}}}
+	}
+	res := Analyze(Input{Now: now, Pods: []corev1.Pod{web, init, done, unscheduled}, Nodes: []corev1.Node{node("node-1"), node("node-2")}})
+	const mi, gi = 1 << 20, 1 << 30
+	want := Resources{CPUAllocatable: 7000, CPURequests: 250 + 1100, MemoryAllocatable: 16 * gi, MemoryRequests: 256*mi + gi + 64*mi}
+	if res.Capacity == nil || *res.Capacity != want {
+		t.Fatalf("capacity = %+v, want %+v", res.Capacity, want)
+	}
+	if n := res.Nodes[1]; n.CPURequests != 1100 || n.MemoryRequests != gi+64*mi || n.CPUAllocatable != 3500 {
+		t.Errorf("node-2 = %+v", n.Resources)
+	}
+	if Analyze(Input{Now: now, Pods: []corev1.Pod{web}}).Capacity != nil {
+		t.Error("capacity without nodes should be nil")
 	}
 }

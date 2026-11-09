@@ -346,8 +346,10 @@ Response:
           routes?: {total, accepted, problem, unresolved}},
  categories: [{id, label, section, severity, count}],   // only categories with issues, most severe first
  issues: [{severity, category, kind, group, namespace?, name, reason, message, since?, count?, owner?: {group, kind, name}}],
- nodes: [{name, ready, cordoned, pressure?, roles?, version, pods}],
+ nodes: [{name, ready, cordoned, pressure?, roles?, version, pods,
+          cpuAllocatable, cpuRequests, memoryAllocatable, memoryRequests}],  // millicores, bytes
  topWarnings: [{reason, count, objects, latestMessage, lastSeen, example: {kind, group, namespace?, name}}],
+ capacity?: {cpuAllocatable, cpuRequests, memoryAllocatable, memoryRequests},  // sum over nodes; absent without nodes
  errors?: {"<resource>": "<message>"},                // lists that failed (e.g. RBAC); pods failing is a hard error
  pending?: ["alerts", "argocd", "deployments", ...]}    // sources not finished at the soft deadline
 ```
@@ -358,6 +360,7 @@ Response:
 - Pod `reason` is the pod table's Status column (`Terminating`, `Init:<reason>`, the first container waiting/terminated reason, else the phase). `count` is the pod's restart count.
 - Categories: pods `crashLoop` (including a container that just exited non-zero and is restarting), `imagePull` (ImagePullBackOff, ErrImagePull, InvalidImageName), `createContainerConfigError` (also CreateContainerError and RunContainerError), `initBlocked` (failing init container, or still initializing after 5m), `oomKilled` (OOMKilled within the last hour), `podFailed`, `stuckPending` (Pending for more than 5m; reason from the PodScheduled condition, e.g. Unschedulable), `stuckTerminating` (deletionTimestamp more than 5m old), `notReady` (Running but not ready for more than 5m), `highRestarts` (5 or more restarts); workloads `deploymentUnavailable`, `progressDeadlineExceeded`, `rolling`, `deploymentPaused`, `statefulSetNotReady`, `daemonSetNotReady`; jobs `jobFailed`, `jobLongRunning` (active for more than 1h), `jobSuspended`, `cronJobFailing` (latest job failed), `cronJobOverdue` (next run per the schedule is more than 2m, or startingDeadlineSeconds, in the past), `cronJobSuspended`; nodes `nodeNotReady`, `nodePressure`, `nodeCordoned`; storage `pvcPending` (more than 5m), `pvcLost`; Argo CD (section `argocd`, only when the Application CRD is served; apps in, or deploying to, the selected namespace) `argoSyncFailed` (last operation Failed/Error or an `*Error` condition, critical), `argoDegraded` (critical), `argoMissing` (warning), `argoOutOfSync` (warning). Each app is reported once, in its worst category, and `counts.argoApps` is `{total, synced, outOfSync, healthy, degraded, missing, failed}`; network (Gateway API, when served; see `docs/GATEWAY_API.md`) `gatewayNotReady` (not Accepted/Programmed), `gatewayListener` (listener Conflicted or ResolvedRefs/Accepted/Programmed False), `routeNotAccepted` (critical when no parent accepts the route, else warning), `routeUnresolvedRefs`.
 - `topWarnings` groups Warning events seen in the last hour by reason (top 10 by count).
+- Requests are the effective requests (containers and sidecars, or the largest init container, plus overhead) of the non-terminated pods scheduled on each node, as `kubectl describe node` counts them. Only pods in the namespace scope count, so for one namespace they are that namespace's share. Capacity is unknown while `nodes` is pending.
 
 ## NVIDIA GPUs
 

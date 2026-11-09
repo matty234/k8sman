@@ -64,6 +64,17 @@
       "bound": 1,
       "pending": 1,
       "lost": 1
+    },
+    "gateways": {
+      "total": 2,
+      "programmed": 1,
+      "problem": 2
+    },
+    "routes": {
+      "total": 2,
+      "accepted": 1,
+      "problem": 2,
+      "unresolved": 1
     }
   },
   "categories": [
@@ -145,6 +156,20 @@
       "count": 1
     },
     {
+      "id": "gatewayNotReady",
+      "label": "Gateways not ready",
+      "section": "network",
+      "severity": "critical",
+      "count": 1
+    },
+    {
+      "id": "routeNotAccepted",
+      "label": "Routes not accepted",
+      "section": "network",
+      "severity": "critical",
+      "count": 1
+    },
+    {
       "id": "podFailed",
       "label": "Failed pods",
       "section": "pods",
@@ -222,6 +247,20 @@
       "count": 1
     },
     {
+      "id": "gatewayListener",
+      "label": "Gateway listener problems",
+      "section": "network",
+      "severity": "warning",
+      "count": 1
+    },
+    {
+      "id": "routeUnresolvedRefs",
+      "label": "Routes with unresolved refs",
+      "section": "network",
+      "severity": "warning",
+      "count": 1
+    },
+    {
       "id": "deploymentPaused",
       "label": "Paused rollouts",
       "section": "workloads",
@@ -272,6 +311,28 @@
       "reason": "ErrImagePull",
       "message": "container app, image example/app:1: manifest unknown",
       "since": "2026-11-03T11:51:00Z"
+    },
+    {
+      "severity": "critical",
+      "category": "gatewayNotReady",
+      "kind": "Gateway",
+      "group": "gateway.networking.k8s.io",
+      "namespace": "shop",
+      "name": "edge",
+      "reason": "AddressNotAssigned",
+      "message": "Not programmed: No addresses have been assigned to the Gateway",
+      "since": "2026-11-03T11:50:00Z"
+    },
+    {
+      "severity": "critical",
+      "category": "routeNotAccepted",
+      "kind": "HTTPRoute",
+      "group": "gateway.networking.k8s.io",
+      "namespace": "shop",
+      "name": "checkout",
+      "reason": "NoMatchingParent",
+      "message": "Not accepted by Gateway shop/public listener admin: No listeners match this parent ref",
+      "since": "2026-11-03T11:50:00Z"
     },
     {
       "severity": "critical",
@@ -448,6 +509,28 @@
       "reason": "DiskPressure",
       "message": "kubelet has disk pressure",
       "since": "2026-11-03T11:53:00Z"
+    },
+    {
+      "severity": "warning",
+      "category": "gatewayListener",
+      "kind": "Gateway",
+      "group": "gateway.networking.k8s.io",
+      "namespace": "shop",
+      "name": "public",
+      "reason": "InvalidCertificateRef",
+      "message": "Listener https: Secret shop/tls does not exist.",
+      "since": "2026-11-03T11:50:00Z"
+    },
+    {
+      "severity": "warning",
+      "category": "routeUnresolvedRefs",
+      "kind": "HTTPRoute",
+      "group": "gateway.networking.k8s.io",
+      "namespace": "shop",
+      "name": "cart-api",
+      "reason": "RefNotPermitted",
+      "message": "Backend ref to Service billing/api not permitted by any ReferenceGrant (via Gateway shop/public)",
+      "since": "2026-11-03T11:50:00Z"
     },
     {
       "severity": "warning",
@@ -648,7 +731,11 @@
       "roles": [
         "control-plane"
       ],
-      "pods": 14
+      "pods": 14,
+      "cpuAllocatable": 4000,
+      "cpuRequests": 3500,
+      "memoryAllocatable": 17179869184,
+      "memoryRequests": 3758096384
     },
     {
       "name": "node-2",
@@ -657,13 +744,21 @@
       "pressure": [
         "DiskPressure"
       ],
-      "pods": 0
+      "pods": 0,
+      "cpuAllocatable": 4000,
+      "cpuRequests": 0,
+      "memoryAllocatable": 17179869184,
+      "memoryRequests": 0
     },
     {
       "name": "node-3",
       "ready": false,
       "cordoned": true,
-      "pods": 0
+      "pods": 0,
+      "cpuAllocatable": 4000,
+      "cpuRequests": 0,
+      "memoryAllocatable": 17179869184,
+      "memoryRequests": 0
     }
   ],
   "topWarnings": [
@@ -706,5 +801,11 @@
         "name": "gpu-worker-x1"
       }
     }
-  ]
+  ],
+  "capacity": {
+    "cpuAllocatable": 12000,
+    "cpuRequests": 3500,
+    "memoryAllocatable": 51539607552,
+    "memoryRequests": 3758096384
+  }
 }
