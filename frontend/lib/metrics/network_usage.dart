@@ -37,6 +37,42 @@ Widget liveNetworkSection(PanelContext ctx) {
   );
 }
 
+/// A pod's live network rates as a self-contained section, for placing in
+/// the pod inspector without a [PanelContext]: the same as
+/// [liveNetworkSection] for a pod (nothing when unscheduled or with
+/// Prometheus; a pointer to the node for hostNetwork pods).
+class PodNetworkUsage extends StatelessWidget {
+  final ApiClient api;
+  final String namespace;
+  final String name;
+
+  /// The pod's spec.nodeName (null or empty while unscheduled).
+  final String? node;
+  final bool hostNetwork;
+  const PodNetworkUsage({super.key, required this.api, required this.namespace, required this.name, this.node, this.hostNetwork = false});
+
+  /// From a Pod object.
+  factory PodNetworkUsage.of(ApiClient api, Json pod, {Key? key}) {
+    final spec = asMap(pod['spec']);
+    return PodNetworkUsage(
+      key: key,
+      api: api,
+      namespace: dig<String>(pod, ['metadata', 'namespace']) ?? '',
+      name: dig<String>(pod, ['metadata', 'name']) ?? '',
+      node: spec['nodeName'] as String?,
+      hostNetwork: usesHostNetwork(spec),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = node;
+    if (n == null || n.isEmpty) return const SizedBox.shrink();
+    if (hostNetwork) return HostNetworkNote(node: n);
+    return LiveNetwork(key: ValueKey('live-net-$namespace/$name/$n'), api: api, node: n, namespace: namespace, pod: name);
+  }
+}
+
 class LiveNetwork extends StatefulWidget {
   final ApiClient api;
   final String node;
