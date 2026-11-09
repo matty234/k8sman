@@ -5,6 +5,8 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
+import '../inspector_parts.dart';
 import '../panel.dart';
 import 'common.dart';
 
@@ -19,29 +21,35 @@ class StorageClassPanel extends ResourcePanel {
     final o = ctx.object;
     final params = asMap(o['parameters']);
     final topo = asMapList(o['allowedTopologies']);
-    final isDefault = isDefaultClass(o);
+    final zones = [for (final t in topo) for (final e in asMapList(t['matchLabelExpressions'])) ...[for (final v in (e['values'] as List? ?? const [])) '$v']];
+    Widget usage(Widget Function(BuildContext, StorageClassUsageData?) builder) => SharedFetchBuilder<StorageClassUsageData>(
+          fetchKey: 'sc-usage:${identityHashCode(ctx.api)}:${ctx.name}',
+          fetch: () => fetchStorageClassUsage(ctx.api, ctx.name),
+          builder: (context, snap) => builder(context, snap.data),
+        );
     return [
-      DetailSection(
-        title: 'Storage class',
-        icon: Icons.category_outlined,
-        trailing: isDefault ? const StatusBadge('default', severity: Severity.info, dense: true) : null,
-        child: _ClassBody(object: o),
-      ),
-      DetailSection(
-        title: 'Usage',
-        icon: Icons.pie_chart_outline,
-        child: StorageClassUsage(key: ValueKey('usage-${ctx.uid}'), api: ctx.api, className: ctx.name),
-      ),
-      DetailSection(
+      // What provisions it, how it binds, and how much uses it.
+      usage((context, u) => _ClassHeader(object: o, usage: u)),
+      usage((context, u) => PodSection(
+            id: 'sc-usage',
+            title: 'Used by',
+            trailing: SectionSummary(u == null ? '' : '${plural(u.pvcs.length, 'claim')} · ${plural(u.pvs.length, 'volume')}'),
+            child: StorageClassUsage(key: ValueKey('usage-${ctx.uid}'), api: ctx.api, className: ctx.name),
+          )),
+      // Reference detail, collapsed behind a one-line summary.
+      PodSection(
+        id: 'sc-parameters',
         title: 'Parameters',
-        icon: Icons.tune,
-        trailing: params.isEmpty ? null : CountPill('${params.length}'),
+        initiallyExpanded: false,
+        trailing: SectionSummary(params.isEmpty ? 'none' : params.keys.take(4).join(', ') + (params.length > 4 ? ' +${params.length - 4}' : '')),
         child: ParamsTable(params, emptyText: 'No parameters (provisioner defaults apply)'),
       ),
       if (topo.isNotEmpty)
-        DetailSection(
+        PodSection(
+          id: 'sc-topologies',
           title: 'Allowed topologies',
-          icon: Icons.public,
+          initiallyExpanded: false,
+          trailing: SectionSummary(zones.isEmpty ? '${topo.length} term${topo.length == 1 ? '' : 's'}' : 'only in ${zones.join(', ')}'),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Builder(builder: (context) {
               final theme = Theme.of(context);
@@ -64,9 +72,12 @@ class StorageClassPanel extends ResourcePanel {
   }
 }
 
-class _ClassBody extends StatelessWidget {
+/// The provisioner (with a default chip), how much uses the class, and how
+/// it binds, expands and reclaims.
+class _ClassHeader extends StatelessWidget {
   final Json object;
-  const _ClassBody({required this.object});
+  final StorageClassUsageData? usage;
+  const _ClassHeader({required this.object, required this.usage});
 
   @override
   Widget build(BuildContext context) {
@@ -77,112 +88,126 @@ class _ClassBody extends StatelessWidget {
     final mode = object['volumeBindingMode'] as String? ?? 'Immediate';
     final expand = object['allowVolumeExpansion'] == true;
     final mountOptions = [for (final m in (object['mountOptions'] as List? ?? const [])) '$m'];
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      MonoValue(provisioner),
-      if (provisioner == 'kubernetes.io/no-provisioner')
-        const Callout(severity: Severity.info, text: 'No dynamic provisioning: PVs for this class must be created manually.'),
-      const SizedBox(height: 6),
-      KeyValueTable([
+    final isDefault = isDefaultClass(object);
+    final u = usage;
+    final total = u?.pvcs.fold<double>(0, (s, c) => s + (parseBytes(dig(c, ['spec', 'resources', 'requests', 'storage'])) ?? 0));
+    final pending = u?.pvcs.where((c) => dig<String>(c, ['status', 'phase']) == 'Pending').length ?? 0;
+    final released = u?.pvs.where((p) => dig<String>(p, ['status', 'phase']) == 'Released').length ?? 0;
+    final size = total == null ? null : (total == 0 ? ['0'] : formatBytes(total).split(' '));
+
+    return InspectorHeader(
+      headline: provisioner.isEmpty ? '(no provisioner)' : provisioner,
+      chips: [
+        if (isDefault)
+          const Tooltip(message: 'Used by claims without storageClassName', child: StatusBadge('default', severity: Severity.info, dense: true)),
+      ],
+      figures: [
+        InspectorFigure(u == null ? null : '${u.pvcs.length}', 'claims'),
+        InspectorFigure(size?.first, 'requested', of: size != null && size.length > 1 ? ' ${size[1]}' : null),
+        InspectorFigure(u == null ? null : '${u.pvs.length}', 'volumes'),
+        if (pending > 0) InspectorFigure('$pending', 'pending', severity: Severity.warn),
+        if (released > 0) InspectorFigure('$released', 'released PVs', severity: Severity.warn),
+      ],
+      insights: [
+        if (provisioner == 'kubernetes.io/no-provisioner') const PodInsight(Severity.info, 'No dynamic provisioning: PVs for this class must be created manually.'),
+      ],
+      facts: [
         (
-          'Default class',
-          isDefaultClass(object)
-              ? ValueWithHint(const StatusBadge('yes', severity: Severity.ok, dense: true), hint: 'used by claims without storageClassName')
-              : Text('no', style: hint),
-        ),
-        (
-          'Reclaim policy',
-          ValueWithHint(StatusBadge(policy, severity: policy == 'Delete' ? Severity.warn : Severity.ok, dense: true),
-              hint: policy == 'Delete' ? 'data deleted with the claim' : 'volumes kept after the claim is deleted'),
-        ),
-        (
-          'Binding mode',
+          'Binding',
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(mode, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
             Text(bindingModeExplanation(mode), style: hint),
           ]),
         ),
         (
-          'Volume expansion',
-          ValueWithHint(StatusBadge(expand ? 'allowed' : 'not allowed', severity: expand ? Severity.ok : Severity.neutral, dense: true),
+          'Expansion',
+          ValueWithHint(Text(expand ? 'allowed' : 'not allowed', style: theme.textTheme.bodySmall),
               hint: expand ? 'grow claims by editing spec.resources.requests' : 'claims cannot be resized'),
         ),
         (
-          'Mount options',
-          mountOptions.isEmpty ? null : Wrap(spacing: 4, runSpacing: 4, children: [for (final m in mountOptions) Chipish(text: m, copyValue: m)]),
+          'Reclaim',
+          ValueWithHint(Text(policy, style: theme.textTheme.bodySmall), hint: policy == 'Delete' ? 'data deleted with the claim' : 'volumes kept after the claim is deleted'),
         ),
-      ], keyWidth: 120),
-    ]);
+        ('Mount options', mountOptions.isEmpty ? null : Wrap(spacing: 4, runSpacing: 4, children: [for (final m in mountOptions) Chipish(text: m, copyValue: m)])),
+      ],
+      factsKeyWidth: 76,
+    );
   }
 }
 
-class _Usage {
+/// PVCs (all namespaces) and PVs that use a class, troubled ones first.
+class StorageClassUsageData {
   final List<Json> pvcs;
   final List<Json> pvs;
-  _Usage(this.pvcs, this.pvs);
+  StorageClassUsageData(this.pvcs, this.pvs);
 }
 
-/// PVCs (all namespaces) and PVs that use this class.
+int _phaseRank(String p) => switch (p) { 'Lost' => 0, 'Pending' => 1, 'Failed' => 0, 'Released' => 2, _ => 3 };
+
+Future<StorageClassUsageData> fetchStorageClassUsage(ApiClient api, String className) async {
+  final res = await Future.wait([api.items(pvcResource), api.items(pvResource)]);
+  bool match(Json o) => dig<String>(o, ['spec', 'storageClassName']) == className;
+  String phase(Json o) => dig<String>(o, ['status', 'phase']) ?? '';
+  String key(Json o) => '${dig<String>(o, ['metadata', 'namespace']) ?? ''}/${dig<String>(o, ['metadata', 'name'])}';
+  int cmp(Json a, Json b) {
+    final r = _phaseRank(phase(a)).compareTo(_phaseRank(phase(b)));
+    return r != 0 ? r : key(a).compareTo(key(b));
+  }
+
+  return StorageClassUsageData(res[0].where(match).toList()..sort(cmp), res[1].where(match).toList()..sort(cmp));
+}
+
+/// The claims and volumes of a class as compact rows.
 class StorageClassUsage extends StatelessWidget {
   final ApiClient api;
   final String className;
   const StorageClassUsage({super.key, required this.api, required this.className});
 
-  static int _phaseRank(String p) => switch (p) { 'Lost' => 0, 'Pending' => 1, 'Failed' => 0, 'Released' => 2, _ => 3 };
-
   @override
   Widget build(BuildContext context) {
-    return FetchOnce<_Usage>(
-      deps: className,
-      fetch: () async {
-        final res = await Future.wait([api.items(pvcResource), api.items(pvResource)]);
-        bool match(Json o) => dig<String>(o, ['spec', 'storageClassName']) == className;
-        String phase(Json o) => dig<String>(o, ['status', 'phase']) ?? '';
-        String key(Json o) => '${dig<String>(o, ['metadata', 'namespace']) ?? ''}/${dig<String>(o, ['metadata', 'name'])}';
-        int cmp(Json a, Json b) {
-          final r = _phaseRank(phase(a)).compareTo(_phaseRank(phase(b)));
-          return r != 0 ? r : key(a).compareTo(key(b));
-        }
-
-        return _Usage(res[0].where(match).toList()..sort(cmp), res[1].where(match).toList()..sort(cmp));
-      },
-      builder: (context, u) {
-        final theme = Theme.of(context);
-        final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-        final total = u.pvcs.fold<double>(0, (s, c) => s + (parseBytes(dig(c, ['spec', 'resources', 'requests', 'storage'])) ?? 0));
-        final pending = u.pvcs.where((c) => dig<String>(c, ['status', 'phase']) == 'Pending').length;
-        final released = u.pvs.where((p) => dig<String>(p, ['status', 'phase']) == 'Released').length;
-        Widget stat(String v, String label, {Severity? sev}) => Padding(
-              padding: const EdgeInsets.only(right: 20),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(v, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: sev == null ? null : severityColor(context, sev))),
-                Text(label, style: hint),
-              ]),
-            );
+    return SharedFetchBuilder<StorageClassUsageData>(
+      fetchKey: 'sc-usage:${identityHashCode(api)}:$className',
+      fetch: () => fetchStorageClassUsage(api, className),
+      builder: (context, snap) {
+        if (snap.hasError) return InlineMessage('${snap.error}', isError: true);
+        final u = snap.data;
+        if (u == null) return const SectionSpinner();
+        if (u.pvcs.isEmpty && u.pvs.isEmpty) return const InlineMessage('No claims or volumes use this class.');
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Wrap(children: [
-            stat('${u.pvcs.length}', 'claims'),
-            stat(total == 0 ? '0' : formatBytes(total), 'requested'),
-            stat('${u.pvs.length}', 'volumes'),
-            if (pending > 0) stat('$pending', 'pending', sev: Severity.warn),
-            if (released > 0) stat('$released', 'released PVs', sev: Severity.warn),
-          ]),
           if (u.pvcs.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text('Claims', style: hint),
-            for (final c in u.pvcs) _ClaimRow(c),
+            const _GroupLabel('Claims'),
+            TrimmedList([for (final c in u.pvcs) _ClaimRow(c)]),
           ],
           if (u.pvs.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text('Volumes', style: hint),
-            for (final p in u.pvs) _VolumeRow(p),
+            const _GroupLabel('Volumes'),
+            TrimmedList([for (final p in u.pvs) _VolumeRow(p)]),
           ],
-          if (u.pvcs.isEmpty && u.pvs.isEmpty)
-            const Padding(padding: EdgeInsets.only(top: 6), child: InlineMessage('No claims or volumes use this class.')),
         ]);
       },
     );
   }
 }
+
+class _GroupLabel extends StatelessWidget {
+  final String text;
+  const _GroupLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 6, 0, 2),
+      child: Text(text, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
+    );
+  }
+}
+
+Severity _phaseSeverity(String phase) => switch (phase) {
+      'Bound' => Severity.ok,
+      'Available' => Severity.info,
+      'Lost' || 'Failed' => Severity.error,
+      _ => Severity.warn,
+    };
 
 class _ClaimRow extends StatelessWidget {
   final Json pvc;
@@ -190,21 +215,22 @@ class _ClaimRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final ns = dig<String>(pvc, ['metadata', 'namespace']);
     final name = dig<String>(pvc, ['metadata', 'name']) ?? '';
     final phase = dig<String>(pvc, ['status', 'phase']) ?? 'Unknown';
     final cap = dig<dynamic>(pvc, ['status', 'capacity', 'storage']) ?? dig<dynamic>(pvc, ['spec', 'resources', 'requests', 'storage']);
     final modes = [for (final m in (dig<List>(pvc, ['spec', 'accessModes']) ?? const [])) accessModeShort('$m')];
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(children: [
-        SizedBox(width: 72, child: Align(alignment: Alignment.centerLeft, child: StatusBadge(phase, dense: true))),
-        Expanded(child: ResourceLink(pvcRef(name, ns), label: '${ns ?? ''}/$name')),
-        Text(modes.join(','), style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-        const SizedBox(width: 10),
-        SizedBox(width: 56, child: Text(cap == null ? '' : '$cap', textAlign: TextAlign.right, style: monoStyle(context, size: 11.5))),
-      ]),
+    final sev = _phaseSeverity(phase);
+    final bad = sev == Severity.warn || sev == Severity.error;
+    return InspectorRow(
+      dot: sev,
+      dotTooltip: phase,
+      title: ResourceLink(pvcRef(name, ns), label: '${ns ?? ''}/$name', singleLine: true),
+      subtitle: Text.rich(TextSpan(children: [
+        TextSpan(text: phase, style: bad ? TextStyle(color: severityColor(context, sev), fontWeight: FontWeight.w600) : null),
+        if (modes.isNotEmpty) TextSpan(text: '  ·  ${modes.join(',')}'),
+      ])),
+      meta: [if (cap != null) Text('$cap', style: monoStyle(context, size: 11.5))],
     );
   }
 }
@@ -215,24 +241,21 @@ class _VolumeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final name = dig<String>(pv, ['metadata', 'name']) ?? '';
     final phase = dig<String>(pv, ['status', 'phase']) ?? 'Unknown';
     final cap = dig<dynamic>(pv, ['spec', 'capacity', 'storage']);
     final claim = asMap(dig(pv, ['spec', 'claimRef']));
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(children: [
-        SizedBox(width: 72, child: Align(alignment: Alignment.centerLeft, child: StatusBadge(phase, dense: true))),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ResourceLink(pvRef(name), label: name),
-            if (claim['name'] != null)
-              Text('bound to ${claim['namespace'] ?? ''}/${claim['name']}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-          ]),
-        ),
-        SizedBox(width: 56, child: Text(cap == null ? '' : '$cap', textAlign: TextAlign.right, style: monoStyle(context, size: 11.5))),
-      ]),
+    final sev = _phaseSeverity(phase);
+    final bad = sev == Severity.warn || sev == Severity.error;
+    return InspectorRow(
+      dot: sev,
+      dotTooltip: phase,
+      title: ResourceLink(pvRef(name), label: name, singleLine: true),
+      subtitle: Text.rich(TextSpan(children: [
+        TextSpan(text: phase, style: bad ? TextStyle(color: severityColor(context, sev), fontWeight: FontWeight.w600) : null),
+        if (claim['name'] != null) TextSpan(text: '  ·  bound to ${claim['namespace'] ?? ''}/${claim['name']}'),
+      ])),
+      meta: [if (cap != null) Text('$cap', style: monoStyle(context, size: 11.5))],
     );
   }
 }

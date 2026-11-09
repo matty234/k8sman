@@ -7,6 +7,8 @@ import '../../prometheus/metric_history_chart.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
+import '../inspector_parts.dart';
 import '../panel.dart';
 import 'common.dart';
 
@@ -21,57 +23,102 @@ class PvcPanel extends ResourcePanel {
     final spec = ctx.spec;
     final status = ctx.status;
     final conditions = asMapList(status['conditions']);
+    final volumeName = spec['volumeName'] as String?;
+    final ds = asMap(spec['dataSourceRef'] ?? spec['dataSource']);
+    final modes = _strings(status['accessModes']).isNotEmpty ? _strings(status['accessModes']) : _strings(spec['accessModes']);
+    final trueConds = [for (final c in conditions) if (c['status'] == 'True') '${c['type']}'];
+    final mountsKey = 'pvc-mounts:${identityHashCode(ctx.api)}:${ctx.namespace}/${ctx.name}';
+    Future<List<PvcMount>> mounts() => SharedFetch.get(mountsKey, () async => findMounts(await ctx.api.items(podResource, namespace: ctx.namespace), ctx.name));
     return [
-      DetailSection(
-        title: 'Claim',
-        icon: Icons.storage,
-        trailing: StatusBadge(status['phase'] as String? ?? 'Unknown', dense: true),
-        child: _ClaimBody(ctx: ctx),
-      ),
-      DetailSection(
-        title: 'Usage',
-        icon: Icons.data_usage,
-        child: PvcUsageSection(
-          key: ValueKey('usage-${ctx.uid}'),
-          api: ctx.api,
-          namespace: ctx.namespace ?? '',
-          claim: ctx.name,
-          bound: status['phase'] == 'Bound',
-          mountNodes: () async => {
-            for (final m in findMounts(await ctx.api.items(podResource, namespace: ctx.namespace), ctx.name))
+      // Is it bound, how big, how full?
+      PvcStatusHeader(ctx, mountNodes: () async => {
+            for (final m in await mounts())
               if (m.node != null && dig<String>(m.pod, ['status', 'phase']) == 'Running') m.node!,
-          },
-        ),
-      ),
+          }),
       pvcHistory(ctx),
-      DetailSection(
+      PodSection(
+        id: 'pvc-mounts',
         title: 'Mounted by',
-        icon: Icons.link,
+        trailing: FutureBuilder<List<PvcMount>>(
+          future: mounts(),
+          builder: (context, snap) => SectionSummary(snap.data == null ? '' : (snap.data!.isEmpty ? 'idle' : plural(snap.data!.length, 'pod'))),
+        ),
         child: PvcMountedBy(
           key: ValueKey('mounts-${ctx.uid}'),
           api: ctx.api,
           namespace: ctx.namespace ?? '',
           claimName: ctx.name,
           accessModes: _strings(spec['accessModes']),
+          load: mounts,
         ),
       ),
-      if (conditions.isNotEmpty) DetailSection(title: 'Conditions', icon: Icons.fact_check_outlined, child: ConditionsTable(conditions)),
+      // Reference detail, collapsed behind a one-line summary.
+      PodSection(
+        id: 'pvc-volume',
+        title: 'Volume',
+        initiallyExpanded: false,
+        trailing: SectionSummary([
+          volumeName != null && volumeName.isNotEmpty ? volumeName : 'not bound',
+          if ((spec['volumeMode'] ?? 'Filesystem') == 'Block') 'block',
+        ].join(' · ')),
+        child: _VolumeDetails(ctx: ctx, modes: modes),
+      ),
+      if (ds.isNotEmpty)
+        PodSection(
+          id: 'pvc-datasource',
+          title: 'Data source',
+          initiallyExpanded: false,
+          trailing: SectionSummary('${ds['kind'] ?? ''}/${ds['name'] ?? ''}'),
+          child: _dataSource(ctx, ds),
+        ),
+      if (conditions.isNotEmpty)
+        PodSection(
+          id: 'pvc-conditions',
+          title: 'Conditions',
+          initiallyExpanded: false,
+          trailing: SectionSummary(trueConds.isEmpty ? 'none true' : trueConds.join(', '),
+              color: trueConds.any((t) => t.contains('Error')) ? severityColor(context, Severity.error) : null),
+          child: ConditionsTable(conditions),
+        ),
+      _CreatedByStatefulSet(key: ValueKey('sts-${ctx.uid}'), api: ctx.api, namespace: ctx.namespace ?? '', claimName: ctx.name, owners: ownerRefs(ctx.object)),
     ];
+  }
+
+  static Widget _dataSource(PanelContext ctx, Json ds) {
+    final kind = '${ds['kind'] ?? ''}';
+    final group = '${ds['apiGroup'] ?? ''}';
+    final name = '${ds['name'] ?? ''}';
+    final ns = ds['namespace'] as String? ?? ctx.namespace;
+    final label = '$kind/$name${group.isNotEmpty ? ' ($group)' : ''}';
+    return ValueWithHint(ResourceLink(ObjectRef(group: group, kind: kind, name: name, namespace: ns), label: label),
+        hint: kind == 'VolumeSnapshot' ? 'restored from snapshot' : (kind == 'PersistentVolumeClaim' ? 'cloned' : 'populated'));
   }
 }
 
 List<String> _strings(dynamic v) => [for (final e in (v is List ? v : const [])) '$e'];
 
-class _ClaimBody extends StatelessWidget {
+/// "1Gi" as a big figure: the number, then its unit small.
+InspectorFigure _quantityFigure(dynamic q, String label, {Severity severity = Severity.neutral, String? tooltip}) {
+  if (q == null) return InspectorFigure('—', label);
+  final m = RegExp(r'^([\d.]+)\s*([A-Za-z]+)$').firstMatch('$q');
+  return m == null
+      ? InspectorFigure('$q', label, severity: severity, tooltip: tooltip)
+      : InspectorFigure(m.group(1), label, of: m.group(2), severity: severity, tooltip: tooltip ?? prettyQuantity(q));
+}
+
+/// The top of the claim inspector: Bound, or Pending / Lost and why; how
+/// much was requested and provisioned; the class, access modes and how
+/// full the volume is.
+class PvcStatusHeader extends StatelessWidget {
   final PanelContext ctx;
-  const _ClaimBody({required this.ctx});
+  final Future<Set<String>> Function() mountNodes;
+  const PvcStatusHeader(this.ctx, {super.key, required this.mountNodes});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final spec = ctx.spec;
     final status = ctx.status;
-    final phase = status['phase'] as String? ?? '';
+    final phase = status['phase'] as String? ?? 'Unknown';
     final requested = dig<dynamic>(spec, ['resources', 'requests', 'storage']);
     final limit = dig<dynamic>(spec, ['resources', 'limits', 'storage']);
     final capacity = dig<dynamic>(status, ['capacity', 'storage']);
@@ -82,49 +129,68 @@ class _ClaimBody extends StatelessWidget {
     final provisioner = dig<String>(ctx.metadata, ['annotations', 'volume.kubernetes.io/storage-provisioner']) ??
         dig<String>(ctx.metadata, ['annotations', 'volume.beta.kubernetes.io/storage-provisioner']);
     final deleting = dig<String>(ctx.metadata, ['deletionTimestamp']) != null;
+    final req = parseBytes(requested), cap = parseBytes(capacity);
+    final short = req != null && cap != null && req > cap;
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _CapacityHeadline(requested: requested, capacity: capacity, limit: limit),
-      if (deleting)
-        Callout(
-          severity: Severity.warn,
-          title: 'Terminating',
-          text: (asMap(ctx.metadata)['finalizers'] as List? ?? const []).contains('kubernetes.io/pvc-protection')
-              ? 'Deletion is blocked by kubernetes.io/pvc-protection until no pod uses this claim (see Mounted by).'
-              : 'The claim is being deleted.',
+    final sev = switch (phase) {
+      'Bound' => Severity.ok,
+      'Lost' => Severity.error,
+      _ => Severity.warn,
+    };
+    return InspectorHeader(
+      mark: deleting ? Severity.warn : sev,
+      headline: deleting ? 'Terminating' : phase,
+      headlineTone: phase == 'Bound' && !deleting ? null : (deleting ? Severity.warn : sev),
+      detail: deleting ? Text('was $phase') : null,
+      figures: [
+        _quantityFigure(capacity, 'provisioned', severity: short ? Severity.warn : Severity.neutral),
+        _quantityFigure(requested, 'requested'),
+        if (limit != null) _quantityFigure(limit, 'limit'),
+      ],
+      extraInsights: [
+        if (deleting)
+          InsightLine(
+            Severity.warn,
+            'Terminating',
+            detail: (asMap(ctx.metadata)['finalizers'] as List? ?? const []).contains('kubernetes.io/pvc-protection')
+                ? 'Deletion is blocked by kubernetes.io/pvc-protection until no pod uses this claim (see Mounted by).'
+                : 'The claim is being deleted.',
+          ),
+        if (phase == 'Pending')
+          _PendingExplanation(
+            key: ValueKey('pending-${ctx.uid}'),
+            api: ctx.api,
+            storageClassName: scName,
+            volumeName: volumeName,
+            selectedNode: selectedNode,
+            provisioner: provisioner,
+          ),
+        if (phase == 'Lost')
+          const InsightLine(
+            Severity.error,
+            'Lost',
+            detail: 'The PersistentVolume this claim was bound to no longer exists. Data on it may be gone; the claim must be '
+                'recreated (or the PV restored) before pods can use it.',
+          ),
+        ..._resizeInsights(requested, capacity),
+      ],
+      facts: [
+        ('Class', _storageClassValue(context, scName)),
+        ('Access', AccessModesView(modes)),
+        (
+          'Usage',
+          PvcUsageSection(
+            key: ValueKey('usage-${ctx.uid}'),
+            api: ctx.api,
+            namespace: ctx.namespace ?? '',
+            claim: ctx.name,
+            bound: phase == 'Bound',
+            mountNodes: mountNodes,
+          ),
         ),
-      if (phase == 'Pending')
-        _PendingExplanation(
-          key: ValueKey('pending-${ctx.uid}'),
-          api: ctx.api,
-          storageClassName: scName,
-          volumeName: volumeName,
-          selectedNode: selectedNode,
-          provisioner: provisioner,
-        ),
-      if (phase == 'Lost')
-        const Callout(
-          severity: Severity.error,
-          title: 'Lost',
-          text: 'The PersistentVolume this claim was bound to no longer exists. Data on it may be gone; the claim must be '
-              'recreated (or the PV restored) before pods can use it.',
-        ),
-      ..._resizeCallouts(context, requested, capacity),
-      const SizedBox(height: 6),
-      KeyValueTable([
-        ('Access modes', AccessModesView(modes)),
-        ('Volume mode', ValueWithHint(Text(spec['volumeMode'] as String? ?? 'Filesystem', style: theme.textTheme.bodySmall),
-            hint: (spec['volumeMode'] ?? 'Filesystem') == 'Block' ? 'raw block device, no filesystem' : 'mounted as a directory')),
-        ('Storage class', _storageClassValue(context, scName)),
-        ('Volume', volumeName != null && volumeName.isNotEmpty ? ResourceLink(pvRef(volumeName), label: volumeName) : null),
-        ('Provisioner', provisioner != null ? MonoValue(provisioner) : null),
-        ('Selected node', selectedNode != null ? ResourceLink(nodeRef(selectedNode), label: selectedNode) : null),
-        ('Data source', _dataSource(context, spec['dataSourceRef'] ?? spec['dataSource'])),
-        ('Selector', asMap(spec['selector']).isNotEmpty ? MonoValue(selectorToString(spec['selector'])) : null),
-        ('Volume attr. class', spec['volumeAttributesClassName'] as String?),
-      ], keyWidth: 120),
-      _CreatedByStatefulSet(key: ValueKey('sts-${ctx.uid}'), api: ctx.api, namespace: ctx.namespace ?? '', claimName: ctx.name, owners: ownerRefs(ctx.object)),
-    ]);
+      ],
+      factsKeyWidth: 56,
+    );
   }
 
   Widget _storageClassValue(BuildContext context, String? scName) {
@@ -138,19 +204,7 @@ class _ClaimBody extends StatelessWidget {
     return ResourceLink(scRef(scName), label: scName);
   }
 
-  Widget? _dataSource(BuildContext context, dynamic raw) {
-    final ds = asMap(raw);
-    if (ds.isEmpty) return null;
-    final kind = '${ds['kind'] ?? ''}';
-    final group = '${ds['apiGroup'] ?? ''}';
-    final name = '${ds['name'] ?? ''}';
-    final ns = ds['namespace'] as String? ?? ctx.namespace;
-    final label = '$kind/$name${group.isNotEmpty ? ' ($group)' : ''}';
-    return ValueWithHint(ResourceLink(ObjectRef(group: group, kind: kind, name: name, namespace: ns), label: label),
-        hint: kind == 'VolumeSnapshot' ? 'restored from snapshot' : (kind == 'PersistentVolumeClaim' ? 'cloned' : 'populated'));
-  }
-
-  List<Widget> _resizeCallouts(BuildContext context, dynamic requested, dynamic capacity) {
+  List<Widget> _resizeInsights(dynamic requested, dynamic capacity) {
     final status = ctx.status;
     final out = <Widget>[];
     final req = parseBytes(requested);
@@ -160,17 +214,17 @@ class _ClaimBody extends StatelessWidget {
     final condTypes = {for (final c in asMapList(status['conditions'])) if (c['status'] == 'True') '${c['type']}'};
 
     if (resizeStatus != null && resizeStatus.endsWith('Infeasible')) {
-      out.add(Callout(
-        severity: Severity.error,
-        title: 'Resize infeasible ($resizeStatus)',
-        text: 'The ${resizeStatus.startsWith('Node') ? 'node' : 'storage backend'} rejected the expansion to ${requested ?? allocated}. '
+      out.add(InsightLine(
+        Severity.error,
+        'Resize infeasible ($resizeStatus)',
+        detail: 'The ${resizeStatus.startsWith('Node') ? 'node' : 'storage backend'} rejected the expansion to ${requested ?? allocated}. '
             'Lower the request back to a supported size or check the Events tab.',
       ));
       return out;
     }
     for (final t in ['ControllerResizeError', 'NodeResizeError']) {
       if (condTypes.contains(t)) {
-        out.add(Callout(severity: Severity.error, title: 'Resize failed', text: '$t: see Conditions and the Events tab.'));
+        out.add(InsightLine(Severity.error, 'Resize failed', detail: '$t: see Conditions and the Events tab.'));
         return out;
       }
     }
@@ -185,16 +239,16 @@ class _ClaimBody extends StatelessWidget {
           (condTypes.contains('FileSystemResizePending')
               ? 'the backend volume is expanded; the filesystem grows when a pod (re)mounts it'
               : 'the storage backend is expanding the volume');
-      out.add(Callout(
-        severity: Severity.info,
-        title: 'Resize in progress: ${prettyQuantity(capacity)} to ${prettyQuantity(allocated ?? requested)}',
-        text: 'Currently $text.',
+      out.add(InsightLine(
+        Severity.info,
+        'Resize in progress: ${prettyQuantity(capacity)} to ${prettyQuantity(allocated ?? requested)}',
+        detail: 'Currently $text.',
       ));
     } else if (req != null && cap != null && req > cap && ctx.status['phase'] == 'Bound') {
-      out.add(Callout(
-        severity: Severity.warn,
-        title: 'Requested more than provisioned',
-        text: 'Requested ${prettyQuantity(requested)} but the volume has ${prettyQuantity(capacity)}. Expansion has not started: '
+      out.add(InsightLine(
+        Severity.warn,
+        'Requested more than provisioned',
+        detail: 'Requested ${prettyQuantity(requested)} but the volume has ${prettyQuantity(capacity)}. Expansion has not started: '
             'check that the StorageClass has allowVolumeExpansion and the Events tab.',
       ));
     }
@@ -202,36 +256,44 @@ class _ClaimBody extends StatelessWidget {
   }
 }
 
-/// "1Gi requested · 1Gi provisioned" headline with a usage-style bar.
-class _CapacityHeadline extends StatelessWidget {
-  final dynamic requested;
-  final dynamic capacity;
-  final dynamic limit;
-  const _CapacityHeadline({required this.requested, required this.capacity, this.limit});
+/// The bound volume and how the claim asks for it: the PV link, volume
+/// mode, provisioner, selected node, selector and attributes class.
+class _VolumeDetails extends StatelessWidget {
+  final PanelContext ctx;
+  final List<String> modes;
+  const _VolumeDetails({required this.ctx, required this.modes});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final big = theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    Widget stat(String label, dynamic v, {Color? color}) => Padding(
-          padding: const EdgeInsets.only(right: 20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(v == null ? '—' : prettyQuantity(v), style: big?.copyWith(color: v == null ? theme.hintColor : color)),
-            Text(label, style: hint),
-          ]),
-        );
-    final req = parseBytes(requested), cap = parseBytes(capacity);
-    final mismatch = req != null && cap != null && req != cap;
-    return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 2),
-      child: Wrap(children: [
-        stat('requested', requested),
-        stat('provisioned', capacity, color: mismatch && req > cap ? severityColor(context, Severity.warn) : null),
-        if (limit != null) stat('limit', limit),
-      ]),
-    );
+    final spec = ctx.spec;
+    final volumeName = spec['volumeName'] as String?;
+    final selectedNode = dig<String>(ctx.metadata, ['annotations', 'volume.kubernetes.io/selected-node']);
+    final provisioner = dig<String>(ctx.metadata, ['annotations', 'volume.kubernetes.io/storage-provisioner']) ??
+        dig<String>(ctx.metadata, ['annotations', 'volume.beta.kubernetes.io/storage-provisioner']);
+    return KeyValueTable([
+      ('Volume', volumeName != null && volumeName.isNotEmpty ? ResourceLink(pvRef(volumeName), label: volumeName) : Text('not bound yet', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
+      ('Volume mode', ValueWithHint(Text(spec['volumeMode'] as String? ?? 'Filesystem', style: theme.textTheme.bodySmall),
+          hint: (spec['volumeMode'] ?? 'Filesystem') == 'Block' ? 'raw block device, no filesystem' : 'mounted as a directory')),
+      ('Provisioner', provisioner != null ? MonoValue(provisioner) : null),
+      ('Selected node', selectedNode != null ? ResourceLink(nodeRef(selectedNode), label: selectedNode) : null),
+      ('Selector', asMap(spec['selector']).isNotEmpty ? MonoValue(selectorToString(spec['selector'])) : null),
+      ('Volume attr. class', spec['volumeAttributesClassName'] as String?),
+    ], keyWidth: 120);
   }
+}
+
+/// A [Callout]-shaped insight line (title, text, optional child) for the
+/// pending explanation.
+class _Insight extends StatelessWidget {
+  final Severity severity;
+  final String? title;
+  final String text;
+  final Widget? child;
+  const _Insight({required this.severity, required this.text, this.title, this.child});
+
+  @override
+  Widget build(BuildContext context) => InsightLine(severity, title ?? text, detail: title == null ? null : text, child: child);
 }
 
 /// Derived reason for a Pending claim, using the StorageClass binding mode.
@@ -247,7 +309,7 @@ class _PendingExplanation extends StatelessWidget {
   Widget build(BuildContext context) {
     final sc = storageClassName;
     if (volumeName != null && volumeName!.isNotEmpty) {
-      return Callout(
+      return _Insight(
         severity: Severity.warn,
         title: 'Pending: waiting for a specific volume',
         text: 'spec.volumeName pins this claim to PersistentVolume $volumeName, which is missing, already bound elsewhere, or '
@@ -256,7 +318,7 @@ class _PendingExplanation extends StatelessWidget {
       );
     }
     if (sc == null || sc.isEmpty) {
-      return Callout(
+      return _Insight(
         severity: Severity.warn,
         title: 'Pending: no storage class',
         text: sc == null
@@ -277,10 +339,10 @@ class _PendingExplanation extends StatelessWidget {
         }
       },
       loading: const SizedBox.shrink(),
-      errorBuilder: (context, e) => Callout(severity: Severity.warn, title: 'Pending', text: 'Could not load StorageClass $sc: $e'),
+      errorBuilder: (context, e) => _Insight(severity: Severity.warn, title: 'Pending', text: 'Could not load StorageClass $sc: $e'),
       builder: (context, scObj) {
         if (scObj == null) {
-          return Callout(
+          return _Insight(
             severity: Severity.error,
             title: 'Pending: StorageClass "$sc" does not exist',
             text: 'Nothing will provision this claim until that class is created, or a matching PV with that class exists.',
@@ -289,7 +351,7 @@ class _PendingExplanation extends StatelessWidget {
         final mode = scObj['volumeBindingMode'] as String? ?? 'Immediate';
         final prov = scObj['provisioner'] as String? ?? provisioner ?? '?';
         if (mode == 'WaitForFirstConsumer' && selectedNode == null) {
-          return Callout(
+          return _Insight(
             severity: Severity.info,
             title: 'Pending: waiting for a pod to be scheduled',
             text: 'StorageClass $sc uses WaitForFirstConsumer, so the volume is only provisioned once a pod that uses this claim '
@@ -298,14 +360,14 @@ class _PendingExplanation extends StatelessWidget {
           );
         }
         if (prov == 'kubernetes.io/no-provisioner') {
-          return Callout(
+          return _Insight(
             severity: Severity.warn,
             title: 'Pending: no dynamic provisioner',
             text: 'StorageClass $sc uses kubernetes.io/no-provisioner. Create a PV with storageClassName "$sc" that matches this '
                 'claim${selectedNode != null ? ' on node $selectedNode' : ''}.',
           );
         }
-        return Callout(
+        return _Insight(
           severity: Severity.warn,
           title: 'Pending: waiting for the provisioner',
           text: '${mode == 'WaitForFirstConsumer' ? 'A pod was scheduled to $selectedNode, so $prov' : '$prov (binding mode Immediate)'} '
@@ -318,7 +380,8 @@ class _PendingExplanation extends StatelessWidget {
 }
 
 /// Link to the StatefulSet whose volumeClaimTemplate produced this claim
-/// (`<template>-<sts>-<ordinal>`).
+/// (`<template>-<sts>-<ordinal>`), as a collapsed section; nothing when the
+/// claim didn't come from one.
 class _CreatedByStatefulSet extends StatelessWidget {
   final ApiClient api;
   final String namespace;
@@ -331,7 +394,7 @@ class _CreatedByStatefulSet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ownerSts = owners.where((o) => o.kind == 'StatefulSet').toList();
-    if (ownerSts.isNotEmpty) return _line(context, ownerSts.first, null);
+    if (ownerSts.isNotEmpty) return _section(context, ownerSts.first, null, ownerSts.first.name);
     if (_pattern.firstMatch(claimName) == null || namespace.isEmpty) return const SizedBox.shrink();
     return FetchOnce<(Json, String, int)?>(
       deps: claimName,
@@ -361,27 +424,22 @@ class _CreatedByStatefulSet extends StatelessWidget {
         final note = StringBuffer('template "$tpl", replica #$ord');
         if (ord >= replicas) note.write(' · orphaned: scaled to $replicas, claim kept');
         if (retention.isNotEmpty) note.write(' · on delete: ${retention['whenDeleted'] ?? 'Retain'}, on scale-down: ${retention['whenScaled'] ?? 'Retain'}');
-        return _line(context, ref, note.toString(), warn: ord >= replicas);
+        return _section(context, ref, note.toString(), '${ref.name} #$ord${ord >= replicas ? ' · orphaned' : ''}', warn: ord >= replicas);
       },
     );
   }
 
-  Widget _line(BuildContext context, ObjectRef ref, String? note, {bool warn = false}) {
+  Widget _section(BuildContext context, ObjectRef ref, String? note, String summary, {bool warn = false}) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(Icons.account_tree_outlined, size: 14, color: theme.hintColor),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, runSpacing: 2, children: [
-            Text('Created by', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-            ResourceLink(ref, label: 'StatefulSet ${ref.name}'),
-            if (note != null)
-              Text('($note)',
-                  style: theme.textTheme.bodySmall?.copyWith(color: warn ? severityColor(context, Severity.warn) : theme.hintColor)),
-          ]),
-        ),
+    return PodSection(
+      id: 'pvc-created-by',
+      title: 'Created by StatefulSet',
+      initiallyExpanded: false,
+      trailing: SectionSummary(summary, color: warn ? severityColor(context, Severity.warn) : null),
+      child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, runSpacing: 2, children: [
+        ResourceLink(ref, label: 'StatefulSet ${ref.name}'),
+        if (note != null)
+          Text('($note)', style: theme.textTheme.bodySmall?.copyWith(color: warn ? severityColor(context, Severity.warn) : theme.hintColor)),
       ]),
     );
   }
@@ -440,18 +498,25 @@ String podStatusText(Json pod) {
   return phase;
 }
 
+/// The pods that mount the claim as compact rows (troubled pods first),
+/// each with where it mounts the volume; warnings when the access mode
+/// can't serve them all.
 class PvcMountedBy extends StatelessWidget {
   final ApiClient api;
   final String namespace;
   final String claimName;
   final List<String> accessModes;
-  const PvcMountedBy({super.key, required this.api, required this.namespace, required this.claimName, required this.accessModes});
+
+  /// Loads the mounts (shared with the section summary); defaults to
+  /// listing the namespace's pods.
+  final Future<List<PvcMount>> Function()? load;
+  const PvcMountedBy({super.key, required this.api, required this.namespace, required this.claimName, required this.accessModes, this.load});
 
   @override
   Widget build(BuildContext context) {
     return FetchOnce<List<PvcMount>>(
       deps: '$namespace/$claimName',
-      fetch: () async => findMounts(await api.items(podResource, namespace: namespace), claimName),
+      fetch: load ?? () async => findMounts(await api.items(podResource, namespace: namespace), claimName),
       builder: (context, mounts) {
         if (mounts.isEmpty) {
           return const InlineMessage('No pod in this namespace uses this claim. The volume is idle (and the claim can be deleted '
@@ -461,78 +526,68 @@ class PvcMountedBy extends StatelessWidget {
         final nodes = {for (final m in active) ?m.node};
         final warnings = <Widget>[
           if (accessModes.contains('ReadWriteOncePod') && active.length > 1)
-            Callout(
-              severity: Severity.error,
-              title: 'ReadWriteOncePod claim referenced by ${active.length} pods',
-              text: 'Only one pod can use it; the others will fail to start (check their events).',
+            InsightLine(
+              Severity.error,
+              'ReadWriteOncePod claim referenced by ${active.length} pods',
+              detail: 'Only one pod can use it; the others will fail to start (check their events).',
             )
           else if (accessModes.contains('ReadWriteOnce') && !accessModes.contains('ReadWriteMany') && nodes.length > 1)
-            Callout(
-              severity: Severity.error,
-              title: 'ReadWriteOnce claim used on ${nodes.length} nodes',
-              text: 'RWO volumes attach to a single node. Pods on other nodes (${nodes.join(', ')}) will be stuck in '
+            InsightLine(
+              Severity.error,
+              'ReadWriteOnce claim used on ${nodes.length} nodes',
+              detail: 'RWO volumes attach to a single node. Pods on other nodes (${nodes.join(', ')}) will be stuck in '
                   'ContainerCreating with Multi-Attach errors.',
             ),
         ];
+        bool bad(PvcMount m) => severityOf(podStatusText(m.pod)) == Severity.error || severityOf(podStatusText(m.pod)) == Severity.warn;
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ...warnings,
-          for (final m in mounts) _PodMountTile(m: m, namespace: namespace),
+          for (final w in warnings) Padding(padding: const EdgeInsets.only(bottom: 10), child: w),
+          TrimmedList([
+            for (final m in [...mounts.where(bad), ...mounts.where((m) => !bad(m))]) _PodMountRow(m: m, namespace: namespace),
+          ]),
         ]);
       },
     );
   }
 }
 
-class _PodMountTile extends StatelessWidget {
+class _PodMountRow extends StatelessWidget {
   final PvcMount m;
   final String namespace;
-  const _PodMountTile({required this.m, required this.namespace});
+  const _PodMountRow({required this.m, required this.namespace});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    return Container(
-      margin: const EdgeInsets.only(top: 6),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Icon(Icons.widgets_outlined, size: 14, color: theme.hintColor),
-          const SizedBox(width: 6),
-          Flexible(child: ResourceLink(ObjectRef(kind: 'Pod', name: m.name, namespace: namespace), label: m.name)),
-          const SizedBox(width: 8),
-          StatusBadge(podStatusText(m.pod), dense: true),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              if (m.node != null) ...[
-                Icon(Icons.dns_outlined, size: 13, color: theme.hintColor),
-                const SizedBox(width: 3),
-                Flexible(child: ResourceLink(nodeRef(m.node!), label: m.node)),
-              ] else
-                Text('not scheduled', style: hint),
-            ]),
-          ),
-        ]),
-        const SizedBox(height: 4),
-        if (m.mounts.isEmpty)
-          Text('volume "${m.volumeName}" declared but not mounted by any container', style: hint)
-        else
-          for (final (c, path, ro, sub, init) in m.mounts)
-            Padding(
-              padding: const EdgeInsets.only(left: 20, top: 1),
-              child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [
-                Text('${init ? 'init:' : ''}$c', style: hint),
-                Icon(Icons.arrow_forward, size: 12, color: theme.hintColor),
-                MonoValue(sub != null ? '$path  (subPath $sub)' : path),
-                if (ro || m.readOnly) const StatusBadge('ro', severity: Severity.info, dense: true),
-              ]),
-            ),
+    final status = podStatusText(m.pod);
+    final sev = m.terminated ? Severity.neutral : (status == 'Running' ? Severity.ok : severityOf(status));
+    final problem = sev == Severity.error || sev == Severity.warn;
+    return InspectorRow(
+      key: ValueKey('pvc-mount-${m.name}'),
+      dot: sev,
+      dotTooltip: status,
+      problem: problem,
+      title: ResourceLink(ObjectRef(kind: 'Pod', name: m.name, namespace: namespace), label: m.name, singleLine: true),
+      subtitle: Row(children: [
+        Text(status, style: problem ? TextStyle(color: severityColor(context, sev), fontWeight: FontWeight.w600) : null),
+        const Text('  ·  '),
+        if (m.node != null) Flexible(child: ResourceLink(nodeRef(m.node!), label: m.node, singleLine: true)) else const Text('not scheduled'),
       ]),
+      below: m.mounts.isEmpty
+          ? Text('volume "${m.volumeName}" declared but not mounted by any container', style: hint)
+          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (final (c, path, ro, sub, init) in m.mounts)
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [
+                    Text('${init ? 'init:' : ''}$c', style: hint),
+                    Icon(Icons.arrow_forward, size: 11, color: theme.hintColor),
+                    MonoValue(sub != null ? '$path  (subPath $sub)' : path),
+                    if (ro || m.readOnly) Text('read-only', style: hint),
+                  ]),
+                ),
+            ]),
     );
   }
 }

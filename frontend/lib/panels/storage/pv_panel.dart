@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../inspector_parts.dart';
 import '../panel.dart';
 import 'common.dart';
 
@@ -20,55 +21,88 @@ class PvPanel extends ResourcePanel {
     final source = detectPvSource(spec);
     final terms = asMapList(dig(spec, ['nodeAffinity', 'required', 'nodeSelectorTerms']));
     final mountOptions = [for (final o in (spec['mountOptions'] as List? ?? const [])) '$o'];
+    final hostNodes = [
+      for (final t in terms)
+        for (final e in asMapList(t['matchExpressions']))
+          if (e['key'] == NodeSelectorView.hostnameKey && e['operator'] == 'In') ...[for (final v in (e['values'] as List? ?? const [])) '$v'],
+    ];
     return [
-      DetailSection(
-        title: 'Volume',
-        icon: Icons.storage,
-        trailing: StatusBadge(dig<String>(ctx.status, ['phase']) ?? 'Unknown', dense: true),
-        child: _VolumeBody(ctx: ctx),
-      ),
-      DetailSection(
+      // Is it bound, to what, and what happens to the data?
+      _PvHeader(ctx: ctx),
+      // Where the data lives, collapsed behind a one-line summary.
+      PodSection(
+        id: 'pv-source',
         title: source == null ? 'Source' : 'Source · ${pvSourceLabel(source.$1)}',
-        icon: Icons.album_outlined,
+        initiallyExpanded: false,
+        trailing: SectionSummary(source == null ? 'none found' : pvSourceSummary(source.$1, source.$2)),
         child: source == null
             ? const InlineMessage('No volume source found in spec.')
             : PvSourceView(type: source.$1, src: source.$2, namespace: null),
       ),
       if (terms.isNotEmpty)
-        DetailSection(
+        PodSection(
+          id: 'pv-affinity',
           title: 'Node affinity',
-          icon: Icons.dns_outlined,
+          initiallyExpanded: false,
+          trailing: SectionSummary(hostNodes.isNotEmpty ? 'only on ${hostNodes.join(', ')}' : _affinitySummary(terms)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Builder(builder: (context) {
               final theme = Theme.of(context);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text('Pods using this volume can only run on nodes matching:',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                child: Text('Pods using this volume can only run on nodes matching:', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
               );
             }),
             NodeSelectorView(terms),
           ]),
         ),
       if (mountOptions.isNotEmpty)
-        DetailSection(
+        PodSection(
+          id: 'pv-mount-options',
           title: 'Mount options',
-          icon: Icons.tune,
+          initiallyExpanded: false,
+          trailing: SectionSummary(mountOptions.join(', ')),
           child: Wrap(spacing: 4, runSpacing: 4, children: [for (final o in mountOptions) Chipish(text: o, copyValue: o)]),
         ),
     ];
   }
 }
 
-class _VolumeBody extends StatelessWidget {
+/// "zone in eu-west-1a, eu-west-1b": the first expression of the first
+/// term, its key shortened ("+ more" when there are others).
+String _affinitySummary(List<Json> terms) {
+  final exprs = [for (final t in terms) ...asMapList(t['matchExpressions']), for (final t in terms) ...asMapList(t['matchFields'])];
+  if (exprs.isEmpty) return '${terms.length} term${terms.length == 1 ? '' : 's'}';
+  final e = exprs.first;
+  final values = (e['values'] as List? ?? const []).join(', ');
+  final key = '${e['key'] ?? ''}'.split('/').last;
+  return '$key ${'${e['operator']}' == 'In' ? 'in' : '${e['operator']}'.toLowerCase()}${values.isEmpty ? '' : ' $values'}${exprs.length > 1 ? ' + more' : ''}';
+}
+
+/// "ebs.csi.aws.com","/var/local-path/pvc-…", "10.0.0.5:/exports"
+/// for a collapsed source section.
+String pvSourceSummary(String type, Json src) => switch (type) {
+      'csi' => '${src['driver'] ?? ''}',
+      'hostPath' || 'local' => '${src['path'] ?? ''}',
+      'nfs' => '${src['server'] ?? '?'}:${src['path'] ?? '?'}',
+      'iscsi' => '${src['targetPortal'] ?? ''}',
+      'awsElasticBlockStore' => '${src['volumeID'] ?? ''}',
+      'gcePersistentDisk' => '${src['pdName'] ?? ''}',
+      'azureDisk' => '${src['diskName'] ?? ''}',
+      _ => src.keys.join(', '),
+    };
+
+/// The top of the PV inspector: its phase and why it matters, capacity,
+/// reclaim policy and access, then the claim, class and provenance.
+class _PvHeader extends StatelessWidget {
   final PanelContext ctx;
-  const _VolumeBody({required this.ctx});
+  const _PvHeader({required this.ctx});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final spec = ctx.spec;
-    final phase = dig<String>(ctx.status, ['phase']) ?? '';
+    final phase = dig<String>(ctx.status, ['phase']) ?? 'Unknown';
     final reason = dig<String>(ctx.status, ['reason']);
     final message = dig<String>(ctx.status, ['message']);
     final policy = spec['persistentVolumeReclaimPolicy'] as String? ?? 'Retain';
@@ -79,83 +113,75 @@ class _VolumeBody extends StatelessWidget {
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     final claimName = claim['name'] as String?;
     final claimNs = claim['namespace'] as String?;
+    final deleting = dig<String>(ctx.metadata, ['deletionTimestamp']) != null;
+    final since = dig<String>(ctx.status, ['lastPhaseTransitionTime']);
 
-    final phaseCallout = switch (phase) {
-      'Released' => Callout(
-          severity: Severity.warn,
-          title: 'Released',
-          text: 'The claim ${claimNs ?? ''}/${claimName ?? ''} was deleted, but the volume still holds its data and '
+    final sev = switch (phase) {
+      'Bound' => Severity.ok,
+      'Available' => Severity.info,
+      'Failed' => Severity.error,
+      _ => Severity.warn,
+    };
+    final insight = switch (phase) {
+      'Released' => PodInsight(
+          Severity.warn,
+          'Released',
+          'The claim ${claimNs ?? ''}/${claimName ?? ''} was deleted, but the volume still holds its data and '
               'still points at the old claim, so no new claim can bind to it. '
               '${policy == 'Retain' ? 'Reclaim policy is Retain: back up or reuse the data, then delete the PV (and the backing storage) or clear spec.claimRef to make it Available again.' : 'The reclaim policy ($policy) should clean it up shortly; if it stays Released, check the Events tab.'}',
         ),
-      'Failed' => Callout(
-          severity: Severity.error,
-          title: 'Failed${reason != null ? ': $reason' : ''}',
-          text: 'Automatic reclamation (policy $policy) failed, so the volume is stuck. '
+      'Failed' => PodInsight(
+          Severity.error,
+          'Failed${reason != null ? ': $reason' : ''}',
+          'Automatic reclamation (policy $policy) failed, so the volume is stuck. '
               '${message ?? 'See the Events tab for the provisioner / recycler error.'} Clean up the backing storage manually and delete the PV.',
         ),
-      'Available' => const Callout(
-          severity: Severity.info,
-          title: 'Available',
-          text: 'Not bound to any claim yet. A PVC with a matching class, size, access modes and selector will bind to it.',
+      'Available' => const PodInsight(
+          Severity.info,
+          'Available',
+          'Not bound to any claim yet. A PVC with a matching class, size, access modes and selector will bind to it.',
         ),
-      'Pending' => const Callout(severity: Severity.warn, title: 'Pending', text: 'The volume is not yet available for binding.'),
+      'Pending' => const PodInsight(Severity.warn, 'Pending', 'The volume is not yet available for binding.'),
       _ => null,
     };
+    final m = RegExp(r'^([\d.]+)\s*([A-Za-z]+)$').firstMatch('${capacity ?? ''}');
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 10, children: [
-        Text(capacity == null ? '—' : prettyQuantity(capacity), style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Text([
-            modes.map(accessModeShort).join(', '),
-            spec['volumeMode'] ?? 'Filesystem',
-            if (sc != null && sc.isNotEmpty) sc,
-          ].where((s) => '$s'.isNotEmpty).join(' · '), style: hint),
-        ),
-      ]),
-      ?phaseCallout,
-      if (policy == 'Delete' && phase != 'Released')
-        const Callout(
-          severity: Severity.warn,
-          title: 'Reclaim policy: Delete',
-          text: 'Deleting the bound claim also deletes this volume and the data on its backing storage.',
-        ),
-      if (dig<String>(ctx.metadata, ['deletionTimestamp']) != null)
-        const Callout(
-          severity: Severity.warn,
-          title: 'Terminating',
-          text: 'Deletion waits for kubernetes.io/pv-protection: the volume is removed once no claim is bound to it.',
-        ),
-      const SizedBox(height: 6),
-      KeyValueTable([
+    return InspectorHeader(
+      mark: deleting ? Severity.warn : sev,
+      headline: deleting ? 'Terminating' : phase,
+      headlineTone: sev == Severity.warn || sev == Severity.error ? sev : null,
+      detail: since == null ? null : Row(children: [const Text('since '), AgeText(since, suffix: ' ago')]),
+      figures: [
+        capacity == null
+            ? const InspectorFigure('—', 'capacity')
+            : InspectorFigure(m?.group(1) ?? '$capacity', 'capacity', of: m?.group(2), tooltip: prettyQuantity(capacity)),
+        InspectorFigure(policy, 'reclaim', tooltip: _policyHint(policy)),
+        InspectorFigure(modes.isEmpty ? '—' : modes.map(accessModeShort).join(','), 'access', tooltip: modes.map((m) => '$m: ${accessModeInfo[m]?.$2 ?? ''}').join('\n')),
+      ],
+      insights: [
+        ?insight,
+        if (policy == 'Delete' && phase != 'Released')
+          const PodInsight(Severity.warn, 'Reclaim policy: Delete', 'Deleting the bound claim also deletes this volume and the data on its backing storage.'),
+        if (deleting) const PodInsight(Severity.warn, 'Terminating', 'Deletion waits for kubernetes.io/pv-protection: the volume is removed once no claim is bound to it.'),
+      ],
+      facts: [
         (
           'Claim',
-          claimName != null
-              ? ResourceLink(pvcRef(claimName, claimNs), label: '${claimNs != null ? '$claimNs/' : ''}$claimName')
-              : Text('unbound', style: hint),
+          claimName != null ? ResourceLink(pvcRef(claimName, claimNs), label: '${claimNs != null ? '$claimNs/' : ''}$claimName') : Text('unbound', style: hint),
         ),
-        ('Storage class', sc != null && sc.isNotEmpty ? ResourceLink(scRef(sc), label: sc) : Text('none (static)', style: hint)),
-        ('Reclaim policy', ValueWithHint(StatusBadge(policy, dense: true, severity: _policySeverity(policy)), hint: _policyHint(policy))),
-        ('Access modes', AccessModesView(modes)),
-        ('Volume mode', spec['volumeMode'] as String? ?? 'Filesystem'),
-        ('Provisioned by', dig<String>(ctx.metadata, ['annotations', 'pv.kubernetes.io/provisioned-by']) != null
+        ('Class', sc != null && sc.isNotEmpty ? ResourceLink(scRef(sc), label: sc) : Text('none (static)', style: hint)),
+        ('Reclaim', ValueWithHint(Text(policy, style: theme.textTheme.bodySmall), hint: _policyHint(policy))),
+        ('Access', AccessModesView(modes)),
+        ('Mode', ValueWithHint(Text(spec['volumeMode'] as String? ?? 'Filesystem', style: theme.textTheme.bodySmall),
+            hint: (spec['volumeMode'] ?? 'Filesystem') == 'Block' ? 'raw block device' : null)),
+        ('Provisioner', dig<String>(ctx.metadata, ['annotations', 'pv.kubernetes.io/provisioned-by']) != null
             ? MonoValue(dig<String>(ctx.metadata, ['annotations', 'pv.kubernetes.io/provisioned-by'])!)
             : null),
-        ('Volume attr. class', spec['volumeAttributesClassName'] as String?),
-        ('Phase since', dig<String>(ctx.status, ['lastPhaseTransitionTime']) != null
-            ? AgeText(dig<String>(ctx.status, ['lastPhaseTransitionTime']), suffix: ' ago')
-            : null),
-      ], keyWidth: 120),
-    ]);
+        ('Attr. class', spec['volumeAttributesClassName'] as String?),
+      ],
+      factsKeyWidth: 76,
+    );
   }
-
-  static Severity _policySeverity(String p) => switch (p) {
-        'Delete' => Severity.warn,
-        'Recycle' => Severity.warn,
-        _ => Severity.ok,
-      };
 
   static String _policyHint(String p) => switch (p) {
         'Delete' => 'volume + data deleted with the claim',
@@ -238,9 +264,9 @@ class PvSourceView extends StatelessWidget {
       case 'hostPath':
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           KeyValueTable([('Path', mono('path')), ('Type', s('type')?.isEmpty ?? true ? 'unchecked' : s('type'))], keyWidth: 120),
-          const Callout(
-            severity: Severity.info,
-            text: 'Data lives on one node\'s filesystem; pods rescheduled elsewhere will not see it (see Node affinity).',
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: InsightLine(Severity.info, 'Data lives on one node\'s filesystem; pods rescheduled elsewhere will not see it (see Node affinity).'),
           ),
         ]);
       case 'local':

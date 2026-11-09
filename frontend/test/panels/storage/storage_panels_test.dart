@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/storage/pv_panel.dart';
 import 'package:k8sman/panels/storage/pvc_panel.dart';
 import 'package:k8sman/panels/storage/sc_panel.dart';
+import 'package:k8sman/panels/pod/pod_section.dart';
 import 'package:k8sman/panels/registry.dart';
 
 import '../../support/harness.dart';
@@ -17,10 +19,16 @@ Json clone(Json j) => jsonDecode(jsonEncode(j)) as Json;
 
 const scKey = 'storageclasses.storage.k8s.io';
 
+Future<void> openSection(WidgetTester tester, String id) async {
+  await tester.tap(find.byKey(ValueKey('pod-section-$id')));
+  await tester.pump();
+}
+
 void main() {
   late Json pvc, pv, sc, sts, pod;
 
   setUp(() {
+    PodSectionMemory.reset();
     pvc = fixture('pvc-data-redis-0');
     pv = fixture('pv-redis');
     sc = fixture('sc-standard');
@@ -45,12 +53,14 @@ void main() {
       final app = await pumpPanel(tester, pvc, api: api());
       await saveScreenshot(tester, 'storage-pvc-bound');
 
-      expect(find.text('Claim'), findsOneWidget);
+      expect(find.text('Bound'), findsOneWidget);
       expect(find.text('requested'), findsOneWidget);
       expect(find.text('provisioned'), findsOneWidget);
       expect(find.text('RWO'), findsOneWidget);
       expect(find.textContaining('read-write by pods on a single node', findRichText: true), findsOneWidget);
       expect(find.text('standard'), findsOneWidget);
+      expect(find.text('redis #0'), findsOneWidget); // the collapsed summary
+      await openSection(tester, 'pvc-created-by');
       expect(find.text('StatefulSet redis'), findsOneWidget);
       expect(find.textContaining('template "data", replica #0'), findsOneWidget);
       // Mounted by
@@ -59,7 +69,8 @@ void main() {
       expect(find.text('/data'), findsOneWidget);
       expect(find.textContaining('Pending:'), findsNothing);
 
-      await tester.tap(find.text('pvc-9d785c8b-67b1-49c9-90b9-2b58c4e2b9cb'));
+      await openSection(tester, 'pvc-volume');
+      await tester.tap(find.text('pvc-9d785c8b-67b1-49c9-90b9-2b58c4e2b9cb').last); // the link, under its summary
       expect(app.detail?.type.kind, 'PersistentVolume');
       expect(app.detail?.name, 'pvc-9d785c8b-67b1-49c9-90b9-2b58c4e2b9cb');
     });
@@ -143,8 +154,9 @@ void main() {
       expect(find.text('Source · hostPath'), findsOneWidget);
       expect(find.text('Reclaim policy: Delete'), findsOneWidget);
       expect(find.text('demo/data-redis-0'), findsOneWidget);
-      expect(find.text('k8sman-dev-control-plane'), findsOneWidget);
       expect(find.text('rancher.io/local-path'), findsOneWidget);
+      await openSection(tester, 'pv-affinity');
+      expect(find.text('k8sman-dev-control-plane'), findsOneWidget);
 
       await tester.tap(find.text('k8sman-dev-control-plane'));
       expect(app.detail?.type.kind, 'Node');
@@ -178,7 +190,9 @@ void main() {
       await pumpPanel(tester, p, api: api());
       await saveScreenshot(tester, 'storage-pv-csi');
       expect(find.text('Source · CSI'), findsOneWidget);
-      expect(find.text('ebs.csi.aws.com'), findsOneWidget);
+      await openSection(tester, 'pv-source');
+      await openSection(tester, 'pv-affinity');
+      expect(find.text('ebs.csi.aws.com'), findsNWidgets(2)); // the summary and the driver
       expect(find.text('vol-0a1b2c3d4e5f67890'), findsOneWidget);
       expect(find.text('gp3'), findsOneWidget);
       expect(find.text('kube-system/ebs-creds'), findsOneWidget);
@@ -198,7 +212,8 @@ void main() {
       p['status'] = {'phase': 'Failed', 'message': 'recycler pod failed'};
       await pumpPanel(tester, p, api: api());
       expect(find.text('Source · NFS'), findsOneWidget);
-      expect(find.text('10.0.0.5:/exports/data'), findsOneWidget);
+      await openSection(tester, 'pv-source');
+      expect(find.text('10.0.0.5:/exports/data'), findsNWidgets(2)); // the summary and the export
       expect(find.text('read-only'), findsOneWidget);
       expect(find.textContaining('recycler pod failed'), findsOneWidget);
       expect(find.text('Node affinity'), findsNothing);
@@ -215,6 +230,7 @@ void main() {
       p['spec']['rbd'] = {'image': 'img1', 'monitors': ['10.0.0.1:6789']};
       await pumpPanel(tester, p, api: api());
       expect(find.text('Source · Ceph RBD'), findsOneWidget);
+      await openSection(tester, 'pv-source');
       expect(find.text('img1'), findsOneWidget);
     });
   });
@@ -260,6 +276,8 @@ void main() {
       ];
       (s['metadata']['annotations'] as Map).clear();
       await pumpPanel(tester, s, api: api(pvcs: [], pvs: []));
+      await openSection(tester, 'sc-parameters');
+      await openSection(tester, 'sc-topologies');
       expect(find.text('3000'), findsOneWidget);
       expect(find.text('allowed'), findsOneWidget);
       expect(find.text('eu-west-1a'), findsOneWidget);
