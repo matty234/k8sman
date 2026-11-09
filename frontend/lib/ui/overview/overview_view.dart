@@ -173,7 +173,9 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           header,
-          const Divider(),
+          // Faint, like the rule over a critical wash: a full rule here would
+          // vanish the moment a critical cluster finishes loading.
+          Divider(color: AppColors.of(context).separator.withValues(alpha: 0.3)),
           Expanded(
             child: Center(
               child: _error == null
