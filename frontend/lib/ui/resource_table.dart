@@ -19,6 +19,7 @@ import '../state/cluster_error.dart';
 import '../state/table_controller.dart';
 import '../state/table_query.dart' show cellText;
 import '../util/k8s.dart';
+import '../util/node_os.dart';
 import 'cluster_error_view.dart';
 import 'column_editor.dart';
 import 'resource_nav.dart' show showKindMenu;
@@ -35,6 +36,7 @@ import 'widgets/common.dart';
 import 'editor/resource_editor_screen.dart';
 import 'table_filter_field.dart';
 import 'widgets/group_icon.dart';
+import 'widgets/node_os_icon.dart';
 import 'widgets/namespace_picker.dart';
 import 'widgets/partial_banner.dart';
 import 'views/saved_views_ui.dart';
@@ -292,10 +294,14 @@ class _TableBodyState extends State<_TableBody> {
     final step = math.max(1, (rows.length / 500).ceil());
     for (var r = 0; r < rows.length; r += step) {
       final v = rows[r].cells.elementAtOrNull(col);
-      final t = c.type == 'age' ? (parseTime(v) != null ? formatAge(parseTime(v)!) : cellText(v)) : cellText(v);
+      final t = switch (c.type) {
+        'age' => parseTime(v) != null ? formatAge(parseTime(v)!) : cellText(v),
+        'nodeos' => nodeOsOf(nodeFromOsCell(cellText(v)))?.label ?? '',
+        _ => cellText(v),
+      };
       if (t.isEmpty) continue;
       // Usage cells add the bar and percentage beside the value.
-      best = math.max(best, measure(t, cellStyle) + switch (c.type) { 'status' => 20, 'usage' => 78, _ => 0 });
+      best = math.max(best, measure(t, cellStyle) + switch (c.type) { 'status' => 20, 'usage' => 78, 'nodeos' => 20, _ => 0 });
     }
     final fit = (best + 14).clamp(_minColumnWidth, 600.0).ceilToDouble();
     if (widths[c.name] == fit) {
@@ -635,6 +641,8 @@ class _TableBodyState extends State<_TableBody> {
       case 'bool':
         return 80;
       case 'status':
+        return 150;
+      case 'nodeos':
         return 150;
       case 'labels':
         return 260;
@@ -1390,6 +1398,18 @@ class TableCellView extends StatelessWidget {
       case 'ratio':
         // Neutral: a completed pod's 0/1 is fine, and Status carries health.
         return Text(_text(v), textAlign: TextAlign.right, maxLines: 1, style: base?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]));
+      case 'nodeos':
+        // Icon and short name; the OS image, platform and runtime in the tooltip.
+        final os = nodeOsOf(nodeFromOsCell(_text(v)));
+        if (os == null) return const SizedBox.shrink();
+        return Tooltip(
+          message: os.tooltip,
+          child: Row(children: [
+            NodeOsGlyph(os.mark),
+            const SizedBox(width: 6),
+            Flexible(child: Text(os.label, overflow: TextOverflow.ellipsis, maxLines: 1, style: base)),
+          ]),
+        );
       case 'labels':
         if (v is Map) {
           return Text(v.entries.map((e) => '${e.key}=${e.value}').join('  '), overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11));

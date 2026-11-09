@@ -128,6 +128,9 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Status", Type: "status", Query: `([.status.conditions[]? | select(.type == "Ready") | if .status == "True" then "Ready" else "NotReady" end] | first // "Unknown") + (if .spec.unschedulable then ",SchedulingDisabled" else "" end)`},
 		{Name: "Roles", Query: `[(.metadata.labels // {}) | keys[] | select(startswith("node-role.kubernetes.io/")) | ltrimstr("node-role.kubernetes.io/")] | join(",")`},
 		{Name: "Version", Query: `.status.nodeInfo.kubeletVersion`},
+		// The OS image first (so it sorts and filters by it), then the other
+		// signals the UI needs to name the OS and platform, tab-separated.
+		{Name: "OS", Type: "nodeos", Query: `if (.status.nodeInfo.osImage // .status.nodeInfo.operatingSystem) == null then null else [.status.nodeInfo.osImage, .status.nodeInfo.operatingSystem, .status.nodeInfo.kubeletVersion, .status.nodeInfo.containerRuntimeVersion, .spec.providerID, ([(.metadata.labels // {}) | keys[] | select(test("^(eks\\.amazonaws\\.com|kubernetes\\.azure\\.com|minikube\\.k8s\\.io|node\\.openshift\\.io)/|^cloud\\.google\\.com/gke-"))] | first)] | map(. // "") | join("\t") end`},
 		{Name: "Internal-IP", Query: `[.status.addresses[]? | select(.type == "InternalIP") | .address] | first`},
 		usageCPU,
 		usageMemory,

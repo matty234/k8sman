@@ -32,7 +32,9 @@ type Column struct {
 	//   unit: "cpu"|"bytes"}: the value with a bar and percentage of base,
 	//   amber from 70 and red from 90, sorted by percent), "ratio" (an
 	//   "x/y" count such as ready replicas: narrow, right-aligned, sorted
-	//   by x/y).
+	//   by x/y), "nodeos" (a node's osImage, operatingSystem, kubeletVersion,
+	//   containerRuntimeVersion, providerID and first platform label,
+	//   tab-separated: drawn as the OS icon and short name).
 	Type string `json:"type,omitempty"`
 }
 
