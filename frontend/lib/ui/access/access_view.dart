@@ -109,7 +109,6 @@ class _AccessViewState extends State<AccessView> with SingleTickerProviderStateM
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PageHeader(
         title: 'Access',
-        subtitle: const Text('RBAC: who can do what, and why'),
         actions: [
           if (!app.readOnly) ...[
             TextButton.icon(style: small, onPressed: _newRole, icon: const Icon(Icons.post_add, size: 16), label: const Text('New role')),
