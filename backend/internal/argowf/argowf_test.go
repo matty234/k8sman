@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +34,150 @@ func get(m map[string]any, path ...string) any {
 		cur = mm[p]
 	}
 	return cur
+}
+
+const runningWF = `{
+  "apiVersion": "argoproj.io/v1alpha1", "kind": "Workflow",
+  "metadata": {"name": "approval-abcde", "generateName": "approval-", "namespace": "demo", "resourceVersion": "42",
+    "labels": {"team": "a", "workflows.argoproj.io/phase": "Running", "workflows.argoproj.io/creator": "someone"},
+    "annotations": {"note": "x", "kubectl.kubernetes.io/last-applied-configuration": "{}"},
+    "ownerReferences": [{"kind": "CronWorkflow", "name": "c", "uid": "u"}]},
+  "spec": {"entrypoint": "main", "suspend": true, "shutdown": "Stop", "activeDeadlineSeconds": 0,
+    "arguments": {"parameters": [{"name": "p", "value": "1"}]}},
+  "status": {"phase": "Running", "nodes": {
+    "approval-abcde": {"id": "approval-abcde", "type": "Steps", "phase": "Running"},
+    "approval-abcde-1": {"id": "approval-abcde-1", "displayName": "approve", "type": "Suspend", "phase": "Running",
+      "outputs": {"parameters": [
+        {"name": "choice", "valueFrom": {"supplied": {}, "default": "yes"}},
+        {"name": "fixed", "value": "v"}]}},
+    "approval-abcde-2": {"id": "approval-abcde-2", "type": "Suspend", "phase": "Succeeded"}
+  }}
+}`
+
+func TestShutdownAndSuspendPatches(t *testing.T) {
+	wf := mustJSON(t, runningWF)
+	p, err := ShutdownPatch(wf, "Terminate")
+	if err != nil || get(p, "spec", "shutdown") != "Terminate" {
+		t.Fatalf("ShutdownPatch = %v, %v", p, err)
+	}
+	if _, err := ShutdownPatch(wf, "Pause"); err == nil {
+		t.Error("unknown strategy accepted")
+	}
+	if p, err := SuspendPatch(wf); err != nil || get(p, "spec", "suspend") != true {
+		t.Fatalf("SuspendPatch = %v, %v", p, err)
+	}
+	done := mustJSON(t, `{"status": {"phase": "Succeeded"}}`)
+	if _, err := ShutdownPatch(done, "Stop"); err == nil {
+		t.Error("stopping a completed workflow was allowed")
+	}
+	if _, err := SuspendPatch(done); err == nil {
+		t.Error("suspending a completed workflow was allowed")
+	}
+}
+
+func TestResumePatch(t *testing.T) {
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	wf := mustJSON(t, runningWF)
+	if !Suspended(wf) {
+		t.Fatal("Suspended = false")
+	}
+	p, err := ResumePatch(wf, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := p["spec"].(map[string]any)
+	if v, ok := spec["suspend"]; !ok || v != nil {
+		t.Errorf("spec.suspend not cleared: %v", spec)
+	}
+	if get(p, "metadata", "resourceVersion") != "42" {
+		t.Error("missing resourceVersion precondition")
+	}
+	nodes := get(p, "status", "nodes").(map[string]any)
+	if len(nodes) != 1 {
+		t.Fatalf("patched nodes = %v, want only the running suspend node", nodes)
+	}
+	n := nodes["approval-abcde-1"].(map[string]any)
+	if n["phase"] != "Succeeded" || n["finishedAt"] != "2026-01-02T03:04:05Z" {
+		t.Errorf("node patch = %v", n)
+	}
+	params := get(n, "outputs", "parameters").([]any)
+	if params[0].(map[string]any)["value"] != "yes" || params[1].(map[string]any)["value"] != "v" {
+		t.Errorf("supplied output not defaulted: %v", params)
+	}
+	// The input must not be modified.
+	if get(wf, "status", "nodes", "approval-abcde-1", "phase") != "Running" {
+		t.Error("ResumePatch mutated its input")
+	}
+
+	// Nothing to resume.
+	idle := mustJSON(t, `{"spec": {}, "status": {"phase": "Running", "nodes": {}}}`)
+	if p, err := ResumePatch(idle, now); err != nil || p != nil {
+		t.Errorf("idle ResumePatch = %v, %v", p, err)
+	}
+	// A supplied output without a default can't be resumed blindly.
+	noDef := mustJSON(t, `{"status": {"nodes": {"n": {"type": "Suspend", "phase": "Running",
+		"outputs": {"parameters": [{"name": "x", "valueFrom": {"supplied": {}}}]}}}}}`)
+	if _, err := ResumePatch(noDef, now); err == nil {
+		t.Error("expected an error for a supplied output without default")
+	}
+	off := mustJSON(t, `{"status": {"offloadNodeStatusVersion": "abc"}}`)
+	if _, err := ResumePatch(off, now); err == nil {
+		t.Error("expected an error for offloaded node status")
+	}
+}
+
+func TestResubmit(t *testing.T) {
+	out := Resubmit(mustJSON(t, runningWF))
+	if get(out, "metadata", "generateName") != "approval-" || get(out, "metadata", "name") != nil {
+		t.Errorf("metadata = %v", out["metadata"])
+	}
+	if get(out, "metadata", "namespace") != "demo" || get(out, "metadata", "ownerReferences") != nil || out["status"] != nil {
+		t.Errorf("namespace/owners/status wrong: %v", out)
+	}
+	labels := get(out, "metadata", "labels").(map[string]any)
+	if labels["team"] != "a" || labels[LabelResubmittedFrom] != "approval-abcde" || labels[LabelPhase] != nil || labels[LabelCreator] != nil {
+		t.Errorf("labels = %v", labels)
+	}
+	ann := get(out, "metadata", "annotations").(map[string]any)
+	if ann["note"] != "x" || ann["kubectl.kubernetes.io/last-applied-configuration"] != nil {
+		t.Errorf("annotations = %v", ann)
+	}
+	spec := out["spec"].(map[string]any)
+	if spec["shutdown"] != nil || spec["activeDeadlineSeconds"] != nil || get(spec, "arguments", "parameters") == nil {
+		t.Errorf("spec = %v", spec)
+	}
+	// No generateName: name + "-".
+	plain := Resubmit(mustJSON(t, `{"metadata": {"name": "solo"}, "spec": {"activeDeadlineSeconds": 60}}`))
+	if get(plain, "metadata", "generateName") != "solo-" || get(plain, "spec", "activeDeadlineSeconds") == nil {
+		t.Errorf("plain resubmit = %v", plain)
+	}
+}
+
+func TestFromCronWorkflow(t *testing.T) {
+	cron := mustJSON(t, `{"apiVersion": "argoproj.io/v1alpha1", "kind": "CronWorkflow",
+	  "metadata": {"name": "nightly", "namespace": "demo", "uid": "cron-uid", "labels": {"workflows.argoproj.io/controller-instanceid": "i1", "other": "no"}},
+	  "spec": {"schedules": ["0 * * * *"], "workflowMetadata": {"labels": {"team": "a"}, "annotations": {"a": "b"}},
+	    "workflowSpec": {"entrypoint": "main", "templates": [{"name": "main", "container": {"image": "busybox"}}]}}}`)
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	wf := FromCronWorkflow(cron, now)
+	if get(wf, "metadata", "generateName") != "nightly-" || get(wf, "metadata", "namespace") != "demo" || wf["kind"] != "Workflow" {
+		t.Errorf("metadata = %v", wf["metadata"])
+	}
+	labels := get(wf, "metadata", "labels").(map[string]any)
+	if labels[LabelCronWorkflow] != "nightly" || labels["team"] != "a" || labels[LabelControllerInstanceID] != "i1" || labels["other"] != nil {
+		t.Errorf("labels = %v", labels)
+	}
+	ann := get(wf, "metadata", "annotations").(map[string]any)
+	if ann[AnnotationScheduledTime] != "2026-01-02T03:04:05Z" || ann["a"] != "b" {
+		t.Errorf("annotations = %v", ann)
+	}
+	owner := get(wf, "metadata", "ownerReferences").([]any)[0].(map[string]any)
+	if owner["kind"] != "CronWorkflow" || owner["uid"] != "cron-uid" || owner["controller"] != true {
+		t.Errorf("owner = %v", owner)
+	}
+	if get(wf, "spec", "entrypoint") != "main" {
+		t.Errorf("spec = %v", wf["spec"])
+	}
 }
 
 func TestFromTemplateAndValidate(t *testing.T) {
