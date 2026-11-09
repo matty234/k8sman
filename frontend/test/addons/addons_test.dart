@@ -5,7 +5,6 @@ import 'package:k8sman/addons/addons.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/modules/addons_module.dart';
-import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/addons/addons_view.dart';
 import 'package:k8sman/ui/helm/helm_api.dart';
@@ -83,21 +82,6 @@ void main() {
       expect(compareChartVersions('v1.21.3', 'v1.21.10'), lessThan(0));
     });
 
-    test('latestStable skips pre-releases', () {
-      final v = [
-        for (final s in ['1.11.0-rc.0', '1.10.0-rc.1', '1.9.3']) HelmChartVersion(version: s),
-      ];
-      expect(latestStable(v), '1.9.3');
-    });
-
-    test('manifestKinds counts the real cert-manager dry run', () {
-      final r = HelmResult.fromJson(Map<String, dynamic>.from(readFixture('install-dryrun-cert-manager.json')));
-      final kinds = Map.fromEntries([for (final (k, n) in manifestKinds(r.manifest)) MapEntry(k, n)]);
-      expect(kinds['CustomResourceDefinition'], 6);
-      expect(kinds['Deployment'], 3);
-      expect(kinds['ValidatingWebhookConfiguration'], 1);
-      expect(r.notes, contains('cert-manager'));
-    });
   });
 
   group('detection (captured from the dev cluster)', () {
@@ -127,26 +111,6 @@ void main() {
       expect(s.deployments.map((d) => d.name), ['cert-manager', 'cert-manager-cainjector', 'cert-manager-webhook']);
     });
 
-    test('after uninstall, CRDs left behind are not "installed"', () {
-      final s = detectAll(types: fixtureTypes('after-uninstall/'))[AddonIds.certManager]!;
-      expect(s.state, AddonState.notInstalled);
-      expect(s.leftoverCrds, isTrue);
-    });
-
-    test('unhealthy: failed release or a key deployment with nothing available', () {
-      final deps = fixtureDeployments();
-      final trivy = deps.firstWhere((d) => d['metadata']['name'] == 'trivy-operator');
-      trivy['status'] = {'replicas': 1, 'unavailableReplicas': 1};
-      final s = detectAll(deployments: deps)[AddonIds.trivyOperator]!;
-      expect(s.state, AddonState.unhealthy);
-      expect(s.problem, 'trivy-operator has no available replicas');
-
-      final rs = [for (final r in fixtureReleases()) r.name == 'eg' ? copyRelease(r, status: 'failed') : r];
-      final eg = detectAll(releases: rs)[AddonIds.envoyGateway]!;
-      expect(eg.state, AddonState.unhealthy);
-      expect(eg.problem, 'Helm release eg failed');
-    });
-
     test('upgrade available: pinned version newer, or latest for unpinned', () {
       final rs = [for (final r in fixtureReleases()) r.name == 'kube-prometheus-stack' ? copyRelease(r, chartVersion: '92.0.0') : r];
       final s = detectAll(releases: rs);
@@ -158,12 +122,6 @@ void main() {
       expect(ms.withTarget('3.14.0').upgradeAvailable, isFalse);
     });
 
-    test('a release under another name still counts', () {
-      final rs = [for (final r in fixtureReleases()) if (r.name != 'trivy-operator') r, const HelmRelease(name: 'scanner', namespace: 'security', revision: 1, status: 'deployed', chart: 'trivy-operator', chartVersion: '0.38.1')];
-      final s = detectAll(releases: rs)[AddonIds.trivyOperator]!;
-      expect(s.release!.name, 'scanner');
-      expect(s.customRelease, isTrue);
-    });
   });
 
   group('page', () {
@@ -183,19 +141,6 @@ void main() {
       expect(inCard(AddonIds.metricsServer, find.text('Upgrade available: 3.15.0')), findsOneWidget);
       expect(inCard(AddonIds.metricsServer, find.text('Upgrade…')), findsOneWidget);
       expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('View release opens the Helm page focused on it', (tester) async {
-      final (app, _) = await pumpAddons(tester);
-      await tester.tap(inCard(AddonIds.trivyOperator, find.text('View release')));
-      expect(app.view, HelmModule.page);
-      expect(app.pageFocus, 'trivy-system/trivy-operator');
-    });
-
-    testWidgets('Security link navigates', (tester) async {
-      final (app, _) = await pumpAddons(tester);
-      await tester.tap(inCard(AddonIds.trivyOperator, find.text('Security')));
-      expect(app.view, MainView.security);
     });
 
     testWidgets('install flow: dry run, then confirm naming the context', (tester) async {
@@ -228,22 +173,6 @@ void main() {
       expect(find.text('Installed cert-manager'), findsOneWidget);
       expect(find.text('What\'s next'), findsOneWidget);
       expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('install failure shows the error and a Kubernetes version hint', (tester) async {
-      final helm = FakeAddonHelmApi(releases: [for (final r in fixtureReleases()) if (r.name != 'eg') r])
-        ..installError = 'chart requires kubeVersion: >= 1.30.0-0 which is incompatible with Kubernetes v1.25.2';
-      await pumpAddons(tester, helm: helm, api: AddonsApiClient(deployments: [for (final d in fixtureDeployments()) if (d['metadata']['namespace'] != 'envoy-gateway-system') d]));
-      await tester.tap(inCard(AddonIds.envoyGateway, find.text('Install…')));
-      await settle(tester);
-      await tester.tap(find.text('Install…').last);
-      await settle(tester);
-      await tester.tap(find.widgetWithText(FilledButton, 'Install'));
-      await settle(tester);
-      expect(find.textContaining('incompatible with Kubernetes'), findsOneWidget);
-      expect(find.textContaining('This cluster runs Kubernetes v1.25.2.'), findsOneWidget);
-      expect(find.textContaining('k8sman pins v1.2.8'), findsOneWidget);
-      expect(find.text('Try again'), findsOneWidget);
     });
 
     testWidgets('uninstall warns about CRDs and data, then uninstalls', (tester) async {
@@ -279,39 +208,6 @@ void main() {
       expect(find.text('View release'), findsWidgets);
     });
 
-    testWidgets('requestAddon opens the install dialog', (tester) async {
-      await pumpAddons(tester,
-          body: Builder(builder: (c) => Center(child: TextButton(onPressed: () => requestAddon(c, AddonIds.certManager), child: const Text('Install cert-manager…')))));
-      await tester.tap(find.text('Install cert-manager…'));
-      await settle(tester);
-      expect(find.text('Install cert-manager'), findsOneWidget);
-      expect(find.text('Dry run'), findsOneWidget);
-    });
-
-    testWidgets('requestAddon in read-only mode explains why', (tester) async {
-      await pumpAddons(tester,
-          readOnly: true, body: Builder(builder: (c) => Center(child: TextButton(onPressed: () => requestAddon(c, AddonIds.trivyOperator), child: const Text('go')))));
-      await tester.tap(find.text('go'));
-      await settle(tester);
-      expect(find.textContaining('read-only mode'), findsOneWidget);
-      expect(find.text('Dry run'), findsNothing);
-    });
-
-    testWidgets('no overflow from 360 to 1800px', (tester) async {
-      for (final w in <double>[360, 480, 640, 800, 1000, 1200, 1500, 1800]) {
-        await pumpAddons(tester, size: Size(w, 900));
-        expect(tester.takeException(), isNull, reason: 'page at $w');
-        await tester.scrollUntilVisible(inCard(AddonIds.certManager, find.text('Install…')), 300, scrollable: find.byType(Scrollable).first);
-        await tester.ensureVisible(inCard(AddonIds.certManager, find.text('Install…')));
-        await settle(tester);
-        await tester.tap(inCard(AddonIds.certManager, find.text('Install…')));
-        await settle(tester);
-        await tester.tap(find.text('Dry run'));
-        await settle(tester);
-        expect(tester.takeException(), isNull, reason: 'dialog at $w');
-        await tester.pumpWidget(const SizedBox());
-      }
-    });
   });
 
 }

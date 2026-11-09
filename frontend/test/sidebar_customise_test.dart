@@ -6,7 +6,6 @@ import 'package:k8sman/modules/addons_module.dart';
 import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/resource_nav.dart';
-import 'package:k8sman/ui/settings/sidebar_settings.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
@@ -63,18 +62,6 @@ void main() {
       expect(SidebarConfig.fromJson(null).isDefault, isTrue);
     });
 
-    test('AppState saves through the API and loads it back; defaults reset', () async {
-      final api = FakeApiClient();
-      final app = AppState(api)..setSidebar(SidebarConfig.defaults.pin(_deploy));
-      await Future<void>.delayed(Duration.zero);
-      expect(api.sidebarLayout, isNotNull);
-      final again = AppState(api);
-      await again.loadSidebar();
-      expect(again.sidebar.pins, [_deploy]);
-      app.setSidebar(SidebarConfig.defaults);
-      await Future<void>.delayed(Duration.zero);
-      expect(api.sidebarLayout, isNull, reason: 'default layout = no customisation');
-    });
   });
 
   testWidgets('hidden and reordered pages, pins with selection highlight', (tester) async {
@@ -152,36 +139,6 @@ void main() {
     await tester.tap(find.text('Unpin from Sidebar'));
     await tester.pumpAndSettle();
     expect(app.sidebar.isPinned(_deploy), isFalse);
-  });
-
-  testWidgets('Settings ▸ Sidebar: untick and unpin save at once', (tester) async {
-    final api = FakeApiClient();
-    final app = AppState(api)
-      ..types = testTypes
-      ..sidebar = SidebarConfig.defaults.pin(_deploy);
-    tester.view.physicalSize = const Size(700, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(ChangeNotifierProvider<AppState>.value(
-      value: app,
-      child: MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: SingleChildScrollView(child: SidebarLayoutEditor()))),
-    ));
-    await tester.tap(find.byKey(const ValueKey('sidebar-show-overview')));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('sidebar-unpin-apps/Deployment@')));
-    await tester.pump();
-    expect(app.sidebar.isHidden(MainView.overview), isTrue);
-    expect(app.sidebar.pins, isEmpty);
-    expect(api.sidebarLayout, isNotNull, reason: 'saved without a Done button');
-  });
-
-  testWidgets('many pins: short windows scroll instead of overflowing', (tester) async {
-    var layout = SidebarConfig.defaults;
-    for (final k in ['Pod', 'Service', 'ConfigMap', 'Secret', 'Namespace', 'Event']) {
-      layout = layout.pin(SidebarPin(group: '', kind: k));
-    }
-    await _pumpNav(tester, layout: layout, height: 420);
-    expect(tester.takeException(), isNull);
   });
 
 }

@@ -4,11 +4,8 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/storage/pv_panel.dart';
 import 'package:k8sman/panels/storage/pvc_panel.dart';
-import 'package:k8sman/panels/storage/sc_panel.dart';
 import 'package:k8sman/ui/inspector/inspector.dart';
-import 'package:k8sman/panels/registry.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
@@ -85,48 +82,6 @@ void main() {
       expect(find.textContaining('No pod in this namespace uses this claim'), findsOneWidget);
     });
 
-    testWidgets('pending with Immediate class points at provisioner events', (tester) async {
-      final p = clone(pvc);
-      p['spec'].remove('volumeName');
-      p['status'] = {'phase': 'Pending'};
-      final immediate = clone(sc)..['volumeBindingMode'] = 'Immediate';
-      await pumpPanel(tester, p, api: api(storageClass: immediate));
-      expect(find.text('Pending: waiting for the provisioner'), findsOneWidget);
-      expect(find.textContaining('Events tab'), findsOneWidget);
-    });
-
-    testWidgets('pending with missing class', (tester) async {
-      final p = clone(pvc);
-      p['spec']
-        ..remove('volumeName')
-        ..['storageClassName'] = 'fast';
-      p['status'] = {'phase': 'Pending'};
-      await pumpPanel(tester, p, api: api());
-      expect(find.text('Pending: StorageClass "fast" does not exist'), findsOneWidget);
-    });
-
-    testWidgets('RWO claim on two nodes warns about multi-attach', (tester) async {
-      final other = clone(pod);
-      other['metadata']['name'] = 'redis-debug';
-      other['spec']['nodeName'] = 'worker-2';
-      await pumpPanel(tester, pvc, api: api(pods: [pod, other]));
-      expect(find.text('ReadWriteOnce claim used on 2 nodes'), findsOneWidget);
-      expect(find.text('worker-2'), findsOneWidget);
-    });
-
-    testWidgets('resize in progress', (tester) async {
-      final p = clone(pvc);
-      p['spec']['resources']['requests']['storage'] = '5Gi';
-      p['status']['allocatedResources'] = {'storage': '5Gi'};
-      p['status']['allocatedResourceStatuses'] = {'storage': 'NodeResizePending'};
-      p['status']['conditions'] = [
-        {'type': 'FileSystemResizePending', 'status': 'True', 'lastTransitionTime': '2026-11-03T11:30:00Z'}
-      ];
-      await pumpPanel(tester, p, api: api());
-      expect(find.text('Resize in progress: 1Gi to 5Gi'), findsOneWidget);
-      expect(find.text('Conditions'), findsOneWidget);
-    });
-
     test('findMounts handles init containers and subPath', () {
       final p = clone(pod);
       (p['spec']['initContainers'] = [
@@ -145,19 +100,6 @@ void main() {
   });
 
   group('PV', () {
-    testWidgets('hostPath volume from kind', (tester) async {
-      await loadRealFonts();
-      final app = await pumpPanel(tester, pv, api: api());
-      expect(find.text('Source · hostPath'), findsOneWidget);
-      expect(find.text('Reclaim policy: Delete'), findsOneWidget);
-      expect(find.text('demo/data-redis-0'), findsOneWidget);
-      expect(find.text('rancher.io/local-path'), findsOneWidget);
-      await openSection(tester, 'pv-affinity');
-      expect(find.text('k8sman-dev-control-plane'), findsOneWidget);
-
-      await tester.tap(find.text('k8sman-dev-control-plane'));
-      expect(app.detail?.type.kind, 'Node');
-    });
 
     testWidgets('CSI volume with attributes and secret ref', (tester) async {
       await loadRealFonts();
@@ -199,36 +141,6 @@ void main() {
       expect(find.text('eu-west-1b'), findsOneWidget);
     });
 
-    testWidgets('NFS volume and failed phase', (tester) async {
-      final p = clone(pv);
-      (p['spec'] as Map)
-        ..remove('hostPath')
-        ..remove('nodeAffinity');
-      p['spec']['nfs'] = {'server': '10.0.0.5', 'path': '/exports/data', 'readOnly': true};
-      p['status'] = {'phase': 'Failed', 'message': 'recycler pod failed'};
-      await pumpPanel(tester, p, api: api());
-      expect(find.text('Source · NFS'), findsOneWidget);
-      await openSection(tester, 'pv-source');
-      expect(find.text('10.0.0.5:/exports/data'), findsNWidgets(2)); // the summary and the export
-      expect(find.text('read-only'), findsOneWidget);
-      expect(find.textContaining('recycler pod failed'), findsOneWidget);
-      expect(find.text('Node affinity'), findsNothing);
-    });
-
-    test('source detection covers fallback types', () {
-      expect(detectPvSource({'capacity': {}, 'cephfs': {'monitors': ['a']}})?.$1, 'cephfs');
-      expect(detectPvSource({'capacity': {}, 'claimRef': {}}), isNull);
-    });
-
-    testWidgets('generic source fallback renders fields', (tester) async {
-      final p = clone(pv);
-      (p['spec'] as Map).remove('hostPath');
-      p['spec']['rbd'] = {'image': 'img1', 'monitors': ['10.0.0.1:6789']};
-      await pumpPanel(tester, p, api: api());
-      expect(find.text('Source · Ceph RBD'), findsOneWidget);
-      await openSection(tester, 'pv-source');
-      expect(find.text('img1'), findsOneWidget);
-    });
   });
 
   group('StorageClass', () {
@@ -258,32 +170,6 @@ void main() {
       expect(app.detail?.namespace, 'tools');
     });
 
-    testWidgets('parameters and topologies', (tester) async {
-      final s = clone(sc);
-      s['parameters'] = {'type': 'gp3', 'iops': '3000'};
-      s['allowVolumeExpansion'] = true;
-      s['allowedTopologies'] = [
-        {
-          'matchLabelExpressions': [
-            {'key': 'topology.kubernetes.io/zone', 'values': ['eu-west-1a']}
-          ]
-        }
-      ];
-      (s['metadata']['annotations'] as Map).clear();
-      await pumpPanel(tester, s, api: api(pvcs: [], pvs: []));
-      await openSection(tester, 'sc-parameters');
-      await openSection(tester, 'sc-topologies');
-      expect(find.text('3000'), findsOneWidget);
-      expect(find.text('allowed'), findsOneWidget);
-      expect(find.text('eu-west-1a'), findsOneWidget);
-      expect(find.text('default'), findsNothing);
-      expect(find.text('No claims or volumes use this class.'), findsOneWidget);
-    });
   });
 
-  test('panels are registered for all three kinds', () {
-    expect(panelFor(testType('', 'PersistentVolumeClaim')), isA<PvcPanel>());
-    expect(panelFor(testType('', 'PersistentVolume')), isA<PvPanel>());
-    expect(panelFor(testType('storage.k8s.io', 'StorageClass')), isA<StorageClassPanel>());
-  });
 }

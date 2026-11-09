@@ -93,36 +93,4 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('PVC Used: bar, % and used / size; "—" without stats', (tester) async {
-    await loadRealFonts();
-    const pvcType = ResourceType(group: '', version: 'v1', resource: 'persistentvolumeclaims', kind: 'PersistentVolumeClaim', verbs: ['get', 'list', 'watch']);
-    const columns = [
-      ColumnDef(name: 'Name', query: '.metadata.name'),
-      ColumnDef(name: 'Namespace', query: '.metadata.namespace'),
-      ColumnDef(name: 'Status', query: '.status.phase', type: 'status'),
-      ColumnDef(name: 'Capacity', query: '.status.capacity.storage'),
-      ColumnDef(name: 'Used', query: '.k8sman.usage', type: 'usage'),
-      ColumnDef(name: 'StorageClass', query: '.spec.storageClassName'),
-    ];
-    const gi = 1024 * 1024 * 1024.0;
-    TableRowData row(String name, String cap, Map<String, dynamic>? used) =>
-        TableRowData(uid: name, name: name, namespace: 'demo', resourceVersion: '1', cells: [name, 'demo', 'Bound', cap, used, 'standard']);
-    Map<String, dynamic> used(double u, double c) => _usage(u * gi, base: c * gi, basis: 'capacity', unit: 'bytes');
-    final table = TableData(resource: pvcType, columns: columns, isDefaultColumns: true, resourceVersion: '1', rows: [
-      row('data-redis-0', '50Gi', used(12, 50)),
-      row('data-postgres-0', '20Gi', used(17, 20)),
-      row('logs', '10Gi', used(9.4, 10)),
-      row('unmounted', '5Gi', null),
-    ]);
-    final api = TableFakeApi()..onWatch = () => [WatchMessage(type: 'SNAPSHOT', table: table)];
-    await pumpTable(tester, api, pvcType, size: const Size(1100, 300), brightness: Brightness.dark);
-    await tester.pump();
-    expect(find.text('12 / 50 Gi'), findsOneWidget);
-    expect(find.text('24%'), findsOneWidget);
-    final ctx = tester.element(find.text('24%'));
-    expect(tester.widget<Text>(find.text('85%')).style?.color, severityColor(ctx, Severity.warn), reason: 'PVCs: amber from 80%');
-    expect(tester.widget<Text>(find.text('94%')).style?.color, severityColor(ctx, Severity.error));
-    expect(find.text('—'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
 }

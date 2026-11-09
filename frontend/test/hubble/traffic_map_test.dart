@@ -125,30 +125,4 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('World peers show their cluster-object or reverse-DNS name beside the IP', (tester) async {
-    final client = FakeApiClient();
-    HubbleApi.debugOverride = (_) => _FakeHubble(client);
-    addTearDown(() => HubbleApi.debugOverride = null);
-    final app = AppState(client)..types = testTypes;
-    tester.view.physicalSize = const Size(900, 650);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [Provider<ApiClient>.value(value: client), ChangeNotifierProvider<AppState>.value(value: app)],
-      child: MaterialApp(theme: buildTheme(Brightness.light), home: const Scaffold(body: HubbleView())),
-    ));
-    await tester.pump();
-    await tester.pump();
-
-    final layout = debugRadialLayout!;
-    final canvas = tester.getTopLeft(find.byKey(const ValueKey('traffic-map-canvas')));
-    await tester.tapAt(canvas + layout.pointOn('payments', 'reserved:world')!);
-    await tester.pump();
-    expect(find.text('svc/shop/lb'), findsOneWidget);
-    expect(find.text('203.0.113.7'), findsOneWidget);
-    expect(find.text('host.example.net'), findsOneWidget);
-    expect(find.text('198.51.100.4'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-  });
 }

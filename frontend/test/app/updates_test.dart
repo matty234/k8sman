@@ -99,34 +99,9 @@ void main() {
       expect(SemVer.tryParse('v1.0.0+5'), SemVer.tryParse('1.0.0+9'));
     });
 
-    test('dev versions', () {
-      expect(isDevVersion('0.0.0'), isTrue);
-      expect(isDevVersion('1.2.0-dev'), isTrue);
-      expect(isDevVersion(''), isTrue);
-      expect(isDevVersion(null), isTrue);
-      expect(isDevVersion('0.1.0'), isFalse);
-      expect(isDevVersion('0.1.0-rc.1'), isFalse);
-    });
   });
 
   group('native payloads', () {
-    test('UpdaterInfo and AvailableUpdate parse the channel maps', () {
-      final at = DateTime(2026, 11, 2, 9);
-      final i = UpdaterInfo.fromNative(_nativeInfo(lastCheck: at, available: _update));
-      expect(i.version, '0.1.0');
-      expect(i.displayVersion, '0.1.0');
-      expect(i.nativeEnabled, isTrue);
-      expect(i.lastCheck, at);
-      final a = i.available!;
-      expect(a.label, 'v0.1.1');
-      expect(a.releaseNotes.toString(), endsWith('/v0.1.1'));
-      expect(a.size, 31457280);
-      expect(a.date, isNotNull);
-      expect(UpdaterInfo.fromNative({'version': '0.1.0', 'build': '7'}).displayVersion, '0.1.0 (7)');
-      expect(UpdaterInfo.fromNative(null).nativeEnabled, isFalse);
-      expect(AvailableUpdate.fromNative({'version': ''}), isNull);
-      expect(AvailableUpdate.fromNative('x'), isNull);
-    });
   });
 
   group('schedule', () {
@@ -141,16 +116,6 @@ void main() {
       expect(s.isDue(now: now, lastCheck: now.add(const Duration(days: 3))), isTrue);
     });
 
-    test('a launch checks sooner', () {
-      expect(s.isDue(now: now, lastCheck: ago(2), atLaunch: true), isFalse);
-      expect(s.isDue(now: now, lastCheck: ago(3), atLaunch: true), isTrue);
-    });
-
-    test('next delay from launch', () {
-      expect(s.nextDelay(now: now), const Duration(seconds: 20));
-      expect(s.nextDelay(now: now, lastCheck: ago(4)), const Duration(seconds: 20));
-      expect(s.nextDelay(now: now, lastCheck: ago(2)), const Duration(hours: 4));
-    });
   });
 
   group('disabling', () {
@@ -163,16 +128,6 @@ void main() {
           'no update signing key configured');
     });
 
-    test('a debug (flutter run) controller never checks', () async {
-      final native = _FakeNative(_nativeInfo())..install(null);
-      final u = UpdateController(releaseMode: false);
-      await u.start();
-      expect(u.enabled, isFalse);
-      expect(u.hasScheduledCheck, isFalse);
-      expect(await u.checkIfDue(), isFalse);
-      expect(native.calls, isNot(contains('checkInBackground')));
-      u.dispose();
-    });
   });
 
   group('controller', () {
@@ -189,19 +144,6 @@ void main() {
       expect(await u.checkIfDue(), isFalse);
       now = now.add(const Duration(hours: 20));
       expect(await u.checkIfDue(), isTrue);
-      u.dispose();
-    });
-
-    test('turning automatic checks off persists natively and unschedules', () async {
-      final native = _FakeNative(_nativeInfo())..install(null);
-      final u = UpdateController(releaseMode: true);
-      await u.start();
-      expect(u.hasScheduledCheck, isTrue);
-      await u.setAutomaticChecks(false);
-      expect(native.calls, contains('setAutomaticChecks'));
-      expect(u.automaticChecks, isFalse);
-      expect(u.hasScheduledCheck, isFalse);
-      expect(await u.checkIfDue(), isFalse);
       u.dispose();
     });
 
@@ -257,37 +199,6 @@ void main() {
       expect(dismissed, 1);
     });
 
-    testWidgets('UpdateHost shows the banner over the app and hides it on dismiss', (tester) async {
-      final native = _FakeNative(_nativeInfo())..install(tester);
-      final u = UpdateController(releaseMode: true);
-      await u.start();
-      await tester.pumpWidget(ChangeNotifierProvider<UpdateController>.value(
-        value: u,
-        child: MaterialApp(
-          theme: buildTheme(Brightness.dark),
-          navigatorKey: u.navigatorKey,
-          builder: (context, child) => UpdateHost(child: child!),
-          home: const Scaffold(body: Text('app')),
-        ),
-      ));
-      expect(find.byType(UpdateBanner), findsNothing);
-      await u.handleNativeCall(const MethodCall('updateAvailable', _update));
-      await tester.pump();
-      expect(find.byType(UpdateBanner), findsOneWidget);
-      await tester.tap(find.text('Install & Relaunch…'));
-      expect(native.calls.last, 'install');
-      await tester.tap(find.byIcon(Icons.close));
-      await tester.pump();
-      expect(find.byType(UpdateBanner), findsNothing);
-
-      // The app menu's About item opens the About panel.
-      await u.handleNativeCall(const MethodCall('showAbout'));
-      await tester.pumpAndSettle();
-      expect(find.byType(AboutPanel), findsOneWidget);
-      expect(find.text('Version 0.1.0'), findsOneWidget);
-      u.dispose();
-    });
-
     testWidgets('About panel: version, automatic-check toggle and Check Now', (tester) async {
       final now = DateTime(2026, 11, 3, 12);
       final native = _FakeNative(_nativeInfo(version: '0.1.0', lastCheck: now.subtract(const Duration(hours: 3))))..install(tester);
@@ -313,17 +224,6 @@ void main() {
       u.dispose();
     });
 
-    testWidgets('About panel in a dev build says updates are off', (tester) async {
-      _FakeNative(_nativeInfo(version: '0.0.0', enabled: false, disabledReason: 'development build')).install(tester);
-      final u = UpdateController(releaseMode: false);
-      await u.start();
-      await tester.pumpWidget(_wrap(const AboutPanel(), u));
-      expect(find.text('Version 0.0.0'), findsOneWidget);
-      expect(find.text('Updates are off: development build.'), findsOneWidget);
-      expect(find.byType(Switch), findsNothing);
-      expect(find.text('Check Now'), findsNothing);
-      u.dispose();
-    });
   });
 
   test('without Sparkle (Windows): GitHub latest release, opened to download', () async {

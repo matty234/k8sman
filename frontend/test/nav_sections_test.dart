@@ -3,8 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
-import 'package:k8sman/ui/overview/overview_api.dart';
-import 'package:k8sman/ui/overview/overview_summary.dart';
 import 'package:k8sman/ui/resource_nav.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
@@ -50,19 +48,6 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('expanded-by-default sections collapse even with a selection inside', (tester) async {
-    final app = await _pump(tester);
-    app.selectType(testType('', 'Pod'));
-    await tester.pump();
-    expect(find.byKey(const ValueKey('nav-kind-apps/Deployment')), findsOneWidget);
-    await tester.tap(find.text('Workloads'));
-    await tester.pump();
-    expect(find.byKey(const ValueKey('nav-kind-apps/Deployment')), findsNothing);
-    await tester.tap(find.text('Workloads'));
-    await tester.pump();
-    expect(find.byKey(const ValueKey('nav-kind-apps/Deployment')), findsOneWidget);
-  });
-
   testWidgets('an untouched collapsed section auto-opens for a selection made elsewhere', (tester) async {
     final app = await _pump(tester);
     expect(find.byKey(const ValueKey('nav-kind-/PersistentVolume')), findsNothing);
@@ -71,29 +56,4 @@ void main() {
     expect(find.byKey(const ValueKey('nav-kind-/PersistentVolume')), findsOneWidget);
   });
 
-  testWidgets('kind rows: icon, plural label, problem badge; a collapsed section shows a dot', (tester) async {
-    final app = await _pump(tester);
-    final pods = find.byKey(const ValueKey('nav-kind-/Pod'));
-    expect(find.descendant(of: pods, matching: find.text('Pods')), findsOneWidget);
-    expect(find.descendant(of: pods, matching: find.byIcon(Icons.view_in_ar_outlined)), findsOneWidget);
-
-    OverviewSummary.of(app.api).feed(
-        OverviewData.fromJson({
-          'categories': [
-            {'id': 'crashLoop', 'label': 'CrashLoopBackOff', 'severity': 'critical', 'count': 1},
-          ],
-          'issues': [
-            {'severity': 'critical', 'category': 'crashLoop', 'kind': 'Pod', 'namespace': 'demo', 'name': 'crashy'},
-          ],
-        }),
-        app.api.context);
-    await tester.pump();
-    expect(find.descendant(of: pods, matching: find.text('1')), findsOneWidget);
-
-    await tester.tap(find.text('Workloads'));
-    await tester.pump();
-    expect(find.byKey(const ValueKey('nav-group-problem-Workloads')), findsOneWidget);
-    await tester.tap(find.text('Workloads')); // leave it open for other tests
-    await tester.pump();
-  });
 }

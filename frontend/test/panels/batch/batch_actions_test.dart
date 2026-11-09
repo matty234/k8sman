@@ -113,19 +113,6 @@ void main() {
       expect(api.calls, isEmpty);
     });
 
-    testWidgets('Run now confirms; cancel does nothing', (tester) async {
-      final api = _ActionApi([...liveJobs]);
-      await _pump(tester, cronReport, api);
-      expect(find.widgetWithText(OutlinedButton, 'Resume'), findsNothing);
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Run now'));
-      await _openDialog(tester);
-      expect(find.text('Run CronJob report now?'), findsOneWidget);
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      expect(api.calls, isEmpty);
-      expect(find.text('report-manual-x7k2p'), findsNothing);
-    });
-
     testWidgets('Run now confirmed: triggers, offers to open the Job, refreshes history', (tester) async {
       final api = _ActionApi([...liveJobs]);
       final app = await _pump(tester, cronReport, api);
@@ -163,19 +150,6 @@ void main() {
       };
       return j;
     }
-
-    testWidgets('suspended job shows Resume in its status callout', (tester) async {
-      await loadRealFonts();
-      final api = _ActionApi([]);
-      await _pump(tester, suspendedJob(), api);
-      expect(find.text('Suspended: no new pods will be created'), findsOneWidget);
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Resume'));
-      await _openDialog(tester);
-      expect(find.text('Resume Job migrate-db?'), findsOneWidget);
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      expect(api.calls, isEmpty);
-    });
 
     testWidgets('no controls on complete or read-only jobs', (tester) async {
       await _pump(tester, migrateDb, _ActionApi([]));

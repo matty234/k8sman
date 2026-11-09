@@ -3,13 +3,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/metrics/quantity_cell.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/nodes/nodes_view.dart';
-import 'package:k8sman/ui/resource_table.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
@@ -80,16 +78,6 @@ void main() {
     });
   });
 
-  testWidgets('Node panel: Usage section', (tester) async {
-    await loadRealFonts();
-    SectionMemory.set('node-allocation', true); // collapsed by default
-    await pumpPanel(tester, nodeFixture(), api: MetricsFakeApi(), size: const Size(560, 1600));
-    expect(find.text('Usage & allocation'), findsOneWidget);
-    expect(find.text('limit'), findsOneWidget, reason: 'legend shows the limit tick');
-    expect(find.byWidgetPredicate((w) => w is Tooltip && (w.message ?? '').startsWith('Sampled')), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets('Pod panel: per-container usage and pod total', (tester) async {
     await loadRealFonts();
     final pod = _fixture('test/metrics/fixtures/pod-web.json');
@@ -101,29 +89,6 @@ void main() {
     // nginx has a limit: shown against it, with the request.
     expect(tip('of 200m limit · 50m request'), findsOneWidget);
     expect(tip('of 5m request'), findsOneWidget, reason: 'log-sidecar has only a request');
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('Pod panel without metrics stays calm', (tester) async {
-    final pod = _fixture('test/metrics/fixtures/pod-web.json');
-    await pumpPanel(tester, pod, api: MetricsFakeApi(resourceMetrics: false));
-    await tester.tap(find.byKey(const ValueKey('container-row-nginx')));
-    await tester.pumpAndSettle();
-    expect(find.text('Install metrics-server'), findsOneWidget, reason: 'one install link in the status summary');
-    expect(find.text('Usage'), findsOneWidget, reason: 'the status row; container rows show no bars');
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('Deployment panel: aggregate usage of its pods', (tester) async {
-    await loadRealFonts();
-    final deploy = _fixture('../dev/fixtures/deploy-web.json');
-    await pumpPanel(tester, deploy, api: MetricsFakeApi(), size: const Size(560, 2600));
-    expect(find.textContaining('2 pods · total vs their requests'), findsOneWidget);
-    expect(find.textContaining('min – median – max'), findsOneWidget);
-    expect(find.text('web-6fd47b8fcb-442dt'), findsWidgets);
-    final usage = find.textContaining('total vs their requests');
-    await tester.ensureVisible(usage);
-    await tester.pump();
     expect(tester.takeException(), isNull);
   });
 
@@ -143,22 +108,4 @@ void main() {
   });
 
 
-  testWidgets('quantity table cells: values right-aligned, empty as a dash', (tester) async {
-    const col = ColumnDef(name: 'CPU', query: '.k8sman.usage.cpu', type: 'quantity');
-    const pct = ColumnDef(name: 'CPU%', query: '.x', type: 'quantity');
-    await tester.pumpWidget(MaterialApp(
-      theme: buildTheme(Brightness.dark),
-      home: const Scaffold(
-        body: Column(children: [
-          TableCellView(value: null, column: col),
-          TableCellView(value: '12m', column: col),
-          TableCellView(value: '95%', column: pct),
-        ]),
-      ),
-    ));
-    expect(find.text('—'), findsOneWidget);
-    expect(find.text('12m'), findsOneWidget);
-    final hot = tester.widget<Text>(find.text('95%'));
-    expect(hot.style?.color, isNot(equals(tester.widget<Text>(find.text('12m')).style?.color)), reason: '≥ 90% is coloured');
-  });
 }

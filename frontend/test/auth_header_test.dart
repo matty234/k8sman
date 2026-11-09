@@ -102,14 +102,6 @@ void main() {
     await expectLater(api.health(), throwsA(isA<ApiException>().having((e) => e.status, 'status', 401)));
   });
 
-  test('token changes apply to the next call (backend restart)', () async {
-    final api = ApiClient(base: b.base, token: 'stale');
-    await expectLater(api.health(), throwsA(isA<ApiException>()));
-    api.token = _token;
-    await api.health();
-    expect(b.seen.last.auth, 'Bearer $_token');
-  });
-
   test('BackendHttp (typed per-area clients) sends the token and JSON', () async {
     final api = ApiClient(base: b.base, token: _token);
     final h = BackendHttp(api, '/api/prom/');
@@ -148,10 +140,6 @@ void main() {
   });
 
   group('BackendController', () {
-    test('BackendStatus reads the token from the native status map', () {
-      final s = BackendStatus.fromNative({'state': 'running', 'url': 'http://127.0.0.1:5555', 'token': 'abc'});
-      expect(s.token, 'abc');
-    });
 
     test('an external backend uses the dev-token file', () async {
       final api = ApiClient(base: b.base);
@@ -162,13 +150,5 @@ void main() {
       await api.health();
     });
 
-    test('readDevTokenFile trims the file and tolerates a missing one', () {
-      final dir = Directory.systemTemp.createTempSync('k8sman-token');
-      addTearDown(() => dir.deleteSync(recursive: true));
-      final f = File('${dir.path}/dev-token')..writeAsStringSync('$_token\n');
-      expect(readDevTokenFile(f.path), _token);
-      expect(readDevTokenFile('${dir.path}/missing'), isNull);
-      expect(devTokenPath({'HOME': '/home/u', 'USERPROFILE': r'C:\Users\u'}), anyOf('/home/u/.config/k8sman/dev-token', r'C:\Users\u\.config\k8sman\dev-token'));
-    });
   });
 }

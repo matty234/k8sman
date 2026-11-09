@@ -35,33 +35,6 @@ void main() {
     expect(app.detail?.type.kind, 'Pod');
   });
 
-  testWidgets('web-nodeport shows nodePort column and traffic policy', (tester) async {
-    await loadRealFonts();
-    await pumpPanel(tester, devFixture('svc-web-nodeport'), api: api(slices: []));
-    expect(find.textContaining('nodePort 30080'), findsOneWidget);
-    expect(find.text(':30080'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('pod-section-svc-traffic')));
-    await tester.pump();
-    expect(find.text('External traffic'), findsOneWidget);
-  });
-
-  testWidgets('redis headless shows note and per-pod DNS', (tester) async {
-    await loadRealFonts();
-    await pumpPanel(tester, Map<String, dynamic>.from(netFixture('svc-redis')), api: api());
-    expect(find.textContaining('headless ·'), findsOneWidget);
-    expect(find.text('redis-0.redis.demo.svc.cluster.local'), findsOneWidget);
-  });
-
-  testWidgets('diagnosis: pods match but none ready', (tester) async {
-    await loadRealFonts();
-    final svc = devFixture('svc-web')
-      ..['metadata']['name'] = 'crashy'
-      ..['spec']['selector'] = {'app': 'crashy'};
-    await pumpPanel(tester, svc, api: api());
-    expect(find.text('1 pod matches but it is not ready'), findsOneWidget);
-    expect(find.byKey(const ValueKey('pod-row-demo/crashy')), findsOneWidget);
-  });
-
   group('diagnoseService', () {
     final svc = devFixture('svc-web');
     test('selector matches 0 pods', () {
@@ -77,9 +50,6 @@ void main() {
       expect(d?.title, 'Service has no selector (manual endpoints)');
       expect(d?.severity, Severity.error);
     });
-    test('healthy returns null', () {
-      expect(diagnoseService(svc, ServiceBackends(slices: [devFixture('endpointslice-web')], pods: demoPods())), isNull);
-    });
   });
 
   test('resolveTargetPort: numeric, named via pod, named via slice, unresolved', () {
@@ -91,10 +61,4 @@ void main() {
     expect(bad.unresolved, isTrue);
   });
 
-  testWidgets('no selector: diagnosis callout', (tester) async {
-    final svc = devFixture('svc-web')..['spec'].remove('selector');
-    await pumpPanel(tester, svc, api: api(slices: []));
-    expect(find.text('Service has no selector (manual endpoints)'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-  });
 }

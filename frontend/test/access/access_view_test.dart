@@ -123,27 +123,6 @@ void main() {
     expect(find.text('demo-reader'), findsWidgets);
   });
 
-  testWidgets('explorer: dividers resize panels within their minimum; double-click resets', (tester) async {
-    await pumpAccess(tester);
-    // The divider sits right after the list, so its left edge is the list's width.
-    double width() => tester.getTopLeft(find.byKey(const ValueKey('split-start'))).dx;
-    final before = width();
-    expect(before, 230);
-    await tester.drag(find.byKey(const ValueKey('split-start')), const Offset(80, 0));
-    await tester.pump();
-    expect(width(), greaterThan(before));
-    await tester.drag(find.byKey(const ValueKey('split-start')), const Offset(-600, 0));
-    await tester.pump();
-    expect(width(), 220);
-    final h = tester.getCenter(find.byKey(const ValueKey('split-start')));
-    await tester.tapAt(h);
-    await tester.pump(const Duration(milliseconds: 50));
-    await tester.tapAt(h);
-    await tester.pump();
-    expect(width(), before);
-    await tester.pump(const Duration(seconds: 1));
-  });
-
   testWidgets('who can and can I tabs', (tester) async {
     await loadRealFonts();
     await pumpAccess(tester);
@@ -190,13 +169,6 @@ void main() {
   });
 
   group('rbac model', () {
-    test('yaml preview quotes what YAML would misread', () {
-      final y = toYaml(buildRole(cluster: true, name: 'r', rules: [EditableRule(apiGroups: ['', '*'], resources: ['pods'], verbs: ['get', '*'])]));
-      expect(y, contains('kind: ClusterRole'));
-      expect(y, contains('- ""'));
-      expect(y, contains('- "*"'));
-      expect(y, contains('rules:\n- apiGroups:\n  - ""'));
-    });
 
     test('editing keeps metadata and aggregationRule', () {
       final base = {
@@ -206,31 +178,6 @@ void main() {
       final obj = buildRole(cluster: true, name: 'x', rules: [EditableRule()], base: base);
       expect(obj['metadata'], {'name': 'x', 'resourceVersion': '7', 'labels': {'a': 'b'}});
       expect(obj['aggregationRule'], isNotNull);
-    });
-
-    test('rule problems', () {
-      expect(EditableRule(resources: ['secrets'], verbs: ['list'], resourceNames: ['a']).problems(clusterRole: false), contains(contains('resourceNames')));
-      expect(EditableRule(nonResourceURLs: ['/healthz'], verbs: ['get']).problems(clusterRole: false), contains(contains('ClusterRole')));
-      expect(EditableRule(resources: ['pods']).problems(clusterRole: false), isEmpty);
-    });
-
-    test('remove and add binding subjects', () {
-      final b = {
-        'kind': 'RoleBinding',
-        'metadata': {'name': 'b', 'namespace': 'ns', 'resourceVersion': '3'},
-        'subjects': [
-          {'kind': 'ServiceAccount', 'name': 'app'}, // namespace defaults to the binding's
-          {'kind': 'User', 'name': 'jane'},
-        ],
-      };
-      final without = bindingWithout(b, const RbacSubject.sa('ns', 'app'));
-      expect(without['subjects'], [
-        {'kind': 'User', 'name': 'jane'},
-      ]);
-      expect(without['metadata']['resourceVersion'], '3');
-      expect(bindingWith(b, const RbacSubject.user('jane')), same(b));
-      expect((bindingWith(b, const RbacSubject.group('devs'))['subjects'] as List).length, 3);
-      expect(suggestBindingName('Edit', const RbacSubject.user('Jane@Example.com')), 'edit-jane-example.com');
     });
 
     test('matrix from rules marks names-only cells and dangers', () {

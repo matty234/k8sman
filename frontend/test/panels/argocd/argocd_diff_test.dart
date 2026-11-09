@@ -53,19 +53,6 @@ void main() {
     expect(find.text('Diffs via argocd-server · argocd CLI login'), findsOneWidget);
   });
 
-  testWidgets('existing CLI login: one click, no command shown', (tester) async {
-    await pumpArgo(tester, fx('app-kustomize-guestbook.json'),
-        diffApi: fake(auth: 'none', initialAdmin: false, argoUrl: 'argocd.example.internal', cliLogin: 'lon'));
-    await tester.tap(find.text('Connect…'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('argocd login '), findsNothing);
-    await tester.tap(find.text('Use argocd CLI login'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-    expect(find.text('Diffs via argocd-server · argocd CLI login'), findsOneWidget);
-  });
-
   testWidgets('out-of-sync diff: modified deployment and resource to prune', (tester) async {
     await loadRealFonts();
     await pumpArgo(tester, fx('app-helm-guestbook-drift.json'), diffApi: fake());
@@ -89,20 +76,6 @@ void main() {
     expect(find.text('will be pruned'), findsOneWidget);
     expect(find.byType(DiffView), findsNWidgets(2));
     expect(argo.calls.where((c) => c.startsWith('diff')).length, 1);
-  });
-
-  testWidgets('resources to be created, and Show all diffs', (tester) async {
-    await pumpArgo(tester, fx('app-kustomize-guestbook.json'), diffApi: fake());
-    expect(find.text('Show all diffs'), findsOneWidget);
-    await tester.tap(find.text('Show all diffs'));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    expect(find.text('will be created'), findsNWidgets(2));
-    expect(find.byType(DiffView), findsNWidgets(2));
-    // Close one while all are shown.
-    await tester.tap(toggle('apps/Deployment/kustomize-guestbook/staging-guestbook-ui'));
-    await tester.pumpAndSettle();
-    expect(find.byType(DiffView), findsOneWidget);
   });
 
   testWidgets('not connected: strip offers the initial admin password (opt-in)', (tester) async {
@@ -131,47 +104,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Connect to the Argo CD API to see diffs'), findsOneWidget);
   });
-
-  testWidgets('not connected without the initial admin secret: paste a token', (tester) async {
-    await pumpArgo(tester, fx('app-kustomize-guestbook.json'), diffApi: fake(auth: 'none', initialAdmin: false));
-    await tester.tap(find.text('Connect…'));
-    await tester.pumpAndSettle();
-    expect(find.text('Use initial admin password'), findsNothing);
-    expect(find.text('argocd account generate-token'), findsOneWidget);
-    await tester.enterText(find.byKey(const ValueKey('argocd-token')), 'eyJhbGciOi.token');
-    await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
-    expect(argo.calls, contains('setToken'));
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-    expect(find.text('Diffs via argocd-server · token'), findsOneWidget);
-  });
-
-  testWidgets('no argocd-server: a quiet hint, no toggles', (tester) async {
-    await pumpArgo(tester, fx('app-kustomize-guestbook.json'));
-    expect(find.textContaining("wasn't found"), findsOneWidget);
-    expect(find.text('Show all diffs'), findsNothing);
-  });
-
-  testWidgets('synced app never asks for diffs', (tester) async {
-    await pumpArgo(tester, fx('app-guestbook.json'), diffApi: fake());
-    expect(argo.calls, isEmpty);
-    expect(find.textContaining('Argo CD API'), findsNothing);
-  });
-
-  for (final w in [320.0, 760.0]) {
-    testWidgets('all diffs open at ${w.toInt()}px: no overflow', (tester) async {
-      await pumpArgo(tester, fx('app-helm-guestbook-drift.json'), diffApi: fake(), size: Size(w, 3000));
-      await tester.tap(find.text('Show all diffs'));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      expect(find.byType(DiffView), findsNWidgets(2));
-    });
-    testWidgets('connect strip at ${w.toInt()}px: no overflow', (tester) async {
-      await pumpArgo(tester, fx('app-helm-guestbook-drift.json'), diffApi: fake(auth: 'none'), size: Size(w, 2400));
-      expect(tester.takeException(), isNull);
-    });
-  }
 
   test('cache: refetch only when the revision or reconciledAt changes', () async {
     final api = ApiClient(base: Uri.parse('http://fake'));

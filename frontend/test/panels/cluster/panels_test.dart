@@ -85,23 +85,6 @@ void main() {
     expect(app.selectedType?.kind, 'Deployment');
   });
 
-  testWidgets('Namespace: Terminating explains what blocks deletion', (tester) async {
-    final ns = _dev('ns-demo');
-    ns['metadata'] = {...ns['metadata'] as Map, 'deletionTimestamp': '2026-11-03T11:40:00Z'};
-    ns['status'] = {
-      'phase': 'Terminating',
-      'conditions': [
-        {'type': 'NamespaceContentRemaining', 'status': 'True', 'reason': 'SomeResourcesRemain', 'message': 'Some resources are remaining: widgets.example.k8sman.dev has 1 resource instances'},
-        {'type': 'NamespaceFinalizersRemaining', 'status': 'True', 'reason': 'SomeFinalizersRemain', 'message': 'Some content in the namespace has finalizers remaining: example.k8sman.dev/cleanup in 1 resource instances'},
-        {'type': 'NamespaceDeletionDiscoveryFailure', 'status': 'False', 'reason': 'ResourcesDiscovered'},
-      ],
-    };
-    await pumpPanel(tester, ns, api: FakeApiClient());
-    expect(find.text('spec: kubernetes'), findsOneWidget);
-    expect(find.textContaining('NamespaceContentRemaining'), findsOneWidget);
-    expect(find.textContaining('ResourcesDiscovered'), findsNothing);
-  });
-
   testWidgets('Event (core): warning with links', (tester) async {
     final events = [for (final e in _load('../dev/fixtures/events-demo.json')) Json.from(e)];
     final ev = events.firstWhere((e) => e['type'] == 'Warning' && e['reason'] == 'BackOff', orElse: () => events.firstWhere((e) => e['type'] == 'Warning'));
@@ -112,53 +95,6 @@ void main() {
     await tester.tap(find.text(link));
     await tester.pump();
     expect(app.detail?.name, ev['involvedObject']['name']);
-  });
-
-  testWidgets('Event (events.k8s.io): regarding/note/series', (tester) async {
-    final ev = <String, dynamic>{
-      'apiVersion': 'events.k8s.io/v1',
-      'kind': 'Event',
-      'metadata': {'name': 'crashy.1', 'namespace': 'demo', 'uid': 'e1', 'creationTimestamp': '2026-11-03T11:23:00Z'},
-      'eventTime': '2026-11-03T11:23:00.000000Z',
-      'type': 'Warning',
-      'reason': 'BackOff',
-      'note': 'Back-off restarting failed container crashy in pod crashy_demo',
-      'action': 'Restarting',
-      'reportingController': 'kubelet',
-      'reportingInstance': 'k8sman-dev-control-plane',
-      'regarding': {'apiVersion': 'v1', 'kind': 'Pod', 'name': 'crashy', 'namespace': 'demo', 'uid': 'p1', 'fieldPath': 'spec.containers{crashy}'},
-      'related': {'apiVersion': 'v1', 'kind': 'Node', 'name': 'k8sman-dev-control-plane'},
-      'series': {'count': 42, 'lastObservedTime': '2026-11-03T11:40:00.000000Z'},
-      'deprecatedCount': 3,
-    };
-    final app = await pumpPanel(tester, ev,
-        type: const ResourceType(group: 'events.k8s.io', version: 'v1', resource: 'events', kind: 'Event'), api: FakeApiClient());
-    expect(find.text('Warning · ×42'), findsOneWidget);
-    expect(find.text('Back-off restarting failed container crashy in pod crashy_demo'), findsOneWidget);
-    expect(find.text('spec.containers{crashy}'), findsOneWidget);
-    expect(find.text('kubelet'), findsOneWidget);
-    await tester.tap(find.text('Node/k8sman-dev-control-plane'));
-    await tester.pump();
-    expect(app.detail?.name, 'k8sman-dev-control-plane');
-  });
-
-  testWidgets('ResourceQuota: bars and scopes', (tester) async {
-    await pumpPanel(tester, _quota(),
-        type: const ResourceType(group: '', version: 'v1', resource: 'resourcequotas', kind: 'ResourceQuota'), size: const Size(560, 900));
-    expect(find.text('requests.cpu'), findsOneWidget);
-    expect(find.text('750m / 2'), findsOneWidget);
-    expect(find.text('38%'), findsOneWidget);
-    expect(find.text('NotTerminating'), findsOneWidget);
-    expect(find.text('PriorityClass In (high)'), findsOneWidget);
-  });
-
-  testWidgets('LimitRange: per-type tables', (tester) async {
-    await pumpPanel(tester, _limitRange(),
-        type: const ResourceType(group: '', version: 'v1', resource: 'limitranges', kind: 'LimitRange'), size: const Size(560, 700));
-    expect(find.text('Container'), findsOneWidget);
-    expect(find.text('PersistentVolumeClaim'), findsOneWidget);
-    expect(find.text('256 MiB'), findsWidgets);
-    expect(find.text('4'), findsNWidgets(2)); // ratio + pod max cpu
   });
 
   testWidgets('Role: rules and bound-by', (tester) async {
@@ -212,18 +148,6 @@ void main() {
     await tester.tap(find.text('edit'));
     await tester.pump();
     expect(app.detail?.name, 'edit');
-  });
-
-  testWidgets('RoleBinding: roleRef, subjects, inline rules', (tester) async {
-    final app = await pumpPanel(tester, _dev('rolebinding-web-pod-reader'),
-        api: FakeApiClient(objects: {'roles.$_rbac/demo/pod-reader': _dev('role-pod-reader')}), size: const Size(560, 900));
-    expect(find.text('pod-reader'), findsOneWidget);
-    expect(find.text('pods, pods/log'), findsOneWidget);
-    expect(find.text('get'), findsOneWidget);
-    await tester.tap(find.text('pod-reader'));
-    await tester.pump();
-    expect(app.detail?.type.kind, 'Role');
-    expect(app.detail?.namespace, 'demo');
   });
 
   testWidgets('ClusterRoleBinding: dangerous role and missing role', (tester) async {

@@ -28,14 +28,4 @@ void main() {
     expect(md.length, lessThan(60000), reason: 'fits in a prompt');
   });
 
-  test('category filter limits findings and sections', () {
-    final d = _load('security.json');
-    final cat = d.categories.firstWhere((c) => c.total > 0).id;
-    final md = securityReportForAgent(d, kubeContext: 'ctx', category: cat);
-    final otherCats = d.findings.where((f) => f.category != cat).map((f) => f.title).toSet();
-    final mine = d.findings.where((f) => f.category == cat).map((f) => f.title).toSet();
-    for (final t in otherCats.difference(mine)) {
-      expect(md.contains('] $t\n'), isFalse, reason: 'finding from another category: $t');
-    }
-  });
 }

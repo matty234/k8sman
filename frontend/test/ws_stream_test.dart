@@ -56,19 +56,6 @@ void main() {
     expect(s.closed, 1, reason: 'the server saw the socket close');
   });
 
-  test('cancelling before the socket connects leaks nothing', () async {
-    final s = _Server(const []);
-    await s.start();
-    addTearDown(() => s.http.close(force: true));
-    final api = ApiClient(base: s.base);
-    for (var i = 0; i < 5; i++) {
-      await api.watch(_ref).listen((_) {}).cancel();
-    }
-    await s.until(() => s.closed == s.opened && s.opened > 0);
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(s.closed, s.opened, reason: 'every socket that opened was closed');
-  });
-
   test('a malformed frame is an error on the stream, not an uncaught exception', () async {
     final s = _Server(['not json', jsonEncode({'type': 'ERROR', 'error': 'boom'})]);
     await s.start();

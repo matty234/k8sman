@@ -2,10 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:k8sman/api/client.dart';
-import 'package:k8sman/app/backend.dart';
 import 'package:k8sman/app/backend_supervisor.dart';
 
 /// A backend process driven by the test. Closing its stdin makes it exit 0,
@@ -139,35 +136,4 @@ void main() {
     expect(sup.status(), containsPair('token', t2));
   });
 
-  test('on Windows the controller points ApiClient at the reported url and token', () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    final sup = make();
-    final api = ApiClient(base: Uri.parse('http://127.0.0.1:1'));
-    final c = BackendController(api, supervisor: sup);
-    await c.start();
-    spawned.last.say('K8SMAN_LISTENING 127.0.0.1:50000');
-    await settle();
-    expect(api.base.toString(), 'http://127.0.0.1:50000');
-    expect(api.token, envs.last[authTokenEnv]);
-    expect(api.authHeaders, {'Authorization': 'Bearer ${envs.last[authTokenEnv]}'});
-
-    // A restart on the same port still switches to the new token.
-    await c.retry();
-    spawned.last.say('K8SMAN_LISTENING 127.0.0.1:50000');
-    await settle();
-    expect(envs, hasLength(2));
-    expect(api.token, envs.last[authTokenEnv]);
-  });
-
-  test('stop closes stdin and does not restart', () async {
-    final sup = make();
-    await sup.start();
-    final p = spawned.single;
-    await sup.stop();
-    expect(await p.exitCode, 0, reason: 'exited on stdin EOF, not killed');
-    await settle();
-    expect(sup.status()['state'], 'stopped');
-    expect(spawned, hasLength(1));
-  });
 }

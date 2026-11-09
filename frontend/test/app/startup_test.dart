@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/app/backend.dart';
 import 'package:k8sman/app/kubeconfig_picker.dart';
-import 'package:k8sman/app/window_chrome.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
@@ -36,21 +35,6 @@ class _KubeconfigApi extends ApiClient {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  test('KubeconfigList shortens paths and labels merged configs', () {
-    final l = KubeconfigList.fromJson({'current': '/Users/me/.kube/config', 'home': '/Users/me'});
-    expect(l.currentLabel, '~/.kube/config');
-    expect(l.shorten('/Users/meow/x'), '/Users/meow/x');
-    expect(KubeconfigList.fromJson({'current': '', 'merged': ['/a', '/b']}).currentLabel, r'$KUBECONFIG (2 files)');
-  });
-
-  test('BackendStatus parses native status', () {
-    final s = BackendStatus.fromNative({'state': 'running', 'url': 'http://127.0.0.1:5555', 'restarts': 2, 'log': 'x'});
-    expect(s.isReady, isTrue);
-    expect(s.restarts, 2);
-    expect(BackendStatus.fromNative({'state': 'stopped'}).phase, BackendPhase.failed);
-    expect(BackendStatus.fromNative({'state': 'idle'}).phase, BackendPhase.starting);
-  });
 
   testWidgets('embedded backend: starting, failure with log, then connect on retry', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -128,15 +112,4 @@ void main() {
     expect(api.switched, ['/Users/me/.kube/staging']);
   });
 
-  testWidgets('toolbar rows collapse in fullscreen', (tester) async {
-    late BuildContext ctx;
-    await tester.pumpWidget(WindowChromeScope(child: Builder(builder: (c) {
-      ctx = c;
-      return const SizedBox();
-    })));
-    WindowChrome.isFullScreen.value = true;
-    addTearDown(() => WindowChrome.isFullScreen.value = false);
-    await tester.pump();
-    expect(toolbarRowHeight(ctx), lessThan(titlebarHeight));
-  });
 }

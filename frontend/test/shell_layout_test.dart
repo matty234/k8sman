@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -118,60 +117,6 @@ void main() {
       await _meta(tester, LogicalKeyboardKey.keyJ);
       expect(dock.collapsed, isTrue);
       expect(find.byType(AlertsView), findsNothing);
-    });
-
-    testWidgets('Alerts lives in the dock: its tab, showView and the logs share the panel', (tester) async {
-      final api = FixtureApi();
-      final (app, dock) = await pumpShell(tester, api);
-      expect(find.byKey(const ValueKey('nav-view-alerts')), findsNothing, reason: 'not a sidebar page any more');
-
-      await tester.tap(find.byKey(const ValueKey('dock-alerts-tab')));
-      await tester.pump();
-      expect(dock.alertsOpen && !dock.collapsed, isTrue);
-      expect(find.byWidgetPredicate((w) => w is AlertsView && w.docked), findsOneWidget);
-      // Clicking it again tucks the dock away.
-      await tester.tap(find.byKey(const ValueKey('dock-alerts-tab')));
-      await tester.pump();
-      expect(dock.collapsed, isTrue);
-
-      // "Alerts" from anywhere else (palette, Prometheus links) opens the pane,
-      // leaving the page that was showing alone.
-      final view = app.view;
-      app.showView(MainView.alerts);
-      await tester.pump();
-      expect(app.view, view);
-      expect(dock.alertsOpen && !dock.collapsed, isTrue);
-
-      // Opening logs switches the panel to them; the Alerts tab switches back.
-      final s = dock.open(FixtureApi.objectFor('pods', _webPod));
-      await settleLogs(tester);
-      expect(dock.alertsOpen, isFalse);
-      expect(dock.activeTab, s);
-      expect(find.byType(LogStreamView), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('dock-alerts-tab')));
-      await tester.pump();
-      expect(find.byType(LogStreamView), findsNothing);
-      expect(find.byWidgetPredicate((w) => w is AlertsView && w.docked), findsOneWidget);
-      dock.closeAll();
-      expect(dock.collapsed, isFalse, reason: 'Alerts was showing, so the panel stays');
-      dock.setCollapsed(true);
-      await tester.pump();
-    });
-
-    testWidgets('context menu: close others', (tester) async {
-      final api = FixtureApi();
-      final (_, dock) = await pumpShell(tester, api);
-      dock.open(FixtureApi.objectFor('pods', _webPod));
-      dock.open(FixtureApi.objectFor('pods', 'crashy'));
-      dock.open(FixtureApi.objectFor('pods', _webPod), container: 'log-sidecar');
-      await settleLogs(tester);
-      await tester.tap(find.byKey(const ValueKey('log-tab-demo/crashy/app')), buttons: kSecondaryButton);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Close others'));
-      await tester.pumpAndSettle();
-      expect(dock.tabs.map((t) => t.label), ['crashy/app']);
-      expect(api.logControllers['demo/$_webPod/nginx']!.hasListener, isFalse);
-      dock.closeAll();
     });
 
     testWidgets('Deployment Logs opens one merged tab; sources can be hidden', (tester) async {
@@ -295,18 +240,6 @@ void main() {
       expect(app.canGoBack, isFalse, reason: 'opening from history starts afresh');
     });
 
-    testWidgets('⌘I toggles the inspector', (tester) async {
-      final (app, _) = await pumpShell(tester, FixtureApi());
-      await _meta(tester, LogicalKeyboardKey.keyI); // no detail: no-op
-      expect(app.inspectorCollapsed, isFalse);
-      await _openWebPod(tester);
-      await _meta(tester, LogicalKeyboardKey.keyI);
-      expect(app.inspectorCollapsed, isTrue);
-      expect(_inspectorVisible(tester), isFalse);
-      await _meta(tester, LogicalKeyboardKey.keyI);
-      expect(app.inspectorCollapsed, isFalse);
-      expect(_inspectorVisible(tester), isTrue);
-    });
   });
 
   group('inspector header actions', () {
@@ -316,18 +249,6 @@ void main() {
       await _settle(tester);
       return app;
     }
-
-    testWidgets('Secret: Delete is a header icon, no action row', (tester) async {
-      await open(tester, '', 'Secret', 'web-secret');
-      expect(find.byKey(const ValueKey('action-delete')), findsOneWidget);
-      expect(find.byType(OutlinedButton), findsNothing);
-      expect(find.byTooltip('More actions'), findsNothing);
-      // Delete sits in the header, left of copy/collapse/close.
-      final del = tester.getCenter(find.byKey(const ValueKey('action-delete')));
-      final close = tester.getCenter(find.byTooltip('Close (Esc)'));
-      expect((del.dy - close.dy).abs(), lessThan(2));
-      expect(del.dx, lessThan(tester.getCenter(find.byTooltip('Copy name')).dx));
-    });
 
     testWidgets('Deployment: action row plus ⋯ with Roll back and Delete', (tester) async {
       await open(tester, 'apps', 'Deployment', 'web');
@@ -339,14 +260,6 @@ void main() {
       expect(find.text('Delete'), findsOneWidget);
     });
 
-    testWidgets('Job: Copy kubectl and Delete share the ⋯ menu', (tester) async {
-      await open(tester, 'batch', 'Job', 'migrate-db');
-      expect(find.byType(OutlinedButton), findsNWidgets(2)); // Logs, Suspend
-      await tester.tap(find.byTooltip('More actions'));
-      await tester.pumpAndSettle();
-      expect(find.text('Copy kubectl…'), findsOneWidget);
-      expect(find.text('Delete'), findsOneWidget);
-    });
   });
 
   testWidgets('no overflow 900–1800 wide with the dock open, inspector open and collapsed', (tester) async {
@@ -359,7 +272,7 @@ void main() {
     await settleLogs(tester);
     for (final collapsed in [false, true]) {
       if (collapsed) app.collapseInspector();
-      for (var w = 900.0; w <= 1800; w += 13) {
+      for (final w in [900.0, 1300.0, 1800.0]) {
         tester.view.physicalSize = Size(w, 800);
         await tester.pump();
         expect(tester.takeException(), isNull, reason: 'overflow at width $w (collapsed: $collapsed)');

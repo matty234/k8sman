@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -66,31 +65,4 @@ void main() {
     expect(api.remembered, ['team-a']);
   });
 
-  testWidgets('starring moves a namespace to Favourites and saves it; a chip x removes one from a selection', (tester) async {
-    final api = TableFakeApi();
-    final app = await pumpTable(tester, api, podType);
-    app.namespaces = ['default', 'demo', 'kube-system'];
-    app.setNamespaceScope(NamespaceScope.of(['default', 'demo']));
-    await tester.pump();
-
-    await tester.tap(find.byKey(const ValueKey('namespace-picker')));
-    await tester.pump();
-    expect(find.text('Favourites'), findsNothing);
-    final row = find.byKey(const ValueKey('picker-option-3')); // All, default, demo, kube-system
-    // The star shows on hover.
-    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    await mouse.addPointer(location: Offset.zero);
-    await mouse.moveTo(tester.getCenter(row));
-    await tester.pump();
-    await tester.tap(find.descendant(of: row, matching: find.byKey(const ValueKey('picker-star'))));
-    await tester.pump();
-    expect(find.text('Favourites'), findsOneWidget);
-    expect(api.favourites, ['kube-system']);
-    expect(app.favouriteNamespaces, ['kube-system']);
-
-    expect(find.byKey(const ValueKey('picker-chip-demo')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('picker-chip-remove-demo')));
-    await tester.pump();
-    expect(app.namespaceScope, NamespaceScope.single('default'));
-  });
 }

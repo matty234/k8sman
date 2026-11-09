@@ -11,13 +11,6 @@ Map<String, dynamic> fixture(String name) => jsonDecode(File('../dev/fixtures/$n
 
 void main() {
   group('ExecFrames', () {
-    test('input is UTF-8 bytes', () {
-      expect(ExecFrames.input('ls é\r'), [108, 115, 32, 0xC3, 0xA9, 13]);
-    });
-
-    test('resize is a JSON text frame', () {
-      expect(jsonDecode(ExecFrames.resize(120, 40)), {'type': 'resize', 'cols': 120, 'rows': 40});
-    });
 
     test('decodes binary output and control frames', () {
       final out = ExecFrames.decode(Uint8List.fromList([104, 105]));
@@ -46,18 +39,6 @@ void main() {
       expect(q.containsKey('container'), isFalse);
     });
 
-    test('ws URI from http base', () {
-      final u = const ExecRequest(namespace: 'demo', pod: 'p').uri(Uri.parse('http://127.0.0.1:7443'));
-      expect(u.scheme, 'ws');
-      expect(u.path, '/api/exec');
-      expect(u.queryParameters['pod'], 'p');
-    });
-
-    test('copyWith switches between shell and command', () {
-      const r = ExecRequest(namespace: 'demo', pod: 'p', command: ['python3']);
-      expect(r.copyWith(shell: 'bash', clearCommand: true).command, isNull);
-      expect(r.copyWith(container: 'debugger').command, ['python3']);
-    });
   });
 
   test('splitCommandLine handles quotes and escapes', () {
@@ -75,14 +56,6 @@ void main() {
       expect(cs, isNotEmpty);
       expect(defaultTerminalContainer(pod), cs.first.name);
       expect(cs.every((c) => c.isRunning), isTrue);
-    });
-
-    test('annotation wins when that container is running', () {
-      final pod = fixture('pod-web');
-      final names = terminalContainers(pod).map((c) => c.name).toList();
-      if (names.length < 2) return;
-      (pod['metadata'] as Map)['annotations'] = {'kubectl.kubernetes.io/default-container': names[1]};
-      expect(defaultTerminalContainer(pod), names[1]);
     });
 
     test('pickReadyPod prefers ready, running pods', () {

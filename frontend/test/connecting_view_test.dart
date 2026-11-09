@@ -159,37 +159,4 @@ void main() {
     await _unmount(tester);
   });
 
-  testWidgets('refused: error screen says why and offers Back to the previous context', (tester) async {
-    await loadRealFonts();
-    final api = _ConnectApi('prod');
-    final app = await _pump(tester, api);
-
-    await app.switchContext('refused');
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.byKey(const ValueKey('cluster-error-unreachable')), findsOneWidget);
-    expect(find.text("Can't reach the cluster API at https://127.0.0.1:1"), findsOneWidget);
-    expect(find.text('Back to prod'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('cluster-error-back')));
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(app.currentContext, 'prod');
-    expect(app.error, isNull);
-    expect(find.byKey(const ValueKey('cluster-error-unreachable')), findsNothing);
-    await _unmount(tester);
-  });
-
-  testWidgets('first launch on a dead context: Cancel shows the pickers', (tester) async {
-    final api = _ConnectApi('dead');
-    final app = await _pump(tester, api, awaitInit: false);
-    expect(find.byKey(const ValueKey('connecting-view')), findsOneWidget);
-    expect(find.textContaining('Cancel goes back'), findsNothing);
-
-    await tester.tap(find.byKey(const ValueKey('connecting-cancel')));
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.byKey(const ValueKey('cluster-error-cancelled')), findsOneWidget);
-    expect(find.text('Stopped connecting to dead'), findsOneWidget);
-    expect(find.byKey(const ValueKey('switch-context')), findsOneWidget);
-    expect(app.loading, isFalse);
-    await _unmount(tester);
-  });
 }

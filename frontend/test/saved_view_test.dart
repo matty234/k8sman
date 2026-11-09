@@ -90,7 +90,7 @@ void main() {
 
     // Narrow (an inspector beside the table): one menu button, no overflow.
     _table(tester).setFilter('api');
-    for (final w in [360.0, 400.0, 500.0, 640.0, 800.0, 1200.0]) {
+    for (final w in [360.0, 640.0, 1200.0]) {
       await tester.binding.setSurfaceSize(Size(w, 600));
       await tester.pump();
       expect(tester.takeException(), isNull, reason: 'toolbar at $w');

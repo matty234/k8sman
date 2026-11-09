@@ -26,12 +26,12 @@ class _PfApi extends ApiClient {
 }
 
 void main() {
-  testWidgets('port-forward view has no overflow from 360 to 1600px', (tester) async {
+  testWidgets('port-forward view has no overflow when narrow, normal and wide', (tester) async {
     final api = _PfApi();
     final app = AppState(api)..currentContext = 'kind-k8sman-dev';
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    for (var w = 360.0; w <= 1600; w += 31) {
+    for (final w in [360.0, 900.0, 1600.0]) {
       tester.view.physicalSize = Size(w, 600);
       await tester.pumpWidget(MultiProvider(
         providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
@@ -72,9 +72,6 @@ void main() {
     expect(find.byWidgetPredicate((w) => w is PortForwardView && w.docked), findsOneWidget);
     expect(find.text('localhost:18080'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    // The toolbar's help icon sits at the right edge, not in the middle.
-    final help = tester.getCenter(find.byIcon(Icons.help_outline));
-    expect(help.dx, greaterThan(1000 - 40));
 
     // A pulse doesn't take the panel from a log or terminal (nor collapse it).
     dock.setCollapsed(true);

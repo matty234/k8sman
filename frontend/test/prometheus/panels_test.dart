@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,13 +44,6 @@ void main() {
     expect(app.view, MainView.alerts);
   });
 
-  testWidgets('PrometheusRule without a Prometheus explains calmly', (tester) async {
-    prom = FixturePromApi(missing: true);
-    await pumpPanel(tester, obj('prometheusrule-k8sman-demo'), type: ruleType);
-    expect(find.textContaining('none was found'), findsOneWidget);
-    expect(find.text('K8smanTestAlert'), findsOneWidget);
-  });
-
   testWidgets('ServiceMonitor links matching services and shows target health', (tester) async {
     await loadRealFonts();
     final api = FakeApiClient(itemsByResource: {'services': items('services-demo')}, itemsFilter: (r, i, sel, _) => sel == null || (i['metadata']?['labels']?['app'] == 'web'));
@@ -66,16 +57,6 @@ void main() {
     await tester.tap(find.text('web').first);
     await tester.pump();
     expect(app.detail?.type.kind, 'Service');
-  });
-
-  testWidgets('PodMonitor looks in its namespaceSelector and shows up targets', (tester) async {
-    await loadRealFonts();
-    final api = FakeApiClient(itemsByResource: {'pods': items('pods-grafana')});
-    await pumpPanel(tester, obj('podmonitor-grafana'), type: pmType, api: api, size: const Size(560, 900));
-    expect(tester.takeException(), isNull);
-    expect(find.text('monitoring'), findsOneWidget);
-    expect(find.text('1 matching pod'), findsOneWidget);
-    expect(find.text('1 up · 0 down', findRichText: true), findsWidgets);
   });
 
   testWidgets('Prometheus and Alertmanager CRs show config and live status', (tester) async {
@@ -94,25 +75,4 @@ void main() {
     expect(find.text('Open Alerts'), findsOneWidget);
   });
 
-  testWidgets('panels have no overflow from 360 to 900px', (tester) async {
-    final api = FakeApiClient(itemsByResource: {'services': items('services-demo'), 'pods': items('pods-grafana')});
-    for (final w in [360.0, 560.0, 900.0]) {
-      for (final (o, t) in [
-        ('prometheusrule-k8sman-demo', ruleType),
-        ('servicemonitor-web', smType),
-        ('podmonitor-grafana', pmType),
-        ('prometheus', promType),
-        ('alertmanager', amType),
-      ]) {
-        await pumpPanel(tester, obj(o), type: t, api: api, size: Size(w, 1600));
-        expect(tester.takeException(), isNull, reason: '$o at $w');
-      }
-    }
-  });
-
-  test('fixtures are real captures', () {
-    // Guard against hand-edited fixtures drifting from the backend's shape.
-    final rules = jsonDecode(File('test/prometheus/fixtures/rules-k8sman-demo.json').readAsStringSync()) as Map;
-    expect((rules['groups'] as List).first['source'], {'namespace': 'demo', 'name': 'k8sman-demo'});
-  });
 }

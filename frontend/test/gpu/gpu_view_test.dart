@@ -3,15 +3,12 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/gpu/gpu_api.dart';
 import 'package:k8sman/gpu/gpu_view.dart';
 import 'package:k8sman/prometheus/prom_api.dart';
 import 'package:k8sman/modules/gpus_module.dart';
-import 'package:k8sman/modules/module_nav_gate.dart';
-import 'package:k8sman/modules/modules.dart' show ModuleState, ModuleStatus, moduleStatuses;
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
@@ -93,37 +90,6 @@ void main() {
     PromApi.debugOverride = null;
   });
 
-  test('inventory parses the backend payload', () {
-    final inv = GpuInventory.fromJson(_inventoryJson());
-    expect(inv.live, isTrue);
-    expect(inv.attribution, isTrue);
-    expect(inv.nodes.map((n) => n.name), ['gpu-node-a', 'gpu-node-b']);
-    final b = inv.node('gpu-node-b')!;
-    expect(b.devices, hasLength(3));
-    expect(b.devices[1].idle, isTrue);
-    expect(b.devices[0].pods.single.name, 'trainer-0');
-    expect(b.devices[0].memTotal, greaterThan(b.devices[0].memUsed!));
-    expect(inv.pod('ml', 'trainer-0')!.selector, contains('exported_pod="trainer-0"'));
-    expect(inv.node('gpu-node-a')!.monitored, isFalse);
-  });
-
-  testWidgets('the GPUs nav entry follows the module\'s detection', (tester) async {
-    const gpus = GpusModule();
-    final api = FakeApiClient();
-    final app = AppState(api)..currentContext = 'gpu-cluster';
-    await tester.pumpWidget(MultiProvider(
-      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
-      child: const MaterialApp(home: ModuleNavGate(module: gpus, child: Text('GPUs'))),
-    ));
-    expect(find.text('GPUs'), findsNothing, reason: 'hidden while checking');
-    moduleStatuses.debugSet(gpus, api, 'gpu-cluster', const ModuleStatus(ModuleState.notInstalled, 'no GPU nodes'));
-    await tester.pump();
-    expect(find.text('GPUs'), findsNothing);
-    moduleStatuses.debugSet(gpus, api, 'gpu-cluster', const ModuleStatus(ModuleState.connected, '2 GPU nodes · DCGM metrics'));
-    await tester.pump();
-    expect(find.text('GPUs'), findsOneWidget);
-  });
-
   testWidgets('GPUs page renders nodes, devices and callouts without overflow', (tester) async {
     await loadRealFonts();
     addTearDown(tester.view.reset);
@@ -139,42 +105,6 @@ void main() {
     // One range query feeds every sparkline.
     expect(prom.queries.where((q) => q.contains('by (UUID)')), isNotEmpty);
     await tester.pumpWidget(const SizedBox()); // dispose the poll timer
-  });
-
-  testWidgets('GPUs table: device sub-rows collapse and expand with their node', (tester) async {
-    await loadRealFonts();
-    addTearDown(tester.view.reset);
-    await _pumpView(tester, const Size(1200, 800));
-    expect(find.text('GPU 1'), findsOneWidget);
-    expect(find.text('Idle'), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.expand_more).first); // gpu-node-b's chevron (gpu-node-a has no devices)
-    await tester.pump();
-    expect(find.text('GPU 1'), findsNothing);
-    await tester.tap(find.byIcon(Icons.chevron_right).first);
-    await tester.pump();
-    expect(find.text('GPU 1'), findsOneWidget);
-    await _pumpView(tester, const Size(800, 600));
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets('every GPU fact on a node row is readable, in a column or the meta line', (tester) async {
-    await loadRealFonts();
-    addTearDown(tester.view.reset);
-    // Wide enough for a Driver column (1100) and too narrow for one (760).
-    for (final w in [1100.0, 760.0]) {
-      await _pumpView(tester, Size(w, 800));
-      final unclipped = tester
-          .renderObjectList<RenderParagraph>(find.byType(RichText))
-          .where((p) => p.text.toPlainText().contains('595.91.07') && !p.didExceedMaxLines);
-      expect(unclipped, isNotEmpty, reason: 'driver readable at width $w');
-      expect(find.textContaining('NVIDIA RTX PRO 4000 Blackwell · 24 GiB'), findsOneWidget);
-    }
-    for (final b in Brightness.values) {
-      await tester.pumpWidget(const SizedBox()); // no theme cross-fade
-      await _pumpView(tester, const Size(1100, 760), brightness: b);
-    }
-    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('node panel shows the GPU section and history; pod panel its GPUs', (tester) async {

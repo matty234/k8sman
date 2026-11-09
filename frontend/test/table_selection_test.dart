@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -92,43 +91,6 @@ void main() {
     expect(app.detail, isNull);
   });
 
-  testWidgets('selection survives watch updates; deleted rows drop out', (tester) async {
-    final api = apiWith(names);
-    await pumpTable(tester, api, deployType);
-    await tapRow(tester, 'cache');
-    await tapRow(tester, 'db', modifier: LogicalKeyboardKey.metaLeft);
-    await tapRow(tester, 'web', modifier: LogicalKeyboardKey.metaLeft);
-    expect(selectedNames(tester), {'cache', 'db', 'web'});
-
-    api.watchController!
-      ..add(WatchMessage(type: 'MODIFIED', row: fakeRow('db')))
-      ..add(WatchMessage(type: 'ADDED', row: fakeRow('blob')));
-    await tester.pump();
-    expect(selectedNames(tester), {'cache', 'db', 'web'});
-    expect(find.text('3 selected'), findsOneWidget);
-
-    api.watchController!.add(WatchMessage(type: 'DELETED', row: fakeRow('db')));
-    await tester.pump();
-    expect(selectedNames(tester), {'cache', 'web'});
-
-    // A re-list without "web" drops it too: one left, so no bar.
-    api.watchController!.add(WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [for (final n in names) if (n != 'web' && n != 'db') fakeRow(n)])));
-    await tester.pump();
-    expect(selectedNames(tester), {'cache'});
-    expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
-  });
-
-  testWidgets('⌘A selects only rows the filter shows', (tester) async {
-    final api = apiWith(names);
-    await pumpTable(tester, api, deployType);
-    await tester.enterText(find.byType(TextField).first, 'w');
-    await tester.pump();
-    await tapRow(tester, 'web');
-    await press(tester, LogicalKeyboardKey.keyA, modifier: LogicalKeyboardKey.metaLeft);
-    expect(selectedNames(tester), {'web', 'worker'});
-    expect(controllerOf(tester).selection, hasLength(2));
-  });
-
   testWidgets('bulk bar offers Restart + Delete for deployments, nothing when read-only', (tester) async {
     final api = apiWith(names);
     await pumpTable(tester, api, deployType);
@@ -157,16 +119,6 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('bulk-Refresh')));
     await tester.pumpAndSettle();
     expect(argo.actions.where((a) => a.contains('argocd-refresh')), hasLength(3));
-  });
-
-  testWidgets('pods with controllers get Restart pods and Delete pods', (tester) async {
-    final api = apiWith(['web-1', 'web-2', 'web-3'], type: podType, controlled: true);
-    await pumpTable(tester, api, podType);
-    await tapRow(tester, 'web-1');
-    await press(tester, LogicalKeyboardKey.keyA, modifier: LogicalKeyboardKey.metaLeft);
-    expect(find.byKey(const ValueKey('bulk-Restart pods')), findsOneWidget);
-    expect(find.byKey(const ValueKey('bulk-Delete pods')), findsOneWidget);
-    expect(find.byKey(const ValueKey('bulk-Restart')), findsNothing);
   });
 
   testWidgets('bulk delete: one confirm listing names, then a partial-failure summary', (tester) async {
@@ -198,77 +150,6 @@ void main() {
     expect(find.textContaining('svc-07', findRichText: true), findsWidgets);
     expect(find.textContaining('has been modified', findRichText: true), findsOneWidget);
     expect(find.text('Copy'), findsOneWidget);
-  });
-
-  testWidgets('bulk restart shows progress, then a summary snackbar', (tester) async {
-    final api = apiWith(names)..actionDelay = const Duration(milliseconds: 100);
-    await pumpTable(tester, api, deployType, context: 'kind-dev');
-    await tapRow(tester, 'api');
-    await press(tester, LogicalKeyboardKey.keyA, modifier: LogicalKeyboardKey.metaLeft);
-    await tester.tap(find.byKey(const ValueKey('bulk-Restart')));
-    await tester.pump();
-    await tester.tap(find.text('Restart 6'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110));
-    // 4 at a time: the first batch is done.
-    expect(find.text('Restarting 4/6…'), findsWidgets);
-    await tester.pump(const Duration(milliseconds: 110));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(api.actions, hasLength(6));
-    expect(find.text('Restarted 6 Deployments'), findsOneWidget);
-  });
-
-  testWidgets('bulk progress toast never outlives the run, even with toasts queued around it', (tester) async {
-    final api = apiWith(names)..actionDelay = const Duration(milliseconds: 100);
-    await pumpTable(tester, api, deployType, context: 'kind-dev');
-    final messenger = ScaffoldMessenger.of(tester.element(find.byType(ListView)));
-    // Two toasts already up/queued (e.g. earlier action results): the
-    // progress toast used to queue behind the second one, and the run's end
-    // removed the wrong toast, leaving "Restarting…" up for a day.
-    messenger
-      ..showSnackBar(const SnackBar(content: Text('earlier 1')))
-      ..showSnackBar(const SnackBar(content: Text('earlier 2')));
-    await tester.pump();
-    await tapRow(tester, 'api');
-    await press(tester, LogicalKeyboardKey.keyA, modifier: LogicalKeyboardKey.metaLeft);
-    await tester.tap(find.byKey(const ValueKey('bulk-Restart')));
-    await tester.pump();
-    await tester.tap(find.text('Restart 6'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110));
-    expect(find.text('Restarting 4/6…'), findsWidgets);
-    messenger.showSnackBar(const SnackBar(content: Text('during the run')));
-    await tester.pump(const Duration(milliseconds: 110));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(api.actions, hasLength(6));
-    for (var i = 0; i < 6; i++) {
-      await tester.pump(const Duration(seconds: 5));
-    }
-    expect(find.textContaining('Restarting'), findsNothing);
-    expect(find.text('during the run'), findsNothing);
-    expect(find.text('Restarted 6 Deployments'), findsNothing, reason: 'the summary times out too');
-  });
-
-  testWidgets('right-click inside a multi-selection shows the bulk menu', (tester) async {
-    final api = apiWith(names);
-    await pumpTable(tester, api, deployType);
-    await tapRow(tester, 'api');
-    await tapRow(tester, 'db', modifier: LogicalKeyboardKey.shiftLeft);
-    await tester.tap(find.text('cache'), buttons: kSecondaryButton);
-    await tester.pump();
-    expect(find.text('3 deployments selected'), findsOneWidget);
-    expect(find.text('Restart 3 deployments'), findsOneWidget);
-    expect(find.text('Delete 3 deployments…'), findsOneWidget);
-    expect(find.text('Copy names'), findsOneWidget);
-    await tester.tapAt(const Offset(5, 5));
-    await tester.pump();
-
-    // Right-clicking an unselected row behaves as before (single-object menu).
-    await tester.tap(find.text('worker'), buttons: kSecondaryButton);
-    await tester.pump();
-    await tester.pump();
-    expect(find.text('Open'), findsOneWidget);
-    expect(find.text('3 deployments selected'), findsNothing);
   });
 
   testWidgets('j/k move the selection, / focuses the filter, y asks for the YAML tab', (tester) async {

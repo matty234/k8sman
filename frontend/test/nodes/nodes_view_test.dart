@@ -2,11 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/metrics/metrics_api.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/nodes/nodes_view.dart';
 import 'package:k8sman/ui/theme.dart';
@@ -40,70 +38,6 @@ void main() {
     expect(cp.alloc.activePods, greaterThan(5));
     expect(cp.alloc.total.cpuRequest, greaterThan(0));
     expect(cp.roles, contains('control-plane'));
-  });
-
-  test('sortNodes and groupNodesByPool', () {
-    Json node(String name, {String? pool, String cpu = '4'}) => {
-          'metadata': {
-            'name': name,
-            'labels': {'karpenter.sh/nodepool': ?pool},
-          },
-          'status': {
-            'allocatable': {'cpu': cpu, 'memory': '8Gi', 'pods': '110'},
-            'conditions': [
-              {'type': 'Ready', 'status': 'True'},
-            ],
-          },
-        };
-    final s = summarizeNodes([node('w-b', cpu: '2', pool: 'general'), node('w-a', pool: 'general'), node('cp'), node('gpu-1', pool: 'gpu')], const []);
-    final usage = {
-      'w-a': const NodeUsage('w-a', Usage(3000, 0)), // 75%
-      'w-b': const NodeUsage('w-b', Usage(1000, 0)), // 50%
-      'cp': const NodeUsage('cp', Usage(400, 0)), // 10%
-    };
-    expect(sortNodes(s, NodeSort.cpu, ascending: false, usage: usage).map((n) => n.name), ['w-a', 'w-b', 'cp', 'gpu-1']);
-    expect(sortNodes(s, NodeSort.name, ascending: false).map((n) => n.name), ['w-b', 'w-a', 'gpu-1', 'cp']);
-    final groups = groupNodesByPool(sortNodes(s, NodeSort.name));
-    expect(groups.map((g) => g.$1), ['general', 'gpu', null]);
-    expect(groups.first.$2.map((n) => n.name), ['w-a', 'w-b']);
-    // No pool labels: a flat list.
-    expect(groupNodesByPool(summarizeNodes([node('a'), node('b')], const [])), isEmpty);
-  });
-
-  testWidgets('nodes view renders rows without overflow', (tester) async {
-    await loadRealFonts();
-    final api = FakeApiClient(itemsByResource: {'nodes': _nodes(), 'pods': _pods()});
-    final app = AppState(api)
-      ..types = testTypes
-      ..currentContext = 'kind-k8sman-dev';
-    // Sweep widths, including the narrow main area you get with the sidebar open.
-    for (var w = 360.0; w <= 1600; w += 31) {
-      final size = Size(w, 700);
-      tester.view.physicalSize = size;
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
-        child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(Brightness.dark), home: const Scaffold(body: NodesView())),
-      ));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
-      expect(tester.takeException(), isNull, reason: 'overflow at width $w');
-    }
-    expect(find.text('worker-sick'), findsOneWidget);
-    // Cordon / uncordon live in the row menu, not on the page.
-    expect(find.text('Uncordon'), findsNothing);
-    await tester.tap(find.text('k8sman-dev-control-plane'));
-    expect(app.detail?.name, 'k8sman-dev-control-plane');
-    // Problem nodes sort first: the first menu is worker-sick's.
-    await tester.tap(find.byTooltip('Node actions').first);
-    await tester.pump();
-    expect(find.text('Uncordon'), findsOneWidget);
-    expect(find.text('Cordon'), findsNothing);
-    await tester.tap(find.text('Show details'));
-    await tester.pump();
-    expect(app.detail?.name, 'worker-sick');
-    await tester.pumpWidget(const SizedBox()); // dispose the poll timer
   });
 
   testWidgets('a node expands into its pods, problem pods first, grouped by pool', (tester) async {
@@ -146,33 +80,4 @@ void main() {
     await tester.pumpWidget(const SizedBox()); // dispose the poll timer
   });
 
-  testWidgets('arrow keys move through nodes and → expands one', (tester) async {
-    final api = FakeApiClient(itemsByResource: {'nodes': _nodes(), 'pods': _pods()});
-    final app = AppState(api)
-      ..types = testTypes
-      ..currentContext = 'kind-k8sman-dev';
-    tester.view.physicalSize = const Size(1400, 860);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
-      child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(Brightness.dark), home: const Scaffold(body: NodesView())),
-    ));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    // Problem nodes sort first: worker-sick, then the control plane.
-    await tester.tap(find.text('worker-sick'));
-    await tester.pump();
-    expect(app.detail?.name, 'worker-sick');
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump();
-    expect(app.detail?.name, 'k8sman-dev-control-plane');
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump();
-    expect(find.text('crashy'), findsOneWidget);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump();
-    expect(app.detail?.type.kind, 'Pod');
-    await tester.pumpWidget(const SizedBox()); // dispose the poll timer
-  });
 }

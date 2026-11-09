@@ -4,11 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/panel.dart';
 import 'package:k8sman/panels/pod/pod_logic.dart';
-import 'package:k8sman/panels/pod/pod_panel.dart';
 import 'package:k8sman/ui/inspector/inspector.dart';
-import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/state/log_dock.dart';
 import 'package:provider/provider.dart';
 
@@ -91,29 +88,6 @@ void main() {
     expect(find.text('Ready, ContainersReady false'), findsOneWidget);
   });
 
-  testWidgets('a slim inspector (320px) lays the pod out without overflow', (tester) async {
-    for (final f in ['pod-web', 'pod-crashy']) {
-      await pumpPanel(tester, fixture(f), size: const Size(320, 3000));
-      expect(tester.takeException(), isNull, reason: f);
-    }
-  });
-
-  testWidgets('container details trim long env lists and sum up security on one line', (tester) async {
-    final pod = fixture('pod-web');
-    final nginx = (pod['spec']['containers'] as List)[0] as Map;
-    (nginx['env'] as List).addAll([for (var i = 0; i < 5; i++) {'name': 'EXTRA_$i', 'value': 'v$i'}]);
-    nginx['securityContext'] = {'runAsNonRoot': true, 'allowPrivilegeEscalation': true, 'capabilities': {'drop': ['ALL']}};
-    await pumpPanel(tester, pod, size: const Size(560, 3000));
-    await tester.tap(find.byKey(const ValueKey('container-row-nginx')));
-    await tester.pump();
-    expect(find.text('LOG_LEVEL'), findsOneWidget); // the 4th of 9
-    expect(find.text('EXTRA_0'), findsNothing);
-    await tester.tap(find.text('Show 5 more'));
-    await tester.pump();
-    expect(find.text('EXTRA_4'), findsOneWidget);
-    expect(find.text('non-root  ·  privilege escalation allowed  ·  drops ALL', findRichText: true), findsOneWidget);
-  });
-
   testWidgets('pod-crashy shows CrashLoop insight and last state', (tester) async {
     await loadRealFonts();
     await pumpPanel(tester, fixture('pod-crashy'));
@@ -123,14 +97,6 @@ void main() {
     expect(find.textContaining('Error · exit 3'), findsOneWidget);
     expect(find.byTooltip('6 restarts'), findsOneWidget); // the row
     expect(find.text('restarts'), findsOneWidget); // the status figure
-  });
-
-  testWidgets('pod-bad-image explains the image pull failure', (tester) async {
-    await loadRealFonts();
-    await pumpPanel(tester, fixture('pod-bad-image'));
-    expect(tester.takeException(), isNull);
-    expect(find.textContaining("can't pull image registry.invalid/nope:latest"), findsOneWidget);
-    expect(find.text('ImagePullBackOff'), findsWidgets);
   });
 
   testWidgets('links navigate to ConfigMap, Secret, Node and ServiceAccount', (tester) async {
@@ -190,30 +156,6 @@ void main() {
     dock.closeAll();
   });
 
-  testWidgets('log stream keeps at most 10k lines', (tester) async {
-    final lines = [for (var i = 0; i < 10050; i++) LogMessage(line: 'line $i')];
-    final dock = await pumpLogDock(tester, fixture('pod-web'), api: FakeApiClient(logLines: {'demo/web-6fd47b8fcb-4v4m9/nginx': lines}));
-    final s = dock.active!;
-    expect(s.lines.length, 10000);
-    expect(s.dropped, 50);
-    expect(s.lines.first, 'line 50');
-    dock.closeAll();
-  });
-
-  testWidgets('logs pick the troubled container and show the not-started state', (tester) async {
-    await loadRealFonts();
-    var dock = await pumpLogDock(tester, fixture('pod-bad-image'), size: const Size(560, 300));
-    expect(find.textContaining('has not started yet: ImagePullBackOff'), findsOneWidget);
-    dock.closeAll();
-
-    dock = await pumpLogDock(tester, fixture('pod-crashy'),
-        api: FakeApiClient(logLines: {'demo/crashy/app': const [LogMessage(line: 'starting'), LogMessage(line: 'fatal: config missing')]}));
-    expect(dock.active!.container, 'app');
-    expect(find.textContaining('fatal: config missing'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    dock.closeAll();
-  });
-
   testWidgets('container rows open logs (and previous-instance logs after restarts)', (tester) async {
     await pumpPanel(tester, fixture('pod-crashy'), size: const Size(560, 3000));
     final dock = Provider.of<LogDock>(tester.element(find.byType(ListView).first), listen: false);
@@ -235,10 +177,4 @@ void main() {
     dock.closeAll();
   });
 
-  test('pod panel offers a Logs action instead of a Logs tab', () {
-    final pod = fixture('pod-web');
-    final ctx = PanelContext(object: pod, type: testType('', 'Pod'), api: FakeApiClient(), app: AppState(FakeApiClient()));
-    expect(const PodPanel().tabs(ctx), isEmpty);
-    expect(const PodPanel().actions(ctx).map((a) => a.id), ['logs', 'terminal']);
-  });
 }

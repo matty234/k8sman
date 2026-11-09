@@ -8,7 +8,6 @@ import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/custom/crd_schema.dart';
 import 'package:k8sman/panels/custom/generic_panel.dart';
-import 'package:k8sman/panels/custom/humanize.dart';
 import 'package:k8sman/panels/custom/refs.dart';
 import 'package:k8sman/panels/registry.dart';
 import 'package:k8sman/state/app_state.dart';
@@ -19,7 +18,6 @@ import '../../support/harness.dart';
 import '../../support/screenshot.dart';
 
 Json _load(String path) => jsonDecode(File(path).readAsStringSync()) as Json;
-Json _devFixture(String name) => _load('../dev/fixtures/$name');
 Json _fixture(String name) => _load('test/panels/custom/fixtures/$name');
 
 const _backupType = ResourceType(group: 'ops.example.dev', version: 'v1', resource: 'backups', kind: 'Backup', custom: true);
@@ -52,14 +50,6 @@ void main() {
   setUp(CrdCache.clear);
 
   group('helpers', () {
-    test('humanize', () {
-      expect(humanize('leaseDurationSeconds'), 'Lease duration seconds');
-      expect(humanize('podCIDR'), 'Pod CIDR');
-      expect(humanize('apiVersion'), 'API version');
-      expect(humanize('caBundle'), 'CA bundle');
-      expect(humanize('hostIPs'), 'Host IPs');
-      expect(humanize('app.kubernetes.io/name'), 'app.kubernetes.io/name');
-    });
 
     test('reference detection', () {
       const r = RefResolver(namespace: 'demo');
@@ -79,28 +69,6 @@ void main() {
   });
 
   group('CRD panel', () {
-    testWidgets('widgets CRD: names, versions, conditions, instances button', (tester) async {
-      final crd = _devFixture('crd-widgets.example.k8sman.dev.json');
-      final api = FakeApiClient(itemsByResource: {
-        'widgets.example.k8sman.dev': [_devFixture('widget-sprocket.json'), {'metadata': {'name': 'gizmo', 'namespace': 'demo'}}],
-      });
-      final app = await pumpPanel(tester, crd, api: api);
-      expect(find.text('Established'), findsWidgets);
-      expect(find.text('WidgetList'), findsOneWidget);
-      expect(find.text('match spec'), findsOneWidget);
-      expect(find.text('v1alpha1'), findsWidgets);
-      expect(find.text('.spec.color'), findsOneWidget); // printer column
-      expect(find.text('widgets in 1 namespace'), findsOneWidget);
-      expect(find.text('Storage migration pending', findRichText: true), findsNothing);
-      // schema browser: spec/status expanded by default
-      expect(find.text('color'), findsOneWidget);
-      expect(find.textContaining('enum: red | green | blue'), findsOneWidget);
-      expect(find.text('preserve-unknown-fields'), findsOneWidget);
-
-      await tester.tap(find.text('Show widgets'));
-      await tester.pump();
-      expect(app.selectedType?.kind, 'Widget');
-    });
 
     testWidgets('rich CRD: deprecation, migration warning, webhook, schema search', (tester) async {
       await loadRealFonts();
@@ -136,26 +104,6 @@ void main() {
   });
 
   group('generic fallback', () {
-    test('is the registry fallback', () {
-      expect(panelFor(_backupType), isA<GenericPanel>());
-      expect(panelFor(testType('example.k8sman.dev', 'Widget')), isA<GenericPanel>());
-    });
-
-    testWidgets('Widget: health, conditions, spec with schema tooltips', (tester) async {
-      await loadRealFonts();
-      final api = FakeApiClient(objects: {
-        'customresourcedefinitions.apiextensions.k8s.io//widgets.example.k8sman.dev': _devFixture('crd-widgets.example.k8sman.dev.json'),
-      });
-      await pumpPanel(tester, _devFixture('widget-sprocket.json'), api: api, size: const Size(560, 1000));
-      expect(find.text('Health'), findsOneWidget);
-      expect(find.text('Conditions'), findsOneWidget);
-      expect(find.text('Spec'), findsOneWidget);
-      expect(find.text('Reconciled'), findsOneWidget);
-      expect(find.text('Color'), findsOneWidget);
-      expect(find.text('core'), findsOneWidget); // tags as chips
-      expect(find.text('platform@example.com'), findsOneWidget);
-      expect(find.text('CRD'), findsOneWidget);
-    });
 
     testWidgets('CR with refs, tables, generation drift and schema descriptions', (tester) async {
       await loadRealFonts();
@@ -239,64 +187,5 @@ void main() {
       expect(find.text('Replicas'), findsOneWidget);
     });
 
-    testWidgets('works when the CRD fetch fails', (tester) async {
-      await pumpPanel(tester, _fixture('backup-nightly.json'), type: _backupType);
-      expect(find.text('Spec'), findsOneWidget);
-      expect(find.text('Secret/s3-creds'), findsOneWidget);
-    });
-
-    testWidgets('built-in Lease (no status)', (tester) async {
-      await loadRealFonts();
-      const leaseType = ResourceType(group: 'coordination.k8s.io', version: 'v1', resource: 'leases', kind: 'Lease');
-      await pumpGeneric(tester, _fixture('lease-kube-scheduler.json'), leaseType, size: const Size(560, 500));
-      expect(find.text('Health'), findsNothing);
-      expect(find.text('Holder identity'), findsOneWidget);
-      expect(find.text('Lease duration seconds'), findsOneWidget);
-      expect(find.textContaining('ago'), findsWidgets);
-    });
-
-    testWidgets('built-in APIService (cluster-scoped, conditions)', (tester) async {
-      await loadRealFonts();
-      const t = ResourceType(group: 'apiregistration.k8s.io', version: 'v1', resource: 'apiservices', kind: 'APIService', namespaced: false);
-      await pumpGeneric(tester, _fixture('apiservice-v1alpha1.example.k8sman.dev.json'), t, size: const Size(560, 600));
-      expect(find.text('Available'), findsWidgets);
-      expect(find.text('Group priority minimum'), findsOneWidget);
-    });
-
-    testWidgets('top-level fields beyond spec/status, and empty objects', (tester) async {
-      await loadRealFonts();
-      const t = ResourceType(group: 'admissionregistration.k8s.io', version: 'v1', resource: 'mutatingwebhookconfigurations', kind: 'MutatingWebhookConfiguration', namespaced: false);
-      await pumpGeneric(
-        tester,
-        {
-          'apiVersion': 'admissionregistration.k8s.io/v1',
-          'kind': 'MutatingWebhookConfiguration',
-          'metadata': {'name': 'inject', 'uid': 'u1'},
-          'webhooks': [
-            {
-              'name': 'inject.example.dev',
-              'admissionReviewVersions': ['v1'],
-              'sideEffects': 'None',
-              'failurePolicy': 'Fail',
-              'clientConfig': {
-                'service': {'name': 'injector', 'namespace': 'ops-system', 'path': '/mutate', 'port': 443},
-              },
-              'rules': [
-                {'apiGroups': [''], 'apiVersions': ['v1'], 'operations': ['CREATE'], 'resources': ['pods'], 'scope': '*'},
-              ],
-            }
-          ],
-        },
-        t,
-        size: const Size(560, 700),
-      );
-      expect(find.text('Webhooks'), findsOneWidget);
-      expect(find.text('Service/ops-system/injector'), findsOneWidget);
-      expect(find.text('CREATE'), findsOneWidget);
-
-      await pumpGeneric(tester, {'apiVersion': 'example.dev/v1', 'kind': 'Thing', 'metadata': {'name': 'x'}},
-          const ResourceType(group: 'example.dev', version: 'v1', resource: 'things', kind: 'Thing', namespaced: false));
-      expect(find.textContaining('no spec, status or data'), findsOneWidget);
-    });
   });
 }

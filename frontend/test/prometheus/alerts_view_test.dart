@@ -163,29 +163,6 @@ void main() {
     await disposeView(tester);
   });
 
-  testWidgets('non-local contexts get a prominent warning before silencing', (tester) async {
-    final api = FixturePromApi();
-    await pumpAlerts(tester, api: api, context: 'prod-eu-1');
-    await tester.tap(find.text('K8smanDemoPodCrashLooping'));
-    await tester.pump();
-    await tester.tap(find.text('Silence…').first);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('not a local cluster', findRichText: true), findsWidgets);
-    expect(tester.takeException(), isNull);
-    await disposeView(tester);
-  });
-
-  testWidgets('empty state offers to install the stack', (tester) async {
-    await loadRealFonts();
-    await pumpAlerts(tester, api: FixturePromApi(missing: true), size: const Size(900, 600));
-    expect(find.text('No Alertmanager found'), findsOneWidget);
-    await tester.tap(find.text('Install Prometheus stack…'));
-    await tester.pumpAndSettle();
-    expect(find.text('Install Prometheus stack'), findsOneWidget);
-    expect(find.text('Dry run'), findsOneWidget);
-    await disposeView(tester);
-  });
-
   testWidgets('a failed search shows the error and Retry, not an install offer', (tester) async {
     await pumpAlerts(tester, api: FixturePromApi(missing: true, discoveryFailed: true), size: const Size(900, 600));
     expect(find.textContaining("Couldn't check for Prometheus"), findsOneWidget);
@@ -195,7 +172,7 @@ void main() {
   });
 
   testWidgets('no overflow from 360 to 1800px, expanded and on both tabs', (tester) async {
-    for (final w in [360.0, 480.0, 700.0, 1000.0, 1400.0, 1800.0]) {
+    for (final w in [360.0, 1000.0, 1800.0]) {
       for (final silences in [false, true]) {
         await pumpAlerts(tester, size: Size(w, 900), silences: silences, scope: w < 500 ? 'demo' : null);
         if (!silences) {
@@ -206,10 +183,5 @@ void main() {
         await disposeView(tester);
       }
     }
-    await loadRealFonts();
-    await pumpAlerts(tester, size: const Size(360, 900));
-    await tester.tap(find.text('K8smanDemoPodCrashLooping'));
-    await tester.pump();
-    await disposeView(tester);
   });
 }

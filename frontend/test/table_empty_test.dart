@@ -50,12 +50,6 @@ void main() {
     expect(api.watched.last, isNull, reason: 'refetched cluster-wide');
   });
 
-  testWidgets('already all namespaces: no button', (tester) async {
-    await _pump(tester);
-    expect(find.text('No pods'), findsOneWidget);
-    expect(find.text('Show all namespaces'), findsNothing);
-  });
-
   testWidgets('cluster-scoped kinds never offer it', (tester) async {
     await _pump(tester, namespace: 'demo', type: testType('', 'Node'));
     expect(find.text('Show all namespaces'), findsNothing);

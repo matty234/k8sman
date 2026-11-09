@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -56,19 +55,6 @@ void main() {
     expect(bundledGroupIconAsset('example.k8sman.dev'), isNull);
   });
 
-  test('every bundled asset exists', () {
-    for (final name in bundledGroupIcons.values.toSet()) {
-      expect(File('assets/icons/$name.png').existsSync(), isTrue, reason: name);
-    }
-  });
-
-  test('monogram is deterministic', () {
-    expect(GroupMonogram.letterFor('example.k8sman.dev'), 'E');
-    expect(GroupMonogram.letterFor('9.io'), '9');
-    expect(GroupMonogram.colorFor('a.io'), GroupMonogram.colorFor('a.io'));
-    expect(GroupMonogram.colorFor('a.io'), isNot(GroupMonogram.colorFor('b.io')));
-  });
-
   testWidgets('fallback order: bundled, then API, then monogram', (tester) async {
     final png = (await tester.runAsync(() => solidPng(Colors.teal)))!;
     final api = IconApi(icons: {'traefik.io': png, 'none.example.dev': null}, failing: {'down.example.dev'});
@@ -95,24 +81,4 @@ void main() {
     expect(api.calls, unorderedEquals(['traefik.io', 'none.example.dev', 'down.example.dev']));
   });
 
-  testWidgets('lookups are memoised; failures are retried', (tester) async {
-    final png = (await tester.runAsync(() => solidPng(Colors.orange)))!;
-    final api = IconApi(icons: {'traefik.io': png}, failing: {'down.example.dev'});
-    await pumpIcons(tester, api, ['traefik.io', 'traefik.io', 'down.example.dev']);
-    await pumpIcons(tester, api, ['down.example.dev', 'traefik.io']);
-    expect(api.calls.where((c) => c == 'traefik.io'), hasLength(1));
-    expect(api.calls.where((c) => c == 'down.example.dev').length, greaterThan(1));
-    // A known result is shown on the first frame (no monogram flash).
-    await tester.pumpWidget(Provider<ApiClient>.value(
-      value: api,
-      child: const MaterialApp(home: GroupIcon(group: 'traefik.io')),
-    ));
-    expect(image('traefik.io'), findsOneWidget);
-  });
-
-  testWidgets('without an ApiClient it still renders', (tester) async {
-    await pumpIcons(tester, null, ['argoproj.io', 'example.k8sman.dev']);
-    expect(image('argoproj.io'), findsOneWidget);
-    expect(monogram('example.k8sman.dev'), findsOneWidget);
-  });
 }

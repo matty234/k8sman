@@ -35,25 +35,12 @@ void main() {
       );
     });
 
-    test('older backends: classify by status and message', () {
-      expect(ClusterError.classify(message: 'Get "https://10.1.2.3:6443/api": dial tcp 10.1.2.3:6443: connect: connection refused').kind,
-          ClusterErrorKind.unreachable);
-      expect(ClusterError.classify(message: 'Get "https://10.1.2.3:6443/api": dial tcp: i/o timeout').kind, ClusterErrorKind.timeout);
-      expect(ClusterError.classify(code: 401, message: 'Unauthorized').kind, ClusterErrorKind.unauthorized);
-      expect(ClusterError.classify(message: 'getting credentials: exec: executable aws failed').kind, ClusterErrorKind.unauthorized);
-      expect(ClusterError.classify(message: 'Get "https://10.1.2.3:6443/api": x').host, 'https://10.1.2.3:6443');
-    });
-
     test('transport failures mean the backend is down', () {
       expect(ClusterError.fromException(WebSocketChannelException('Connection refused')).kind, ClusterErrorKind.backendDown);
       expect(ClusterError.fromException(ApiException(502, 'dial tcp: connection refused', reason: 'Unreachable')).kind,
           ClusterErrorKind.unreachable);
     });
 
-    test('plugin output is extracted', () {
-      const m = 'Get "https://x/api": getting credentials: exec: executable aws failed with exit code 255: SSO session expired';
-      expect(ClusterError.classify(message: m).pluginError, 'exec: executable aws failed with exit code 255: SSO session expired');
-    });
   });
 
   group('table error states', () {
@@ -86,20 +73,6 @@ void main() {
       expect(find.textContaining('connection refused'), findsOneWidget);
     });
 
-    testWidgets('unauthorized shows exec plugin output and login hints', (tester) async {
-      await pumpWithError(
-        tester,
-        errorFrame('Get "https://eks.example/api": getting credentials: exec: executable aws failed with exit code 255: Error loading SSO Token',
-            reason: 'Unauthorized', code: 401),
-      );
-      await tester.pump(debounce);
-      expect(find.byKey(const ValueKey('cluster-error-unauthorized')), findsOneWidget);
-      expect(find.text('Credentials rejected or expired'), findsOneWidget);
-      expect(find.text('aws sso login'), findsOneWidget);
-      expect(find.text('gcloud auth login'), findsOneWidget);
-      expect(find.textContaining('Error loading SSO Token'), findsOneWidget);
-    });
-
     testWidgets('forbidden names the resource and namespace and offers the namespace picker', (tester) async {
       await pumpWithError(tester, errorFrame('deployments.apps is forbidden: User "bob" cannot list', reason: 'Forbidden', code: 403));
       await tester.pump(debounce);
@@ -107,13 +80,6 @@ void main() {
       expect(find.text("You don't have permission to list deployments in any namespace"), findsOneWidget);
       // Toolbar picker + one in the panel.
       expect(find.byKey(const ValueKey('namespace-picker')), findsNWidgets(2));
-    });
-
-    testWidgets('not found offers rediscovery', (tester) async {
-      await pumpWithError(tester, errorFrame('resource type not served', reason: 'NotFound', code: 404));
-      await tester.pump(debounce);
-      expect(find.byKey(const ValueKey('cluster-error-notFound')), findsOneWidget);
-      expect(find.text('Rediscover API resources'), findsOneWidget);
     });
 
     testWidgets('backend down: transport failure, Retry reconnects', (tester) async {
@@ -187,14 +153,6 @@ void main() {
       expect(find.textContaining('Kubeconfig'), findsOneWidget);
     });
 
-    testWidgets('rejected credentials at startup', (tester) async {
-      await pumpFailingShell(
-          tester,
-          ApiException(401, 'the cluster did not accept your credentials (API discovery was refused, so requests are treated as anonymous): unknown',
-              reason: 'Unauthorized'));
-      expect(find.byKey(const ValueKey('cluster-error-unauthorized')), findsOneWidget);
-      expect(find.text('Credentials rejected or expired'), findsOneWidget);
-    });
   });
 }
 

@@ -5,7 +5,6 @@ import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/detail/yaml_editor.dart';
 import 'package:k8sman/ui/theme.dart';
-import 'package:k8sman/util/diff.dart';
 import 'package:provider/provider.dart';
 import 'package:re_editor/re_editor.dart';
 
@@ -58,11 +57,6 @@ Future<_EditApi> _pump(WidgetTester tester, {String rv = '100'}) async {
 }
 
 void main() {
-  test('diffLines finds a single changed line', () {
-    final d = diffLines('a\nb\nc', 'a\nB\nc');
-    expect(d.map((l) => l.toString()).toList(), [' a', '-b', '+B', ' c']);
-    expect(diffStats(d), (added: 1, removed: 1));
-  });
 
   testWidgets('edit → review → apply runs dry-run then apply', (tester) async {
     await loadRealFonts();

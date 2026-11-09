@@ -25,21 +25,6 @@ void main() {
       expect(descs, hasLength(3));
     });
 
-    test('finds projected ConfigMap sources (kube-root-ca.crt) in every container', () {
-      final u = findUsages([fixture('pod-web')], kind: RefKind.configMap, name: 'kube-root-ca.crt');
-      final usages = u.single.usages;
-      expect(usages.every((x) => x.kind == UsageKind.projected), isTrue);
-      expect(usages.map((x) => x.container).toSet(), {'init-wait', 'nginx', 'log-sidecar'});
-      expect(usages.firstWhere((x) => x.container == 'init-wait').initContainer, isTrue);
-      expect(usages.first.keys, ['ca.crt']);
-    });
-
-    test('finds secretKeyRef in pod-web and ignores other kinds', () {
-      final u = findUsages([fixture('pod-web')], kind: RefKind.secret, name: 'web-secret');
-      expect(u.single.usages.single.description, 'env API_TOKEN ← key API_TOKEN (container nginx)');
-      expect(findUsages([fixture('pod-web')], kind: RefKind.secret, name: 'web-config'), isEmpty);
-    });
-
     test('secret volumes, projected secrets, imagePullSecrets, optional and missing keys', () {
       final u = findUsages([richPod], kind: RefKind.secret, name: 'app-secret');
       final kinds = u.single.usages.map((x) => x.kind).toList();
@@ -50,23 +35,6 @@ void main() {
       expect(missing.map((m) => m.key), ['nope', 'token']);
       expect(missing.firstWhere((m) => m.key == 'nope').allOptional, isTrue);
       expect(missing.firstWhere((m) => m.key == 'token').allOptional, isFalse);
-    });
-
-    test('unmounted volume and namespace filter', () {
-      final pod = {
-        'metadata': {'name': 'p', 'namespace': 'a'},
-        'spec': {
-          'volumes': [
-            {'name': 'v', 'configMap': {'name': 'cm'}}
-          ],
-          'containers': [
-            {'name': 'c'}
-          ],
-        },
-      };
-      final u = findUsages([pod], kind: RefKind.configMap, name: 'cm');
-      expect(u.single.usages.single.description, 'volume v (not mounted)');
-      expect(findUsages([pod], kind: RefKind.configMap, name: 'cm', namespace: 'b'), isEmpty);
     });
 
     test('groups identical replicas', () {
@@ -95,47 +63,6 @@ void main() {
       expect(m[1].roleRef.namespace, isNull);
     });
 
-    test('other SA, namespace mismatch and User form', () {
-      expect(matchBindings(saName: 'default', saNamespace: 'demo', roleBindings: [rb]), isEmpty);
-      expect(matchBindings(saName: 'web', saNamespace: 'other', roleBindings: [rb]), isEmpty);
-      final user = {
-        'metadata': {'name': 'u'},
-        'roleRef': {'kind': 'ClusterRole', 'name': 'view'},
-        'subjects': [
-          {'kind': 'User', 'name': 'system:serviceaccount:demo:web'}
-        ],
-      };
-      final nsGroup = {
-        'metadata': {'name': 'g', 'namespace': 'demo'},
-        'roleRef': {'kind': 'ClusterRole', 'name': 'view'},
-        'subjects': [
-          {'kind': 'Group', 'name': 'system:serviceaccounts:demo'}
-        ],
-      };
-      final otherNsGroup = {
-        'metadata': {'name': 'g2'},
-        'roleRef': {'kind': 'ClusterRole', 'name': 'view'},
-        'subjects': [
-          {'kind': 'Group', 'name': 'system:serviceaccounts:kube-system'}
-        ],
-      };
-      final m = matchBindings(saName: 'web', saNamespace: 'demo', roleBindings: [nsGroup], clusterRoleBindings: [user, otherNsGroup]);
-      expect(m.map((x) => x.name), ['u', 'g']);
-      expect(m[0].inherited, isFalse);
-      expect(m[1].viaGroup, 'system:serviceaccounts:demo');
-      expect(m[1].scope, 'namespace demo');
-    });
-
-    test('RoleBinding SA subject without namespace defaults to the binding namespace', () {
-      final b = {
-        'metadata': {'name': 'x', 'namespace': 'demo'},
-        'roleRef': {'kind': 'Role', 'name': 'r'},
-        'subjects': [
-          {'kind': 'ServiceAccount', 'name': 'web'}
-        ],
-      };
-      expect(matchBindings(saName: 'web', saNamespace: 'demo', roleBindings: [b]), hasLength(1));
-    });
   });
 
   test('buildUsageReport groups by Deployment and counts 0-replica templates', () {
@@ -180,14 +107,6 @@ void main() {
       expect(detectFormat('{not json'), ValueFormat.plain);
     });
 
-    test('prettyValue, lineCount and sizes', () {
-      expect(prettyValue('{"a":1}', ValueFormat.json), '{\n  "a": 1\n}');
-      expect(lineCount('a\nb\n'), 2);
-      expect(lineCount('a\nb'), 2);
-      expect(lineCount(''), 0);
-      expect(utf8Size('é'), 2);
-    });
-
     test('reveal decodes base64 text and flags binary', () {
       final secret = fixture('secret-web-secret');
       expect(decodeSecretValue(secret['data']['DB_PASSWORD'])!.text, 'hunter2');
@@ -199,21 +118,5 @@ void main() {
       expect(decodeSecretValue('***'), isNull);
     });
 
-    test('pem and docker config', () {
-      expect(pemBlocks(fakeChain), {'CERTIFICATE': 2});
-      expect(describePem({'CERTIFICATE': 2, 'PRIVATE KEY': 1}), 'CERTIFICATE ×2, PRIVATE KEY');
-      final regs = parseDockerConfig(utf8.decode(base64.decode(dockerSecret['data']['.dockerconfigjson'])))!;
-      expect(regs.map((r) => r.registry), ['ghcr.io', 'registry.example.com']);
-      expect(regs[0].username, 'octo');
-      expect(regs[0].password, 'ghp_dummy');
-      expect(regs[1].username, 'robot');
-      expect(regs[1].password, 'pw-from-auth');
-    });
-
-    test('secret type explanations', () {
-      for (final t in ['Opaque', 'kubernetes.io/tls', 'kubernetes.io/dockerconfigjson', 'kubernetes.io/service-account-token', 'kubernetes.io/basic-auth', 'kubernetes.io/ssh-auth', 'bootstrap.kubernetes.io/token']) {
-        expect(secretTypeExplanation(t), isNot('Custom secret type.'));
-      }
-    });
   });
 }

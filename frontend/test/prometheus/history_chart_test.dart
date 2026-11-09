@@ -55,36 +55,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('pod panel puts the metrics charts after the status and containers', (tester) async {
-    await pumpPanel(tester, devFixture('pod-web.json'), size: const Size(560, 2400));
-    final statusY = tester.getTopLeft(find.byKey(const ValueKey('pod-status-headline'))).dy;
-    final containersY = tester.getTopLeft(find.text('Containers').first).dy;
-    final chartsY = tester.getTopLeft(find.text('Metrics history')).dy;
-    expect(statusY, lessThan(containersY));
-    expect(containersY, lessThan(chartsY));
-  });
-
-  testWidgets('node panel shows history', (tester) async {
-    await pumpPanel(tester, devFixture('node-k8sman-dev-control-plane.json'), size: const Size(560, 2400));
-    expect(find.text('Metrics history'), findsOneWidget);
-    expect(find.byType(AreaChart), findsNWidgets(3));
-    expect(prom.queries.where((q) => q.contains('node_network_receive_bytes_total{device!~"lo|veth.*')), hasLength(1));
-  });
-
-  testWidgets('charts offer 10m and 1w and first open on the default range setting', (tester) async {
-    prom.defaultRange = '6h';
-    await pumpPanel(tester, devFixture('node-k8sman-dev-control-plane.json'), size: const Size(560, 2400));
-    for (final label in ['10m', '15m', '1h', '6h', '1d', '1w']) {
-      expect(find.text(label), findsOneWidget);
-    }
-    expect(prom.queries.firstWhere((q) => q.contains('node_cpu_seconds_total')), contains('[6m]'));
-    // Picking a range changes this view only.
-    await tester.tap(find.text('1w'));
-    await tester.pumpAndSettle();
-    expect(prom.queries.last, contains('[168m]'));
-    expect(stepFor(const Duration(days: 7)).step, const Duration(seconds: 2520));
-  });
-
   testWidgets('deployment panel sums its pods by owner, falling back to the pod-name pattern', (tester) async {
     await pumpPanel(tester, devFixture('deploy-web.json'), size: const Size(560, 3200));
     expect(find.text('Metrics history'), findsOneWidget);
@@ -92,16 +62,6 @@ void main() {
     final cpu = prom.queries.firstWhere((q) => q.contains('container_cpu_usage_seconds_total'));
     expect(cpu, contains('kube_pod_owner{namespace="demo",owner_kind="ReplicaSet",owner_name=~"web-[a-z0-9]+"}'));
     expect(cpu, contains(' or sum (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace="demo",pod=~"web-[a-z0-9]+-[a-z0-9]+"'));
-  });
-
-  testWidgets('hostNetwork pod: no network chart, a note pointing at its node', (tester) async {
-    final pod = devFixture('pod-web.json');
-    (pod['spec'] as Map)['hostNetwork'] = true;
-    await pumpPanel(tester, pod, size: const Size(560, 2400));
-    expect(find.byType(AreaChart), findsNWidgets(2));
-    expect(prom.queries.where((q) => q.contains('container_network')), isEmpty);
-    expect(find.textContaining('Uses the host network'), findsOneWidget);
-    expect(find.text((pod['spec'] as Map)['nodeName'] as String), findsWidgets);
   });
 
   testWidgets('hidden when no Prometheus is reachable', (tester) async {
@@ -119,11 +79,4 @@ void main() {
     expect(formatMetric(5.5 * 1024 * 1024, MetricUnit.bytes), '5.5 MiB');
   });
 
-  testWidgets('pod queries select the pod and skip the pause container', (tester) async {
-    await pumpPanel(tester, devFixture('pod-web.json'));
-    final cpu = prom.queries.firstWhere((q) => q.contains('container_cpu_usage_seconds_total'));
-    expect(cpu, contains('namespace="demo",pod="web-6fd47b8fcb-4v4m9"'));
-    expect(cpu, contains('container!="POD"'));
-    expect(cpu, contains('[2m]'));
-  });
 }

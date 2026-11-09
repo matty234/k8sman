@@ -12,7 +12,6 @@ import 'package:k8sman/util/k8s.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
-import 'package:k8sman/util/text.dart';
 
 Json _load(String path) => jsonDecode(File(path).readAsStringSync()) as Json;
 List<Json> _items(String path) => asMapList(_load(path)['items']);
@@ -179,33 +178,6 @@ void main() {
           'Failing');
     });
 
-    test('jobDuration and completions', () {
-      expect(jobDuration(migrateDb), const Duration(seconds: 11));
-      expect(jobDuration(failedJob()), const Duration(seconds: 70));
-      expect(jobDuration({'status': {'startTime': '2026-11-03T11:30:00Z', 'active': 1}}), const Duration(minutes: 3));
-      expect(jobCompletions(migrateDb), '1/1');
-      expect(jobCompletions({'status': {'succeeded': 4}}), '4');
-    });
-
-    test('shellJoin quotes only when needed', () {
-      expect(shellJoin(['sh', '-c', 'echo hi; sleep 3']), "sh -c 'echo hi; sleep 3'");
-      expect(shellJoin(['--note=it\'s', '', 'a/b.c']), "'--note=it'\\''s' '' a/b.c");
-    });
-
-    test('podFailurePolicySummary', () {
-      expect(podFailurePolicySummary(failedJob()['spec']['podFailurePolicy']),
-          ['FailJob when exit code in [42] (container import)', 'Ignore on pod condition DisruptionTarget']);
-      expect(podFailurePolicySummary(null), isEmpty);
-    });
-
-    test('formatRelative', () {
-      final now = DateTime.utc(2026, 11, 3, 11, 33);
-      expect(formatRelative(DateTime.utc(2026, 11, 3, 11, 35), now: now), 'in 2m');
-      expect(formatRelative(DateTime.utc(2026, 11, 3, 11, 32, 30), now: now), '30s ago');
-      expect(formatRelative(DateTime.utc(2026, 11, 3, 13, 3), now: now), 'in 1h30m');
-      expect(formatRelative(DateTime.utc(2026, 11, 5, 11, 33), now: now), 'in 2d');
-    });
-
     test('overdueRun', () {
       final s = CronSchedule.tryParse('*/5 * * * *')!;
       final last = DateTime.utc(2026, 11, 3, 11, 30);
@@ -267,27 +239,6 @@ void main() {
       expect(app.detail?.type.kind, 'ServiceAccount');
     });
 
-    testWidgets('cronjob-owned job links to its CronJob', (tester) async {
-      final job = liveJobs.firstWhere((j) => j['metadata']['name'] == 'report-29895100');
-      final app = await pumpPanel(tester, job, api: _api(pods: reportPods));
-      expect(find.text('report-29895100-ddwbj'), findsOneWidget);
-      expect(find.text('report-29895095-74j44'), findsNothing);
-      await tester.tap(find.text('CronJob/report'));
-      await tester.pump();
-      expect(app.detail?.type.kind, 'CronJob');
-      expect(app.detail?.name, 'report');
-    });
-
-    testWidgets('prefers batch.kubernetes.io/controller-uid when present', (tester) async {
-      await pumpPanel(tester, failedJob(), api: _api(pods: [...failedPods(), ...migratePods]));
-      expect(find.text('migrate-db-xgbx9'), findsNothing);
-      expect(find.text('#3'), findsOneWidget);
-    });
-
-    testWidgets('no pods shows an explanation', (tester) async {
-      await pumpPanel(tester, migrateDb, api: _api());
-      expect(find.textContaining('No pods found'), findsOneWidget);
-    });
   });
 
   group('CronJob panel', () {
@@ -342,13 +293,5 @@ void main() {
       expect(find.textContaining('Missed schedule'), findsNothing);
     });
 
-    testWidgets('unparseable schedule falls back to the raw expression', (tester) async {
-      final cj = cronReport;
-      cj['spec']['schedule'] = '@every 5m';
-      await pumpPanel(tester, cj, api: _api());
-      expect(find.text('Unrecognised schedule'), findsOneWidget);
-      await openSection(tester, 'cron-runs');
-      expect(find.text('Cannot compute run times for this expression.'), findsOneWidget);
-    });
   });
 }

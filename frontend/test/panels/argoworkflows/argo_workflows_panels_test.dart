@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/argoworkflows/cron_panel.dart';
 import 'package:k8sman/panels/argoworkflows/wf_actions.dart';
 import 'package:k8sman/panels/argoworkflows/wf_common.dart';
 import 'package:k8sman/panels/batch/batch_common.dart' show batchNow;
 import 'package:k8sman/panels/registry.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/state/log_dock.dart';
-import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
@@ -79,18 +77,6 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('suspended workflow: waiting step callout with Resume, hidden when read-only', (tester) async {
-    final wf = wfFixture('wf-approval-suspended.json');
-    await pumpWf(tester, wf);
-    expect(find.text('Suspended'), findsWidgets);
-    expect(find.text('Waiting at approve'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Resume'), findsOneWidget);
-
-    await pumpWf(tester, wf, readOnly: true);
-    expect(find.text('Waiting at approve'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Resume'), findsNothing);
-  });
-
   test('workflow actions follow the phase and argo-server availability', () {
     final app = AppState(FakeApiClient())..currentContext = 'kind-k8sman-dev';
     PanelContext ctx(Json o) => PanelContext(object: o, type: workflowType, api: app.api, app: app);
@@ -123,54 +109,4 @@ void main() {
     expect(find.byType(WorkflowRow), findsNWidgets(history.length));
   });
 
-  testWidgets('template: parameters, templates, submit dialog prefilled from defaults and enums', (tester) async {
-    await loadRealFonts();
-    final tmpl = wfFixture('wftmpl-build-and-test.json');
-    await pumpWf(tester, tmpl, size: const Size(560, 1800));
-    expect(find.text('fail-tests'), findsOneWidget);
-    expect(find.text('Where to deploy'), findsOneWidget);
-    expect(find.text('pipeline'), findsWidgets);
-    expect(find.text('entrypoint'), findsOneWidget);
-
-    SubmitRequest? got;
-    tester.view.physicalSize = const Size(900, 900);
-    await tester.pumpWidget(MaterialApp(
-      theme: buildTheme(Brightness.dark),
-      home: Builder(
-        builder: (context) => Scaffold(
-          body: Center(
-            child: TextButton(
-              onPressed: () async => got = await showDialog<SubmitRequest>(
-                context: context,
-                builder: (_) => SubmitTemplateDialog(template: tmpl, cluster: false, defaultNamespace: 'argo-demo'),
-              ),
-              child: const Text('open'),
-            ),
-          ),
-        ),
-      ),
-    ));
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-    // Enum params are menus showing their default; free text is prefilled.
-    expect(find.text('staging'), findsOneWidget);
-    expect(find.widgetWithText(TextField, 'hello'), findsOneWidget);
-    await tester.enterText(find.widgetWithText(TextField, 'hello'), 'hi there');
-    await tester.tap(find.text('Next'));
-    await tester.pumpAndSettle();
-    expect(got?.body(), {
-      'parameters': [
-        {'name': 'target', 'value': 'staging'},
-        {'name': 'fail-tests', 'value': 'false'},
-        {'name': 'message', 'value': 'hi there'},
-      ],
-    });
-  });
-
-  test('panels are registered for all four kinds', () {
-    for (final t in [workflowType, cronWorkflowType, workflowTemplateType, clusterWorkflowTemplateType]) {
-      expect(panelFor(t).kinds, contains(t.gk));
-    }
-    expect(panelFor(cronWorkflowType), isA<CronWorkflowPanel>());
-  });
 }

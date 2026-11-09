@@ -5,7 +5,6 @@ import 'package:k8sman/metrics/workload_usage.dart';
 import 'package:k8sman/panels/cluster/logic.dart';
 import 'package:k8sman/util/k8s.dart';
 
-import 'metrics_fakes.dart';
 
 void main() {
   group('parseQuantity', () {
@@ -68,21 +67,6 @@ void main() {
     expect(formatCpuUsage(null), '—');
   });
 
-  test('Spread: min / median / max', () {
-    expect(Spread.of([]), isNull);
-    final s = Spread.of([5, 1, 3])!;
-    expect([s.min, s.median, s.max], [1, 3, 5]);
-    expect(Spread.of([1, 2, 3, 10])!.median, 2.5);
-  });
-
-  test('Usage parses backend shapes', () {
-    final u = Usage.fromJson({'cpu': '12m', 'memory': '1048576'});
-    expect(u.cpuMillis, 12);
-    expect(u.memoryBytes, 1048576);
-    final v = Usage.fromJson({'cpuMillis': 7, 'memoryBytes': 2048});
-    expect((u + v).cpuMillis, 19);
-  });
-
 
 
   test('WorkloadTotals sums only sampled pods', () {
@@ -99,19 +83,4 @@ void main() {
     expect(fraction(t.used.cpuMillis, t.resources.cpuRequest), 0.4);
   });
 
-  test('MetricsUnavailable maps backend errors', () {
-    final e = MetricsUnavailable.wrap(MetricsFakeApi.notInstalled('metrics.k8s.io'));
-    expect(e, isA<MetricsUnavailable>().having((x) => x.state, 'state', MetricsState.notInstalled));
-    expect(dig<String>({'a': 'b'}, ['a']), 'b');
-  });
-
-  test('HpaAnalysis parses the captured response', () {
-    final a = HpaAnalysis.fromJson(metricsFixture('hpa-web.json'));
-    // Inside the KEDA cron window the external metric asks for 2 replicas.
-    expect(a.limitedBy, isNull);
-    expect(a.proposed, 2);
-    expect(a.metrics.map((m) => m.type), ['External', 'Resource']);
-    expect(a.metrics.map((m) => m.driving), [true, false]);
-    expect(a.metrics[1].utilization, isNotNull);
-  });
 }

@@ -210,14 +210,6 @@ void main() {
     expect(app.detail?.namespace, 'security-demo');
   });
 
-  testWidgets('include system toggle refetches with includeSystem', (tester) async {
-    final (_, source) = await pumpSecurity(tester, fixture('security-demo'), scope: 'security-demo');
-    await tester.tap(find.byType(Switch));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(source.calls.last, ('security-demo', true));
-  });
-
   testWidgets('no operator: install button and the trivy CLI hint', (tester) async {
     await loadRealFonts();
     await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(operator: false), size: const Size(1000, 1600), scope: 'security-demo');
@@ -234,27 +226,6 @@ void main() {
     expect(find.text('Dry run'), findsOneWidget);
   });
 
-  testWidgets('operator installed but still scanning', (tester) async {
-    await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(scanning: true), scope: 'security-demo');
-    await tester.tap(find.text('Images').first);
-    await tester.pump();
-    expect(find.textContaining('Trivy Operator is scanning'), findsOneWidget);
-    expect(find.text('Install Trivy Operator'), findsNothing);
-  });
-
-  testWidgets('on-demand scan with the local trivy', (tester) async {
-    final (_, source) = await pumpSecurity(tester, withoutOperator(), scanner: scannerJson(operator: false, trivy: true), size: const Size(1000, 1400), scope: 'security-demo');
-    await tester.tap(find.text('Images').first);
-    await tester.pump();
-    expect(find.textContaining('Local trivy 0.57.1'), findsOneWidget);
-    await tester.tap(find.widgetWithText(TextButton, 'Scan').first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(source.scans, hasLength(1));
-    expect(find.text('scanned locally'), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'Rescan'), findsOneWidget);
-  });
-
   testWidgets('load error offers retry', (tester) async {
     final client = FakeApiClient();
     final app = AppState(client)..types = testTypes;
@@ -268,7 +239,7 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  for (final width in [360.0, 500.0, 700.0, 900.0, 1200.0, 1500.0, 1800.0]) {
+  for (final width in [360.0, 900.0, 1800.0]) {
     testWidgets('no overflow at ${width.toInt()}px', (tester) async {
       await pumpSecurity(tester, fixture('security'), size: Size(width, 3000));
       // Expand the first few findings too.

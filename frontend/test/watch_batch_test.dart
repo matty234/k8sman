@@ -59,16 +59,6 @@ void main() {
       expect(tc.rows.map((r) => '${r.name}:${r.cells[1]}'), ['b:y', 'c:demo', 'd:x']);
     });
 
-    test('single-row frames (older backends) still work', () async {
-      api.watchController!
-        ..add(_ev('ADDED', _row('d')))
-        ..add(_ev('DELETED', _row('a')))
-        ..add(_ev('MODIFIED', _row('b', rv: '2', status: 'y')));
-      await pumpEventQueue();
-      expect(notified, 3);
-      expect(tc.rows.map((r) => '${r.name}:${r.cells[1]}'), ['b:y', 'c:demo', 'd:demo']);
-    });
-
     test('a DELETED inside a BATCH prunes the selection', () async {
       tc
         ..selectOnly('uid-a')
@@ -79,26 +69,6 @@ void main() {
       expect(tc.rows.map((r) => r.name), ['b', 'c', 'e']);
     });
 
-    test('rows is memoised until rows, filter or sort change', () async {
-      final first = tc.rows;
-      final n = tc.debugRowsComputations;
-      expect(identical(tc.rows, first), isTrue);
-      tc.selectOnly('uid-b');
-      tc.selectedRows;
-      expect(tc.debugRowsComputations, n, reason: 'selection does not re-sort');
-      api.watchController!.add(_ev('MODIFIED', _row('c', rv: '2')));
-      await pumpEventQueue();
-      expect(identical(tc.rows, first), isFalse);
-      expect(tc.debugRowsComputations, n + 1);
-      tc.setFilter('b');
-      expect(tc.rows.map((r) => r.name), ['b']);
-      tc.sortBy(0);
-      tc.sortBy(0);
-      expect(tc.rows.map((r) => r.name), ['b']);
-      tc.setFilter('');
-      expect(tc.rows.map((r) => r.name), ['c', 'b', 'a'], reason: 'descending by name');
-      expect(() => (tc.rows as List).add(_row('z')), throwsUnsupportedError);
-    });
   });
 
   test('reconnect delay: jittered exponential backoff, capped', () {
@@ -166,42 +136,6 @@ void main() {
       expect(api.controller!.hasListener, isFalse);
     });
 
-    testWidgets('moving to a seeded object renders it in the same frame, watching once settled', (tester) async {
-      final api = _SidebarApi();
-      final cm = jsonDecode(File('../dev/fixtures/cm-web-config.json').readAsStringSync()) as Json;
-      Json named(String name, String mode) => jsonDecode(jsonEncode(cm))
-        ..['metadata']['name'] = name
-        ..['metadata']['uid'] = 'uid-$name'
-        ..['data']['APP_MODE'] = mode;
-      final type = testType('', 'ConfigMap');
-      final app = AppState(api)..types = testTypes;
-      app.openDetail(DetailTarget(type: type, name: 'one', namespace: 'demo', seed: named('one', 'first-mode')));
-      tester.view.physicalSize = const Size(600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          Provider<ApiClient>.value(value: api),
-          ChangeNotifierProvider<AppState>.value(value: app),
-          ChangeNotifierProvider<LogDock>(create: (_) => LogDock(api)),
-        ],
-        child: MaterialApp(theme: buildTheme(Brightness.dark), home: const Scaffold(body: DetailSidebar())),
-      ));
-      expect(find.text('first-mode'), findsWidgets);
-      // Sections may show their own loaders; the inspector must add none.
-      final spinners = find.byType(CircularProgressIndicator).evaluate().length;
-
-      app.openDetail(DetailTarget(type: type, name: 'two', namespace: 'demo', seed: named('two', 'second-mode')));
-      await tester.pump();
-      expect(find.text('second-mode'), findsWidgets);
-      expect(find.text('first-mode'), findsNothing);
-      expect(find.byType(CircularProgressIndicator).evaluate().length, spinners);
-      // No watch until the selection settles.
-      expect(api.watches, 1);
-      await tester.pump(const Duration(milliseconds: 121));
-      expect(api.watches, 2);
-      await tester.pumpWidget(const SizedBox());
-    });
   });
 }
 

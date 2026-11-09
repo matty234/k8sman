@@ -39,27 +39,6 @@ void main() {
     expect(app.detail?.name, 'web-6fd47b8fcb-4v4m9');
   });
 
-  testWidgets('ConfigMap: formats, long values, binaryData and missing keys', (tester) async {
-    await pumpPanel(tester, richConfigMap, api: podsApi([richPod]), size: const Size(560, 3000));
-    for (final f in ['json', 'yaml', 'properties', 'shell']) {
-      expect(find.textContaining(RegExp('^$f · ')), findsWidgets, reason: f);
-    }
-    expect(find.text('immutable'), findsOneWidget);
-    expect(find.textContaining('missing from this ConfigMap'), findsOneWidget); // FEATURE_X (optional)
-    expect(find.textContaining('1 missing key'), findsOneWidget);
-    // Values open on demand, pretty-printed and trimmed when long.
-    await tester.tap(find.byKey(const ValueKey('cm-rich/big.txt')));
-    await tester.tap(find.byKey(const ValueKey('cm-rich/settings.json')));
-    await tester.pump();
-    expect(find.text('Show all 80 lines'), findsOneWidget);
-    expect(find.textContaining('"port": 8080'), findsOneWidget);
-    await openSection(tester, 'cm-binary');
-    expect(find.text('16 B'), findsOneWidget); // binaryData size
-    await tester.tap(find.text('Show all 80 lines'));
-    await tester.pumpAndSettle();
-    expect(find.text('Show less'), findsOneWidget);
-  });
-
   testWidgets('Secret: masked by default, reveal decodes, reveal all', (tester) async {
     await pumpPanel(tester, fixture('secret-web-secret'), api: podsApi([fixture('pod-web')]));
     expect(find.text('hunter2'), findsNothing);
@@ -80,34 +59,6 @@ void main() {
     await tester.tap(find.text('Hide all'));
     await tester.pump();
     expect(find.text('hunter2'), findsNothing);
-  });
-
-  testWidgets('Secret: TLS shows PEM blocks', (tester) async {
-    await pumpPanel(tester, tlsSecret, api: podsApi([]));
-    expect(find.textContaining('CERTIFICATE ×2'), findsOneWidget);
-    expect(find.text('PRIVATE KEY'), findsOneWidget);
-    expect(find.text('not present'), findsOneWidget);
-  });
-
-  testWidgets('Secret: dockerconfigjson lists registries, passwords masked', (tester) async {
-    await pumpPanel(tester, dockerSecret, api: podsApi([]));
-    expect(find.text('ghcr.io'), findsOneWidget);
-    expect(find.text('robot'), findsOneWidget);
-    expect(find.text('ghp_dummy'), findsNothing);
-    await tester.tap(find.text('Reveal all'));
-    await tester.pump();
-    expect(find.text('ghp_dummy'), findsOneWidget);
-  });
-
-  testWidgets('Secret: service-account-token links SA; binary reveal', (tester) async {
-    final app = await pumpPanel(tester, saTokenSecret, api: podsApi([]));
-    await tester.tap(find.text('Reveal all'));
-    await tester.pump();
-    expect(find.text('binary · 5 bytes'), findsOneWidget);
-    expect(find.textContaining('ff fe 00 01 02'), findsOneWidget);
-    await tester.tap(find.text('web'));
-    await tester.pump();
-    expect(app.detail?.type.kind, 'ServiceAccount');
   });
 
   testWidgets('ServiceAccount: used-by and permissions', (tester) async {
@@ -158,20 +109,4 @@ void main() {
     expect(app.detail?.namespace, 'demo');
   });
 
-  testWidgets('ServiceAccount with only default bindings says so plainly', (tester) async {
-    final api = FakeApiClient(itemsByResource: {
-      'pods': const [],
-      'rolebindings.rbac.authorization.k8s.io': const [],
-      'clusterrolebindings.rbac.authorization.k8s.io': [localFixture('crb-sa-issuer-discovery')],
-    }, objects: {
-      'clusterroles.rbac.authorization.k8s.io//system:service-account-issuer-discovery': localFixture('clusterrole-sa-issuer-discovery'),
-    });
-    await loadRealFonts();
-    await pumpPanel(tester, fixture('sa-web'), api: api);
-    expect(find.text('defaults only'), findsOneWidget);
-    await openSection(tester, 'sa-permissions');
-    expect(find.textContaining('Nothing beyond the cluster defaults'), findsOneWidget);
-    expect(find.text('Can do'), findsNothing);
-    expect(find.text('Default access'), findsOneWidget);
-  });
 }

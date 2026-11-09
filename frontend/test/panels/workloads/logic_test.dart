@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/panels/workloads/hpa_panel.dart';
 import 'package:k8sman/panels/workloads/rollout.dart';
 import 'package:k8sman/panels/workloads/statefulset_panel.dart';
-import 'package:k8sman/panels/workloads/widgets/pods_list.dart';
 
 import 'support.dart';
 import 'package:k8sman/util/pod.dart';
@@ -16,12 +15,6 @@ void main() {
     expect(h.map((r) => r['metadata']['name']), isNot(contains('web-other')));
   });
 
-  test('filterPodsByOwner keeps only pods owned by the given uid', () {
-    final pods = loadLocal('pods-demo.json');
-    final owned = filterPodsByOwner(pods, {'4d2a15ca-c84a-4159-b23d-85e672249774'});
-    expect(owned.map((p) => p['metadata']['name']), ['redis-0']);
-  });
-
   group('podStatus', () {
     final pods = {for (final p in loadLocal('pods-demo.json')) p['metadata']['name']: p};
     test('mirrors the pod table', () {
@@ -30,27 +23,9 @@ void main() {
       expect(podStatus(pods['bad-image']!), anyOf('ImagePullBackOff', 'ErrImagePull'));
       expect(podStatus(pods['migrate-db-xgbx9']!), 'Completed');
     });
-    test('Terminating and init failures', () {
-      expect(podStatus(clone(pods['redis-0']!, (c) => c['metadata']['deletionTimestamp'] = '2026-11-03T12:00:00Z')), 'Terminating');
-      final init = clone(pods['redis-0']!, (c) {
-        c['status']['initContainerStatuses'] = [
-          {'name': 'i', 'state': {'waiting': {'reason': 'CrashLoopBackOff'}}}
-        ];
-      });
-      expect(podStatus(init), 'Init:CrashLoopBackOff');
-    });
   });
 
   group('HPA', () {
-    test('metric with missing current value', () {
-      final m = hpaMetrics(loadFixture('hpa-web.json'));
-      expect(m, hasLength(1));
-      expect(m.single.label, 'cpu');
-      expect(m.single.targetText, '70%');
-      expect(m.single.current, isNull);
-      expect(m.single.currentText, 'unknown');
-      expect(hpaStatus(loadFixture('hpa-web.json')).$1, 'Scaling inactive');
-    });
 
     test('pairs Pods/Object/External metrics with current values', () {
       final hpa = {

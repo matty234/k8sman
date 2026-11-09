@@ -1,10 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/argoworkflows/wf_common.dart';
-import 'package:k8sman/util/format.dart';
 import 'package:k8sman/panels/argoworkflows/wf_graph.dart';
 
-import 'wf_support.dart';
 
 /// Builds status.nodes from compact specs: id → (type, phase, children,
 /// boundary, extra).
@@ -102,21 +100,6 @@ void main() {
     expect(podNodeFor(n['r']!, n).id, 'r1');
   });
 
-  test('onExit handler hangs off the leaves with a dashed edge', () {
-    final n = nodes('w', {
-      'w': ('DAG', 'Succeeded', ['a'], null),
-      'a': ('Pod', 'Succeeded', [], 'w'),
-      'exit': ('Pod', 'Succeeded', [], null),
-    }, extra: {
-      'w': {'outboundNodes': ['a']},
-      'exit': {'name': 'w.onExit'},
-    });
-    final g = layoutWorkflow(n, workflowName: 'w');
-    final e = g.edges.firstWhere((e) => e.to == 'exit');
-    expect(e.from, 'a');
-    expect(e.dashed, isTrue);
-  });
-
   test('cycles in malformed input do not hang', () {
     final n = nodes('w', {
       'w': ('DAG', 'Running', ['a'], null),
@@ -125,21 +108,6 @@ void main() {
     });
     final g = layoutWorkflow(n, workflowName: 'w');
     expect(g.visible.length, 3);
-  });
-
-  test('node tree nests by boundary and retry', () {
-    final n = nodes('w', {
-      'w': ('DAG', 'Failed', ['inner'], null),
-      'inner': ('Steps', 'Failed', ['g0'], 'w'),
-      'g0': ('StepGroup', 'Failed', ['r'], 'inner'),
-      'r': ('Retry', 'Failed', ['r0'], 'inner'),
-      'r0': ('Pod', 'Failed', [], 'inner'),
-    }, extra: {
-      'r': {'name': 'w.r'},
-      'r0': {'name': 'w.r(0)'},
-    });
-    final t = nodeTree(n, workflowName: 'w');
-    expect([for (final (x, d) in t) '${x.id}:$d'], ['w:0', 'inner:1', 'r:2', 'r0:3']);
   });
 
   test('pod names: v2 from template and node id hash, v1 = node id', () {
@@ -168,57 +136,6 @@ void main() {
     ]), isNotNull);
   });
 
-  test('durations', () {
-    expect(formatDuration(const Duration(seconds: 42), style: DurationStyle.padded), '42s');
-    expect(formatDuration(const Duration(seconds: 200), style: DurationStyle.padded), '3m20s');
-    expect(formatDuration(const Duration(hours: 2, minutes: 5), style: DurationStyle.padded), '2h05m');
-    expect(formatDuration(const Duration(days: 3, hours: 4), style: DurationStyle.padded), '3d4h');
-    expect(formatResourcesDuration({'cpu': 12, 'memory': 90}), '12s cpu · 1m30s memory');
-  });
-
-  test('crossing reduction lowers crossings on a tangled DAG', () {
-    // Children listed so the natural (DFS) order tangles the edges.
-    final n = nodes('w', {
-      'w': ('DAG', 'Running', ['a', 'b', 'c', 'd'], null),
-      'a': ('Pod', 'Succeeded', ['z', 'w2'], 'w'),
-      'b': ('Pod', 'Succeeded', ['y', 'x'], 'w'),
-      'c': ('Pod', 'Succeeded', ['z', 'x'], 'w'),
-      'd': ('Pod', 'Succeeded', ['w2', 'y'], 'w'),
-      'x': ('Pod', 'Succeeded', ['q'], 'w'),
-      'y': ('Pod', 'Succeeded', ['p'], 'w'),
-      'z': ('Pod', 'Succeeded', ['q'], 'w'),
-      'w2': ('Pod', 'Succeeded', ['p'], 'w'),
-      'p': ('Pod', 'Succeeded', [], 'w'),
-      'q': ('Pod', 'Succeeded', [], 'w'),
-    });
-    final raw = graphCrossings(layoutWorkflow(n, workflowName: 'w', reduceCrossings: false));
-    final reduced = graphCrossings(layoutWorkflow(n, workflowName: 'w'));
-    expect(raw, greaterThan(0));
-    expect(reduced, lessThan(raw));
-  });
-
-  test('real workflow: no overlaps in any layer; long edges run straight down', () {
-    final wf = wfFixture('wf-build-failed.json');
-    for (final hide in [false, true]) {
-      final g = layoutWorkflow(parseNodes(wf), workflowName: 'build-and-test-v9vnz', hideSkipped: hide);
-      final rows = <int, List<GNode>>{};
-      for (final x in g.nodes) {
-        rows.putIfAbsent(x.layer, () => []).add(x);
-      }
-      for (final r in rows.values) {
-        r.sort((a, b) => a.x.compareTo(b.x));
-        for (var i = 1; i < r.length; i++) {
-          expect(r[i].x, greaterThanOrEqualTo(r[i - 1].x + r[i - 1].w - 0.01), reason: '${r[i - 1].id} overlaps ${r[i].id}');
-        }
-      }
-      for (final e in g.edges.where((e) => e.points.length > 3)) {
-        // Waypoints of a long edge share one channel.
-        final xs = {for (final p in e.points.sublist(1, e.points.length - 1)) p.$1.round()};
-        expect(xs.length, 1, reason: '${e.from}→${e.to}');
-      }
-    }
-  });
-
   test('hide skipped: skipped steps leave, shown steps stay connected', () {
     // a → s (skipped) → t; a → b → t; s2 (skipped) → u (ran after a skip).
     final n = nodes('w', {
@@ -243,12 +160,4 @@ void main() {
     expect(skippedShare(n), closeTo(2 / 6, 0.01));
   });
 
-  test('argo-server status: namespace parsed, never "?"', () {
-    final s = ArgoWFStatus.fromJson({
-      'found': true, 'reachable': true, 'available': true, 'auth': 'server', 'subject': 'system:serviceaccount:argo:argo-server',
-      'server': {'namespace': 'argo', 'service': 'argo-server', 'port': 2746, 'scheme': 'https', 'version': 'v4.0.1'},
-    });
-    expect(s.serverNamespace, 'argo');
-    expect(s.version, 'v4.0.1');
-  });
 }

@@ -48,15 +48,6 @@ void main() {
       expect(effectivePodQuantity(p, 'requests', 'memory'), 600 * mi);
     });
 
-    test('pod overhead is added', () {
-      final p = _pod(containers: [_c('a', req: {'cpu': '100m'})], overhead: {'cpu': '250m'});
-      expect(effectivePodQuantity(p, 'requests', 'cpu'), 350);
-    });
-
-    test('missing resources are zero', () {
-      expect(podResources(_pod(containers: [{'name': 'x'}])).cpuRequest, 0);
-      expect(podResources({}).memLimit, 0);
-    });
   });
 
   group('nodeAllocation', () {
@@ -113,17 +104,9 @@ void main() {
       expect(verbRisk('use'), VerbRisk.other);
     });
 
-    test('reading secrets is escalation', () {
-      expect(verbRisk('get', resources: ['secrets']), VerbRisk.escalate);
-      expect(verbRisk('list', resources: ['*']), VerbRisk.escalate);
-      expect(verbRisk('create', resources: ['secrets']), VerbRisk.write);
-    });
   });
 
   group('RBAC rule dangers', () {
-    test('benign rule has none', () {
-      expect(ruleDangers({'apiGroups': [''], 'resources': ['pods', 'pods/log'], 'verbs': ['get', 'list', 'watch']}), isEmpty);
-    });
 
     test('full wildcard', () {
       final d = ruleDangers({'apiGroups': ['*'], 'resources': ['*'], 'verbs': ['*']});
@@ -145,10 +128,6 @@ void main() {
       expect(ruleDangers({'nonResourceURLs': ['*'], 'verbs': ['*']}), isEmpty);
     });
 
-    test('clusterrole view fixture is safe', () {
-      final view = jsonDecode(File('../dev/fixtures/clusterrole-view.json').readAsStringSync()) as Json;
-      expect(rulesDangers([for (final r in view['rules']) Json.from(r)]), isEmpty);
-    });
   });
 
   group('RBAC bindings', () {

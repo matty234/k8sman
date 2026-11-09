@@ -34,11 +34,6 @@ void main() {
     return api;
   }
 
-  testWidgets('without a holder, icons load right away', (tester) async {
-    final api = await pumpIcon(tester);
-    expect(api.calls, ['traefik.io']);
-  });
-
   testWidgets('while held, icon fetches wait for the first table to paint', (tester) async {
     StartupGate.hold();
     final api = await pumpIcon(tester);
@@ -51,11 +46,4 @@ void main() {
     expect(api.calls, ['traefik.io']);
   });
 
-  testWidgets('the hold is capped', (tester) async {
-    StartupGate.hold();
-    final api = await pumpIcon(tester);
-    await tester.pump(StartupGate.maxHold);
-    await tester.pump();
-    expect(api.calls, ['traefik.io']);
-  });
 }

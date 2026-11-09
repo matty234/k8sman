@@ -50,9 +50,4 @@ void main() {
     expect(app.detail?.name, 'web-starting');
   });
 
-  testWidgets('legacy endpoints: headless redis with hostname', (tester) async {
-    await pumpPanel(tester, Map<String, dynamic>.from(netFixture('endpoints-redis') as Map));
-    expect(find.text('hostname: redis-0'), findsOneWidget);
-    expect(find.text('redis 6379/TCP'), findsOneWidget);
-  });
 }

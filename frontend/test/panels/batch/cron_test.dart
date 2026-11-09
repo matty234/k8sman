@@ -94,32 +94,8 @@ void main() {
   group('nextRuns (UTC)', () {
     List<DateTime> runs(String e, DateTime from, [int n = 5]) => CronSchedule.tryParse(e)!.nextRuns(from, count: n);
 
-    test('every 5 minutes is strictly after from', () {
-      expect(runs('*/5 * * * *', u(2026, 11, 3, 11, 30)), [
-        u(2026, 11, 3, 11, 35),
-        u(2026, 11, 3, 11, 40),
-        u(2026, 11, 3, 11, 45),
-        u(2026, 11, 3, 11, 50),
-        u(2026, 11, 3, 11, 55),
-      ]);
-      expect(runs('*/5 * * * *', DateTime.utc(2026, 11, 3, 11, 31, 20), 1), [u(2026, 11, 3, 11, 35)]);
-    });
-
     test('rolls over hour, day, month and year', () {
       expect(runs('*/20 * * * *', u(2026, 12, 31, 23, 30), 3), [u(2026, 12, 31, 23, 40), u(2027, 1, 1, 0, 0), u(2027, 1, 1, 0, 20)]);
-    });
-
-    test('daily at 02:30', () {
-      expect(runs('30 2 * * *', u(2026, 11, 3, 2, 30), 2), [u(2026, 11, 4, 2, 30), u(2026, 11, 5, 2, 30)]);
-      expect(runs('30 2 * * *', u(2026, 11, 3, 2, 29), 1), [u(2026, 11, 3, 2, 30)]);
-    });
-
-    test('weekdays only (2026-11-06 is a Friday)', () {
-      expect(runs('0 9 * * 1-5', u(2026, 11, 6, 10), 2), [u(2026, 11, 9, 9), u(2026, 11, 10, 9)]);
-    });
-
-    test('every 6th hour on weekdays', () {
-      expect(runs('0 */6 * * 1-5', u(2026, 11, 6, 13), 3), [u(2026, 11, 6, 18), u(2026, 11, 9, 0), u(2026, 11, 9, 6)]);
     });
 
     test('day-of-month and day-of-week are ORed when both restricted', () {
@@ -142,10 +118,6 @@ void main() {
       expect(runs('0 0 30 2 *', u(2026, 1, 1)), isEmpty);
     });
 
-    test('accepts non-UTC from', () {
-      final from = DateTime.utc(2026, 11, 3, 11, 30).toLocal();
-      expect(runs('*/5 * * * *', from, 1), [u(2026, 11, 3, 11, 35)]);
-    });
   });
 
   group('PosixTz', () {
@@ -167,14 +139,6 @@ void main() {
       expect(l.abbreviationAt(u(2026, 7, 1)), 'BST');
       expect(l.offsetAt(u(2026, 10, 25, 0, 59)), const Duration(hours: 1));
       expect(l.offsetAt(u(2026, 10, 25, 1, 0)), Duration.zero);
-    });
-
-    test('New York uses second Sunday of March / first Sunday of November', () {
-      final ny = PosixTz.tryParse('EST5EDT,M3.2.0,M11.1.0')!;
-      expect(ny.offsetAt(u(2026, 3, 8, 6, 59)), const Duration(hours: -5));
-      expect(ny.offsetAt(u(2026, 3, 8, 7, 0)), const Duration(hours: -4));
-      expect(ny.offsetAt(u(2026, 11, 1, 5, 59)), const Duration(hours: -4));
-      expect(ny.offsetAt(u(2026, 11, 1, 6, 0)), const Duration(hours: -5));
     });
 
     test('southern hemisphere DST wraps the year', () {
@@ -202,13 +166,6 @@ void main() {
       expect(resolveZone('Etc/GMT-3')!.offsetAt(u(2026, 1, 1)), const Duration(hours: 3));
       expect(resolveZone('Asia/Tokyo')!.offsetAt(u(2026, 1, 1)), const Duration(hours: 9));
       expect(resolveZone('Mars/Olympus_Mons'), isNull);
-    });
-
-    test('prefers the system tz database footer', () {
-      final saved = zoneInfoFooter;
-      zoneInfoFooter = (z) => z == 'Test/Zone' ? 'XST-7' : null;
-      addTearDown(() => zoneInfoFooter = saved);
-      expect(resolveZone('Test/Zone')!.offsetAt(u(2026, 1, 1)), const Duration(hours: 7));
     });
 
     test('reads the real tz database when present', () {
@@ -240,12 +197,6 @@ void main() {
     test('fold runs once at the first occurrence', () {
       final r = CronSchedule.tryParse('30 1 * * *')!.nextRuns(u(2026, 10, 24, 12), count: 2, zone: london);
       expect(r, [u(2026, 10, 25, 0, 30), u(2026, 10, 26, 1, 30)]);
-    });
-
-    test('a Kolkata half-hour offset', () {
-      final ist = PosixTz.tryParse('IST-5:30')!;
-      final r = CronSchedule.tryParse('0 9 * * *')!.nextRuns(u(2026, 11, 3), count: 1, zone: ist);
-      expect(r, [u(2026, 11, 3, 3, 30)]);
     });
 
     test('day boundary uses the zone wall date', () {

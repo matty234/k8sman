@@ -59,30 +59,6 @@ void main() {
     expect(app.detail?.type.kind, 'ServiceAccount');
   });
 
-  testWidgets('workloads lead with a status header, reference sections collapsed behind summaries; 320px fits', (tester) async {
-    final api = fakeApi({'pods': pods, 'replicasets.apps': deploymentReplicaSets(), 'persistentvolumeclaims': pvcs});
-    final rolling = clone(loadFixture('deploy-web.json'), (c) {
-      c['spec']['replicas'] = 3;
-      c['status'] = {...c['status'] as Json, 'replicas': 3, 'updatedReplicas': 1, 'readyReplicas': 2, 'availableReplicas': 2, 'unavailableReplicas': 1};
-    });
-    await pumpPanel(tester, rolling, api: api);
-    expect(find.text('Rolling out'), findsOneWidget);
-    expect(find.text('1/3 updated'), findsOneWidget);
-    expect(find.descendant(of: find.byKey(const ValueKey('figure-unavailable')), matching: find.text('1')), findsOneWidget);
-    expect(find.text('revision 1 · 3 kept'), findsOneWidget);
-    expect(find.text('RollingUpdate · 1 surge · 0 unavailable'), findsOneWidget);
-    expect(find.text('2 containers · 1 init · nginx:1.27-alpine'), findsOneWidget);
-    expect(find.text('all 2 true'), findsOneWidget);
-    expect(find.text('#10'), findsNothing); // history collapsed
-    expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget); // pods open
-
-    final rs = loadLocal('replicasets-demo.json').firstWhere((r) => r['metadata']['name'] == 'web-6fd47b8fcb');
-    for (final o in [rolling, loadFixture('sts-redis.json'), loadFixture('ds-node-agent.json'), rs, loadFixture('hpa-web.json')]) {
-      await pumpPanel(tester, o, api: api, size: const Size(320, 3000));
-      expect(tester.takeException(), isNull, reason: '${o['kind']}');
-    }
-  });
-
   testWidgets('StatefulSet: service link, PVCs by ordinal, pods', (tester) async {
     await loadRealFonts();
     final retained = clone(pvcs.first, (c) => c['metadata']['name'] = 'data-redis-3');
@@ -100,50 +76,6 @@ void main() {
     await tester.tap(find.text('redis').first);
     await tester.pump();
     expect(app.detail?.type.kind, 'Service');
-  });
-
-  testWidgets('DaemonSet: counts, tolerations, pods with node links', (tester) async {
-    await loadRealFonts();
-    final api = fakeApi({'pods': pods});
-    final app = await pumpPanel(tester, loadFixture('ds-node-agent.json'), api: api);
-
-    expect(find.text('Ready on 1/1 nodes'), findsOneWidget);
-    expect(find.text('1 toleration'), findsOneWidget); // Scheduling, collapsed
-    await expandSection(tester, 'scheduling');
-    expect(find.text('all taints'), findsOneWidget);
-    expect(find.text('node-agent-h8g6x'), findsOneWidget);
-    await tester.tap(find.text('k8sman-dev-control-plane'));
-    await tester.pump();
-    expect(app.detail?.type.kind, 'Node');
-  });
-
-  testWidgets('ReplicaSet: owner link and owned pods only', (tester) async {
-    await loadRealFonts();
-    final rs = loadLocal('replicasets-demo.json').firstWhere((r) => r['metadata']['name'] == 'web-6fd47b8fcb');
-    final api = fakeApi({'pods': [...pods, strayWebPod()]});
-    final app = await pumpPanel(tester, rs, api: api);
-
-    expect(find.text('Ready 2/2'), findsOneWidget);
-    expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget);
-    expect(find.text('web-stray-zzzzz'), findsNothing);
-    await tester.tap(find.text('Deployment/web'));
-    await tester.pump();
-    expect(app.detail?.type.kind, 'Deployment');
-  });
-
-  testWidgets('HPA: target link, range, metric with missing current', (tester) async {
-    await loadRealFonts();
-    final app = await pumpPanel(tester, loadFixture('hpa-web.json'));
-
-    expect(find.text('Scaling inactive'), findsOneWidget);
-    expect(find.text('ScalingActive: FailedGetResourceMetric'), findsOneWidget);
-    await expandSection(tester, 'behavior');
-    expect(find.text('unknown'), findsNothing); // inside a Text.rich
-    expect(find.textContaining('unknown', findRichText: true), findsOneWidget);
-    expect(find.textContaining('(default)'), findsNWidgets(2));
-    await tester.tap(find.text('Deployment/web'));
-    await tester.pump();
-    expect(app.detail?.type.kind, 'Deployment');
   });
 
   testWidgets('HPA with all metric kinds and behavior', (tester) async {

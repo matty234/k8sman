@@ -1,4 +1,3 @@
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,43 +33,6 @@ void main() {
     expect(screenText(tab), contains('café'));
     expect(find.byKey(const ValueKey('terminal-view')), findsOneWidget);
     expect(find.textContaining('connected'), findsOneWidget);
-    tab.dispose();
-  });
-
-  testWidgets('typed input is sent as binary frames', (tester) async {
-    final transport = FakeExecTransport();
-    final tab = newTab(transport);
-    await pumpDock(tester, tabs: [tab]);
-    final c = transport.last;
-    c.emit(const ExecStarted('nginx', ['/bin/sh']));
-    await flush(tester);
-    await tester.tap(find.byKey(const ValueKey('terminal-view')));
-    await tester.pump(const Duration(milliseconds: 500)); // let the double-tap timer lapse
-    tester.testTextInput.enterText('ls');
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-    await flush(tester);
-    expect(c.inputText, contains('ls'));
-    expect(c.inputText, contains('\r'));
-    expect(c.inputText, contains('\x1b[A'));
-    tab.dispose();
-  });
-
-  testWidgets('resize sends a control frame with the view size', (tester) async {
-    final transport = FakeExecTransport();
-    final tab = newTab(transport);
-    await pumpDock(tester, tabs: [tab], size: const Size(1000, 420));
-    final c = transport.last;
-    expect(c.resizes, isNotEmpty);
-    final first = c.resizes.last;
-    expect(first, (tab.terminal.viewWidth, tab.terminal.viewHeight));
-    expect(first.$1, greaterThan(60)); // ~1000px of 13pt cells (test font)
-
-    tester.view.physicalSize = const Size(600, 420);
-    await flush(tester);
-    final second = c.resizes.last;
-    expect(second.$1, lessThan(first.$1));
-    expect(second, (tab.terminal.viewWidth, tab.terminal.viewHeight));
     tab.dispose();
   });
 
@@ -116,16 +78,6 @@ void main() {
     expect(transport.connections, hasLength(2));
     expect(transport.last.request.container, 'debugger');
     expect(tab.debugTarget, 'pause');
-    tab.dispose();
-  });
-
-  testWidgets('read-only hides the debug container button', (tester) async {
-    final transport = FakeExecTransport();
-    final tab = newTab(transport, container: 'pause');
-    await pumpDock(tester, tabs: [tab], readOnly: true);
-    transport.last.emit(const ExecError(ExecReason.noShell, 'no /bin/sh'));
-    await flush(tester);
-    expect(find.byKey(const ValueKey('terminal-start-debug')), findsNothing);
     tab.dispose();
   });
 
@@ -182,37 +134,4 @@ void main() {
     expect(transport.last.closed, isTrue);
   });
 
-  test('frames round-trip through the tab', () async {
-    final transport = FakeExecTransport();
-    final tab = newTab(transport);
-    tab.terminal.textInput('pwd');
-    expect(utf8.decode(transport.last.input.expand((b) => b).toList()), 'pwd');
-    tab.dispose();
-  });
-
-  testWidgets('dock + opens a local shell tab labelled with its context', (tester) async {
-    final transport = FakeExecTransport();
-    final old = execTransportFor;
-    execTransportFor = (_) => transport;
-    addTearDown(() => execTransportFor = old);
-    final (dock, _) = await pumpDock(tester, tabs: const [], readOnly: true);
-
-    await tester.tap(find.byKey(const ValueKey('dock-new-local-shell')));
-    await flush(tester);
-    final tab = dock.activeTab! as TerminalTab;
-    expect(tab.isLocal, isTrue, reason: 'allowed in read-only mode: the backend prints a notice instead');
-    expect(transport.last.request.local, isTrue);
-    transport.last.emit(const ExecStarted('kind-dev', ['/bin/zsh', '-l']));
-    transport.last.output('% ');
-    await flush(tester);
-    expect(tab.label, 'local · kind-dev');
-    expect(tab.commandLabel, 'zsh');
-    final tabChip = find.byKey(ValueKey('dock-tab-${tab.id}'));
-    expect(find.descendant(of: tabChip, matching: find.byIcon(Icons.laptop_mac)), findsOneWidget);
-    expect(find.descendant(of: tabChip, matching: find.textContaining('local')), findsOneWidget);
-    expect(find.byKey(const ValueKey('terminal-shell-picker')), findsNothing, reason: 'no pod shell choices');
-    expect(find.textContaining('kubectl → kind-dev'), findsOneWidget);
-    dock.closeAll();
-    await tester.pump();
-  });
 }

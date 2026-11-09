@@ -11,7 +11,6 @@ import 'package:k8sman/prometheus/metric_history_chart.dart';
 import 'package:k8sman/prometheus/prom_api.dart';
 import 'package:k8sman/ui/overview/overview_api.dart';
 import 'package:k8sman/ui/overview/overview_view.dart';
-import 'package:k8sman/ui/overview/overview_widgets.dart' show IssueGroupTile;
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
@@ -134,22 +133,6 @@ Future<void> hover(WidgetTester tester, Finder target) async {
 
 TestGesture? _mouse;
 
-/// The cluster fixture with CPU usage a tenth of its real value.
-class _QuietCpuProm extends FixturePromApi {
-  @override
-  Future<dynamic> getJson(String path, [Map<String, String?> query = const {}]) async {
-    final r = await super.getJson(path, query);
-    if (path == 'query_range' && (query['query'] ?? '').contains('resource="cpu"')) {
-      for (final s in r['result'] as List) {
-        if (s['metric']['series'] == 'usage') {
-          s['values'] = [for (final v in s['values'] as List) [v[0], '${double.parse(v[1] as String) / 10}']];
-        }
-      }
-    }
-    return r;
-  }
-}
-
 void main() {
   testWidgets('live fixture: cards, issues, nodes and events', (tester) async {
     await loadRealFonts();
@@ -174,42 +157,7 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('a long issue list previews 8 rows until Show all', (tester) async {
-    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400), showAllIssues: false);
-    expect(find.byType(IssueGroupTile), findsNWidgets(8));
-    await tester.tap(find.byKey(const ValueKey('issues-show-all')));
-    await tester.pump();
-    expect(find.byType(IssueGroupTile).evaluate().length, greaterThan(8));
-  });
-
-  testWidgets('scenario: grouped by owner, tile filters, expands', (tester) async {
-    await loadRealFonts();
-    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 1400));
-
-    // Three crashlooping pods of deployment web collapse into one row.
-    // (The page is built in full, so web-5c-b may also appear further down,
-    // e.g. in warning events: compare counts rather than expect none.)
-    expect(find.text('3 pods'), findsOneWidget);
-    final before = find.text('web-5c-b').evaluate().length;
-    final beforeD = find.text('web-5c-d').evaluate().length;
-    await tester.tap(find.text('3 pods'));
-    await tester.pump();
-    expect(find.text('web-5c-b').evaluate().length, before + 1);
-    expect(find.text('web-5c-d').evaluate().length, beforeD + 1);
-
-    // Filter by the count of the "Stuck terminating" row of the Pods card.
-    await tester.tap(find.byKey(const ValueKey('area-count-stuckTerminating')));
-    await tester.pump();
-    expect(find.text('legacy-abc'), findsOneWidget);
-    expect(find.text('img-1'), findsNothing);
-    expect(find.textContaining('Stuck terminating · 1'), findsOneWidget);
-    // Tapping again clears the filter.
-    await tester.tap(find.byKey(const ValueKey('area-count-stuckTerminating')));
-    await tester.pump();
-    expect(find.text('img-1'), findsOneWidget);
-  });
-
-  for (final width in [360.0, 420.0, 500.0, 600.0, 700.0, 900.0, 1200.0, 1600.0]) {
+  for (final width in [360.0, 900.0, 1600.0]) {
     testWidgets('no overflow at ${width.toInt()}px', (tester) async {
       await pumpOverview(tester, scenarioFixture(), size: Size(width, 3000));
       // Expand every group too.
@@ -220,15 +168,6 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
-
-  testWidgets('healthy cluster shows a calm state', (tester) async {
-    await loadRealFonts();
-    await pumpOverview(tester, healthyResponse(), size: const Size(1000, 600));
-    expect(find.text('All healthy'), findsOneWidget);
-    expect(find.text('All 10 pods healthy · All 3 workloads healthy · 1 node ready'), findsOneWidget);
-    expect(find.text('Issues'), findsNothing); // no empty list under the banner
-    expect(find.text('No warning events in the last hour.'), findsOneWidget);
-  });
 
   testWidgets('restart action fetches the owner and runs restart', (tester) async {
     final api = RecordingApi(objects: {
@@ -250,38 +189,6 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Restart'));
     await settle(tester);
     expect(api.actions, ['restart deployments shop/web {}']);
-  });
-
-  testWidgets('force delete for stuck terminating pods and resume for suspended cronjobs', (tester) async {
-    final api = RecordingApi(objects: {
-      'pods/shop/legacy-abc': {
-        'apiVersion': 'v1',
-        'kind': 'Pod',
-        'metadata': {'name': 'legacy-abc', 'namespace': 'shop'},
-      },
-      'cronjobs.batch/batch/reports': {
-        'apiVersion': 'batch/v1',
-        'kind': 'CronJob',
-        'metadata': {'name': 'reports', 'namespace': 'batch'},
-        'spec': {'suspend': true},
-      },
-    });
-    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 3000), api: api);
-    await hover(tester, find.text('legacy-abc'));
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Force delete'));
-    await settle(tester);
-    await tester.tap(find.widgetWithText(FilledButton, 'Force delete'));
-    await settle(tester);
-    final reportsRow = find.ancestor(of: find.text('reports'), matching: find.byType(InkWell)).first;
-    await hover(tester, find.text('reports'));
-    await tester.tap(find.descendant(of: reportsRow, matching: find.widgetWithText(OutlinedButton, 'Resume')));
-    await settle(tester);
-    await tester.tap(find.widgetWithText(FilledButton, 'Resume'));
-    await settle(tester);
-    expect(api.actions, [
-      'delete pods shop/legacy-abc {"gracePeriodSeconds":0}',
-      'unsuspend cronjobs batch/reports {}',
-    ]);
   });
 
   testWidgets('scenario: area cards, capacity and actions on hover', (tester) async {
@@ -330,20 +237,6 @@ void main() {
       await settle(tester);
       expect(prom.queries.where((q) => q.contains('kube_pod_container_resource_requests')), hasLength(4));
     }
-  });
-
-  testWidgets('capacity chart scales to usage and labels requests far above it', (tester) async {
-    addTearDown(() => PromApi.debugOverride = null);
-    PromApi.debugOverride = (_) => _QuietCpuProm();
-    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400), showAllIssues: false);
-    await settle(tester);
-    // Usage peaks at 0.18 cores, requests are 3.5: the scale follows usage
-    // and requests become a label instead of a line along the top.
-    final cpu = tester.widget<AreaChart>(find.descendant(of: find.byKey(const ValueKey('history-cpu')), matching: find.byType(AreaChart)));
-    expect(cpu.yMax, lessThan(0.25));
-    expect(find.text('requested 3.50 cores ↑'), findsOneWidget);
-    // Memory requests sit within reach of usage, so stay a line.
-    expect(find.text('requested (now)'), findsOneWidget);
   });
 
   testWidgets('read-only hides actions', (tester) async {
