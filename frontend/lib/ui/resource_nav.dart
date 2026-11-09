@@ -374,12 +374,6 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
                 child: SizedBox(height: button, child: Row(children: [
                   const Spacer(),
                   IconButton(
-                    key: const ValueKey('customise-sidebar'),
-                    tooltip: 'Customise Sidebar…',
-                    icon: const Icon(Icons.tune),
-                    onPressed: () => openSettings(context, section: SettingsSection.sidebar),
-                  ),
-                  IconButton(
                     tooltip: 'Rediscover API resources',
                     icon: const Icon(Icons.refresh),
                     onPressed: () => app.refreshTypes(),

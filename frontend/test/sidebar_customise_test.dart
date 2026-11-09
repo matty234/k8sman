@@ -203,7 +203,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     await saveScreenshot(tester, 'sidebar-customised');
-    await tester.tap(find.byKey(const ValueKey('customise-sidebar')));
+    // Settings (the sidebar's gear) ▸ Sidebar.
+    await tester.tap(find.byKey(const ValueKey('nav-settings')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Sidebar').last);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(SidebarLayoutEditor), findsOneWidget);
