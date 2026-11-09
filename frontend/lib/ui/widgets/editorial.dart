@@ -33,31 +33,26 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
+    // Laid out by [TitleRule], so a long title gives way (with an
+    // ellipsis) to the trailing count rather than overflowing.
     return SizedBox(
       height: 26,
-      child: Row(children: [
-        Flexible(
-          flex: 0,
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: sectionTitleStyle(context),
-          ),
-        ),
-        if (expanded != null)
-          AnimatedRotation(
-            turns: expanded! ? 0.25 : 0,
-            duration: const Duration(milliseconds: 120),
-            child: Icon(Icons.chevron_right, size: 15, color: hovered || !expanded! ? theme.hintColor : Colors.transparent),
-          ),
-        const SizedBox(width: 10),
-        Expanded(child: Container(height: 1, color: colors.separator.withValues(alpha: 0.75))),
-        if (trailing != null) ...[
-          const SizedBox(width: 12),
-          DefaultTextStyle.merge(style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontFeatures: tabularFigures), child: trailing!),
-        ],
-      ]),
+      child: TitleRule(
+        ruleGap: 10,
+        trailingGap: 12,
+        ruleColor: colors.separator.withValues(alpha: 0.75),
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sectionTitleStyle(context)),
+        chevron: expanded == null
+            ? null
+            : AnimatedRotation(
+                turns: expanded! ? 0.25 : 0,
+                duration: const Duration(milliseconds: 120),
+                child: Icon(Icons.chevron_right, size: 15, color: hovered || !expanded! ? theme.hintColor : Colors.transparent),
+              ),
+        trailing: trailing == null
+            ? null
+            : DefaultTextStyle.merge(style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontFeatures: tabularFigures), child: trailing!),
+      ),
     );
   }
 }
@@ -200,9 +195,13 @@ class StatusLine extends StatelessWidget {
     final theme = Theme.of(context);
     final title = theme.textTheme.titleLarge?.copyWith(fontSize: 19, fontWeight: FontWeight.w600, letterSpacing: -0.2, height: 1.2);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      LayoutBuilder(builder: (context, box) => Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         SizedBox(width: 22, child: Align(alignment: Alignment.centerLeft, child: mark)),
-        Flexible(flex: 0, child: Text(headline, maxLines: 1, overflow: TextOverflow.ellipsis, style: title)),
+        // The headline keeps its width, short of the whole line.
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: (box.maxWidth - 22 - (detail == null ? 0 : 14)).clamp(0.0, double.infinity)),
+          child: Text(headline, maxLines: 1, overflow: TextOverflow.ellipsis, style: title),
+        ),
         if (detail != null) ...[
           const SizedBox(width: 14),
           Flexible(
@@ -212,7 +211,7 @@ class StatusLine extends StatelessWidget {
             ),
           ),
         ],
-      ]),
+      ])),
       if (note != null && note!.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(left: 22, top: 4),
@@ -834,14 +833,20 @@ class TitleRule extends StatelessWidget {
   final Widget? chevron;
   final Widget? trailing;
   final bool rule;
-  const TitleRule({super.key, required this.title, this.chevron, this.trailing, this.rule = true});
+  final Color? ruleColor;
+
+  /// Space between the title (and chevron) and the hairline, and between
+  /// the hairline and [trailing].
+  final double ruleGap;
+  final double trailingGap;
+  const TitleRule({super.key, required this.title, this.chevron, this.trailing, this.rule = true, this.ruleColor, this.ruleGap = 6, this.trailingGap = 10});
 
   @override
   Widget build(BuildContext context) {
-    return CustomMultiChildLayout(delegate: _TitleRuleLayout(), children: [
+    return CustomMultiChildLayout(delegate: _TitleRuleLayout(ruleGap, trailingGap), children: [
       LayoutId(id: _Slot.title, child: title),
       if (chevron != null) LayoutId(id: _Slot.chevron, child: chevron!),
-      if (rule) LayoutId(id: _Slot.rule, child: Container(height: 1, color: AppColors.of(context).separator.withValues(alpha: 0.75))),
+      if (rule) LayoutId(id: _Slot.rule, child: Container(height: 1, color: ruleColor ?? AppColors.of(context).separator.withValues(alpha: 0.75))),
       if (trailing != null) LayoutId(id: _Slot.trailing, child: trailing!),
     ]);
   }
@@ -850,6 +855,9 @@ class TitleRule extends StatelessWidget {
 enum _Slot { title, chevron, rule, trailing }
 
 class _TitleRuleLayout extends MultiChildLayoutDelegate {
+  final double ruleGap, trailingGap;
+  _TitleRuleLayout(this.ruleGap, this.trailingGap);
+
   @override
   void performLayout(Size size) {
     final w = size.width;
@@ -859,7 +867,7 @@ class _TitleRuleLayout extends MultiChildLayoutDelegate {
     if (hasChild(_Slot.trailing)) {
       final s = layoutChild(_Slot.trailing, BoxConstraints(maxWidth: w * 0.85, maxHeight: h));
       positionChild(_Slot.trailing, Offset(w - s.width, centre(s)));
-      right = w - s.width - 10;
+      right = w - s.width - trailingGap;
     }
     Size? chevron;
     if (hasChild(_Slot.chevron)) chevron = layoutChild(_Slot.chevron, BoxConstraints(maxWidth: w, maxHeight: h));
@@ -871,14 +879,14 @@ class _TitleRuleLayout extends MultiChildLayoutDelegate {
       x += chevron.width;
     }
     if (hasChild(_Slot.rule)) {
-      final left = x + 6;
+      final left = x + ruleGap;
       layoutChild(_Slot.rule, BoxConstraints.tightFor(width: (right - left).clamp(0.0, w), height: 1));
       positionChild(_Slot.rule, Offset(left, (h - 1) / 2));
     }
   }
 
   @override
-  bool shouldRelayout(_TitleRuleLayout oldDelegate) => false;
+  bool shouldRelayout(_TitleRuleLayout oldDelegate) => oldDelegate.ruleGap != ruleGap || oldDelegate.trailingGap != trailingGap;
 }
 
 /// A page-level scroll of a few tall, mixed sections: built at once (not
