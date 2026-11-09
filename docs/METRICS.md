@@ -96,8 +96,8 @@ HPA's own `status.currentMetrics`.
 ## External metric names
 
 Adapters like KEDA only advertise a placeholder resource (`externalmetrics`),
-so `GET /api/metrics/external/discover` also lists the `External` metrics
-referenced by HPAs, with their selectors (e.g. KEDA's
+so the HPA panel reads `External` metric names and selectors from the HPAs
+themselves (e.g. KEDA's
 `s1-cron-Etc-UTC-0xxxx-30xxxx` with `scaledobject.keda.sh/name=web`).
 
 ## UI
@@ -119,15 +119,6 @@ referenced by HPAs, with their selectors (e.g. KEDA's
   fails.
 - **Node / Pod panels:** live network receive/transmit from the kubelet when
   there is no Prometheus (with Prometheus the history charts show it).
-- **Metrics page (legacy)**: out of the sidebar, reachable from ⌘K and
-  `:metrics` for one more release. API status strip; a **Top** tab
-  (sortable nodes and pods, % of requests/limits, following the namespace
-  filter, refreshed every 15s); **Custom metrics** (pick a resource type and
-  metric, optional label selector, values per object); **External metrics**
-  (known metrics or a typed name, optional selector). Clicking an object
-  opens it in the inspector. A **Storage** tab lists every PVC in scope with
-  used / capacity / % / inodes, fullest first; a **Network** tab shows node
-  throughput and the busiest pods (receive + transmit).
 - **PVC panel:** a Usage bar (used of capacity, free space, inodes, and with
   Prometheus a "full in ~N days" trend plus history).
 

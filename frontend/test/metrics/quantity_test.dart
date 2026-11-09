@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/metrics/metrics_api.dart';
 import 'package:k8sman/metrics/quantity.dart';
-import 'package:k8sman/metrics/top_view.dart';
 import 'package:k8sman/metrics/workload_usage.dart';
 import 'package:k8sman/panels/cluster/logic.dart';
 import 'package:k8sman/util/k8s.dart';
@@ -85,32 +84,7 @@ void main() {
     expect((u + v).cpuMillis, 19);
   });
 
-  test('joinTopPods: % of requests and limits', () {
-    final usage = [for (final p in metricsFixture('pods-demo.json')['items']) PodUsage.fromJson(p)];
-    final top = joinTopPods(usage, demoPods());
-    final web = top.firstWhere((p) => p.name == 'web-6fd47b8fcb-442dt');
-    // nginx requests 50m/32Mi + log-sidecar 5m/8Mi.
-    expect(web.resources!.cpuRequest, 55);
-    expect(web.cpuReqFrac, closeTo(web.usage.cpuMillis / 55, 1e-9));
-    // log-sidecar has no limits: the pod is unbounded, so no "% of limit".
-    expect(web.cpuLimFrac, isNull);
-    expect(web.memLimFrac, isNull);
-  });
 
-  test('limitAwareResources keeps limits only when every container has one', () {
-    Map<String, dynamic> c(String? lim) => {
-          'name': 'c',
-          'resources': {
-            'requests': {'cpu': '100m'},
-            if (lim != null) 'limits': {'cpu': lim},
-          },
-        };
-    final both = {'spec': {'containers': [c('200m'), c('300m')]}};
-    final one = {'spec': {'containers': [c('200m'), c(null)]}};
-    expect(limitAwareResources(both).cpuLimit, 500);
-    expect(limitAwareResources(one).cpuLimit, 0);
-    expect(limitAwareResources(one).cpuRequest, 200);
-  });
 
   test('WorkloadTotals sums only sampled pods', () {
     final rows = [

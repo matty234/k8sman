@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/modules/addons_module.dart';
 import 'package:k8sman/modules/helm_module.dart';
-import 'package:k8sman/modules/metrics_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/resource_nav.dart';
 import 'package:k8sman/ui/settings/sidebar_settings.dart';
@@ -61,7 +60,6 @@ void main() {
       // Every page is present exactly once; ones the file lacked keep their default visibility.
       expect(odd.entries.where((e) => e.view != null).length, SidebarConfig.pages.length);
       expect(odd.isHidden(AddonsModule.page), isTrue);
-      expect(odd.entries.any((e) => e.view == MetricsModule.page), isFalse); // legacy: ⌘K only
       expect(odd.isHidden(MainView.overview), isFalse);
       expect(odd.entries.any((e) => e.view == MainView.alerts), isFalse);
       expect(SidebarConfig.fromJson(null).isDefault, isTrue);

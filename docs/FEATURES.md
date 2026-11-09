@@ -285,10 +285,6 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   (DaemonSet and mirror pods), and anything blocking it. Options cover
   emptyDir data and pods without a controller. Evictions respect
   PodDisruptionBudgets, retrying for up to 5 minutes.
-- **Metrics (legacy)**: the old Top / Storage / Network / Custom / External
-  page, out of the sidebar and reachable from ⌘K or `:metrics` for one more
-  release. Its content now lives in the tables (usage columns), the Node and
-  Pod inspectors (network rates) and the HPA panel (live metric values).
 - **Helm**: releases, values, manifest, hooks, history diffs, rollback,
   upgrade with a dry-run diff (optionally to an `oci://` chart, with a
   searchable list of the registry's versions using your `helm registry login`

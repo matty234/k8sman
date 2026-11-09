@@ -5,27 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"slices"
 	"sort"
-	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 )
-
-// MetricResource is one resource type that has custom metrics.
-type MetricResource struct {
-	// Resource is the plural (e.g. "pods"), Group its API group ("" = core).
-	Resource   string   `json:"resource"`
-	Group      string   `json:"group"`
-	Namespaced bool     `json:"namespaced"`
-	Metrics    []string `json:"metrics"`
-}
-
-// CustomDiscovery lists the custom metrics the adapter advertises.
-type CustomDiscovery struct {
-	Version   string           `json:"version"`
-	Resources []MetricResource `json:"resources"`
-}
 
 type apiResourceList struct {
 	Resources []struct {
@@ -47,61 +30,6 @@ func (s *Service) groupVersion(ctx context.Context, group string) (string, error
 		return st.Version, nil
 	}
 	return versionPreference[group][0], nil
-}
-
-// DiscoverCustom lists custom metric names grouped by resource. Discovery
-// names look like "pods/http_requests" or "deployments.apps/queue_depth".
-func (s *Service) DiscoverCustom(ctx context.Context) (CustomDiscovery, error) {
-	v, err := s.groupVersion(ctx, CustomGroup)
-	if err != nil {
-		return CustomDiscovery{}, err
-	}
-	raw, err := s.get.Get(ctx, "/apis/"+CustomGroup+"/"+v, nil)
-	if err != nil {
-		return CustomDiscovery{}, s.explain(ctx, CustomGroup, err)
-	}
-	var l apiResourceList
-	if err := json.Unmarshal(raw, &l); err != nil {
-		return CustomDiscovery{}, err
-	}
-	return CustomDiscovery{Version: v, Resources: groupCustomResources(l)}, nil
-}
-
-func groupCustomResources(l apiResourceList) []MetricResource {
-	type key struct{ res, group string }
-	by := map[key]*MetricResource{}
-	for _, r := range l.Resources {
-		slash := strings.Index(r.Name, "/")
-		if slash <= 0 {
-			continue
-		}
-		gr, metric := r.Name[:slash], r.Name[slash+1:]
-		res, group, _ := strings.Cut(gr, ".")
-		k := key{res, group}
-		mr := by[k]
-		if mr == nil {
-			mr = &MetricResource{Resource: res, Group: group}
-			by[k] = mr
-		}
-		// Adapters list each metric twice (namespaced and cluster-scoped);
-		// remember that it can be namespaced.
-		mr.Namespaced = mr.Namespaced || r.Namespaced
-		if !slices.Contains(mr.Metrics, metric) {
-			mr.Metrics = append(mr.Metrics, metric)
-		}
-	}
-	out := make([]MetricResource, 0, len(by))
-	for _, mr := range by {
-		sort.Strings(mr.Metrics)
-		out = append(out, *mr)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Group != out[j].Group {
-			return out[i].Group < out[j].Group
-		}
-		return out[i].Resource < out[j].Resource
-	})
-	return out
 }
 
 // ObjectRef identifies the object a custom metric describes.
@@ -247,63 +175,6 @@ func parseCustomValues(raw []byte) ([]MetricValue, error) {
 			return a.Namespace < b.Namespace
 		}
 		return a.Name < b.Name
-	})
-	return out, nil
-}
-
-// ExternalMetric is a discovered external metric name, with where it came
-// from: the adapter's discovery document, or an HPA that references it
-// (adapters like KEDA only advertise a generic "externalmetrics" resource,
-// so HPAs are where the real names and selectors live).
-type ExternalMetric struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace,omitempty"`
-	Selector  string `json:"selector,omitempty"`
-	Source    string `json:"source"` // "discovery" | "hpa"
-	HPA       string `json:"hpa,omitempty"`
-}
-
-// ExternalDiscovery lists external metric names.
-type ExternalDiscovery struct {
-	Version string           `json:"version"`
-	Metrics []ExternalMetric `json:"metrics"`
-}
-
-// DiscoverExternal lists external metric names from discovery, plus those
-// referenced by HPAs in namespace ("" = all).
-func (s *Service) DiscoverExternal(ctx context.Context, namespace string) (ExternalDiscovery, error) {
-	v, err := s.groupVersion(ctx, ExternalGroup)
-	if err != nil {
-		return ExternalDiscovery{}, err
-	}
-	raw, err := s.get.Get(ctx, "/apis/"+ExternalGroup+"/"+v, nil)
-	if err != nil {
-		return ExternalDiscovery{}, s.explain(ctx, ExternalGroup, err)
-	}
-	var l apiResourceList
-	if err := json.Unmarshal(raw, &l); err != nil {
-		return ExternalDiscovery{}, err
-	}
-	out := ExternalDiscovery{Version: v, Metrics: []ExternalMetric{}}
-	for _, r := range l.Resources {
-		if r.Name == "externalmetrics" || strings.Contains(r.Name, "/") {
-			continue // KEDA's generic placeholder
-		}
-		out.Metrics = append(out.Metrics, ExternalMetric{Name: r.Name, Source: "discovery"})
-	}
-	if refs, err := s.hpaMetricRefs(ctx, namespace); err == nil {
-		for _, r := range refs {
-			if r.Type == "External" {
-				out.Metrics = append(out.Metrics, ExternalMetric{Name: r.Metric, Namespace: r.Namespace, Selector: r.Selector, Source: "hpa", HPA: r.HPA})
-			}
-		}
-	}
-	sort.SliceStable(out.Metrics, func(i, j int) bool {
-		a, b := out.Metrics[i], out.Metrics[j]
-		if a.Name != b.Name {
-			return a.Name < b.Name
-		}
-		return a.Namespace < b.Namespace
 	})
 	return out, nil
 }

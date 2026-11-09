@@ -101,79 +101,8 @@ class PodUsage {
   String get key => '$namespace/$name';
 }
 
-/// A resource type with custom metrics.
-class CustomMetricResource {
-  final String resource;
-  final String group;
-  final bool namespaced;
-  final List<String> metrics;
-  const CustomMetricResource({required this.resource, required this.group, required this.namespaced, required this.metrics});
 
-  factory CustomMetricResource.fromJson(Json j) => CustomMetricResource(
-    resource: '${j['resource']}',
-    group: '${j['group'] ?? ''}',
-    namespaced: j['namespaced'] == true,
-    metrics: List<String>.from(j['metrics'] ?? const []),
-  );
 
-  String get key => group.isEmpty ? resource : '$resource.$group';
-}
-
-/// One custom or external metric sample.
-class MetricSample {
-  final String metric;
-  final ObjectRef? object;
-  final Map<String, String> labels;
-  final String value;
-  final double number;
-  final String? timestamp;
-  final int? windowSeconds;
-  const MetricSample({
-    required this.metric,
-    this.object,
-    this.labels = const {},
-    required this.value,
-    required this.number,
-    this.timestamp,
-    this.windowSeconds,
-  });
-
-  factory MetricSample.fromJson(Json j) {
-    final o = asMap(j['object']);
-    final av = '${o['apiVersion'] ?? ''}';
-    return MetricSample(
-      metric: '${j['metric'] ?? ''}',
-      object: o.isEmpty
-          ? null
-          : ObjectRef(group: av.contains('/') ? av.split('/').first : '', kind: '${o['kind']}', name: '${o['name']}', namespace: o['namespace'] as String?),
-      labels: {for (final e in asMap(j['labels']).entries) e.key: '${e.value}'},
-      value: '${j['value'] ?? ''}',
-      number: (j['number'] as num?)?.toDouble() ?? 0,
-      timestamp: j['timestamp'] as String?,
-      windowSeconds: (j['windowSeconds'] as num?)?.toInt(),
-    );
-  }
-}
-
-/// An external metric name, discovered or referenced by an HPA.
-class ExternalMetricRef {
-  final String name;
-  final String? namespace;
-  final String? selector;
-
-  /// `discovery` or `hpa`.
-  final String source;
-  final String? hpa;
-  const ExternalMetricRef({required this.name, this.namespace, this.selector, required this.source, this.hpa});
-
-  factory ExternalMetricRef.fromJson(Json j) => ExternalMetricRef(
-    name: '${j['name']}',
-    namespace: j['namespace'] as String?,
-    selector: j['selector'] as String?,
-    source: '${j['source'] ?? 'discovery'}',
-    hpa: j['hpa'] as String?,
-  );
-}
 
 /// One HPA metric with its live value (see `GET /api/metrics/hpa`).
 class HpaLiveMetric {
@@ -312,45 +241,6 @@ extension MetricsApi on ApiClient {
   Future<List<PodUsage>> podMetrics({String? namespace, String? labelSelector}) => _call(
     () async => [
       for (final i in asMapList((await metrics('pods', {...namespaceQuery(namespace), 'labelSelector': labelSelector}))['items'])) PodUsage.fromJson(i),
-    ],
-  );
-
-  Future<List<CustomMetricResource>> customMetricResources() =>
-      _call(() async => [for (final r in asMapList((await metrics('custom/discover'))['resources'])) CustomMetricResource.fromJson(r)]);
-
-  Future<List<MetricSample>> customMetric({
-    String group = '',
-    required String resource,
-    String? namespace,
-    String? name,
-    String? selector,
-    required String metric,
-  }) => _call(
-    () async => [
-      for (final i in asMapList(
-        (await metrics('custom', {
-          'group': group,
-          'resource': resource,
-          'namespace': namespace,
-          'name': name,
-          'selector': selector,
-          'metric': metric,
-        }))['items'],
-      ))
-        MetricSample.fromJson(i),
-    ],
-  );
-
-  Future<List<ExternalMetricRef>> externalMetricNames({String? namespace}) => _call(
-    () async => [
-      for (final m in asMapList((await metrics('external/discover', {'namespace': namespace}))['metrics'])) ExternalMetricRef.fromJson(m),
-    ],
-  );
-
-  Future<List<MetricSample>> externalMetric({required String namespace, required String metric, String? labelSelector}) => _call(
-    () async => [
-      for (final i in asMapList((await metrics('external', {'namespace': namespace, 'metric': metric, 'labelSelector': labelSelector}))['items']))
-        MetricSample.fromJson(i),
     ],
   );
 

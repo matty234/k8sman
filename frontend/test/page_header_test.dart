@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/metrics/metrics_page.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/addons/addons_view.dart';
 import 'package:k8sman/ui/helm/helm_view.dart';
@@ -46,7 +45,6 @@ void main() {
     'add-ons': (_) => AddonsView(api: FakeAddonHelmApi()),
     'security': (_) => SecurityView(source: _SecurityApi()),
     'alerts': (_) => AlertsView(source: FixturePromApi()),
-    'metrics': (_) => const MetricsPage(),
   };
   for (final e in pages.entries) {
     testWidgets('${e.key} header is titlebar height', (tester) async {

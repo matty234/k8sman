@@ -151,9 +151,6 @@ func TestNotInstalled(t *testing.T) {
 	if d := s.UsageDecorator(context.Background(), "", "pods", "demo"); d != nil {
 		t.Fatal("decorator should be nil without metrics-server")
 	}
-	if _, err := s.DiscoverCustom(context.Background()); !errors.As(err, &ue) || ue.Status.State != StateNotInstalled {
-		t.Fatalf("custom discover: %v", err)
-	}
 }
 
 func TestEmptyNodeListIsNoData(t *testing.T) {
@@ -290,7 +287,7 @@ func TestUsageDecoratorCopies(t *testing.T) {
 	}
 }
 
-func TestCustomDiscoveryAndValues(t *testing.T) {
+func TestCustomValues(t *testing.T) {
 	apis := `{"items":[{"metadata":{"name":"v1beta2.custom.metrics.k8s.io"},"spec":{"group":"custom.metrics.k8s.io","version":"v1beta2","service":{"namespace":"monitoring","name":"prometheus-adapter"}},"status":{"conditions":[{"type":"Available","status":"True"}]}}]}`
 	disc := `{"kind":"APIResourceList","groupVersion":"custom.metrics.k8s.io/v1beta2","resources":[
 	 {"name":"pods/http_requests_per_second","namespaced":true,"kind":"MetricValueList","verbs":["get"]},
@@ -309,21 +306,6 @@ func TestCustomDiscoveryAndValues(t *testing.T) {
 		on("/apis/custom.metrics.k8s.io/v1beta2/namespaces/demo/deployments.apps/web/queue_depth", one).
 		service()
 	ctx := context.Background()
-	d, err := s.DiscoverCustom(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d.Version != "v1beta2" || len(d.Resources) != 3 {
-		t.Fatalf("discovery: %+v", d)
-	}
-	pods := d.Resources[1] // sorted: core namespaces, core pods, apps deployments
-	if d.Resources[0].Resource != "namespaces" || pods.Resource != "pods" || !pods.Namespaced || len(pods.Metrics) != 2 {
-		t.Fatalf("pods: %+v", d.Resources)
-	}
-	if d.Resources[2].Group != "apps" || d.Resources[2].Metrics[0] != "queue_depth" {
-		t.Fatalf("deployments: %+v", d.Resources[2])
-	}
-
 	vals, err := s.Custom(ctx, CustomQuery{Resource: "pods", Namespace: "demo", Selector: "app=web", Metric: "http_requests_per_second"})
 	if err != nil {
 		t.Fatal(err)
@@ -359,18 +341,11 @@ func TestCustomV1beta1Shape(t *testing.T) {
 	}
 }
 
-func TestExternalDiscoveryAndValues(t *testing.T) {
+func TestExternalValues(t *testing.T) {
 	s := healthy(t).service()
 	ctx := context.Background()
-	d, err := s.DiscoverExternal(ctx, "demo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// KEDA only advertises "externalmetrics"; the real name comes from the HPA.
-	if len(d.Metrics) != 1 || d.Metrics[0].Source != "hpa" || d.Metrics[0].Selector != "scaledobject.keda.sh/name=web" || d.Metrics[0].HPA != "web" {
-		t.Fatalf("discovery: %+v", d)
-	}
-	vals, err := s.External(ctx, ExternalQuery{Namespace: "demo", Metric: d.Metrics[0].Name, Selector: d.Metrics[0].Selector})
+	// KEDA names the metric and its selector in the HPA, not in discovery.
+	vals, err := s.External(ctx, ExternalQuery{Namespace: "demo", Metric: "s1-cron-Etc-UTC-0xxxx-30xxxx", Selector: "scaledobject.keda.sh/name=web"})
 	if err != nil || len(vals) != 1 || vals[0].Number != 1 {
 		t.Fatalf("values: %+v %v", vals, err)
 	}
@@ -435,12 +410,6 @@ func TestHandlersErrorStates(t *testing.T) {
 	}
 	if code, body := get("/api/metrics/nodes"); code != 404 || body["state"] != StateNotInstalled || body["group"] != ResourceGroup {
 		t.Fatalf("nodes: %d %v", code, body)
-	}
-	if code, _ := get("/api/metrics/custom?resource=pods"); code != 400 {
-		t.Fatalf("custom without metric: %d", code)
-	}
-	if code, _ := get("/api/metrics/external?metric=x"); code != 400 {
-		t.Fatalf("external without namespace: %d", code)
 	}
 	if code, body := get("/api/metrics/status"); code != 200 || body["resource"].(map[string]any)["state"] != StateNotInstalled {
 		t.Fatalf("status: %d %v", code, body)

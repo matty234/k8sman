@@ -44,10 +44,6 @@ func (h *handlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/metrics/status", h.status)
 	mux.HandleFunc("GET /api/metrics/nodes", h.nodes)
 	mux.HandleFunc("GET /api/metrics/pods", h.pods)
-	mux.HandleFunc("GET /api/metrics/custom/discover", h.customDiscover)
-	mux.HandleFunc("GET /api/metrics/custom", h.custom)
-	mux.HandleFunc("GET /api/metrics/external/discover", h.externalDiscover)
-	mux.HandleFunc("GET /api/metrics/external", h.external)
 	mux.HandleFunc("GET /api/metrics/hpa", h.hpa)
 	mux.HandleFunc("GET /api/metrics/summary", h.summary)
 	mux.HandleFunc("GET /api/metrics/volumes", h.volumes)
@@ -141,62 +137,6 @@ func (h *handlers) podsIn(ctx context.Context, scope kube.Namespaces, labelSelec
 		return nil, firstErr
 	}
 	return out, nil
-}
-
-func (h *handlers) customDiscover(w http.ResponseWriter, r *http.Request) {
-	d, err := h.svc().DiscoverCustom(r.Context())
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	httpx.WriteJSON(w, 200, d)
-}
-
-func (h *handlers) custom(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	cq := CustomQuery{
-		Group:          q.Get("group"),
-		Resource:       q.Get("resource"),
-		Namespace:      q.Get("namespace"),
-		Name:           q.Get("name"),
-		Selector:       q.Get("selector"),
-		Metric:         q.Get("metric"),
-		MetricSelector: q.Get("metricSelector"),
-	}
-	if cq.Resource == "" || cq.Metric == "" {
-		writeErr(w, errors.Join(httpx.ErrBadRequest, errors.New("resource and metric are required")))
-		return
-	}
-	items, err := h.svc().Custom(r.Context(), cq)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	httpx.WriteJSON(w, 200, map[string]any{"items": items})
-}
-
-func (h *handlers) externalDiscover(w http.ResponseWriter, r *http.Request) {
-	d, err := h.svc().DiscoverExternal(r.Context(), r.URL.Query().Get("namespace"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	httpx.WriteJSON(w, 200, d)
-}
-
-func (h *handlers) external(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	eq := ExternalQuery{Namespace: q.Get("namespace"), Metric: q.Get("metric"), Selector: q.Get("labelSelector")}
-	if eq.Namespace == "" || eq.Metric == "" {
-		writeErr(w, errors.Join(httpx.ErrBadRequest, errors.New("namespace and metric are required")))
-		return
-	}
-	items, err := h.svc().External(r.Context(), eq)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	httpx.WriteJSON(w, 200, map[string]any{"items": items})
 }
 
 func (h *handlers) hpa(w http.ResponseWriter, r *http.Request) {
