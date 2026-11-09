@@ -12,6 +12,7 @@ import '../api/models.dart';
 import '../state/app_state.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
+import '../ui/widgets/editorial.dart';
 import '../util/k8s.dart';
 import 'flow_list.dart' show dropReasonLabel;
 import 'hubble_api.dart';
@@ -834,7 +835,7 @@ class _SidePanel extends StatelessWidget {
         : n != null
             ? _nodeDetail(context, n)
             : _overview(context);
-    return ListView(padding: const EdgeInsets.fromLTRB(12, 10, 12, 16), children: children);
+    return PageScroll(padding: const EdgeInsets.fromLTRB(12, 10, 12, 16), children: children);
   }
 
   List<Widget> _overview(BuildContext context) {
@@ -1080,12 +1081,20 @@ class _Section extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.only(top: 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          if (icon != null) ...[Icon(icon, size: 13, color: color ?? theme.hintColor), const SizedBox(width: 5)],
-          Flexible(child: Text(title.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, letterSpacing: 0.4, fontWeight: FontWeight.w600))),
-        ]),
+        // The app's section heading: the direction's glyph in its map
+        // colour, the title, a hairline running to the count.
+        SizedBox(
+          height: 24,
+          child: TitleRule(
+            title: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (icon != null) ...[Icon(icon, size: 13, color: color ?? theme.hintColor), const SizedBox(width: 6)],
+              Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sectionTitleStyle(context))),
+            ]),
+            trailing: rows.isEmpty ? null : Text('${rows.length}', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontFeatures: tabularFigures)),
+          ),
+        ),
         const SizedBox(height: 4),
         if (rows.isEmpty && empty != null) Text(empty!, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).faint)) else ...rows,
       ]),
