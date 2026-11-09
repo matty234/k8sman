@@ -9,8 +9,10 @@ import '../keys.dart';
 import '../theme.dart';
 import 'common.dart';
 
-/// A searchable namespace popover: "All namespaces", recently used scopes,
-/// then every namespace with a checkbox.
+/// A searchable namespace popover: "All namespaces", starred namespaces
+/// (Favourites), recently used scopes, then every namespace with a checkbox
+/// and a star. A multi-namespace selection also shows as removable chips
+/// under the search field.
 ///
 /// Clicking a namespace (or Enter) shows only that namespace; its checkbox
 /// (or ⇧Enter) adds it to or removes it from the set, leaving the popover
@@ -57,7 +59,7 @@ class NamespacePicker extends StatelessWidget {
                 : Row(children: [
                     Icon(scope.isMulti ? Icons.folder_copy_outlined : Icons.folder_outlined, size: 14, color: theme.hintColor),
                     const SizedBox(width: 6),
-                    Expanded(child: Text(scope.label, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodyMedium)),
+                    Expanded(child: Text(scope.isMulti ? '${scope.namespaces.length} namespaces' : scope.label, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodyMedium)),
                     Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
                   ]),
           ),
@@ -103,6 +105,9 @@ Future<void> showNamespacePopover(
       kubeNamespace: app.kubeconfigNamespace,
       onRemember: app.rememberNamespace,
       onForget: app.forgetNamespace,
+      favourites: app.favouriteNamespaces,
+      onFavourite: app.toggleFavouriteNamespace,
+      fallback: app.defaultNamespaceScope,
       recents: [for (final r in app.recentNamespaces) if (r != value) r],
       value: value,
       onChanged: onChanged,
@@ -150,6 +155,11 @@ class _NamespacePopover extends StatefulWidget {
   final String? kubeNamespace;
   final Future<void> Function(String) onRemember;
   final Future<void> Function(String) onForget;
+  final List<String> favourites;
+  final Future<void> Function(String) onFavourite;
+
+  /// Where removing the last chip (or Clear) goes.
+  final NamespaceScope fallback;
   final List<NamespaceScope> recents;
   final NamespaceScope value;
   final ValueChanged<NamespaceScope> onChanged;
@@ -163,6 +173,9 @@ class _NamespacePopover extends StatefulWidget {
     required this.kubeNamespace,
     required this.onRemember,
     required this.onForget,
+    required this.favourites,
+    required this.onFavourite,
+    required this.fallback,
     required this.recents,
     required this.value,
     required this.onChanged,
@@ -178,6 +191,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
   final _scroll = ScrollController();
   late NamespaceScope _value = widget.value;
   late final Set<String> _remembered = {...widget.remembered};
+  late final Set<String> _favs = {...widget.favourites};
   late List<_NsRow> _allNamespaces = _buildAll();
   late List<_NsRow> _matches = _allNamespaces;
   int _active = 0;
@@ -211,7 +225,15 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     return [...found, if (offer) _NsRow(q, add: true)];
   }
 
-  List<_Row> get _header => [const _AllRow(), if (_q.isEmpty) ...[for (final r in widget.recents) _RecentRow(r)]];
+  /// Starred namespaces, by name; hidden while searching (the list below
+  /// shows them, starred).
+  List<_NsRow> get _favRows {
+    if (_q.isNotEmpty) return const [];
+    final known = {...widget.namespaces, ..._remembered, ?widget.kubeNamespace};
+    return [for (final n in _favs.toList()..sort()) _NsRow(n, missing: widget.listed && !known.contains(n))];
+  }
+
+  List<_Row> get _header => [const _AllRow(), ..._favRows, if (_q.isEmpty) ...[for (final r in widget.recents) _RecentRow(r)]];
 
   int get _count => _header.length + _matches.length;
 
@@ -303,6 +325,26 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     widget.onChanged(_value);
   }
 
+  void _star(String name) {
+    widget.onFavourite(name);
+    setState(() {
+      _favs.contains(name) ? _favs.remove(name) : _favs.add(name);
+      _active = _active.clamp(0, math.max(0, _count - 1));
+    });
+  }
+
+  /// Takes [name] out of the selection; the last one goes to the fallback.
+  void _unselect(String name) {
+    final next = _value.remove(name);
+    setState(() => _value = next.isAll ? widget.fallback : next);
+    widget.onChanged(_value);
+  }
+
+  void _clear() {
+    setState(() => _value = widget.fallback);
+    widget.onChanged(_value);
+  }
+
   void _forget(String name) {
     widget.onForget(name);
     setState(() {
@@ -342,6 +384,8 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     final header = _header;
+    final favCount = _favRows.length;
+    final recentCount = header.length - 1 - favCount;
     final listHeight = math.min(_matches.length * _rowHeight + 8, 320.0);
     final width = math.min(widget.width, widget.overlaySize.width - 16);
     final double left = widget.anchor.left.clamp(8.0, math.max(8.0, widget.overlaySize.width - width - 8));
@@ -361,6 +405,8 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
         onToggle: () => _toggle(i),
         onHover: () => setState(() => _active = i),
         onRemove: r is _NsRow && r.custom ? () => _forget(r.name) : null,
+        starred: r is _NsRow && !r.add && _favs.contains(r.name),
+        onStar: r is _NsRow && !r.add ? () => _star(r.name) : null,
       );
     }
 
@@ -399,13 +445,16 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
                   ),
                 ),
               ),
+              if (_value.isMulti)
+                _SelectionChips(namespaces: _value.namespaces, onRemove: _unselect, onClear: _clear),
               if (!widget.listed)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
                   child: Text("You can't list namespaces here; type one to add it.", key: const ValueKey('picker-unlisted-hint'), style: small),
                 ),
               for (var i = 0; i < header.length; i++) ...[
-                if (i == 1) ...[sep, Padding(padding: const EdgeInsets.fromLTRB(14, 2, 12, 2), child: Text('Recent', style: small))],
+                if (i == 1 && favCount > 0) ...[sep, Padding(padding: const EdgeInsets.fromLTRB(14, 2, 12, 2), child: Text('Favourites', style: small))],
+                if (i == 1 + favCount && recentCount > 0) ...[sep, Padding(padding: const EdgeInsets.fromLTRB(14, 2, 12, 2), child: Text('Recent', style: small))],
                 Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: SizedBox(height: _rowHeight, child: row(i))),
               ],
               if (_matches.isNotEmpty) sep,
@@ -459,6 +508,8 @@ class _PickerRow extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback onHover;
   final VoidCallback? onRemove;
+  final bool starred;
+  final VoidCallback? onStar;
   const _PickerRow({
     super.key,
     required this.row,
@@ -469,6 +520,8 @@ class _PickerRow extends StatelessWidget {
     required this.onToggle,
     required this.onHover,
     this.onRemove,
+    this.starred = false,
+    this.onStar,
   });
 
   @override
@@ -526,6 +579,25 @@ class _PickerRow extends StatelessWidget {
               const SizedBox(width: 8),
               Text('not found', style: theme.textTheme.bodySmall?.copyWith(color: active ? fg : theme.hintColor)),
             ],
+            if (onStar != null && (starred || active)) ...[
+              const SizedBox(width: 4),
+              Tooltip(
+                message: starred ? 'Remove from favourites' : 'Add to favourites',
+                child: GestureDetector(
+                  key: const ValueKey('picker-star'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onStar,
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: Icon(
+                      starred ? Icons.star : Icons.star_border,
+                      size: 14,
+                      color: starred ? (active ? fg : Colors.amber.shade600) : (active ? fg : theme.hintColor),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             if (onRemove != null) ...[
               const SizedBox(width: 8),
               Text('added by you', style: theme.textTheme.bodySmall?.copyWith(color: active ? fg : theme.hintColor)),
@@ -543,6 +615,63 @@ class _PickerRow extends StatelessWidget {
           ]),
         ),
       ),
+    );
+  }
+}
+
+/// The selected namespaces as chips, each removable, plus Clear.
+class _SelectionChips extends StatelessWidget {
+  final List<String> namespaces;
+  final ValueChanged<String> onRemove;
+  final VoidCallback onClear;
+  const _SelectionChips({required this.namespaces, required this.onRemove, required this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 6, 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          // 40 selected namespaces scroll rather than push the list away.
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 58),
+            child: SingleChildScrollView(
+              child: Wrap(spacing: 4, runSpacing: 4, children: [
+                for (final n in namespaces)
+                  Container(
+                    key: ValueKey('picker-chip-$n'),
+                    padding: const EdgeInsets.only(left: 6),
+                    decoration: BoxDecoration(color: primary.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(10)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 140), child: Text(n, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelSmall))),
+                      Tooltip(
+                        message: 'Remove $n from the selection',
+                        child: GestureDetector(
+                          key: ValueKey('picker-chip-remove-$n'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => onRemove(n),
+                          child: Padding(padding: const EdgeInsets.all(3), child: Icon(Icons.close, size: 12, color: theme.hintColor)),
+                        ),
+                      ),
+                    ]),
+                  ),
+              ]),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Tooltip(
+          message: 'Clear the selection',
+          child: GestureDetector(
+            key: const ValueKey('picker-clear'),
+            behavior: HitTestBehavior.opaque,
+            onTap: onClear,
+            child: Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text('Clear', style: theme.textTheme.labelSmall?.copyWith(color: primary))),
+          ),
+        ),
+      ]),
     );
   }
 }

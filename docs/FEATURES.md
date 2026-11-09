@@ -29,6 +29,11 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   them together (`team-1, team-2 +2`): clicking a name shows only that one,
   its checkbox (or ⇧Return) adds it to the set. `:ns a,b` picks a set from
   the palette, `:ns +a` / `:ns -a` changes it.
+- Namespace favourites and selection chips: star a namespace in the picker (the
+  star shows on hover) and it is listed under Favourites, above Recent, saved
+  per context. A multi-namespace selection shows as "3 namespaces" on the
+  button, and as removable chips with Clear inside the picker. Removing the
+  last one falls back to the kubeconfig namespace, else All.
 - Namespace sets work for users whose access covers only those namespaces:
   each namespace is watched on its own and merged. A namespace you can't
   read shows a banner ("No access to team-5 (forbidden)") while the others

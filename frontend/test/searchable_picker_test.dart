@@ -43,8 +43,8 @@ void main() {
     final shown = visibleOptions(tester).toList();
     expect(shown, ['All namespaces', 'kube-system', 'kube-public', 'Kubeflow']);
     // The match is highlighted (its own bold span; the checkbox icon is the
-    // row's first RichText).
-    final rich = tester.widget<RichText>(find.descendant(of: find.byKey(const ValueKey('picker-option-1')), matching: find.byType(RichText)).last);
+    // row's first RichText, the hover star its last).
+    final rich = tester.widget<RichText>(find.descendant(of: find.byKey(const ValueKey('picker-option-1')), matching: find.byType(RichText)).at(1));
     final spans = (rich.text as TextSpan).children!.first as TextSpan;
     final hl = spans.children!.whereType<TextSpan>().firstWhere((s) => s.style?.fontWeight == FontWeight.w700);
     expect(hl.text, 'kube');
