@@ -712,13 +712,18 @@ class _Toolbar extends StatelessWidget {
               // Controls get explicit widths (shrinking only when space is
               // tight) and the title takes all remaining slack, so the
               // controls stay pinned right on wide windows.
-              final nsWidth = (box.maxWidth * 0.2).clamp(110.0, 190.0);
-              final filterWidth = (box.maxWidth * 0.26).clamp(104.0, 240.0);
+              // Very narrow (an inspector beside a small window): tighter
+              // minimums, and New… moves to ⌘K.
+              final tight = box.maxWidth < 520;
+              final nsWidth = (box.maxWidth * 0.2).clamp(tight ? 84.0 : 110.0, 190.0);
+              final filterWidth = (box.maxWidth * 0.26).clamp(tight ? 76.0 : 104.0, 240.0);
               return Row(
                 children: [
                   Expanded(
                     // Right-click the title: pin this kind to the sidebar.
-                    child: GestureDetector(
+                    // Squeezed below its icon and a few letters (an inspector
+                    // beside a small window), it gives way to the controls.
+                    child: LayoutBuilder(builder: (context, title) => title.maxWidth < 72 ? const SizedBox.shrink() : GestureDetector(
                       key: const ValueKey('table-title'),
                       behavior: HitTestBehavior.translucent,
                       onSecondaryTapUp: (d) => showKindMenu(context, d.globalPosition, t),
@@ -764,15 +769,19 @@ class _Toolbar extends StatelessWidget {
                           // No count until the first list arrives (not "0").
                           if (loaded) ...[
                             const SizedBox(width: 8),
-                            Text(
-                              count,
-                              maxLines: 1,
-                              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]),
+                            Flexible(
+                              child: Text(
+                                count,
+                                maxLines: 1,
+                                overflow: TextOverflow.clip,
+                                softWrap: false,
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]),
+                              ),
                             ),
                           ],
                           const SizedBox(width: 8),
                           if (session != null) ...[
-                            Text(t.kind, maxLines: 1, style: theme.textTheme.labelSmall?.copyWith(color: colors.faint, fontWeight: FontWeight.w400)),
+                            Flexible(child: Text(t.kind, maxLines: 1, overflow: TextOverflow.clip, softWrap: false, style: theme.textTheme.labelSmall?.copyWith(color: colors.faint, fontWeight: FontWeight.w400))),
                             const SizedBox(width: 6),
                           ],
                           Flexible(
@@ -785,24 +794,36 @@ class _Toolbar extends StatelessWidget {
                           ),
                         ],
                       ),
-                    ),
+                    )),
                   ),
-                  if (session != null && session.modified) ...[
+                  // A modified view: Update View and Revert as buttons when
+                  // there's room, else one menu button (an inspector beside
+                  // the table leaves too little for both).
+                  if (session != null && session.modified && box.maxWidth >= 720) ...[
                     FilledButton.tonal(
                       key: const ValueKey('view-update'),
                       style: _toolbarButton,
-                      onPressed: () async {
-                        try {
-                          await app.updateActiveView();
-                        } catch (e) {
-                          if (context.mounted) showActionError(context, 'Could not update the view: $e');
-                        }
-                      },
+                      onPressed: () => _updateView(context, app),
                       child: const Text('Update View'),
                     ),
                     const SizedBox(width: 6),
                     TextButton(key: const ValueKey('view-revert'), style: _toolbarButton, onPressed: app.revertActiveView, child: const Text('Revert')),
                     const SizedBox(width: 8),
+                  ] else if (session != null && session.modified) ...[
+                    PopupMenuButton<bool>(
+                      key: const ValueKey('view-changes-menu'),
+                      popUpAnimationStyle: AnimationStyle.noAnimation,
+                      tooltip: 'View changed since saved',
+                      padding: EdgeInsets.zero,
+                      iconSize: 18,
+                      icon: Icon(Icons.save_outlined, color: theme.colorScheme.primary),
+                      onSelected: (update) => update ? _updateView(context, app) : app.revertActiveView(),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: true, child: Text('Update View')),
+                        PopupMenuItem(value: false, child: Text('Revert')),
+                      ],
+                    ),
+                    const SizedBox(width: 4),
                   ],
                   if (t.namespaced) ...[SizedBox(width: nsWidth, child: const NamespacePicker()), const SizedBox(width: 8)],
                   SizedBox(
@@ -811,7 +832,7 @@ class _Toolbar extends StatelessWidget {
                     child: TableFilterField(controller: controller),
                   ),
                   const SizedBox(width: 4),
-                  if (!app.readOnly && t.can('create'))
+                  if (!app.readOnly && t.can('create') && !tight)
                     IconButton(
                       key: const ValueKey('table-create'),
                       tooltip: 'New ${t.kind}…',
@@ -849,6 +870,14 @@ class _Toolbar extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+Future<void> _updateView(BuildContext context, AppState app) async {
+  try {
+    await app.updateActiveView();
+  } catch (e) {
+    if (context.mounted) showActionError(context, 'Could not update the view: $e');
   }
 }
 

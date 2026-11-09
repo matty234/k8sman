@@ -88,6 +88,16 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(_table(tester).filter, 'web');
+
+    // Narrow (an inspector beside the table): one menu button, no overflow.
+    _table(tester).setFilter('api');
+    for (final w in [360.0, 400.0, 500.0, 640.0, 800.0, 1200.0]) {
+      await tester.binding.setSurfaceSize(Size(w, 600));
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: 'toolbar at $w');
+      expect(find.byKey(ValueKey(w <= 640 ? 'view-changes-menu' : 'view-update')), findsOneWidget, reason: 'at $w');
+    }
+    await tester.binding.setSurfaceSize(null);
   });
 
   test('a view matches the active kubeconfig by its resolved key, and an undone delete returns to its place', () async {
