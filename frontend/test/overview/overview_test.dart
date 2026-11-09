@@ -7,11 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/prometheus/metric_history_chart.dart';
+import 'package:k8sman/prometheus/prom_api.dart';
 import 'package:k8sman/ui/overview/overview_api.dart';
 import 'package:k8sman/ui/overview/overview_view.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
+import '../prometheus/prom_fixtures.dart';
 import '../support/harness.dart';
 import '../support/screenshot.dart';
 import 'package:k8sman/ui/widgets/namespace_picker.dart';
@@ -290,6 +293,27 @@ void main() {
     await hover(tester, find.text('img-1'));
     expect(actionsOf('img-1').opacity, 1);
     expect(tester.getTopLeft(find.text('img-1')), before);
+  });
+
+  testWidgets('capacity strip charts cluster history with Prometheus and falls back to bars without', (tester) async {
+    addTearDown(() => PromApi.debugOverride = null);
+    for (final missing in [false, true]) {
+      await tester.pumpWidget(const SizedBox()); // a fresh tree each round
+      final prom = FixturePromApi(missing: missing);
+      PromApi.debugOverride = (_) => prom;
+      await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400));
+      await settle(tester);
+      expect(find.textContaining('3.5 / 12 cores requested · 29%', findRichText: true), findsOneWidget);
+      expect(find.byType(AreaChart), missing ? findsNothing : findsNWidgets(2));
+      if (missing) break;
+      expect(find.textContaining('in use', findRichText: true), findsWidgets);
+      expect(find.text('requested (now)'), findsOneWidget); // memory has no kube-state-metrics series
+      expect(prom.queries.where((q) => q.contains('kube_pod_container_resource_requests')), hasLength(2));
+      // Switching the range refetches once per chart.
+      await tester.tap(find.text('6h'));
+      await settle(tester);
+      expect(prom.queries.where((q) => q.contains('kube_pod_container_resource_requests')), hasLength(4));
+    }
   });
 
   testWidgets('read-only hides actions', (tester) async {

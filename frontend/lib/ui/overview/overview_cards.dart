@@ -15,6 +15,7 @@ import '../../util/text.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../../modules/modules.dart' show enabledPages;
+import 'capacity_history.dart';
 import 'overview_api.dart';
 import 'overview_nav.dart';
 import 'overview_widgets.dart' show SkeletonBar, issueColor, issueIcon, openObject;
@@ -270,22 +271,23 @@ class CapacityStrip extends StatelessWidget {
             usedText: u == null ? null : formatBytes(u.memoryBytes),
             where: where,
           );
+    final bars = LayoutBuilder(builder: (context, box) {
+      final wide = box.maxWidth >= 620;
+      final children = [cpu ?? const _PendingMeter(), mem ?? const _PendingMeter()];
+      if (wide) {
+        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: children[0]),
+          const SizedBox(width: 28),
+          Expanded(child: children[1]),
+        ]);
+      }
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [children[0], const SizedBox(height: 10), children[1]]);
+    });
     return Container(
       key: c == null ? const ValueKey('pending-capacity') : null,
       decoration: _panel(context),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-      child: LayoutBuilder(builder: (context, box) {
-        final wide = box.maxWidth >= 620;
-        final children = [cpu ?? const _PendingMeter(), mem ?? const _PendingMeter()];
-        if (wide) {
-          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: children[0]),
-            const SizedBox(width: 28),
-            Expanded(child: children[1]),
-          ]);
-        }
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [children[0], const SizedBox(height: 10), children[1]]);
-      }),
+      child: c == null ? bars : ClusterHistory(capacity: c, fallback: bars),
     );
   }
 }

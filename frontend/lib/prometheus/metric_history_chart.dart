@@ -338,7 +338,7 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
         return DetailSection(
           title: widget.title,
           icon: Icons.show_chart,
-          trailing: _RangePicker(value: _range, onChanged: (r) => setState(() => _range = r)),
+          trailing: RangePicker(value: _range, onChanged: (r) => setState(() => _range = r)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final spec in widget.charts)
               Padding(
@@ -375,17 +375,18 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
   }
 }
 
-class _RangePicker extends StatelessWidget {
+class RangePicker extends StatelessWidget {
   final Duration value;
   final ValueChanged<Duration> onChanged;
-  const _RangePicker({required this.value, required this.onChanged});
+  final List<(String, Duration)> ranges;
+  const RangePicker({super.key, required this.value, required this.onChanged, this.ranges = historyRanges});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      for (final (label, d) in historyRanges)
+      for (final (label, d) in ranges)
         Hoverable(
           onTap: () => onChanged(d),
           builder: (h) => Container(
@@ -519,6 +520,18 @@ List<Color> seriesColors(BuildContext context) {
   ];
 }
 
+/// A reference line drawn behind an [AreaChart]'s series (e.g. requests,
+/// allocatable): always a plain line, never filled.
+class ChartGuide {
+  final String name;
+  final List<(DateTime, double)> points;
+  final bool dashed;
+
+  /// Thin and faint (a ceiling) rather than a normal-weight line.
+  final bool faint;
+  const ChartGuide(this.name, this.points, {this.dashed = false, this.faint = false});
+}
+
 /// Area (one series) or stacked lines (several) with a hover readout.
 class AreaChart extends StatefulWidget {
   final List<MetricSeries> series;
@@ -531,7 +544,10 @@ class AreaChart extends StatefulWidget {
 
   /// Name of a single unlabelled series in the tooltip.
   final String seriesName;
-  const AreaChart({super.key, required this.series, required this.unit, required this.range, this.height = 76, this.labelKey, this.seriesName = 'value'});
+
+  /// Reference lines; they count towards the scale and show in the hover.
+  final List<ChartGuide> guides;
+  const AreaChart({super.key, required this.series, required this.unit, required this.range, this.height = 76, this.labelKey, this.seriesName = 'value', this.guides = const []});
 
   @override
   State<AreaChart> createState() => _AreaChartState();
@@ -555,7 +571,7 @@ class _AreaChartState extends State<AreaChart> {
     final all = [for (final s in widget.series) ...s.points];
     final tMin = all.map((p) => p.$1.millisecondsSinceEpoch).reduce(math.min).toDouble();
     final tMax = all.map((p) => p.$1.millisecondsSinceEpoch).reduce(math.max).toDouble();
-    final vMax = _niceMax(all.map((p) => p.$2).fold<double>(0, math.max));
+    final vMax = _niceMax([...all, for (final g in widget.guides) ...g.points].map((p) => p.$2).fold<double>(0, math.max));
     final multi = widget.series.length > 1;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -583,6 +599,8 @@ class _AreaChartState extends State<AreaChart> {
                     grid: AppColors.of(context).separator,
                     hoverX: _hoverX,
                     fill: !multi,
+                    guides: widget.guides,
+                    guideColor: theme.hintColor,
                   ),
                 ),
               ),
@@ -597,6 +615,8 @@ class _AreaChartState extends State<AreaChart> {
                     rows: [
                       for (final (i, v) in readout)
                         (colors[i % colors.length], _name(widget.series[i], i), formatMetric(v, widget.unit)),
+                      for (final g in widget.guides)
+                        if (_nearest(g.points, hoverT) case final v?) (theme.hintColor, g.name, formatMetric(v, widget.unit)),
                     ],
                   ),
                 ),
@@ -623,6 +643,14 @@ class _AreaChartState extends State<AreaChart> {
           ]),
         ),
     ]);
+  }
+
+  static double? _nearest(List<(DateTime, double)> points, DateTime t) {
+    (DateTime, double)? best;
+    for (final p in points) {
+      if (best == null || p.$1.difference(t).abs() < best.$1.difference(t).abs()) best = p;
+    }
+    return best?.$2;
   }
 
   /// Nearest point of each series to [t].
@@ -701,6 +729,8 @@ class _AreaPainter extends CustomPainter {
   final Color grid;
   final double? hoverX;
   final bool fill;
+  final List<ChartGuide> guides;
+  final Color guideColor;
 
   _AreaPainter({
     required this.series,
@@ -711,6 +741,8 @@ class _AreaPainter extends CustomPainter {
     required this.grid,
     required this.hoverX,
     required this.fill,
+    this.guides = const [],
+    this.guideColor = Colors.grey,
   });
 
   @override
@@ -730,6 +762,28 @@ class _AreaPainter extends CustomPainter {
     final span = tMax - tMin;
     double x(DateTime t) => span <= 0 ? size.width : (t.millisecondsSinceEpoch - tMin) / span * size.width;
     double y(double v) => size.height - 1 - (v / vMax).clamp(0.0, 1.0) * (size.height - 1 - top);
+
+    for (final g in guides) {
+      if (g.points.isEmpty) continue;
+      final paint = Paint()
+        ..color = guideColor.withValues(alpha: g.faint ? 0.4 : 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = g.faint ? 1 : 1.2;
+      final path = Path();
+      for (final (j, p) in g.points.indexed) {
+        final o = Offset(x(p.$1), y(p.$2));
+        j == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+      }
+      if (!g.dashed) {
+        canvas.drawPath(path, paint);
+        continue;
+      }
+      for (final m in path.computeMetrics()) {
+        for (var d = 0.0; d < m.length; d += 7) {
+          canvas.drawPath(m.extractPath(d, math.min(d + 4, m.length)), paint);
+        }
+      }
+    }
 
     for (final (i, s) in series.indexed) {
       if (s.points.isEmpty) continue;
@@ -769,5 +823,5 @@ class _AreaPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_AreaPainter old) => old.series != series || old.hoverX != hoverX || old.vMax != vMax || old.colors != colors;
+  bool shouldRepaint(_AreaPainter old) => old.series != series || old.guides != guides || old.hoverX != hoverX || old.vMax != vMax || old.colors != colors;
 }

@@ -50,6 +50,7 @@ class FixturePromApi extends PromApi {
         final q = query['query'] ?? '';
         queries.add(q);
         final by = q.contains('by (container)');
+        if (q.contains('kube_node_status_allocatable')) return promFixture(q.contains('resource="cpu"') ? 'query-cluster-cpu' : 'query-cluster-mem');
         if (q.contains('node_cpu_seconds_total')) return promFixture('query-node-cpu');
         if (q.contains('node_memory')) return promFixture('query-node-mem');
         if (q.contains('container_cpu_usage_seconds_total')) return promFixture(by ? 'query-pod-cpu-containers' : 'query-pod-cpu');
