@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import 'cluster_error.dart';
+import 'context_appearance.dart';
 import 'namespace_scope.dart';
 import 'nav_history.dart';
 import 'saved_views.dart';
@@ -163,6 +164,9 @@ class AppState extends ChangeNotifier {
 
   /// Read-only contexts → reason (as [readOnlyReason]).
   Map<String, String> readOnlyContexts = const {};
+
+  /// The icon and colour the user picked per context (absent = default).
+  Map<String, ContextAppearance> contextAppearance = const {};
 
   String _currentContext = '';
 
@@ -370,6 +374,7 @@ class AppState extends ChangeNotifier {
       currentContext = ctx.current;
       contexts = ctx.contexts;
       readOnlyContexts = ctx.readOnly;
+      unawaited(_loadContextAppearance());
       await tablePrefs.load();
       if (stale()) return;
       final info = _info(currentContext);
@@ -452,6 +457,28 @@ class AppState extends ChangeNotifier {
       detail: List.of(_detailStack),
       inspectorCollapsed: inspectorCollapsed,
     );
+  }
+
+  Future<void> _loadContextAppearance() async {
+    try {
+      final all = await api.getContextAppearances();
+      contextAppearance = {for (final e in all.entries) e.key: ContextAppearance(icon: e.value.icon, color: e.value.color)};
+      notifyListeners();
+    } catch (_) {
+      // Older backend or no settings: the default badges.
+    }
+  }
+
+  /// Saves [a] as [context]'s badge (default forgets it).
+  Future<void> setContextAppearance(String context, ContextAppearance a) async {
+    await api.putContextAppearance(context, a.icon, a.color);
+    contextAppearance = {...contextAppearance};
+    if (a.isDefault) {
+      contextAppearance.remove(context);
+    } else {
+      contextAppearance[context] = a;
+    }
+    notifyListeners();
   }
 
   /// Locks (true) or unlocks (false) [context], or with null returns it to

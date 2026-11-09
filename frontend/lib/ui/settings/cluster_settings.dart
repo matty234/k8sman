@@ -5,6 +5,7 @@ import '../../api/client.dart';
 import '../../app/kubeconfig_picker.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart' show Severity;
+import '../context_badge.dart';
 import '../resource_nav.dart' show lockContext;
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -124,7 +125,7 @@ class _ReadOnlyContexts extends StatelessWidget {
         SizedBox(
           height: 34,
           child: Row(children: [
-            Icon(Icons.cloud_outlined, size: 14, color: theme.hintColor),
+            NamedContextBadge(c.name, size: 18),
             const SizedBox(width: 8),
             Expanded(
               child: Text.rich(
@@ -136,6 +137,16 @@ class _ReadOnlyContexts extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            Tooltip(
+              message: 'Change icon & colour',
+              child: IconButton(
+                key: ValueKey('appearance-${c.name}'),
+                visualDensity: VisualDensity.compact,
+                iconSize: 14,
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: () => showContextAppearanceDialog(context, c.name),
               ),
             ),
             Icon(app.readOnlyContexts.containsKey(c.name) ? Icons.lock : Icons.lock_open,

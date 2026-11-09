@@ -167,6 +167,22 @@ class ApiClient {
   }
 
   /// Namespaces the user starred for [context] (the current one if null).
+  /// Every saved context badge: context → (icon id, colour id or #hex).
+  Future<Map<String, ({String icon, String color})>> getContextAppearances() async {
+    final j = await _get('settings/context-appearance') as Json;
+    final all = j['all'];
+    return {
+      if (all is Map)
+        for (final e in all.entries)
+          '${e.key}': (icon: '${(e.value as Map)['icon'] ?? ''}', color: '${(e.value as Map)['color'] ?? ''}'),
+    };
+  }
+
+  /// Saves a context's badge; both empty forgets it.
+  Future<void> putContextAppearance(String context, String icon, String color) async {
+    await _send('PUT', 'settings/context-appearance', const {}, {'context': context, 'icon': icon, 'color': color});
+  }
+
   Future<List<String>> getFavouriteNamespaces({String? context}) async {
     final j = await _get('settings/favourite-namespaces', {'context': context}) as Json;
     return [for (final n in (j['namespaces'] as List? ?? const [])) '$n'];

@@ -12,6 +12,7 @@ import '../state/app_state.dart';
 import '../state/poller.dart';
 import '../state/startup_gate.dart';
 import '../util/k8s.dart' show Severity;
+import 'context_badge.dart';
 import 'keys.dart' show shortcutLabel;
 import 'overview/overview_summary.dart';
 import 'palette/command_palette.dart';
@@ -377,7 +378,7 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
             );
           }),
         ),
-        const _ContextPicker(),
+        const ContextPicker(),
         const SizedBox(height: 6),
         // Right-click on the section's empty space offers Customise too.
         GestureDetector(
@@ -925,8 +926,8 @@ Future<void> lockContext(BuildContext context, String ctx, bool lock) async {
   if (ok == true) await app.setContextReadOnly(ctx, false);
 }
 
-class _ContextPicker extends StatelessWidget {
-  const _ContextPicker();
+class ContextPicker extends StatelessWidget {
+  const ContextPicker({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -945,27 +946,36 @@ class _ContextPicker extends StatelessWidget {
             PopupMenuItem(
               value: c.name,
               height: 28,
-              child: Row(children: [
-                SizedBox(width: 18, child: c.name == app.currentContext ? Icon(Icons.check, size: 14, color: theme.colorScheme.primary) : null),
-                Flexible(child: Text(c.name, overflow: TextOverflow.ellipsis)),
-                if (app.readOnlyContexts.containsKey(c.name)) ...[
-                  const SizedBox(width: 6),
-                  Tooltip(message: 'Read-only', child: Icon(Icons.lock, size: 12, color: colors.faint)),
-                ],
-              ]),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onSecondaryTapUp: (d) {
+                  Navigator.pop(context);
+                  showSidebarMenu(context, d.globalPosition, [('Change icon & colour…', () => showContextAppearanceDialog(context, c.name))]);
+                },
+                child: Row(children: [
+                  SizedBox(width: 18, child: c.name == app.currentContext ? Icon(Icons.check, size: 14, color: theme.colorScheme.primary) : null),
+                  NamedContextBadge(c.name, size: 16),
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(c.name, overflow: TextOverflow.ellipsis)),
+                  if (app.readOnlyContexts.containsKey(c.name)) ...[
+                    const SizedBox(width: 6),
+                    Tooltip(message: 'Read-only', child: Icon(Icons.lock, size: 12, color: colors.faint)),
+                  ],
+                ]),
+              ),
             ),
         ],
-        builder: (h) => Container(
+        builder: (h) => GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onSecondaryTapUp: current == null
+              ? null
+              : (d) => showSidebarMenu(context, d.globalPosition, [('Change icon & colour…', () => showContextAppearanceDialog(context, current))]),
+          child: Container(
             height: 32,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(color: h ? colors.hover : null, borderRadius: BorderRadius.circular(6)),
             child: Row(children: [
-              Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(color: theme.colorScheme.primary, borderRadius: BorderRadius.circular(5)),
-                child: const Icon(Icons.hub, size: 13, color: Colors.white),
-              ),
+              NamedContextBadge(current ?? '', size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -979,6 +989,7 @@ class _ContextPicker extends StatelessWidget {
               Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
             ]),
           ),
+        ),
         ),
         // Which kubeconfig file the contexts above come from.
         const KubeconfigPicker(),
