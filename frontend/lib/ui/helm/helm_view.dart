@@ -56,6 +56,10 @@ class _HelmViewState extends State<HelmView> with PollingState {
   }
 
   HelmReleaseList? _list;
+
+  /// The namespace [_list] was listed for: another namespace's list (maybe
+  /// empty) isn't shown while this one loads.
+  String? _listNs;
   Object? _error;
 
   /// Newer chart versions by [chartUpdateKey], kept across visits and
@@ -88,6 +92,7 @@ class _HelmViewState extends State<HelmView> with PollingState {
       if (!mounted || seq != _seq) return;
       setState(() {
         _list = l;
+        _listNs = ns;
         _error = null;
         _loadedNs = ns;
       });
@@ -153,7 +158,7 @@ class _HelmViewState extends State<HelmView> with PollingState {
       _selected = app.pageFocus;
       app.pageFocus = null;
     }
-    final l = _list;
+    final l = _list != null && _listNs == app.namespace ? _list : null;
     final all = l == null ? null : sortReleases(l.releases);
     final visible = all?.where(_matches).toList();
     HelmRelease? selected;

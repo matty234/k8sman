@@ -156,15 +156,27 @@ class _UpgradeViewState extends State<UpgradeView> {
         ),
       ]);
     }
+    // Switching target: the last target's results stay (dimmed, inert)
+    // under a progress line until the new target's first answer arrives.
+    final stale = _loading && _target != null && data.target != _target;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       header,
-      const Divider(),
+      stale ? const LinearProgressIndicator(key: ValueKey('upgrade-switching'), minHeight: 1) : const Divider(),
       if (_error != null)
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           child: ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last result.', onRetry: _refresh),
         ),
-      Expanded(child: PageScroll(padding: const EdgeInsets.fromLTRB(24, 22, 24, 28), children: _body(context, data))),
+      Expanded(
+        child: IgnorePointer(
+          ignoring: stale,
+          child: AnimatedOpacity(
+            opacity: stale ? 0.35 : 1,
+            duration: const Duration(milliseconds: 120),
+            child: PageScroll(padding: const EdgeInsets.fromLTRB(24, 22, 24, 28), children: _body(context, data)),
+          ),
+        ),
+      ),
     ]);
   }
 
