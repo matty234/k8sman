@@ -413,55 +413,78 @@ class _FindBar extends StatelessWidget implements PreferredSizeWidget {
 }
 
 /// Unified diff with collapsed unchanged runs.
-class DiffView extends StatelessWidget {
+class DiffView extends StatefulWidget {
   final List<DiffLine> lines;
 
-  /// Size to the content (up to [maxHeight], then scroll) instead of filling
-  /// the parent, for diffs shown inline in a scrolling panel.
+  /// Size to the content instead of filling (and scrolling inside) the
+  /// parent, for diffs shown inline in a scrolling panel. Inline diffs never
+  /// scroll themselves, so the panel keeps scrolling as the pointer passes
+  /// over them; past [maxRows] rows the rest wait behind "Show more".
   final bool shrinkWrap;
-  final double maxHeight;
-  const DiffView({super.key, required this.lines, this.shrinkWrap = false, this.maxHeight = 480});
+  final int maxRows;
+  const DiffView({super.key, required this.lines, this.shrinkWrap = false, this.maxRows = 200});
+
+  @override
+  State<DiffView> createState() => _DiffViewState();
+}
+
+class _DiffViewState extends State<DiffView> {
+  bool _all = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final lines = widget.lines;
     final items = withContext(lines);
     if (!lines.any((l) => l.op != DiffOp.same)) {
       return Center(child: Text('No changes', style: TextStyle(color: theme.hintColor)));
     }
     final add = severityColor(context, Severity.ok), del = severityColor(context, Severity.error);
-    final box = Container(
-      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerLowest, borderRadius: BorderRadius.circular(6), border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
-      // Inline (shrink-wrapped) in a scrolling panel: hand scrolling past
-      // the diff's ends to the panel.
-      child: (shrinkWrap ? (Widget w) => ScrollChain(child: w) : (Widget w) => w)(ListView.builder(
-        shrinkWrap: shrinkWrap,
+    Widget row(BuildContext context, int i) {
+      final it = items[i];
+      if (it.line == null) {
+        return Container(
+          color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+          child: Text('⋯ ${it.skipped} unchanged line${it.skipped == 1 ? '' : 's'}', style: monoStyle(context, size: 11, color: theme.hintColor)),
+        );
+      }
+      final l = it.line!;
+      final c = l.op == DiffOp.add ? add : l.op == DiffOp.remove ? del : null;
+      return Container(
+        color: c?.withValues(alpha: 0.12),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(width: 34, child: Text('${l.oldNo ?? ''}', textAlign: TextAlign.right, style: monoStyle(context, size: 11, color: theme.hintColor))),
+          SizedBox(width: 34, child: Text('${l.newNo ?? ''}', textAlign: TextAlign.right, style: monoStyle(context, size: 11, color: theme.hintColor))),
+          SizedBox(width: 18, child: Text(l.op == DiffOp.add ? '+' : l.op == DiffOp.remove ? '−' : '', textAlign: TextAlign.center, style: monoStyle(context, color: c))),
+          Expanded(child: Text(l.text, style: monoStyle(context, color: c))),
+        ]),
+      );
+    }
+
+    final decoration = BoxDecoration(color: theme.colorScheme.surfaceContainerLowest, borderRadius: BorderRadius.circular(6), border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)));
+    if (!widget.shrinkWrap) {
+      return Container(
+        decoration: decoration,
+        child: ListView.builder(padding: const EdgeInsets.symmetric(vertical: 6), itemCount: items.length, itemBuilder: row),
+      );
+    }
+    final shown = _all ? items.length : items.length.clamp(0, widget.maxRows);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        decoration: decoration,
         padding: const EdgeInsets.symmetric(vertical: 6),
-        itemCount: items.length,
-        itemBuilder: (context, i) {
-          final it = items[i];
-          if (it.line == null) {
-            return Container(
-              color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              child: Text('⋯ ${it.skipped} unchanged line${it.skipped == 1 ? '' : 's'}', style: monoStyle(context, size: 11, color: theme.hintColor)),
-            );
-          }
-          final l = it.line!;
-          final c = l.op == DiffOp.add ? add : l.op == DiffOp.remove ? del : null;
-          return Container(
-            color: c?.withValues(alpha: 0.12),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(width: 34, child: Text('${l.oldNo ?? ''}', textAlign: TextAlign.right, style: monoStyle(context, size: 11, color: theme.hintColor))),
-              SizedBox(width: 34, child: Text('${l.newNo ?? ''}', textAlign: TextAlign.right, style: monoStyle(context, size: 11, color: theme.hintColor))),
-              SizedBox(width: 18, child: Text(l.op == DiffOp.add ? '+' : l.op == DiffOp.remove ? '−' : '', textAlign: TextAlign.center, style: monoStyle(context, color: c))),
-              Expanded(child: Text(l.text, style: monoStyle(context, color: c))),
-            ]),
-          );
-        },
-      )),
-    );
-    return shrinkWrap ? ConstrainedBox(constraints: BoxConstraints(maxHeight: maxHeight), child: box) : box;
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < shown; i++) row(context, i)]),
+      ),
+      if (shown < items.length)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: () => setState(() => _all = true),
+            child: Text('Show ${items.length - shown} more lines', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
+          ),
+        ),
+    ]);
   }
 }
