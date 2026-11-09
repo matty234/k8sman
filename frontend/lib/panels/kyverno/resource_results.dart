@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../ui/widgets/common.dart';
+import '../../ui/widgets/editorial.dart';
 import '../network/widgets.dart';
 import '../panel.dart';
 import '../pod/pod_widgets.dart';
@@ -43,7 +44,7 @@ class _ObjectResults extends StatelessWidget {
       ),
       builder: (context, snap, reload) {
         final rs = snap.data;
-        return ListView(padding: const EdgeInsets.all(12), children: [
+        return PageScroll(padding: const EdgeInsets.all(12), children: [
           DetailSection(
             title: 'Policy results',
             icon: Icons.policy_outlined,

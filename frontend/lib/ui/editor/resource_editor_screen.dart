@@ -17,6 +17,7 @@ import '../detail/yaml_editor.dart' show DiffView;
 import '../keys.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import 'resource_templates.dart';
 import 'yaml_code_editor.dart';
 
@@ -777,7 +778,7 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
         }
       }
     }
-    return ListView(padding: const EdgeInsets.fromLTRB(8, 8, 8, 12), children: children);
+    return PageScroll(padding: const EdgeInsets.fromLTRB(8, 8, 8, 12), children: children);
   }
 
   /// The documents in the editor, before anything was validated.

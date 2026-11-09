@@ -11,6 +11,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
+import '../../ui/widgets/editorial.dart';
 import '../../util/k8s.dart';
 import '../argocd/argo_common.dart' show ArgoCallout, Hint;
 import 'wf_common.dart';
@@ -199,7 +200,7 @@ class _WorkflowNodesViewState extends State<WorkflowNodesView> {
                       Container(
                         width: 420,
                         decoration: BoxDecoration(border: Border(left: BorderSide(color: Theme.of(context).dividerColor))),
-                        child: ListView(padding: const EdgeInsets.all(16), children: [
+                        child: PageScroll(padding: const EdgeInsets.all(16), children: [
                           NodeDetails(
                               key: ValueKey(node.id), workflow: widget.workflow, node: node, nodes: _nodes, api: widget.api, onSelect: _select, onClose: () => _select(null)),
                         ]),

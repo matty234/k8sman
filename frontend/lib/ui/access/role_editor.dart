@@ -12,6 +12,7 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import '../widgets/searchable_picker.dart';
 import 'access_api.dart';
 import 'access_apply.dart';
@@ -203,7 +204,7 @@ class _RoleEditorState extends State<RoleEditor> {
           // Rules.
           Expanded(
             flex: 6,
-            child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 16, 20), children: [
+            child: PageScroll(padding: const EdgeInsets.fromLTRB(20, 12, 16, 20), children: [
               for (final (i, r) in _rules.indexed)
                 _RuleCard(
                   key: ObjectKey(r),

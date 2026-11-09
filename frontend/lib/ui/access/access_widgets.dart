@@ -8,6 +8,7 @@ import '../../api/client.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import 'access_api.dart';
 
 IconData subjectIcon(String kind) => switch (kind) {
@@ -181,7 +182,7 @@ class _CellExplanationState extends State<CellExplanation> {
     final paths = [for (final i in c?.paths ?? const <int>[]) if (i < widget.data.paths.length) widget.data.paths[i]];
     final where = widget.data.namespace.isEmpty ? (widget.row.namespaced ? 'in every namespace' : 'cluster-wide') : 'in ${widget.data.namespace}';
     final what = widget.verb == '*' ? 'every verb on' : widget.verb;
-    return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 16), children: [
+    return PageScroll(padding: const EdgeInsets.fromLTRB(14, 10, 14, 16), children: [
       Row(children: [
         Expanded(
           child: Text.rich(

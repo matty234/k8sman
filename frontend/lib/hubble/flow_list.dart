@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../state/frame_stream.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
+import '../ui/widgets/editorial.dart';
 import '../util/k8s.dart';
 import 'hubble_api.dart';
 
@@ -484,7 +485,7 @@ class FlowDetails extends StatelessWidget {
           if (e.identity != null) 'identity ${e.identity}',
         ].join('  ');
     return SelectionArea(
-      child: ListView(padding: const EdgeInsets.fromLTRB(12, 6, 8, 10), children: [
+      child: PageScroll(padding: const EdgeInsets.fromLTRB(12, 6, 8, 10), children: [
         Row(children: [
           Text('Flow', style: theme.textTheme.titleSmall),
           const SizedBox(width: 8),

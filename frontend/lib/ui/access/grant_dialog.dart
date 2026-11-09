@@ -11,6 +11,7 @@ import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import '../widgets/searchable_picker.dart';
 import 'access_api.dart';
 import 'access_apply.dart';
@@ -198,7 +199,7 @@ class _GrantDialogState extends State<GrantDialog> {
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(
             flex: 5,
-            child: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 16, 16), children: [
+            child: PageScroll(padding: const EdgeInsets.fromLTRB(20, 4, 16, 16), children: [
               if (_loadError != null) InlineMessage('Could not load roles and bindings: ${errorText(_loadError!)}', isError: true),
               label('Who'),
               Row(children: [
@@ -355,7 +356,7 @@ class _GrantDialogState extends State<GrantDialog> {
           VerticalDivider(width: 1, color: AppColors.of(context).separator),
           Expanded(
             flex: 4,
-            child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 14), children: [
+            child: PageScroll(padding: const EdgeInsets.fromLTRB(14, 12, 14, 14), children: [
               if (role != null) ...[
                 Text('What ${role.ref.name} grants', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),

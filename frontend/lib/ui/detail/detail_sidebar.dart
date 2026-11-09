@@ -17,6 +17,7 @@ import '../logs/open_logs.dart';
 import '../terminal/open_terminal.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import '../widgets/group_icon.dart';
 import '../portforward/portforward_dialog.dart';
 import '../resource_nav.dart' show kindIconWidget;
@@ -475,7 +476,7 @@ class _EventsTabState extends State<_EventsTab> {
   Widget build(BuildContext context) {
     return RefreshIndicator(
       onRefresh: () async => setState(() => _future = _fetch()),
-      child: ListView(padding: const EdgeInsets.all(12), children: [
+      child: PageScroll(padding: const EdgeInsets.all(12), children: [
         Row(children: [
           const Spacer(),
           IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh, size: 18), onPressed: () => setState(() => _future = _fetch())),
