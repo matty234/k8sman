@@ -108,9 +108,33 @@ class _TableFilterFieldState extends State<TableFilterField> {
             hintText: 'Filter',
             enabledBorder: regexError == null ? null : OutlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.error)),
             focusedBorder: regexError == null ? null : OutlineInputBorder(borderSide: BorderSide(color: theme.colorScheme.error, width: 2)),
-            suffixIcon: regexError == null
+            // The regex error (if any), then a clear button once there's text.
+            suffixIcon: text.text.isEmpty && regexError == null
                 ? null
-                : Tooltip(message: 'Invalid regex: $regexError', child: Icon(Icons.error_outline, size: 15, color: theme.colorScheme.error)),
+                : Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (regexError != null)
+                      Tooltip(message: 'Invalid regex: $regexError', child: Icon(Icons.error_outline, size: 15, color: theme.colorScheme.error)),
+                    if (text.text.isNotEmpty)
+                      Tooltip(
+                        message: 'Clear filter',
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            key: const ValueKey('table-filter-clear'),
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              text.clear();
+                              widget.controller.setFilter('');
+                              focus.requestFocus();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              child: Icon(Icons.cancel, size: 14, color: theme.hintColor),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ]),
           ),
           style: theme.textTheme.bodyMedium,
           onChanged: widget.controller.setFilter,

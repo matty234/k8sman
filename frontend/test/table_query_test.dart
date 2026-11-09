@@ -128,6 +128,13 @@ void main() {
     await tester.pump();
     expect(tc.filter, 'namespace=data ');
     expect(tc.rows.map((r) => r.name), ['db']);
+
+    // The clear button at the end empties it.
+    await tester.tap(find.byKey(const ValueKey('table-filter-clear')));
+    await tester.pump();
+    expect(tc.filter, '');
+    expect(tc.rows, hasLength(3));
+    expect(find.byKey(const ValueKey('table-filter-clear')), findsNothing);
   });
 
   testWidgets('sort is kept when the table is left and reopened', (tester) async {
