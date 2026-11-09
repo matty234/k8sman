@@ -371,14 +371,9 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
                 alignment: Alignment.topCenter,
                 padding: EdgeInsets.only(top: top, right: 8),
                 // A [button]-tall slot centred on the band's midline.
-                child: SizedBox(height: button, child: Row(children: [
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Rediscover API resources',
-                    icon: const Icon(Icons.refresh),
-                    onPressed: () => app.refreshTypes(),
-                  ),
-                ])),
+                // Room for the window buttons only; the sidebar's controls
+                // live in its footer.
+                child: const SizedBox(height: button),
               ),
             );
           }),
@@ -773,6 +768,15 @@ class _NavFooter extends StatelessWidget {
           selectedIcon: Icon(Icons.settings, color: theme.colorScheme.primary),
           icon: const Icon(Icons.settings_outlined),
           onPressed: () => openSettings(context),
+        ),
+        const Spacer(),
+        IconButton(
+          key: const ValueKey('nav-rediscover'),
+          tooltip: 'Rediscover API resources',
+          iconSize: 16,
+          color: theme.hintColor,
+          icon: const Icon(Icons.refresh),
+          onPressed: () => context.read<AppState>().refreshTypes(),
         ),
       ]),
     );
