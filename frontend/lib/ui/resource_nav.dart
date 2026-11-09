@@ -340,10 +340,11 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
     final entries = [for (final e in layout.entries) if (e.view == null || pageEnabled(app, e.view!)) e];
     final shown = [for (final e in entries) if (!e.hidden && (e.pin == null || app.typeForPin(e.pin!) != null)) e];
     final folded = [for (final e in entries) if (e.hidden) e];
-    final foldedActive = folded.any((e) => e.view == app.view);
-    final moreOpen = _navMoreOpen || foldedActive;
+    // Collapsed, a folded page that's open still shows (alone); the
+    // More/Less toggle stays either way.
+    final foldedShown = _navMoreOpen ? folded : [for (final e in folded) if (e.view == app.view) e];
     final selectedPin = app.selectedPin;
-    final topRows = shown.length + (moreOpen ? folded.length : 0) + (folded.isNotEmpty && !foldedActive ? 1 : 0);
+    final topRows = shown.length + foldedShown.length + (folded.isNotEmpty ? 1 : 0);
     final minHeight = _navMinHeight + (topRows - _defaultTopRows).clamp(0, 99) * _topRowHeight;
 
     // In very short windows the page items alone would overflow: the whole
@@ -388,9 +389,8 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
           onSecondaryTapUp: (d) => showSidebarMenu(context, d.globalPosition, [('Customise Sidebar…', () => openSettings(context, section: SettingsSection.sidebar))]),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final e in shown) _TopEntry(entry: e, selectedPin: selectedPin),
-            if (moreOpen)
-              for (final e in folded) _TopEntry(entry: e, selectedPin: selectedPin),
-            if (folded.isNotEmpty && !foldedActive)
+            for (final e in foldedShown) _TopEntry(entry: e, selectedPin: selectedPin),
+            if (folded.isNotEmpty)
               _MoreToggle(open: _navMoreOpen, onTap: () => setState(() => _navMoreOpen = !_navMoreOpen)),
           ]),
         ),

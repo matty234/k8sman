@@ -86,13 +86,16 @@ void main() {
     expect(app.selectedType?.gk, 'apps/Deployment');
     expect(app.selectedPin, _deploy);
 
-    // A hidden page stays reachable through More, which stays open while it's active.
+    // A hidden page stays reachable through More; Less stays after opening
+    // it, and folding keeps the open page showing.
     await tester.tap(find.text('More'));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('nav-view-security')));
     await tester.pump();
     expect(app.view, MainView.security);
-    expect(find.text('Less'), findsNothing);
+    await tester.tap(find.text('Less'));
+    await tester.pump();
+    expect(find.text('More'), findsOneWidget);
     expect(find.byKey(const ValueKey('nav-view-security')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
