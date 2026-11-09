@@ -3,15 +3,17 @@ import 'package:flutter/material.dart';
 import '../../api/models.dart';
 import '../../metrics/workload_usage.dart';
 import '../../prometheus/metric_history_chart.dart';
+import '../../ui/detail/owner_line.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../actions/actions.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/terminal/open_terminal.dart';
 import '../panel.dart';
-import 'widgets/pod_template.dart';
+import 'rollout.dart' show WorkloadHeadline;
 import 'widgets/pods_list.dart';
-import 'widgets/replica_bar.dart';
+import 'widgets/sections.dart';
+import 'widgets/status_header.dart';
 import 'widgets/util.dart';
 
 (String, Severity) daemonSetStatus(Json ds) {
@@ -30,11 +32,33 @@ import 'widgets/util.dart';
   return ('Running on all $desired nodes', Severity.ok);
 }
 
+/// The status header's headline: "Ready on 3/3 nodes", "Rolling out"
+/// (2/3 nodes updated), "No eligible nodes", …
+WorkloadHeadline daemonSetHeadline(Json ds) {
+  final st = asMap(ds['status']);
+  final desired = asInt(st['desiredNumberScheduled']) ?? 0;
+  final ready = asInt(st['numberReady']) ?? 0;
+  final updated = asInt(st['updatedNumberScheduled']) ?? 0;
+  final mis = asInt(st['numberMisscheduled']) ?? 0;
+  final (text, sev) = daemonSetStatus(ds);
+  if (text.startsWith('Rolling')) {
+    return WorkloadHeadline('Rolling out', Severity.info, detail: '$updated/$desired nodes updated', progress: desired == 0 ? null : updated / desired);
+  }
+  if (sev == Severity.ok) return WorkloadHeadline('Ready on $ready/$desired nodes', Severity.ok, detail: 'Up to date on every eligible node');
+  if (text.endsWith('ready')) return WorkloadHeadline('Ready on $ready/$desired nodes', sev, detail: '${desired - ready} not ready');
+  if (text.endsWith('misscheduled')) return WorkloadHeadline('Ready on $ready/$desired nodes', Severity.warn, detail: '$mis misscheduled');
+  if (text == 'No eligible nodes') return WorkloadHeadline(text, sev, detail: 'No node matches its node selector, affinity and tolerations');
+  return WorkloadHeadline(text, sev);
+}
+
 class DaemonSetPanel extends ResourcePanel {
   const DaemonSetPanel();
 
   @override
   bool get showsOwned => true;
+
+  @override
+  bool get ownerInHeader => true;
 
   @override
   Set<String> get kinds => const {'apps/DaemonSet'};
@@ -46,76 +70,64 @@ class DaemonSetPanel extends ResourcePanel {
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final spec = ctx.spec;
     final st = ctx.status;
-    final (headline, sev) = daemonSetStatus(ctx.object);
+    final head = daemonSetHeadline(ctx.object);
     final strat = asMap(spec['updateStrategy']);
     final ru = asMap(strat['rollingUpdate']);
+    final onDelete = strat['type'] == 'OnDelete';
     final podSpec = asMap(dig(spec, ['template', 'spec']));
-    final sched = PodTemplateSummary.schedulingEntries(podSpec);
     final desired = asInt(st['desiredNumberScheduled']) ?? 0;
     final ready = asInt(st['numberReady']) ?? 0;
+    final updated = asInt(st['updatedNumberScheduled']) ?? 0;
     final available = asInt(st['numberAvailable']) ?? 0;
+    final unavailable = asInt(st['numberUnavailable']) ?? (desired - available).clamp(0, desired);
+    final mis = asInt(st['numberMisscheduled']) ?? 0;
     return [
-      DetailSection(
-        title: 'Nodes',
-        icon: Icons.dns_outlined,
-        trailing: StatusBadge(headline, severity: sev, dense: true),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ReplicaStatusBar(
-              desired: desired,
-              current: asInt(st['currentNumberScheduled']) ?? 0,
-              updated: asInt(st['updatedNumberScheduled']) ?? 0,
-              ready: ready,
-              available: available,
-              unavailable: asInt(st['numberUnavailable']) ?? (desired - available).clamp(0, desired),
-              extra: [('misscheduled', asInt(st['numberMisscheduled']) ?? 0, Severity.warn)],
-              unit: 'pods',
-            ),
-            const SizedBox(height: 10),
-            KeyValueTable([
-              (
-                'Update strategy',
-                strat['type'] == 'OnDelete'
-                    ? 'OnDelete (pods update only when deleted)'
-                    : 'RollingUpdate · maxUnavailable ${ru['maxUnavailable'] ?? 1} · maxSurge ${ru['maxSurge'] ?? 0}',
-              ),
-              if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
-              ('History limit', '${spec['revisionHistoryLimit'] ?? 10} revisions'),
-              ('Selector', SelectorChips(spec['selector'])),
-            ], keyWidth: 120),
-          ],
-        ),
+      WorkloadStatusHeader(
+        headline: head.text,
+        severity: head.severity,
+        detail: head.detail,
+        progress: head.progress == null ? null : WorkloadProgress(head.progress!, tooltip: '$updated of $desired nodes run the latest pod template'),
+        figures: [
+          WorkloadFigure.count(ready, desired, 'ready', zeroIsError: true),
+          WorkloadFigure('$updated', 'updated', of: '/$desired', tooltip: 'on the latest pod template'),
+          WorkloadFigure.count(available, desired, 'available', zeroIsError: true),
+          WorkloadFigure('$unavailable', 'unavailable', severity: unavailable > 0 ? Severity.warn : Severity.neutral),
+        ],
+        insights: [
+          if (mis > 0) WorkloadInsight(Severity.warn, '$mis misscheduled', detail: 'Running on nodes the DaemonSet should not run on (taints or node selector changed).'),
+          ...conditionInsights(asMapList(st['conditions'])),
+        ],
+        facts: [?ownerFact(ctx.object)],
       ),
-      DetailSection(
-        title: 'Scheduling',
-        icon: Icons.alt_route,
-        child: sched.isEmpty
-            ? const InlineMessage('No nodeSelector, tolerations or affinity: runs on every schedulable node without taints')
-            : KeyValueTable(sched, keyWidth: 120),
+      PodsList(
+        key: ValueKey('pods-${ctx.uid}'),
+        api: ctx.api,
+        namespace: ctx.namespace,
+        selector: spec['selector'],
+        ownerUid: ctx.uid,
+        refreshKey: workloadRefreshKey(ctx),
+        actionCtx: ctx,
+        sectionTitle: 'Pods',
       ),
-      if (asMapList(st['conditions']).isNotEmpty)
-        DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(st['conditions'] as List?)),
       workloadUsageSection(ctx),
       workloadHistory(ctx),
-      DetailSection(
-        title: 'Pods',
-        icon: Icons.view_in_ar,
-        child: PodsList(
-          key: ValueKey('pods-${ctx.uid}'),
-          api: ctx.api,
-          namespace: ctx.namespace,
-          selector: spec['selector'],
-          ownerUid: ctx.uid,
-          refreshKey: workloadRefreshKey(ctx),
-          actionCtx: ctx,
-        ),
+      workloadSection(
+        'strategy',
+        'Strategy',
+        onDelete ? 'OnDelete' : 'RollingUpdate · ${ru['maxUnavailable'] ?? 1} unavailable · ${ru['maxSurge'] ?? 0} surge',
+        KeyValueTable([
+          (
+            'Update strategy',
+            onDelete ? 'OnDelete (pods update only when deleted)' : 'RollingUpdate · maxUnavailable ${ru['maxUnavailable'] ?? 1} · maxSurge ${ru['maxSurge'] ?? 0}',
+          ),
+          if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
+          ('History limit', '${spec['revisionHistoryLimit'] ?? 10} revisions'),
+        ], keyWidth: 120),
       ),
-      DetailSection(
-        title: 'Pod template',
-        icon: Icons.inventory_2_outlined,
-        child: PodTemplateSummary(template: asMap(spec['template']), namespace: ctx.namespace, showScheduling: false),
-      ),
+      schedulingSection(podSpec, emptyText: 'No nodeSelector, tolerations or affinity: runs on every schedulable node without taints', none: 'every node'),
+      podTemplateSection(asMap(spec['template']), ctx.namespace),
+      if (asMapList(st['conditions']).isNotEmpty) conditionsSection(context, st),
+      selectorSection(spec['selector']),
     ];
   }
 }

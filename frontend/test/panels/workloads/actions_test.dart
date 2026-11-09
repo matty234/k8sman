@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/actions/actions.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
+import 'package:k8sman/panels/pod/pod_section.dart';
 import 'package:k8sman/panels/registry.dart';
 import 'package:k8sman/panels/workloads/rollout.dart';
 import 'package:k8sman/state/app_state.dart';
@@ -45,6 +46,7 @@ Future<AppState> pumpWorkload(WidgetTester tester, Json object, ApiClient api, {
 void main() {
   late List<Json> pods;
   setUpAll(() => pods = loadLocal('pods-demo.json'));
+  setUp(PodSectionMemory.reset);
 
   FakeApiClient api() => fakeApi({
         'pods': pods,
@@ -61,9 +63,12 @@ void main() {
     expect(find.byType(ScaleControl), findsOneWidget);
     expect(find.textContaining('manual scaling will be overridden'), findsOneWidget);
     // Revisions 10 (current), 2, 1: only the non-current ones get Roll back.
+    await expandSection(tester, 'history');
     expect(find.widgetWithText(ActionButton, 'Roll back'), findsNWidgets(2));
     expect(find.byTooltip('Pod actions'), findsNWidgets(2));
 
+    // Row actions show on hover.
+    await hover(tester, find.text('web-222'));
     await tester.tap(find.widgetWithText(ActionButton, 'Roll back').first);
     // The button shows a spinner while its dialog is open: pump, don't settle.
     await tester.pump();
@@ -82,6 +87,7 @@ void main() {
     await pumpWorkload(tester, loadFixture('sts-redis.json'), api());
     expect(find.byType(ScaleControl), findsOneWidget);
     expect(find.textContaining('manual scaling will be overridden'), findsNothing); // HPA targets web, not redis
+    await hover(tester, find.text('redis-0'));
     await tester.tap(find.byTooltip('Pod actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Restart pod (delete)'));
@@ -92,12 +98,13 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
   });
 
-  testWidgets('paused Deployment shows a Paused callout with Resume', (tester) async {
+  testWidgets('paused Deployment says so with Resume', (tester) async {
     await loadRealFonts();
     final d = clone(loadFixture('deploy-web.json'), (c) => c['spec']['paused'] = true);
     await pumpWorkload(tester, d, api());
     await saveScreenshot(tester, 'workloads-deployment-paused');
-    expect(find.textContaining('Paused: template changes'), findsOneWidget);
+    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('Rollout paused'), findsOneWidget);
     expect(find.widgetWithText(ActionButton, 'Resume'), findsOneWidget);
   });
 
@@ -108,7 +115,8 @@ void main() {
     expect(find.byType(ActionButton), findsNothing);
     expect(find.byTooltip('Pod actions'), findsNothing);
     expect(find.textContaining('manual scaling will be overridden'), findsNothing);
-    expect(find.textContaining('Paused: template changes'), findsOneWidget); // info stays
+    expect(find.text('Rollout paused'), findsOneWidget); // info stays
+    await expandSection(tester, 'history');
     expect(find.text('#2'), findsOneWidget); // history still renders
   });
 

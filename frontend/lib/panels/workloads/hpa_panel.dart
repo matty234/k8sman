@@ -1,14 +1,15 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
 import '../../metrics/hpa_live.dart';
 import '../../metrics/metrics_api.dart' show HpaLiveMetric;
+import '../../ui/detail/owner_line.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
+import 'widgets/sections.dart';
+import 'widgets/status_header.dart';
 import 'widgets/util.dart';
 import '../../metrics/quantity.dart';
 
@@ -139,6 +140,9 @@ class HpaPanel extends ResourcePanel {
   const HpaPanel();
 
   @override
+  bool get ownerInHeader => true;
+
+  @override
   Set<String> get kinds => const {'autoscaling/HorizontalPodAutoscaler'};
 
   @override
@@ -152,36 +156,42 @@ class HpaPanel extends ResourcePanel {
     final scalingActive = asMapList(st['conditions']).where((c) => c['type'] == 'ScalingActive').firstOrNull;
     final lastScale = st['lastScaleTime'];
     final theme = Theme.of(context);
+    final min = asInt(spec['minReplicas']) ?? 1;
+    final max = asInt(spec['maxReplicas']) ?? 1;
+    final current = asInt(st['currentReplicas']) ?? 0;
+    final desired = asInt(st['desiredReplicas']);
+    final desiredComputed = desired != null && scalingActive?['status'] != 'False';
+    final behavior = asMap(spec['behavior']);
+    final insights = conditionInsights(asMapList(st['conditions']), errors: sev == Severity.error ? const {'AbleToScale', 'ScalingActive'} : const {});
     return [
-      DetailSection(
-        title: 'Scaling',
-        icon: Icons.unfold_more_double,
-        trailing: StatusBadge(reason == null ? headline : '$headline: $reason', severity: sev, dense: true),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            KeyValueTable([
-              (
-                'Target',
-                Row(
-                  children: [
-                    ResourceLink(targetRef, label: '${targetRef.kind}/${targetRef.name}'),
-                    if (targetRef.group.isNotEmpty) ...[const SizedBox(width: 6), HintText(target['apiVersion'] as String? ?? '')],
-                  ],
-                ),
-              ),
-              if (lastScale != null) ('Last scaled', AgeText(lastScale, suffix: ' ago', style: theme.textTheme.bodySmall)),
-            ], keyWidth: 90),
-            const SizedBox(height: 8),
-            ReplicaRange(
-              min: asInt(spec['minReplicas']) ?? 1,
-              max: asInt(spec['maxReplicas']) ?? 1,
-              current: asInt(st['currentReplicas']) ?? 0,
-              desired: asInt(st['desiredReplicas']),
-              desiredComputed: scalingActive?['status'] != 'False',
-            ),
-          ],
-        ),
+      WorkloadStatusHeader(
+        headline: headline,
+        severity: sev,
+        // The reason is the insight's title when a condition explains it.
+        detail: insights.isEmpty ? reason : null,
+        figures: [
+          WorkloadFigure('$current', 'current', severity: max > 0 && current >= max ? Severity.warn : Severity.neutral, tooltip: 'replicas now'),
+          WorkloadFigure(
+            desiredComputed ? '$desired' : '—',
+            'desired',
+            severity: desiredComputed && desired != current ? Severity.warn : Severity.neutral,
+            tooltip: desiredComputed ? 'replicas the HPA wants' : 'Not computed: ScalingActive is False',
+          ),
+          WorkloadFigure('$min', 'min'),
+          WorkloadFigure('$max', 'max'),
+        ],
+        insights: insights,
+        facts: [
+          ?ownerFact(ctx.object),
+          (
+            'Target',
+            Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [
+              ResourceLink(targetRef, label: '${targetRef.kind}/${targetRef.name}'),
+              if (targetRef.group.isNotEmpty) HintText(target['apiVersion'] as String? ?? ''),
+            ]),
+          ),
+          if (lastScale != null) ('Last scaled', AgeText(lastScale, suffix: ' ago', style: theme.textTheme.bodySmall)),
+        ],
       ),
       metrics.isEmpty
           ? const DetailSection(
@@ -190,141 +200,16 @@ class HpaPanel extends ResourcePanel {
               child: InlineMessage('No metrics: defaults to 80% average CPU utilization'),
             )
           : hpaMetricsSection(ctx),
-      DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(st['conditions'] as List?)),
-      DetailSection(title: 'Behavior', icon: Icons.tune, child: _Behavior(asMap(spec['behavior']))),
+      workloadSection(
+        'behavior',
+        'Behavior',
+        behavior.isEmpty
+            ? 'defaults'
+            : [if (behavior['scaleUp'] != null) 'custom scale up', if (behavior['scaleDown'] != null) 'custom scale down'].join(' · '),
+        _Behavior(behavior),
+      ),
+      conditionsSection(context, st),
     ];
-  }
-}
-
-/// min ── current ── desired ── max on a 0..max track.
-class ReplicaRange extends StatelessWidget {
-  final int min;
-  final int max;
-  final int current;
-  final int? desired;
-  final bool desiredComputed;
-  const ReplicaRange({super.key, required this.min, required this.max, required this.current, this.desired, this.desiredComputed = true});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scaleMax = math.max(math.max(max, current), (desired ?? 0)).toDouble() + 1;
-    final primary = theme.colorScheme.primary;
-    final warn = severityColor(context, Severity.warn);
-    final showDesired = desired != null && desiredComputed;
-    final atLimit = current >= max || current <= min;
-    final small = theme.textTheme.bodySmall;
-    final hint = small?.copyWith(color: theme.hintColor);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            _Stat('min', '$min', hint),
-            _Stat('current', '$current', small?.copyWith(fontWeight: FontWeight.w700, color: primary)),
-            _Stat(
-              'desired',
-              showDesired ? '$desired' : '—',
-              small?.copyWith(fontWeight: FontWeight.w700, color: showDesired ? warn : theme.hintColor),
-              tooltip: showDesired ? null : 'Not computed: ScalingActive is False',
-            ),
-            _Stat('max', '$max', hint),
-          ],
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          height: 30,
-          child: LayoutBuilder(
-            builder: (context, c) {
-              final w = c.maxWidth - 12;
-              double x(num v) => 6 + w * (v / scaleMax);
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned(
-                    left: 6,
-                    right: 6,
-                    top: 9,
-                    height: 6,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: x(min),
-                    width: math.max(2, x(max) - x(min)),
-                    top: 9,
-                    height: 6,
-                    child: Container(
-                      decoration: BoxDecoration(color: primary.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(3)),
-                    ),
-                  ),
-                  for (final (v, l) in [(min, '$min'), (max, '$max')])
-                    Positioned(
-                      left: x(v) - 10,
-                      width: 20,
-                      top: 17,
-                      child: Text(l, textAlign: TextAlign.center, style: hint?.copyWith(fontSize: 10)),
-                    ),
-                  if (showDesired && desired != current)
-                    Positioned(
-                      left: x(desired!) - 6,
-                      top: 6,
-                      child: Tooltip(
-                        message: 'desired $desired',
-                        child: Icon(Icons.arrow_drop_down_circle_outlined, size: 12, color: warn),
-                      ),
-                    ),
-                  Positioned(
-                    left: x(current) - 6,
-                    top: 6,
-                    child: Tooltip(
-                      message: 'current $current',
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: atLimit ? warn : primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: theme.colorScheme.surface, width: 2),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  final String label;
-  final String value;
-  final TextStyle? style;
-  final String? tooltip;
-  const _Stat(this.label, this.value, this.style, {this.tooltip});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final w = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
-        Text(value, style: style?.copyWith(fontSize: 16)),
-      ],
-    );
-    return Expanded(
-      child: tooltip == null ? w : Tooltip(message: tooltip!, child: w),
-    );
   }
 }
 

@@ -5,6 +5,7 @@ import '../../../api/models.dart';
 import '../../../ui/widgets/common.dart';
 import '../../../util/k8s.dart';
 import '../../panel.dart';
+import 'status_header.dart';
 import 'util.dart';
 
 const hpaRef = ResourceRef(group: 'autoscaling', resource: 'horizontalpodautoscalers');
@@ -30,8 +31,17 @@ List<Json> hpasTargeting(List<Json> hpas, Json obj) {
   ];
 }
 
-/// Warns that manual scaling will be overridden when an HPA targets this
-/// workload. Fetches once per uid (key it by uid). Hidden when read-only.
+/// The status header's "Replicas" fact: the scale stepper, or (read-only)
+/// the desired count.
+(String, Object?) replicasFact(PanelContext ctx) {
+  final control = scaleControlFor(ctx);
+  final desired = asInt(ctx.spec['replicas']) ?? 1;
+  return ('Replicas', control == null ? '$desired desired' : scaleFact(control));
+}
+
+/// Says the workload is scaled by an HPA (and, unless read-only, that
+/// manual scaling will be overridden), as an insight line for the status
+/// header. Fetches once per uid (key it by uid); nothing without an HPA.
 class HpaOverrideNote extends StatefulWidget {
   final PanelContext ctx;
   const HpaOverrideNote(this.ctx, {super.key});
@@ -47,7 +57,6 @@ class _HpaOverrideNoteState extends State<HpaOverrideNote> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.ctx.app.readOnly) return const SizedBox.shrink();
     return FutureBuilder<List<Json>>(
       future: _future,
       builder: (context, snap) {
@@ -55,24 +64,19 @@ class _HpaOverrideNoteState extends State<HpaOverrideNote> {
         if (hpas.isEmpty) return const SizedBox.shrink();
         final h = hpas.first;
         final name = '${dig(h, ['metadata', 'name'])}';
+        final range = '${dig(h, ['spec', 'minReplicas']) ?? 1}–${dig(h, ['spec', 'maxReplicas']) ?? '?'} replicas';
         return Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Callout(
-            severity: Severity.info,
-            icon: Icons.auto_graph,
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                const Text('Managed by HPA '),
-                ResourceLink(
-                  ObjectRef(group: 'autoscaling', kind: 'HorizontalPodAutoscaler', name: name, namespace: widget.ctx.namespace),
-                  label: name,
-                ),
-                Text(
-                  ' (${dig(h, ['spec', 'minReplicas']) ?? 1}–${dig(h, ['spec', 'maxReplicas']) ?? '?'} replicas): '
-                  'manual scaling will be overridden.',
-                ),
-              ],
+          key: const ValueKey('hpa-note'),
+          padding: const EdgeInsets.only(top: 10),
+          child: InsightRow(
+            WorkloadInsight(
+              Severity.info,
+              'Scaled by HPA $name',
+              title: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+                const Text('Scaled by HPA '),
+                ResourceLink(ObjectRef(group: 'autoscaling', kind: 'HorizontalPodAutoscaler', name: name, namespace: widget.ctx.namespace), label: name),
+              ]),
+              detail: widget.ctx.app.readOnly ? range : '$range: manual scaling will be overridden.',
             ),
           ),
         );

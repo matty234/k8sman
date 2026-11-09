@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 
 import '../../support/harness.dart';
@@ -48,4 +51,19 @@ List<Json> deploymentReplicaSets() {
     c['metadata']['ownerReferences'][0]['uid'] = 'someone-else';
   });
   return [rev2, rev1, stranger, rev10];
+}
+
+/// Opens the collapsed workload section [id] (e.g. `history`, `template`).
+Future<void> expandSection(WidgetTester tester, String id) async {
+  await tester.tap(find.byKey(ValueKey('pod-section-workload-$id')));
+  await tester.pumpAndSettle();
+}
+
+/// Moves a mouse over [finder], so row actions shown on hover appear.
+Future<void> hover(WidgetTester tester, Finder finder) async {
+  final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+  addTearDown(mouse.removePointer);
+  await mouse.addPointer(location: Offset.zero);
+  await mouse.moveTo(tester.getCenter(finder));
+  await tester.pumpAndSettle();
 }

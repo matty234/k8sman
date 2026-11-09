@@ -102,32 +102,6 @@ class ImageChip extends StatelessWidget {
   }
 }
 
-/// Legend dot + label used by bars.
-class LegendDot extends StatelessWidget {
-  final Color color;
-  final String label;
-  final bool hollow;
-  const LegendDot(this.color, this.label, {super.key, this.hollow = false});
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: hollow ? null : color,
-          borderRadius: BorderRadius.circular(2),
-          border: hollow ? Border.all(color: color) : null,
-        ),
-      ),
-      const SizedBox(width: 4),
-      Text(label, style: Theme.of(context).textTheme.bodySmall),
-    ],
-  );
-}
-
 /// Human readable toleration: `key=value:NoSchedule`, `Exists (all taints)`.
 String formatToleration(Json t) {
   final key = t['key'] as String?;
@@ -199,39 +173,6 @@ String workloadRefreshKey(PanelContext ctx) {
     ctx.spec['replicas'],
     dig(ctx.object, ['metadata', 'annotations', 'deployment.kubernetes.io/revision']),
   ].join('|');
-}
-
-/// Bordered callout with an icon, text and an optional trailing action.
-class Callout extends StatelessWidget {
-  final Severity severity;
-  final IconData icon;
-  final Widget child;
-  final Widget? action;
-  const Callout({super.key, required this.severity, required this.icon, required this.child, this.action});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = severityColor(context, severity);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: c.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: c),
-          const SizedBox(width: 8),
-          Expanded(
-            child: DefaultTextStyle.merge(style: Theme.of(context).textTheme.bodySmall, child: child),
-          ),
-          if (action != null) ...[const SizedBox(width: 8), action!],
-        ],
-      ),
-    );
-  }
 }
 
 /// Shrinks outlined/filled buttons (e.g. ActionButton) to fit a dense row.

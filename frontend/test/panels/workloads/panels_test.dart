@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
+import 'package:k8sman/panels/pod/pod_section.dart';
 import 'package:k8sman/panels/workloads/widgets/pods_list.dart';
 import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import '../../support/harness.dart';
@@ -14,6 +16,7 @@ void main() {
   late List<Json> pods;
   late List<Json> pvcs;
 
+  setUp(PodSectionMemory.reset);
   setUpAll(() async {
     pods = loadLocal('pods-demo.json');
     pvcs = loadLocal('pvcs-demo.json');
@@ -33,11 +36,12 @@ void main() {
     final app = await pumpPanel(tester, loadFixture('deploy-web.json'), api: api);
     await saveScreenshot(tester, 'workloads-deployment');
 
-    expect(find.text('Rollout complete'), findsOneWidget);
-    expect(find.text('2/2 ready'), findsOneWidget);
-    expect(find.textContaining('maxSurge 1'), findsOneWidget);
+    expect(find.text('Available 2/2'), findsOneWidget);
+    expect(find.text('Rollout complete · revision 1'), findsOneWidget);
+    expect(find.text('RollingUpdate · 1 surge · 0 unavailable'), findsOneWidget);
 
     // History: #10, #2, #1 in that order; stranger RS excluded.
+    await expandSection(tester, 'history');
     final revs = ['#10', '#2', '#1'].map((t) => tester.getTopLeft(find.text(t)).dy).toList();
     expect(revs[0] < revs[1] && revs[1] < revs[2], isTrue);
     expect(find.text('web-other'), findsNothing);
@@ -49,10 +53,35 @@ void main() {
     expect(find.text('web-stray-zzzzz'), findsNothing);
 
     // Template: copyable images and a ServiceAccount link.
+    await expandSection(tester, 'template');
     expect(find.text('busybox:1.36'), findsWidgets);
     await tester.tap(find.text('web').last);
     await tester.pump();
     expect(app.detail?.type.kind, 'ServiceAccount');
+  });
+
+  testWidgets('workloads lead with a status header, reference sections collapsed behind summaries; 320px fits', (tester) async {
+    final api = fakeApi({'pods': pods, 'replicasets.apps': deploymentReplicaSets(), 'persistentvolumeclaims': pvcs});
+    final rolling = clone(loadFixture('deploy-web.json'), (c) {
+      c['spec']['replicas'] = 3;
+      c['status'] = {...c['status'] as Json, 'replicas': 3, 'updatedReplicas': 1, 'readyReplicas': 2, 'availableReplicas': 2, 'unavailableReplicas': 1};
+    });
+    await pumpPanel(tester, rolling, api: api);
+    expect(find.text('Rolling out'), findsOneWidget);
+    expect(find.text('1/3 updated'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('workload-figure-unavailable')), matching: find.text('1')), findsOneWidget);
+    expect(find.text('revision 1 · 3 kept'), findsOneWidget);
+    expect(find.text('RollingUpdate · 1 surge · 0 unavailable'), findsOneWidget);
+    expect(find.text('2 containers · 1 init · nginx:1.27-alpine'), findsOneWidget);
+    expect(find.text('all 2 true'), findsOneWidget);
+    expect(find.text('#10'), findsNothing); // history collapsed
+    expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget); // pods open
+
+    final rs = loadLocal('replicasets-demo.json').firstWhere((r) => r['metadata']['name'] == 'web-6fd47b8fcb');
+    for (final o in [rolling, loadFixture('sts-redis.json'), loadFixture('ds-node-agent.json'), rs, loadFixture('hpa-web.json')]) {
+      await pumpPanel(tester, o, api: api, size: const Size(320, 3000));
+      expect(tester.takeException(), isNull, reason: '${o['kind']}');
+    }
   });
 
   testWidgets('StatefulSet: service link, PVCs by ordinal, pods', (tester) async {
@@ -63,6 +92,7 @@ void main() {
     await saveScreenshot(tester, 'workloads-statefulset');
 
     expect(find.text('Up to date'), findsOneWidget);
+    await expandSection(tester, 'claims');
     expect(find.text('data-redis-0'), findsOneWidget);
     expect(find.text('data-redis-3'), findsOneWidget);
     expect(find.text('retained'), findsOneWidget);
@@ -80,9 +110,10 @@ void main() {
     final app = await pumpPanel(tester, loadFixture('ds-node-agent.json'), api: api);
     await saveScreenshot(tester, 'workloads-daemonset');
 
-    expect(find.text('Running on all 1 nodes'), findsOneWidget);
+    expect(find.text('Ready on 1/1 nodes'), findsOneWidget);
+    expect(find.text('1 toleration'), findsOneWidget); // Scheduling, collapsed
+    await expandSection(tester, 'scheduling');
     expect(find.text('all taints'), findsOneWidget);
-    expect(find.text('misscheduled 0'), findsOneWidget);
     expect(find.text('node-agent-h8g6x'), findsOneWidget);
     await tester.tap(find.text('k8sman-dev-control-plane'));
     await tester.pump();
@@ -96,7 +127,7 @@ void main() {
     final app = await pumpPanel(tester, rs, api: api);
     await saveScreenshot(tester, 'workloads-replicaset');
 
-    expect(find.text('Ready'), findsOneWidget);
+    expect(find.text('Ready 2/2'), findsOneWidget);
     expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget);
     expect(find.text('web-stray-zzzzz'), findsNothing);
     await tester.tap(find.text('Deployment/web'));
@@ -109,7 +140,9 @@ void main() {
     final app = await pumpPanel(tester, loadFixture('hpa-web.json'));
     await saveScreenshot(tester, 'workloads-hpa');
 
-    expect(find.text('Scaling inactive: FailedGetResourceMetric'), findsOneWidget);
+    expect(find.text('Scaling inactive'), findsOneWidget);
+    expect(find.text('ScalingActive: FailedGetResourceMetric'), findsOneWidget);
+    await expandSection(tester, 'behavior');
     expect(find.text('unknown'), findsNothing); // inside a Text.rich
     expect(find.textContaining('unknown', findRichText: true), findsOneWidget);
     expect(find.textContaining('(default)'), findsNWidgets(2));
@@ -156,7 +189,9 @@ void main() {
     });
     await pumpPanel(tester, hpa);
     await saveScreenshot(tester, 'workloads-hpa-full');
-    expect(find.text('Scaling limited: TooManyReplicas'), findsOneWidget);
+    expect(find.text('Scaling limited'), findsOneWidget);
+    expect(find.text('ScalingLimited: TooManyReplicas'), findsOneWidget);
+    await expandSection(tester, 'behavior');
     expect(find.text('sqs_messages'), findsOneWidget);
     expect(find.textContaining('−1 pod per 60s'), findsOneWidget);
   });
@@ -185,10 +220,10 @@ void main() {
     await pumpPanel(tester, pdb, api: fakeApi({'pods': pods}), type: pdbType);
     await saveScreenshot(tester, 'workloads-pdb');
     expect(find.text('Blocks voluntary evictions'), findsOneWidget);
-    expect(find.textContaining('blocks voluntary evictions.'), findsOneWidget);
+    expect(find.text('0 disruptions allowed'), findsOneWidget);
     expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget);
     expect(find.text('redis-0'), findsNothing);
-    expect(find.text('minAvailable 2'), findsOneWidget);
+    expect(find.text('minAvailable 2'), findsWidgets);
   });
 
   testWidgets('PodsList fetches once per uid and refetches when the refresh key changes', (tester) async {
@@ -200,6 +235,7 @@ void main() {
     await tester.pumpWidget(MultiProvider(
       providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
       child: MaterialApp(
+        theme: buildTheme(Brightness.dark),
         home: Scaffold(
           body: StatefulBuilder(builder: (context, setState) {
             setOuter = setState;

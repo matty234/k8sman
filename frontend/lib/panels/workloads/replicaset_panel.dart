@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 
-import '../../ui/widgets/common.dart';
+import '../../ui/detail/owner_line.dart';
 import '../../util/k8s.dart';
 import '../../actions/actions.dart';
 import '../../ui/logs/open_logs.dart';
 import '../panel.dart';
 import 'rollout.dart';
-import 'widgets/pod_template.dart';
 import 'widgets/pods_list.dart';
-import 'widgets/replica_bar.dart';
 import 'widgets/scaling.dart';
+import 'widgets/sections.dart';
+import 'widgets/status_header.dart';
 import 'widgets/util.dart';
 
 class ReplicaSetPanel extends ResourcePanel {
@@ -17,6 +17,9 @@ class ReplicaSetPanel extends ResourcePanel {
 
   @override
   bool get showsOwned => true;
+
+  @override
+  bool get ownerInHeader => true;
 
   @override
   Set<String> get kinds => const {'apps/ReplicaSet'};
@@ -29,71 +32,62 @@ class ReplicaSetPanel extends ResourcePanel {
     final spec = ctx.spec;
     final st = ctx.status;
     final owners = ownerRefs(ctx.object);
+    final byDeployment = owners.any((o) => o.kind == 'Deployment');
     final desired = asInt(spec['replicas']) ?? 1;
     final ready = asInt(st['readyReplicas']) ?? 0;
+    final available = asInt(st['availableReplicas']) ?? 0;
+    final current = asInt(st['replicas']) ?? 0;
     final rev = dig<String>(ctx.metadata, ['annotations', revisionAnnotation]);
-    final oldRevision = desired == 0 && owners.any((o) => o.kind == 'Deployment');
+    final oldRevision = desired == 0 && byDeployment;
     final failure = asMapList(st['conditions']).where((c) => c['type'] == 'ReplicaFailure' && c['status'] == 'True').firstOrNull;
-    final (headline, sev) = failure != null
-        ? ('ReplicaFailure', Severity.error)
+    final head = failure != null
+        ? WorkloadHeadline('Replica failure', Severity.error, detail: failure['reason'] as String?)
         : oldRevision
-        ? ('Old revision (scaled to 0)', Severity.neutral)
+        ? WorkloadHeadline('Old revision', Severity.neutral, detail: rev == null ? 'Scaled to 0 by its Deployment' : 'Revision $rev, scaled to 0 by its Deployment')
+        : desired == 0
+        ? const WorkloadHeadline('Scaled to 0', Severity.neutral)
         : ready >= desired
-        ? ('Ready', Severity.ok)
-        : ('$ready of $desired ready', ready == 0 ? Severity.error : Severity.warn);
+        ? WorkloadHeadline('Ready $ready/$desired', Severity.ok, detail: rev == null ? null : 'Revision $rev')
+        : WorkloadHeadline('Ready $ready/$desired', ready == 0 ? Severity.error : Severity.warn, detail: '${desired - ready} not ready');
     return [
-      DetailSection(
-        title: 'Replicas',
-        icon: Icons.layers_outlined,
-        trailing: StatusBadge(headline, severity: sev, dense: true),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ReplicaStatusBar(
-              desired: desired,
-              current: asInt(st['replicas']) ?? 0,
-              ready: ready,
-              available: asInt(st['availableReplicas']) ?? 0,
-              trailing: scaleControlFor(ctx),
-            ),
-            if (owners.any((o) => o.kind == 'Deployment') && !ctx.app.readOnly)
-              const Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: InlineMessage('Owned by a Deployment: it will reset manual scaling of this ReplicaSet.'),
-              ),
-            HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}')),
-            const SizedBox(height: 10),
-            KeyValueTable([
-              ('Owner', owners.isEmpty ? 'none (standalone ReplicaSet)' : Wrap(spacing: 10, children: [for (final o in owners) ResourceLink(o)])),
-              ('Revision', rev),
-              ('Template hash', dig<String>(ctx.metadata, ['labels', 'pod-template-hash'])),
-              ('Fully labeled', '${st['fullyLabeledReplicas'] ?? 0}'),
-              if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
-              ('Selector', SelectorChips(spec['selector'])),
-            ], keyWidth: 120),
-          ],
-        ),
+      WorkloadStatusHeader(
+        headline: head.text,
+        severity: head.severity,
+        detail: head.detail,
+        figures: [
+          WorkloadFigure.count(ready, desired, 'ready', zeroIsError: desired > 0),
+          WorkloadFigure.count(available, desired, 'available', zeroIsError: desired > 0),
+          WorkloadFigure('$current', 'pods', tooltip: 'pods that exist (status.replicas)'),
+        ],
+        insights: [
+          ...conditionInsights(asMapList(st['conditions'])),
+          if (byDeployment && !ctx.app.readOnly && !oldRevision)
+            const WorkloadInsight(Severity.neutral, 'Scaled by its Deployment', detail: 'The Deployment resets manual scaling of this ReplicaSet.'),
+        ],
+        extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}'))],
+        facts: [
+          ('Owner', owners.isEmpty ? 'none (standalone ReplicaSet)' : OwnerLine(ctx.object)),
+          replicasFact(ctx),
+          ('Hash', dig<String>(ctx.metadata, ['labels', 'pod-template-hash'])),
+        ],
       ),
-      if (asMapList(st['conditions']).isNotEmpty)
-        DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(st['conditions'] as List?)),
-      DetailSection(
-        title: 'Pods',
-        icon: Icons.view_in_ar,
-        child: PodsList(
-          key: ValueKey('pods-${ctx.uid}'),
-          api: ctx.api,
-          namespace: ctx.namespace,
-          selector: spec['selector'],
-          ownerUid: ctx.uid,
-          refreshKey: workloadRefreshKey(ctx),
-          actionCtx: ctx,
-        ),
+      PodsList(
+        key: ValueKey('pods-${ctx.uid}'),
+        api: ctx.api,
+        namespace: ctx.namespace,
+        selector: spec['selector'],
+        ownerUid: ctx.uid,
+        refreshKey: workloadRefreshKey(ctx),
+        actionCtx: ctx,
+        sectionTitle: 'Pods',
       ),
-      DetailSection(
-        title: 'Pod template',
-        icon: Icons.inventory_2_outlined,
-        child: PodTemplateSummary(template: asMap(spec['template']), namespace: ctx.namespace),
-      ),
+      podTemplateSection(asMap(spec['template']), ctx.namespace),
+      schedulingSection(asMap(dig(spec, ['template', 'spec']))),
+      if (asMapList(st['conditions']).isNotEmpty) conditionsSection(context, st),
+      selectorSection(spec['selector'], extra: [
+        ('Fully labeled', '${st['fullyLabeledReplicas'] ?? 0}'),
+        if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
+      ]),
     ];
   }
 }

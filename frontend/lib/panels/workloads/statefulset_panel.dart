@@ -4,6 +4,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../metrics/workload_usage.dart';
 import '../../prometheus/metric_history_chart.dart';
+import '../../ui/detail/owner_line.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -11,10 +12,11 @@ import '../../actions/actions.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/terminal/open_terminal.dart';
 import '../panel.dart';
-import 'widgets/pod_template.dart';
+import 'rollout.dart' show WorkloadHeadline;
 import 'widgets/pods_list.dart';
-import 'widgets/replica_bar.dart';
 import 'widgets/scaling.dart';
+import 'widgets/sections.dart';
+import 'widgets/status_header.dart';
 import 'widgets/util.dart';
 
 const pvcRef = ResourceRef(resource: 'persistentvolumeclaims');
@@ -43,11 +45,35 @@ const pvcRef = ResourceRef(resource: 'persistentvolumeclaims');
   return ('Up to date', Severity.ok);
 }
 
+/// The status header's headline: "Ready 3/3", "Rolling out" (1/3
+/// updated), "Partitioned", "Update pending" (OnDelete), …
+WorkloadHeadline statefulSetHeadline(Json sts) {
+  final spec = asMap(sts['spec']);
+  final st = asMap(sts['status']);
+  final desired = asInt(spec['replicas']) ?? 1;
+  final ready = asInt(st['readyReplicas']) ?? 0;
+  final updated = asInt(st['updatedReplicas']) ?? 0;
+  final partition = asInt(dig(spec, ['updateStrategy', 'rollingUpdate', 'partition'])) ?? 0;
+  final progress = desired == 0 ? null : (updated / desired).clamp(0.0, 1.0);
+  final (text, sev) = statefulSetStatus(sts);
+  if (text.startsWith('Waiting')) return WorkloadHeadline(text, sev);
+  if (text.startsWith('OnDelete')) return WorkloadHeadline('Update pending', Severity.warn, detail: 'OnDelete: $updated/$desired updated; pods update when deleted', progress: progress);
+  if (text.startsWith('Partitioned')) return WorkloadHeadline('Partitioned', Severity.info, detail: '$updated/$desired updated · ordinals ≥ $partition', progress: progress);
+  if (text.startsWith('Rolling')) return WorkloadHeadline('Rolling out', Severity.info, detail: '$updated/$desired updated', progress: progress);
+  if (desired == 0) return const WorkloadHeadline('Scaled to 0', Severity.neutral);
+  if (sev == Severity.ok) return WorkloadHeadline('Ready $ready/$desired', Severity.ok, detail: 'Up to date');
+  final n = desired - ready;
+  return WorkloadHeadline('Ready $ready/$desired', sev, detail: '$n replica${n == 1 ? '' : 's'} not ready');
+}
+
 class StatefulSetPanel extends ResourcePanel {
   const StatefulSetPanel();
 
   @override
   bool get showsOwned => true;
+
+  @override
+  bool get ownerInHeader => true;
 
   @override
   Set<String> get kinds => const {'apps/StatefulSet'};
@@ -60,8 +86,12 @@ class StatefulSetPanel extends ResourcePanel {
     final spec = ctx.spec;
     final st = ctx.status;
     final desired = asInt(spec['replicas']) ?? 1;
-    final (headline, sev) = statefulSetStatus(ctx.object);
+    final ready = asInt(st['readyReplicas']) ?? 0;
+    final updated = asInt(st['updatedReplicas']) ?? 0;
+    final available = asInt(st['availableReplicas']) ?? ready;
+    final head = statefulSetHeadline(ctx.object);
     final strat = asMap(spec['updateStrategy']);
+    final onDelete = strat['type'] == 'OnDelete';
     final partition = asInt(dig(strat, ['rollingUpdate', 'partition'])) ?? 0;
     final maxUnavail = dig(strat, ['rollingUpdate', 'maxUnavailable']);
     final retention = asMap(spec['persistentVolumeClaimRetentionPolicy']);
@@ -72,89 +102,53 @@ class StatefulSetPanel extends ResourcePanel {
     final ordStart = asInt(dig(spec, ['ordinals', 'start'])) ?? 0;
     final key = workloadRefreshKey(ctx);
     final theme = Theme.of(context);
+    final parallel = spec['podManagementPolicy'] == 'Parallel';
 
     return [
-      DetailSection(
-        title: 'Replicas',
-        icon: Icons.storage_rounded,
-        trailing: StatusBadge(headline, severity: sev, dense: true),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ReplicaStatusBar(
-              desired: desired,
-              current: asInt(st['replicas']) ?? 0,
-              updated: asInt(st['updatedReplicas']) ?? 0,
-              ready: asInt(st['readyReplicas']) ?? 0,
-              available: asInt(st['availableReplicas']) ?? asInt(st['readyReplicas']) ?? 0,
-              trailing: scaleControlFor(ctx),
-            ),
-            HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}')),
-            const SizedBox(height: 10),
-            KeyValueTable([
-              (
-                'Update strategy',
-                strat['type'] == 'OnDelete'
-                    ? 'OnDelete (pods update only when deleted)'
-                    : 'RollingUpdate${maxUnavail != null ? ' · maxUnavailable $maxUnavail' : ''}',
-              ),
-              (
-                'Partition',
-                partition > 0
-                    ? Row(
-                        children: [
-                          StatusBadge('$partition', severity: Severity.warn, dense: true),
-                          const SizedBox(width: 6),
-                          Flexible(child: Text('only ordinals ≥ $partition get the new revision', style: theme.textTheme.bodySmall)),
-                        ],
-                      )
-                    : (strat['type'] == 'OnDelete' ? null : '0'),
-              ),
-              (
-                'Service',
-                svc == null || svc.isEmpty
-                    ? null
-                    : ResourceLink(
-                        ObjectRef(kind: 'Service', name: svc, namespace: ctx.namespace),
-                        label: svc,
-                      ),
-              ),
-              ('Pod management', spec['podManagementPolicy'] == 'Parallel' ? 'Parallel' : 'OrderedReady (one at a time, in order)'),
-              ('Revisions', _Revisions(current: cur, update: upd)),
-              if (retention.isNotEmpty)
-                ('PVC retention', 'whenDeleted: ${retention['whenDeleted'] ?? 'Retain'} · whenScaled: ${retention['whenScaled'] ?? 'Retain'}')
-              else
-                ('PVC retention', 'Retain (default)'),
-              if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
-              if (ordStart != 0) ('Ordinals start', '$ordStart'),
-              ('Selector', SelectorChips(spec['selector'])),
-            ], keyWidth: 120),
-          ],
-        ),
+      WorkloadStatusHeader(
+        headline: head.text,
+        severity: head.severity,
+        detail: head.detail,
+        progress: head.progress == null ? null : WorkloadProgress(head.progress!, tooltip: '$updated of $desired replicas on the update revision'),
+        figures: [
+          WorkloadFigure.count(ready, desired, 'ready', zeroIsError: true),
+          WorkloadFigure('$updated', 'updated', of: '/$desired', tooltip: 'on the update revision'),
+          WorkloadFigure.count(available, desired, 'available', zeroIsError: true),
+        ],
+        insights: conditionInsights(asMapList(st['conditions'])),
+        extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}'))],
+        facts: [
+          ?ownerFact(ctx.object),
+          replicasFact(ctx),
+          ('Service', svc == null || svc.isEmpty ? null : ResourceLink(ObjectRef(kind: 'Service', name: svc, namespace: ctx.namespace), label: svc)),
+        ],
       ),
-      if (asMapList(st['conditions']).isNotEmpty)
-        DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(st['conditions'] as List?)),
+      PodsList(
+        key: ValueKey('pods-${ctx.uid}'),
+        api: ctx.api,
+        namespace: ctx.namespace,
+        selector: spec['selector'],
+        ownerUid: ctx.uid,
+        refreshKey: key,
+        sortByOrdinal: true,
+        actionCtx: ctx,
+        sectionTitle: 'Pods',
+      ),
       workloadUsageSection(ctx),
       workloadHistory(ctx),
-      DetailSection(
-        title: 'Pods',
-        icon: Icons.view_in_ar,
-        child: PodsList(
-          key: ValueKey('pods-${ctx.uid}'),
-          api: ctx.api,
-          namespace: ctx.namespace,
-          selector: spec['selector'],
-          ownerUid: ctx.uid,
-          refreshKey: key,
-          sortByOrdinal: true,
-          actionCtx: ctx,
-        ),
-      ),
       if (templates.isNotEmpty)
-        DetailSection(
-          title: 'Volume claims',
-          icon: Icons.sd_storage_outlined,
-          child: StatefulSetClaims(
+        workloadSection(
+          'claims',
+          'Volume claims',
+          [
+            for (final t in templates)
+              [
+                '${dig(t, ['metadata', 'name'])}',
+                ?dig(t, ['spec', 'resources', 'requests', 'storage'])?.toString(),
+              ].join(' '),
+            'per replica',
+          ].join(' · '),
+          StatefulSetClaims(
             key: ValueKey('pvc-${ctx.uid}'),
             api: ctx.api,
             namespace: ctx.namespace,
@@ -165,11 +159,39 @@ class StatefulSetPanel extends ResourcePanel {
             refreshKey: key,
           ),
         ),
-      DetailSection(
-        title: 'Pod template',
-        icon: Icons.inventory_2_outlined,
-        child: PodTemplateSummary(template: asMap(spec['template']), namespace: ctx.namespace),
+      workloadSection(
+        'strategy',
+        'Strategy',
+        [
+          onDelete ? 'OnDelete' : 'RollingUpdate',
+          if (partition > 0) 'partition $partition',
+          parallel ? 'parallel' : 'ordered',
+        ].join(' · '),
+        KeyValueTable([
+          (
+            'Update strategy',
+            onDelete ? 'OnDelete (pods update only when deleted)' : 'RollingUpdate${maxUnavail != null ? ' · maxUnavailable $maxUnavail' : ''}',
+          ),
+          (
+            'Partition',
+            partition > 0
+                ? Text('$partition: only ordinals ≥ $partition get the new revision', style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.warn)))
+                : (onDelete ? null : '0'),
+          ),
+          ('Pod management', parallel ? 'Parallel' : 'OrderedReady (one at a time, in order)'),
+          ('Revisions', _Revisions(current: cur, update: upd)),
+          if (retention.isNotEmpty)
+            ('PVC retention', 'whenDeleted: ${retention['whenDeleted'] ?? 'Retain'} · whenScaled: ${retention['whenScaled'] ?? 'Retain'}')
+          else
+            ('PVC retention', 'Retain (default)'),
+          if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
+          if (ordStart != 0) ('Ordinals start', '$ordStart'),
+        ], keyWidth: 120),
       ),
+      podTemplateSection(asMap(spec['template']), ctx.namespace),
+      schedulingSection(asMap(dig(spec, ['template', 'spec']))),
+      if (asMapList(st['conditions']).isNotEmpty) conditionsSection(context, st),
+      selectorSection(spec['selector']),
     ];
   }
 }
