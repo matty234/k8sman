@@ -1,6 +1,7 @@
 package rbac
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -182,5 +183,132 @@ func TestAllowed(t *testing.T) {
 			}
 			t.Fatalf("no path contains %q: %v", c.via, descs)
 		})
+	}
+}
+
+func TestMatrix(t *testing.T) {
+	p := fixturePolicy()
+	resources := []ResourceInfo{
+		{Group: "", Resource: "pods", Namespaced: true},
+		{Group: "", Resource: "pods/exec", Namespaced: true},
+		{Group: "", Resource: "pods/log", Namespaced: true},
+		{Group: "", Resource: "secrets", Namespaced: true},
+		{Group: "", Resource: "nodes"},
+		{Group: "apps", Resource: "deployments", Namespaced: true},
+	}
+	alice := IdentityFor(Subject{Kind: "User", Name: "alice"}, nil)
+
+	// Cluster-wide: only ClusterRoleBindings (system:authenticated → health).
+	m := p.MatrixFor(alice, "", resources)
+	for _, r := range m.Rows {
+		if len(r.Cells) > 0 {
+			t.Errorf("cluster-wide row %s/%s has cells %v", r.Group, r.Resource, r.Cells)
+		}
+	}
+	if len(m.NonResource) != 1 || !slices.Contains(m.NonResource[0].URLs, "/healthz") {
+		t.Errorf("nonResource = %+v", m.NonResource)
+	}
+	if !slices.Equal(m.RoleBindingNamespaces, []string{"team-b"}) {
+		t.Errorf("roleBindingNamespaces = %v", m.RoleBindingNamespaces)
+	}
+	if len(m.MissingRoles) != 0 {
+		t.Errorf("cluster-wide view shouldn't report team-b's dangling binding: %v", m.MissingRoles)
+	}
+
+	// team-b: admin (aggregated) on namespaced rows; nodes stays empty.
+	m = p.MatrixFor(alice, "team-b", resources)
+	row := func(res string) Row {
+		for _, r := range m.Rows {
+			if r.Resource == res {
+				return r
+			}
+		}
+		t.Fatalf("no row %s", res)
+		return Row{}
+	}
+	if c := row("pods").Cells["delete"]; c == nil || len(c.Paths) != 1 {
+		t.Errorf("pods delete = %+v", c)
+	}
+	if len(row("nodes").Cells) != 0 {
+		t.Errorf("RoleBinding→ClusterRole must not grant nodes: %v", row("nodes").Cells)
+	}
+	if row("pods").Cells["*"] != nil {
+		t.Errorf("* column only for wildcard verbs")
+	}
+	if len(m.MissingRoles) != 1 || m.MissingRoles[0].Name != "does-not-exist" {
+		t.Errorf("missing roles = %v", m.MissingRoles)
+	}
+
+	// resourceNames restrict the cell, and secrets are flagged.
+	app := IdentityFor(Subject{Kind: "ServiceAccount", Namespace: "team-a", Name: "app"}, nil)
+	m = p.MatrixFor(app, "team-a", resources)
+	c := row("secrets").Cells["get"]
+	if c == nil || !slices.Equal(c.Names, []string{"db-creds"}) || c.Danger == "" {
+		t.Errorf("secrets get = %+v", c)
+	}
+
+	// Root: full wildcard, every row & verb incl. "*", virtual rows appear.
+	root := IdentityFor(Subject{Kind: "User", Name: "root"}, nil)
+	m = p.MatrixFor(root, "", resources)
+	if !m.FullWildcard || row("nodes").Cells["*"] == nil || row("pods/exec").Cells["create"].Danger == "" {
+		t.Errorf("root matrix: full=%v nodes=%v", m.FullWildcard, row("nodes").Cells)
+	}
+
+	// Rules naming resources discovery doesn't serve get a virtual row.
+	bob := IdentityFor(Subject{Kind: "User", Name: "bob"}, nil)
+	m = p.MatrixFor(bob, "", resources)
+	if r := row("users"); !r.Virtual || r.Cells["impersonate"] == nil || r.Cells["impersonate"].Danger == "" {
+		t.Errorf("users row = %+v", r)
+	}
+}
+
+func TestWhoCan(t *testing.T) {
+	p := fixturePolicy()
+	names := func(r WhoCanResult) []string {
+		var out []string
+		for _, e := range r.Entries {
+			s := e.Subject.Kind + ":" + e.Subject.Name
+			if e.Partial {
+				s += "(partial " + strings.Join(e.Names, ",") + ")"
+			}
+			out = append(out, s)
+		}
+		return out
+	}
+	r := p.WhoCan(Request{Verb: "get", Resource: "secrets", Namespace: "team-a"}, true)
+	want := []string{"User:root", "Group:system:masters", "ServiceAccount:app(partial db-creds)"}
+	if got := names(r); !slices.Equal(got, want) {
+		t.Errorf("who can get secrets in team-a = %v, want %v", got, want)
+	}
+	if r.Danger == "" {
+		t.Errorf("reading secrets should be flagged")
+	}
+	if !r.Entries[0].FullWildcard {
+		t.Errorf("root should be flagged full wildcard")
+	}
+
+	// Named: the restricted grant is now complete.
+	r = p.WhoCan(Request{Verb: "get", Resource: "secrets", Namespace: "team-a", Name: "db-creds"}, true)
+	if got := names(r); !slices.Contains(got, "ServiceAccount:app") {
+		t.Errorf("named = %v", got)
+	}
+
+	// Any namespace: RoleBindings everywhere count.
+	r = p.WhoCan(Request{Verb: "delete", Resource: "pods", Namespace: "*"}, true)
+	got := names(r)
+	for _, w := range []string{"User:alice", "ServiceAccount:ci"} {
+		if !slices.Contains(got, w) {
+			t.Errorf("delete pods anywhere: missing %s in %v", w, got)
+		}
+	}
+	// Cluster-wide only: RoleBindings don't.
+	r = p.WhoCan(Request{Verb: "delete", Resource: "pods"}, true)
+	if got := names(r); slices.Contains(got, "User:alice") {
+		t.Errorf("cluster-wide must ignore RoleBindings: %v", got)
+	}
+	// Cluster-scoped: RoleBinding→ClusterRole never counts.
+	r = p.WhoCan(Request{Verb: "list", Resource: "nodes", Namespace: "*"}, false)
+	if got := names(r); slices.Contains(got, "User:alice") {
+		t.Errorf("nodes via RoleBinding must not count: %v", got)
 	}
 }

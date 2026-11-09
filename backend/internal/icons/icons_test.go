@@ -286,3 +286,48 @@ func TestPublicIP(t *testing.T) {
 		t.Errorf("dialled loopback: %v", err)
 	}
 }
+
+func TestNormalize(t *testing.T) {
+	// Large PNGs are downscaled, keeping aspect.
+	out, ct, err := Normalize(testPNG(500, 250))
+	if err != nil || ct != "image/png" {
+		t.Fatal(err, ct)
+	}
+	if w, h, c := decodeSize(t, out); w != 128 || h != 64 {
+		t.Errorf("downscaled to %dx%d", w, h)
+	} else if r, _, _, _ := c.RGBA(); r>>8 != 200 {
+		t.Errorf("colour changed: %v", c)
+	}
+	// Small PNGs pass through.
+	small := testPNG(64, 64)
+	if out, _, _ := Normalize(small); !bytes.Equal(out, small) {
+		t.Error("small png should pass through")
+	}
+	// ICO: the largest entry wins, PNG or BMP.
+	out, _, err = Normalize(testICO(testDIB32(16), testPNG(32, 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, _, _ := decodeSize(t, out); w != 32 {
+		t.Errorf("ico png entry: width %d", w)
+	}
+	out, _, err = Normalize(testICO(testDIB32(32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h, c := decodeSize(t, out); w != 32 || h != 32 {
+		t.Errorf("ico bmp entry: %dx%d", w, h)
+	} else if r, g, b, a := c.RGBA(); r != 0 || g != 0 || b>>8 != 255 || a>>8 != 255 {
+		t.Errorf("ico bmp colour: %v", c)
+	}
+	// SVG and junk are rejected.
+	if _, _, err := Normalize([]byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>`)); err != errSVG {
+		t.Errorf("svg: %v", err)
+	}
+	if _, _, err := Normalize([]byte("<html>nope</html>")); err == nil {
+		t.Error("html accepted as image")
+	}
+	if _, _, err := Normalize(testPNG(8, 8)); err != errTooSmall {
+		t.Errorf("tiny: %v", err)
+	}
+}
