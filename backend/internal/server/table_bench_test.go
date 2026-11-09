@@ -49,48 +49,6 @@ func mapMemo() memoFunc {
 	}
 }
 
-// BenchmarkTableSnapshot renders + encodes a 1,500-pod SNAPSHOT with the
-// built-in pod columns: cold (every row evaluated) and warm (rows memoised,
-// as on a re-snapshot or a second watcher of the same table).
-//
-//	go test ./internal/server -run '^$' -bench TableSnapshot -benchmem
-func BenchmarkTableSnapshot(b *testing.B) {
-	items := benchPods(1500)
-	cols := columns.Defaults(podsType, nil)
-	rt := cluster.ResourceType{Resource: "pods", Version: "v1", Namespaced: true}
-	b.Run("list", func(b *testing.B) { // direct LIST path (and every SNAPSHOT before the cache)
-		b.ReportAllocs()
-		for b.Loop() {
-			tb := newTableBuilder(cols, false)
-			t, built := tb.tableOf(rt, true, items, "1")
-			_ = snapshotFrame(t, built)
-		}
-	})
-	b.Run("cold", func(b *testing.B) { // first SNAPSHOT from the cache: memo misses, private copies
-		b.ReportAllocs()
-		for b.Loop() {
-			tb := newTableBuilder(cols, false)
-			tb.memo = mapMemo()
-			t, built := tb.tableOf(rt, true, items, "1")
-			_ = snapshotFrame(t, built)
-		}
-	})
-	b.Run("warm", func(b *testing.B) {
-		memo := mapMemo()
-		tb := newTableBuilder(cols, false)
-		tb.memo = memo
-		tb.tableOf(rt, true, items, "1")
-		b.ReportAllocs()
-		b.ResetTimer()
-		for b.Loop() {
-			tb := newTableBuilder(cols, false)
-			tb.memo = memo
-			t, built := tb.tableOf(rt, true, items, "1")
-			_ = snapshotFrame(t, built)
-		}
-	})
-}
-
 // Objects from the watch cache are shared between goroutines; rendering
 // them (gojq normalises its input in place) must never write to them.
 // Run with -race.

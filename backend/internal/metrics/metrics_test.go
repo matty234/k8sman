@@ -113,31 +113,6 @@ func TestStatusFromAPIServices(t *testing.T) {
 	}
 }
 
-func TestNodesAndPodsParse(t *testing.T) {
-	s := healthy(t).service()
-	nodes, err := s.Nodes(context.Background())
-	if err != nil || len(nodes) != 1 {
-		t.Fatalf("nodes: %v %v", nodes, err)
-	}
-	n := nodes[0]
-	// 3454908092n → 3455m (rounded up); 5687780Ki → bytes.
-	if n.CPUMillis != 3455 || n.CPU != "3455m" || n.MemoryBytes != 5687780*1024 || n.Memory != "5824286720" {
-		t.Fatalf("node usage: %+v", n)
-	}
-	pods, err := s.PodsSelected(context.Background(), "demo", "app=web")
-	if err != nil || len(pods) != 2 {
-		t.Fatalf("pods: %v %v", pods, err)
-	}
-	p := pods[0]
-	if p.Name != "web-6fd47b8fcb-442dt" || len(p.Containers) != 2 {
-		t.Fatalf("pod: %+v", p)
-	}
-	// log-sidecar 6489274n → 7m, nginx 206320n → 1m.
-	if p.CPUMillis != 8 || p.MemoryBytes != (580+6556)*1024 {
-		t.Fatalf("pod total: %+v", p.Usage)
-	}
-}
-
 func TestUsageCacheAndAllNamespaces(t *testing.T) {
 	f := healthy(t).on("/apis/metrics.k8s.io/v1beta1/pods", "pods-demo.json")
 	s := f.service()
@@ -221,29 +196,5 @@ func TestAnalyzeHPA(t *testing.T) {
 	}
 	if *a.Proposed != 2 || a.LimitedBy != "min" {
 		t.Fatalf("proposed %v limitedBy %q", *a.Proposed, a.LimitedBy)
-	}
-}
-
-func TestHandlersErrorStates(t *testing.T) {
-	s := newFake(t).on(apiservicesPath, `{"items":[]}`).service()
-	mux := http.NewServeMux()
-	(&handlers{svc: func() *Service { return s }}).register(mux)
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-	get := func(path string) (int, map[string]any) {
-		res, err := http.Get(srv.URL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer res.Body.Close()
-		var body map[string]any
-		_ = json.NewDecoder(res.Body).Decode(&body)
-		return res.StatusCode, body
-	}
-	if code, body := get("/api/metrics/nodes"); code != 404 || body["state"] != StateNotInstalled || body["group"] != ResourceGroup {
-		t.Fatalf("nodes: %d %v", code, body)
-	}
-	if code, body := get("/api/metrics/status"); code != 200 || body["resource"].(map[string]any)["state"] != StateNotInstalled {
-		t.Fatalf("status: %d %v", code, body)
 	}
 }

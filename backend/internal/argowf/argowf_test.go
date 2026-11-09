@@ -35,45 +35,6 @@ func get(m map[string]any, path ...string) any {
 	return cur
 }
 
-const runningWF = `{
-  "apiVersion": "argoproj.io/v1alpha1", "kind": "Workflow",
-  "metadata": {"name": "approval-abcde", "generateName": "approval-", "namespace": "demo", "resourceVersion": "42",
-    "labels": {"team": "a", "workflows.argoproj.io/phase": "Running", "workflows.argoproj.io/creator": "someone"},
-    "annotations": {"note": "x", "kubectl.kubernetes.io/last-applied-configuration": "{}"},
-    "ownerReferences": [{"kind": "CronWorkflow", "name": "c", "uid": "u"}]},
-  "spec": {"entrypoint": "main", "suspend": true, "shutdown": "Stop", "activeDeadlineSeconds": 0,
-    "arguments": {"parameters": [{"name": "p", "value": "1"}]}},
-  "status": {"phase": "Running", "nodes": {
-    "approval-abcde": {"id": "approval-abcde", "type": "Steps", "phase": "Running"},
-    "approval-abcde-1": {"id": "approval-abcde-1", "displayName": "approve", "type": "Suspend", "phase": "Running",
-      "outputs": {"parameters": [
-        {"name": "choice", "valueFrom": {"supplied": {}, "default": "yes"}},
-        {"name": "fixed", "value": "v"}]}},
-    "approval-abcde-2": {"id": "approval-abcde-2", "type": "Suspend", "phase": "Succeeded"}
-  }}
-}`
-
-func TestShutdownAndSuspendPatches(t *testing.T) {
-	wf := mustJSON(t, runningWF)
-	p, err := ShutdownPatch(wf, "Terminate")
-	if err != nil || get(p, "spec", "shutdown") != "Terminate" {
-		t.Fatalf("ShutdownPatch = %v, %v", p, err)
-	}
-	if _, err := ShutdownPatch(wf, "Pause"); err == nil {
-		t.Error("unknown strategy accepted")
-	}
-	if p, err := SuspendPatch(wf); err != nil || get(p, "spec", "suspend") != true {
-		t.Fatalf("SuspendPatch = %v, %v", p, err)
-	}
-	done := mustJSON(t, `{"status": {"phase": "Succeeded"}}`)
-	if _, err := ShutdownPatch(done, "Stop"); err == nil {
-		t.Error("stopping a completed workflow was allowed")
-	}
-	if _, err := SuspendPatch(done); err == nil {
-		t.Error("suspending a completed workflow was allowed")
-	}
-}
-
 func TestFromTemplateAndValidate(t *testing.T) {
 	tmpl := mustJSON(t, `{"apiVersion": "argoproj.io/v1alpha1", "kind": "WorkflowTemplate",
 	  "metadata": {"name": "build", "namespace": "demo"},

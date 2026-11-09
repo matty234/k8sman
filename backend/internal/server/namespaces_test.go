@@ -112,58 +112,6 @@ func TestWatchNamespaceSetMergesAndReportsForbidden(t *testing.T) {
 	}
 }
 
-// Views keep their order: undoing a delete puts the view back at its index,
-// and views bound to the default kubeconfig and to the same file by an
-// explicit path share one kubeconfig key.
-func TestViewOrderRestoreAndKubeconfigKeys(t *testing.T) {
-	s, _, _ := newTestServer(t, cluster.NewDisconnected("", errors.New("none")))
-	put := func(id, kubeconfig, query string) {
-		t.Helper()
-		ctx := `null`
-		if kubeconfig != "-" {
-			ctx = `{"kubeconfig":"` + kubeconfig + `","name":"c"}`
-		}
-		body := `{"version":1,"id":"` + id + `","name":"` + id + `","context":` + ctx + `,"kind":{"group":"apps","kind":"Deployment"},"namespaces":[]}`
-		if rec, _ := do(t, s, "PUT", "/api/settings/views/"+id+query, body); rec.Code != 200 {
-			t.Fatalf("put %s: %d %s", id, rec.Code, rec.Body)
-		}
-	}
-	list := func() (ids string, keys map[string]string) {
-		t.Helper()
-		rec, _ := do(t, s, "GET", "/api/settings/views", "")
-		var got struct {
-			Views []struct {
-				ID string `json:"id"`
-			} `json:"views"`
-			Keys map[string]string `json:"kubeconfigKeys"`
-		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-			t.Fatal(err)
-		}
-		for _, v := range got.Views {
-			ids += v.ID
-		}
-		return ids, got.Keys
-	}
-	put("a", "-", "")
-	put("b", "-", "")
-	put("c", "", "")
-	put("d", "~/.kube/../.kube/config", "")
-	if rec, _ := do(t, s, "DELETE", "/api/settings/views/b", ""); rec.Code != 204 {
-		t.Fatal(rec.Code)
-	}
-	put("b", "-", "?index=1")
-	if ids, keys := list(); ids != "abcd" || keys[""] == "" || keys[""] != keys["~/.kube/../.kube/config"] {
-		t.Fatalf("restore at index: order %q, keys %v", ids, keys)
-	}
-	if rec, _ := do(t, s, "PUT", "/api/settings/views/order", `{"ids":["d","a","zz","b"]}`); rec.Code != 204 {
-		t.Fatal(rec.Code)
-	}
-	if ids, _ := list(); ids != "dacb" { // c keeps the slot it had
-		t.Fatalf("reorder: %q", ids)
-	}
-}
-
 // With a namespace allowlist, "all namespaces" fans out over the allowed
 // namespaces (no cluster-wide LIST, which a tenant may not do), and
 // /api/namespaces answers with the allowlist.

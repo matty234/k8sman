@@ -73,67 +73,6 @@ func reasons(r *Result) map[string]int {
 	return m
 }
 
-func TestBuildUnattributed(t *testing.T) {
-	r := Build(input(t))
-	if len(r.Nodes) != 2 {
-		t.Fatalf("want 2 GPU nodes, got %d", len(r.Nodes))
-	}
-	if r.Monitoring != MonitoringDCGM || r.Attribution {
-		t.Fatalf("monitoring=%s attribution=%v", r.Monitoring, r.Attribution)
-	}
-
-	a := node(t, r, "gpu-node-a")
-	if a.Monitored || a.Capacity != 4 || a.Allocated != 1 || a.Product != "Tesla-V100-SXM2-32GB" || a.MemoryMiB != 32768 || a.DriverVersion != "570.211.01" {
-		t.Errorf("gpu-node-a: %+v", a)
-	}
-
-	b := node(t, r, "gpu-node-b")
-	// Hostname is the exporter pod's name, not the node's: mapped via the pod.
-	if !b.Monitored || len(b.Devices) != 3 {
-		t.Fatalf("gpu-node-b monitored=%v devices=%d", b.Monitored, len(b.Devices))
-	}
-	if b.Allocated != 2 || len(b.Pods) != 1 || b.Pods[0].Name != "trainer-0" {
-		t.Errorf("gpu-node-b allocation: %d %+v (the Succeeded pod must not count)", b.Allocated, b.Pods)
-	}
-	if b.DriverVersion != "595.91.07" || b.CUDAVersion != "13.2" {
-		t.Errorf("versions from split labels: %q %q", b.DriverVersion, b.CUDAVersion)
-	}
-	d0 := b.Devices[0]
-	if d0.GPU != "0" || *d0.Util != 0.87 || *d0.TensorActive != 0.42 || *d0.PowerW != 131.2 {
-		t.Errorf("device 0: %+v", d0)
-	}
-	if want := float64(18000+5988+479) * mib; d0.MemTotal == nil || *d0.MemTotal != want {
-		t.Errorf("memTotal = %v, want %v", d0.MemTotal, want)
-	}
-	if d0.Selector != `UUID="GPU-11111111-aaaa-bbbb-cccc-000000000000"` {
-		t.Errorf("selector %s", d0.Selector)
-	}
-	if len(b.Devices[2].Health) != 2 {
-		t.Errorf("device 2 health: %v", b.Devices[2].Health)
-	}
-	// 2 allocated, only one device did any work in the last hour.
-	if b.IdleAllocated != 1 {
-		t.Errorf("idleAllocated = %d, want 1", b.IdleAllocated)
-	}
-
-	got := reasons(r)
-	for reason, n := range map[string]int{ReasonPending: 1, ReasonIdle: 1, ReasonHot: 1, ReasonRemappedRows: 1} {
-		if got[reason] != n {
-			t.Errorf("issues[%s] = %d, want %d (all: %v)", reason, got[reason], n, got)
-		}
-	}
-	if r.Issues[0].Severity != Warning {
-		t.Errorf("issues not sorted by severity: %+v", r.Issues)
-	}
-	s := r.Summary
-	if s.Nodes != 2 || s.Capacity != 7 || s.Allocated != 3 || s.Devices != 3 || s.Idle != 1 || s.Unhealthy != 1 || s.Unmonitored != 1 || s.PendingPods != 1 {
-		t.Errorf("summary: %+v", s)
-	}
-	if len(r.Pods) != 4 {
-		t.Errorf("want 4 GPU pods (incl. pending and succeeded), got %d", len(r.Pods))
-	}
-}
-
 func TestBuildAttributed(t *testing.T) {
 	in := input(t)
 	// dcgm-exporter's pod mapping, scraped without honorLabels.

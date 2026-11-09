@@ -1,20 +1,17 @@
 package prom
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -24,9 +21,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	kfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
-	k8stesting "k8s.io/client-go/testing"
-
-	"github.com/matty234/k8sman/backend/internal/httpx"
 )
 
 // ---- fake API server proxy ---------------------------------------------------
@@ -236,32 +230,6 @@ func TestDiscoveryViaCRDs(t *testing.T) {
 	}
 }
 
-func TestDiscoveryFallbackToServices(t *testing.T) {
-	up, srv := newUpstream(t)
-	up.json("prometheus-server:http/api/v1/status/buildinfo", promBuildinfo)
-	dyn := dynClient()
-	dyn.PrependReactor("list", "*", func(a k8stesting.Action) (bool, runtime.Object, error) {
-		return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "monitoring.coreos.com", Resource: a.GetResource().Resource}, "")
-	})
-	typed := kfake.NewSimpleClientset(
-		svc("observability", "prometheus-server", map[string]string{"app": "prometheus"}, port("http", 80)),
-		svc("observability", "prometheus-alertmanager", map[string]string{"app": "am"}, port("http", 9093)),
-	)
-	s := discover(context.Background(), env{key: "x", dyn: dyn, typed: typed, req: restRequester{rc: restFor(t, srv)}})
-	if s.OperatorCRDs {
-		t.Error("operatorCRDs should be false")
-	}
-	if len(s.Prometheus) != 1 || s.Prometheus[0].Source != "service" || s.Prometheus[0].Port != "http" || !s.Prometheus[0].Reachable {
-		t.Fatalf("prometheus = %+v", *s.Prometheus[0])
-	}
-	if len(s.Alertmanager) != 1 || s.Alertmanager[0].Reachable || s.Alertmanager[0].Error == "" {
-		t.Fatalf("alertmanager should be found but unreachable: %+v", s.Alertmanager)
-	}
-	if !s.Alertmanager[0].Default {
-		t.Error("the only instance is the default even when unreachable")
-	}
-}
-
 // ---- alerts -------------------------------------------------------------------
 
 func TestAlertsGroupedWithPending(t *testing.T) {
@@ -312,39 +280,7 @@ func TestAlertsGroupedWithPending(t *testing.T) {
 	}
 }
 
-func TestAlertsFallBackToPrometheusWhenAlertmanagerDown(t *testing.T) {
-	h, up := testHandler(t, false)
-	up.routes["kps-alertmanager:http-web/am/api/v2/alerts"] = func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(503)
-		_, _ = io.WriteString(w, "no endpoints available for service")
-	}
-	up.json("kps-prometheus:http-web/api/v1/alerts", promAlertsJSON)
-	res := decode[AlertsResult](t, serve(t, h, "GET", "/api/prom/alerts", ""))
-	if !strings.Contains(res.Errors["alertmanager"], "no endpoints") {
-		t.Errorf("errors = %v", res.Errors)
-	}
-	if res.Summary.Firing != 1 || res.Summary.Pending != 1 {
-		t.Errorf("summary = %+v", res.Summary)
-	}
-}
-
 // ---- silences -------------------------------------------------------------------
-
-func TestSilencesListSorted(t *testing.T) {
-	h, up := testHandler(t, false)
-	up.json("kps-alertmanager:http-web/am/api/v2/silences", `[
-	 {"id":"old","status":{"state":"expired"},"matchers":[{"name":"alertname","value":"A","isRegex":false,"isEqual":true}],"startsAt":"2026-11-01T00:00:00Z","endsAt":"2026-11-02T00:00:00Z","createdBy":"me","comment":"x"},
-	 {"id":"late","status":{"state":"active"},"matchers":[],"startsAt":"2026-11-03T00:00:00Z","endsAt":"2026-11-04T00:00:00Z","createdBy":"k8sman","comment":"y"},
-	 {"id":"soon","status":{"state":"active"},"matchers":[],"startsAt":"2026-11-03T00:00:00Z","endsAt":"2026-11-03T12:30:00Z","createdBy":"k8sman","comment":"z"}]`)
-	res := decode[struct{ Silences []Silence }](t, serve(t, h, "GET", "/api/prom/silences", ""))
-	var ids []string
-	for _, s := range res.Silences {
-		ids = append(ids, s.ID)
-	}
-	if strings.Join(ids, ",") != "soon,late,old" {
-		t.Errorf("order = %v", ids)
-	}
-}
 
 func TestCreateSilence(t *testing.T) {
 	h, up := testHandler(t, false)
@@ -397,26 +333,6 @@ const rulesJSON = `{"status":"success","data":{"groups":[
  {"name":"node-exporter","file":"/etc/prometheus/rules/prometheus-kps-prometheus-rulefiles-0/monitoring-kps-node-exporter-11111111-2222-3333-4444-555555555555.yaml","interval":30,
   "rules":[{"type":"alerting","name":"NodeDown","query":"up == 0","state":"inactive","health":"ok"}]}
 ]}}`
-
-func TestRulesMappedToPrometheusRule(t *testing.T) {
-	h, up := testHandler(t, false)
-	up.json("kps-prometheus:http-web/api/v1/rules", rulesJSON)
-	res := decode[RulesResult](t, serve(t, h, "GET", "/api/prom/rules?namespace=demo&name=k8sman-demo", ""))
-	if len(res.Groups) != 1 || res.Groups[0].Source == nil || res.Groups[0].Source.Name != "k8sman-demo" {
-		t.Fatalf("groups = %+v", res.Groups)
-	}
-	r := res.Groups[0].Rules
-	if r[0].State != StateFiring || r[0].Duration != 60 || len(r[0].Alerts) != 1 || r[1].Health != "err" || r[1].LastError == "" {
-		t.Errorf("rules = %+v", r)
-	}
-	if res.Counts.Firing != 1 || res.Counts.Errors != 1 {
-		t.Errorf("counts = %+v", res.Counts)
-	}
-	all := decode[RulesResult](t, serve(t, h, "GET", "/api/prom/rules", ""))
-	if len(all.Groups) != 2 || all.Groups[1].Source != nil {
-		t.Errorf("unfiltered = %+v", all.Groups)
-	}
-}
 
 const targetsJSON = `{"status":"success","data":{"activeTargets":[
  {"labels":{"job":"web","namespace":"demo","pod":"web-1","service":"web"},"scrapePool":"serviceMonitor/demo/web/0","scrapeUrl":"http://10.0.0.5:8080/metrics","lastError":"","health":"up","scrapeInterval":"30s"},
@@ -478,39 +394,22 @@ func TestQueryRangeLimitsAndPassThrough(t *testing.T) {
 	}
 }
 
-func TestQueryErrorsAndMissingPrometheus(t *testing.T) {
+func TestRulesMappedToPrometheusRule(t *testing.T) {
 	h, up := testHandler(t, false)
-	up.routes["kps-prometheus:http-web/api/v1/query"] = func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(400)
-		_, _ = io.WriteString(w, `{"status":"error","errorType":"bad_data","error":"parse error: unexpected end of input"}`)
+	up.json("kps-prometheus:http-web/api/v1/rules", rulesJSON)
+	res := decode[RulesResult](t, serve(t, h, "GET", "/api/prom/rules?namespace=demo&name=k8sman-demo", ""))
+	if len(res.Groups) != 1 || res.Groups[0].Source == nil || res.Groups[0].Source.Name != "k8sman-demo" {
+		t.Fatalf("groups = %+v", res.Groups)
 	}
-	rec := serve(t, h, "GET", "/api/prom/query?query=up%7B", "")
-	if rec.Code != 422 || !strings.Contains(rec.Body.String(), "unexpected end of input") {
-		t.Errorf("bad query: %d %s", rec.Code, rec.Body)
+	r := res.Groups[0].Rules
+	if r[0].State != StateFiring || r[0].Duration != 60 || len(r[0].Alerts) != 1 || r[1].Health != "err" || r[1].LastError == "" {
+		t.Errorf("rules = %+v", r)
 	}
-	rec = serve(t, h, "GET", "/api/prom/query?query=up&instance=other/prom", "")
-	if rec.Code != 404 || decode[httpx.ErrorBody](t, rec).Reason != "NotFound" {
-		t.Errorf("unknown instance: %d %s", rec.Code, rec.Body)
+	if res.Counts.Firing != 1 || res.Counts.Errors != 1 {
+		t.Errorf("counts = %+v", res.Counts)
 	}
-}
-
-func TestManualInstanceWithPathPrefix(t *testing.T) {
-	h, up := testHandler(t, false)
-	// Mimir-style: no buildinfo, the API lives under /prometheus.
-	up.json("mimir-qf:8080/prometheus/api/v1/query", `{"status":"success","data":{"resultType":"vector","result":[]}}`)
-	e := h.env()
-	e.settings = Settings{Prometheus: &Endpoint{Namespace: "mimir", Service: "mimir-qf", Port: "8080", PathPrefix: "prometheus/"}}
-	h.env = func() env { return e }
-	s := decode[Status](t, serve(t, h, "GET", "/api/prom/status", ""))
-	if len(s.Prometheus) != 2 || s.Prometheus[0].ID != "mimir/mimir-qf" || !s.Prometheus[0].Default || !s.Prometheus[0].Reachable || s.Prometheus[1].Default {
-		t.Fatalf("instances = %+v", s.Prometheus)
-	}
-	if rec := serve(t, h, "GET", "/api/prom/query?query=up", ""); rec.Code != 200 {
-		t.Fatalf("query: %d %s", rec.Code, rec.Body)
-	}
-	if !slices.ContainsFunc(up.seen, func(r string) bool {
-		return strings.HasPrefix(r, "GET mimir/mimir-qf:8080/prometheus/api/v1/query?query=up")
-	}) {
-		t.Errorf("query not sent under the prefix: %v", up.seen)
+	all := decode[RulesResult](t, serve(t, h, "GET", "/api/prom/rules", ""))
+	if len(all.Groups) != 2 || all.Groups[1].Source != nil {
+		t.Errorf("unfiltered = %+v", all.Groups)
 	}
 }

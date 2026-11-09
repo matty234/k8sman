@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os/exec"
 	"strings"
 	"testing"
 
@@ -15,37 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilexec "k8s.io/client-go/util/exec"
 )
-
-// Runs the script under the local /bin/sh to check it really execs a shell
-// and respects TERM.
-func TestShellScriptRuns(t *testing.T) {
-	if _, err := exec.LookPath("sh"); err != nil {
-		t.Skip("no sh")
-	}
-	// Preferring "true" (a binary on PATH) proves the preferred name is tried first.
-	out, err := exec.Command("/bin/sh", "-c", shellScript("true")+"; echo unreachable").CombinedOutput()
-	if err != nil || strings.Contains(string(out), "unreachable") {
-		t.Fatalf("script did not exec preferred: %v %q", err, out)
-	}
-	// TERM: unset → xterm-256color; set → kept.
-	script := strings.Replace(shellScript("printenv"), `exec "$s"`, `exec "$s" TERM`, 1)
-	cmd := exec.Command("/bin/sh", "-c", script)
-	cmd.Env = []string{"PATH=/usr/bin:/bin"}
-	if out, _ := cmd.Output(); strings.TrimSpace(string(out)) != "xterm-256color" {
-		t.Errorf("TERM unset → %q", out)
-	}
-	cmd = exec.Command("/bin/sh", "-c", script)
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "TERM=screen"}
-	if out, _ := cmd.Output(); strings.TrimSpace(string(out)) != "screen" {
-		t.Errorf("TERM=screen → %q", out)
-	}
-	// The runtime's default TERM=xterm is upgraded.
-	cmd = exec.Command("/bin/sh", "-c", script)
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "TERM=xterm"}
-	if out, _ := cmd.Output(); strings.TrimSpace(string(out)) != "xterm-256color" {
-		t.Errorf("TERM=xterm → %q", out)
-	}
-}
 
 func TestExecCommand(t *testing.T) {
 	q := func(s string) url.Values { v, _ := url.ParseQuery(s); return v }

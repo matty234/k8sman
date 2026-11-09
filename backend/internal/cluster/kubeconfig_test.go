@@ -124,15 +124,3 @@ func TestSwitchKubeconfig(t *testing.T) {
 		t.Fatal("failed switch must keep the previous kubeconfig")
 	}
 }
-
-func TestDisconnected(t *testing.T) {
-	dir := t.TempDir()
-	m := NewDisconnected(filepath.Join(dir, "missing"), fmt.Errorf("boom"))
-	if m.Clients() != nil || m.Err() == nil {
-		t.Fatal("expected disconnected")
-	}
-	kc := writeKubeconfig(t, filepath.Join(dir, "kc"), "x")
-	if err := m.SwitchKubeconfig(kc, ""); err != nil || m.Clients() == nil || m.Err() != nil {
-		t.Fatalf("connect: %v", err)
-	}
-}

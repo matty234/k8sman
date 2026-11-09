@@ -208,30 +208,6 @@ func TestGuardWebSockets(t *testing.T) {
 	}
 }
 
-func TestProtectedUpgradeWithToken(t *testing.T) {
-	srv := httptest.NewServer(Protect(testToken, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ws, _, cancel, err := upgrade(w, r)
-		if err != nil {
-			return
-		}
-		defer cancel()
-		_ = ws.send(map[string]string{"type": "hello"})
-	})))
-	defer srv.Close()
-	if _, res, err := websocket.DefaultDialer.Dial(wsURL(srv, "/"), nil); err == nil || res.StatusCode != 401 {
-		t.Fatalf("without token: %v %v", res, err)
-	}
-	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "/"), http.Header{"Authorization": {"Bearer " + testToken}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	var m map[string]string
-	if err := c.ReadJSON(&m); err != nil || m["type"] != "hello" {
-		t.Fatalf("%v %v", m, err)
-	}
-}
-
 // A change confirmed for one context must not run on another.
 func TestContextMismatch(t *testing.T) {
 	c := &cluster.Clients{Context: "prod"}

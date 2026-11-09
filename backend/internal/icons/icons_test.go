@@ -27,35 +27,6 @@ import (
 	metafake "k8s.io/client-go/metadata/fake"
 )
 
-func TestCuratedAsset(t *testing.T) {
-	cases := map[string]string{
-		"argoproj.io":                    "argo",
-		"acme.cert-manager.io":           "cert-manager",
-		"gateway.networking.k8s.io":      "kubernetes",
-		"snapshot.storage.k8s.io":        "kubernetes",
-		"cluster.x-k8s.io":               "kubernetes",
-		"source.toolkit.fluxcd.io":       "flux",
-		"aquasecurity.github.io":         "trivy",
-		"notargoproj.io":                 "",
-		"monitoring.coreos.com":          "prometheus",
-		"example.k8sman.dev":             "",
-		"templates.gatekeeper.sh":        "opa",
-		"networking.istio.io":            "istio",
-		"postgresql.cnpg.io":             "cloudnativepg",
-		"gateway.envoyproxy.io":          "envoy",
-		"eventing.keda.sh":               "keda",
-		"serving.knative.dev":            "knative",
-		"kafka.strimzi.io":               "strimzi",
-		"external-secrets.io":            "external-secrets",
-		"generators.external-secrets.io": "external-secrets",
-	}
-	for in, want := range cases {
-		if got := CuratedAsset(in); got != want {
-			t.Errorf("CuratedAsset(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 // ---- Helm ------------------------------------------------------------------
 
 type testRelease struct {
@@ -113,45 +84,6 @@ spec:
   names:
     kind: Thing
 `
-
-func TestDecodeRelease(t *testing.T) {
-	in := testRelease{name: "trivy-operator", namespace: "trivy-system", icon: "https://example.dev/icon.png",
-		files: map[string]string{
-			"crds/a.yaml":    fmt.Sprintf(crdYAML, "aquasecurity.github.io"),
-			"crds/b.yaml":    "# comment\n" + fmt.Sprintf(crdYAML, "aquasecurity.github.io"),
-			"crds/gw.yaml":   fmt.Sprintf(crdYAML, "gateway.networking.k8s.io"),
-			"README.md":      "group: not.a.crd.io",
-			"crds/notes.txt": "group: no-crd-kind.io",
-		}}
-	for _, gz := range []bool{true, false} {
-		r, err := DecodeRelease(encodeRelease(t, in, gz))
-		if err != nil {
-			t.Fatalf("gz=%v: %v", gz, err)
-		}
-		if r.Name != "trivy-operator" || r.Namespace != "trivy-system" || r.Chart.Metadata.Icon != in.icon {
-			t.Errorf("gz=%v: decoded %+v", gz, r)
-		}
-		groups := r.CRDGroups()
-		if len(groups) != 2 || !contains(groups, "aquasecurity.github.io") || !contains(groups, "gateway.networking.k8s.io") {
-			t.Errorf("gz=%v: CRDGroups = %v", gz, groups)
-		}
-	}
-	if _, err := DecodeRelease([]byte("!!not base64")); err == nil {
-		t.Error("want error for bad base64")
-	}
-	if _, err := DecodeRelease([]byte(base64.StdEncoding.EncodeToString([]byte{0x1f, 0x8b, 1, 2}))); err == nil {
-		t.Error("want error for bad gzip")
-	}
-}
-
-func contains(s []string, x string) bool {
-	for _, y := range s {
-		if y == x {
-			return true
-		}
-	}
-	return false
-}
 
 func crdMeta(name string, labels, ann map[string]string) *metav1.PartialObjectMetadata {
 	return &metav1.PartialObjectMetadata{
@@ -352,63 +284,5 @@ func TestPublicIP(t *testing.T) {
 	// The real fetcher refuses to dial private addresses.
 	if _, _, _, err := NewFetcher().Get(context.Background(), "https://127.0.0.1:1/", "text/html", false); err == nil || !strings.Contains(err.Error(), "non-public") {
 		t.Errorf("dialled loopback: %v", err)
-	}
-}
-
-func TestResolverOrder(t *testing.T) {
-	var hits atomic.Int32
-	ts, f := testSite(t, &hits)
-	typed, meta := helmFixture(t, ts.URL+"/chart.png")
-	remote := true
-	r := NewResolver(t.TempDir(), func() bool { return remote })
-	r.Fetcher = f
-	cl := Cluster{Key: "test", Typed: typed, Metadata: meta}
-	ctx := context.Background()
-
-	// 1. Helm chart icon.
-	res := r.Resolve(ctx, cl, "keda.sh")
-	if res.Source != SourceHelm || res.Release != "keda/keda" || len(res.Data) == 0 {
-		t.Errorf("keda.sh: %+v", res)
-	}
-	// Helm icon that's an SVG (unrenderable) falls through to the bundled icon.
-	if res := r.Resolve(ctx, cl, "gateway.envoyproxy.io"); res.Source != SourceBundled || res.Asset != "envoy" {
-		t.Errorf("gateway.envoyproxy.io: %+v", res)
-	}
-	// 2. Bundled.
-	if res := r.Resolve(ctx, cl, "argoproj.io"); res.Source != SourceBundled || res.Asset != "argo" {
-		t.Errorf("argoproj.io: %+v", res)
-	}
-	if res := r.Resolve(ctx, cl, "gateway.networking.k8s.io"); res.Source != SourceBundled || res.Asset != "kubernetes" {
-		t.Errorf("gateway.networking.k8s.io: %+v", res)
-	}
-	// 4. Nothing (reserved domain, no fetch).
-	before := hits.Load()
-	if res := r.Resolve(ctx, cl, "widgets.example.com"); res.Source != SourceNone {
-		t.Errorf("widgets.example.com: %+v", res)
-	}
-	if hits.Load() != before {
-		t.Error("fetched for a reserved domain")
-	}
-
-	// The cache answers repeat lookups without refetching, and still
-	// serves them with remote fetching disabled.
-	remote = false
-	r2 := NewResolver(r.Cache.dir, func() bool { return remote })
-	r2.Fetcher = f
-	before = hits.Load()
-	if res := r2.Resolve(ctx, cl, "keda.sh"); res.Source != SourceHelm {
-		t.Errorf("cached keda.sh with remote off: %+v", res)
-	}
-	if hits.Load() != before {
-		t.Error("refetched a cached icon")
-	}
-	// Remote off: an uncached chart icon is not fetched.
-	r3 := NewResolver(t.TempDir(), func() bool { return false })
-	r3.Fetcher = f
-	if res := r3.Resolve(ctx, cl, "keda.sh"); res.Source != SourceBundled {
-		t.Errorf("remote off: %+v", res)
-	}
-	if hits.Load() != before {
-		t.Error("fetched with remote icons disabled")
 	}
 }

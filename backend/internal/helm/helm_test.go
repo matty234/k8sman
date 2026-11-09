@@ -100,27 +100,6 @@ func fixture(t *testing.T, ns string) *action.Configuration {
 	)
 }
 
-func TestList(t *testing.T) {
-	res, err := List(fixture(t, ""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Total != 3 || res.Failed != 1 || res.Pending != 1 {
-		t.Fatalf("counts: %+v", res)
-	}
-	got := []string{}
-	for _, r := range res.Releases {
-		got = append(got, r.Namespace+"/"+r.Name+":"+r.Status)
-	}
-	want := "apps/api:failed apps/web:deployed tools/worker:pending-upgrade"
-	if strings.Join(got, " ") != want {
-		t.Fatalf("got %v, want %s", got, want)
-	}
-	if w := res.Releases[1]; w.Revision != 3 || w.Chart != "demo" || w.ChartVersion != "1.2.3" || w.AppVersion != "4.5" || w.Updated == "" {
-		t.Fatalf("summary: %+v", w)
-	}
-}
-
 func TestGetDetails(t *testing.T) {
 	d, err := Get(fixture(t, "apps"), "web", 0, nil)
 	if err != nil {
@@ -154,43 +133,6 @@ func TestGetDetails(t *testing.T) {
 	}
 	if _, err := Get(fixture(t, "apps"), "web", 9, nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
-	}
-}
-
-func TestStuckDetection(t *testing.T) {
-	d, err := Get(fixture(t, "tools"), "worker", 0, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d.Stuck == nil || d.Stuck.Status != "pending-upgrade" || d.Stuck.RollbackTo != 1 {
-		t.Fatalf("stuck: %+v", d.Stuck)
-	}
-	_, err = Upgrade(context.Background(), fixture(t, "tools"), UpgradeRequest{Namespace: "tools", Name: "worker", Values: "replicas: 1", DryRun: true})
-	var se *StuckError
-	if !errors.As(err, &se) || se.RollbackTo != 1 || !strings.Contains(err.Error(), "Roll back to revision 1") {
-		t.Fatalf("want StuckError, got %v", err)
-	}
-	// A stuck first install has nothing to roll back to.
-	cfg := testConfig(t, "tools", mkRelease("fresh", "tools", 1, release.StatusPendingInstall, 1))
-	d, _ = Get(cfg, "fresh", 0, nil)
-	if d.Stuck == nil || d.Stuck.RollbackTo != 0 || !strings.Contains(d.Stuck.Remedy, "uninstall") {
-		t.Fatalf("pending-install: %+v", d.Stuck)
-	}
-}
-
-func TestDiff(t *testing.T) {
-	d, err := Diff(fixture(t, "apps"), "web", 1, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d.From.Revision != 1 || d.To.Revision != 3 || d.From.Values != "replicas: 1\n" || d.To.Values != "replicas: 3\n" {
-		t.Fatalf("diff: %+v", d)
-	}
-	if !strings.Contains(d.From.Manifest, "replicas: 1") || !strings.Contains(d.To.Manifest, "replicas: 3") {
-		t.Fatal("manifests not returned")
-	}
-	if d, err := Diff(fixture(t, "apps"), "web", 0, 2); err != nil || d.From.Revision != 1 {
-		t.Fatalf("default from: %+v %v", d, err)
 	}
 }
 

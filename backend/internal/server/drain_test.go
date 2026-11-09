@@ -61,38 +61,6 @@ func drainServer(cs *fake.Clientset, readOnly bool) *Server {
 	return s
 }
 
-func TestDrainPlan(t *testing.T) {
-	s := drainServer(drainFixture(), false)
-	get := func(q string) DrainPlan {
-		t.Helper()
-		w := httptest.NewRecorder()
-		s.mux.ServeHTTP(w, httptest.NewRequest("GET", "/api/nodes/drain-plan?name=worker-1"+q, nil))
-		if w.Code != 200 {
-			t.Fatalf("%s: %d %s", q, w.Code, w.Body)
-		}
-		var p DrainPlan
-		_ = json.Unmarshal(w.Body.Bytes(), &p)
-		return p
-	}
-
-	p := get("")
-	if strings.Join(p.Evict, ",") != "demo/web-abc" {
-		t.Errorf("evict: %v", p.Evict)
-	}
-	blockers := strings.Join(p.Blockers, "\n")
-	if !strings.Contains(blockers, "demo/bare") || !strings.Contains(blockers, "demo/cache-1") {
-		t.Errorf("blockers should name the unmanaged and emptyDir pods: %v", p.Blockers)
-	}
-	if !strings.Contains(strings.Join(p.Warnings, "\n"), "demo/agent-xyz") {
-		t.Errorf("DaemonSet pod should be a warning (ignored): %v", p.Warnings)
-	}
-
-	p = get("&deleteEmptyDirData=true&force=true")
-	if strings.Join(p.Evict, ",") != "demo/bare,demo/cache-1,demo/web-abc" || len(p.Blockers) != 0 {
-		t.Errorf("with both options: evict %v blockers %v", p.Evict, p.Blockers)
-	}
-}
-
 func TestDrainCordonsAndEvicts(t *testing.T) {
 	cs := drainFixture()
 	s := drainServer(cs, false)

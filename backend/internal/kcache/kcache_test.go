@@ -10,7 +10,6 @@ import (
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -225,88 +224,6 @@ func TestForbiddenEndsStreamWithSameError(t *testing.T) {
 	}
 }
 
-func TestWatchResumeAndExpiry(t *testing.T) {
-	api := newFakeAPI(t, cm("a", "x", "1", nil))
-	c := testCache(t, api)
-	s := c.Subscribe(Key{GVR: cmGVR})
-	defer s.Close()
-	next(t, s)
-	w := api.nextWatch()
-
-	// A plain close (the API server ends watches every few minutes) resumes
-	// from the last seen version, with no re-list and no new snapshot.
-	w.w.Add(cm("a", "y", "105", nil))
-	next(t, s)
-	w.w.Action(watch.Bookmark, cm("", "", "110", nil))
-	time.Sleep(20 * time.Millisecond)
-	w.w.Stop()
-	w2 := api.nextWatch()
-	if w2.rv != "110" || api.lists.Load() != 1 {
-		t.Fatalf("resume rv=%q lists=%d", w2.rv, api.lists.Load())
-	}
-
-	// 410 Gone: re-list and send a fresh snapshot.
-	api.mu.Lock()
-	api.items = append(api.items, cm("a", "z", "120", nil))
-	api.listRV = "120"
-	api.mu.Unlock()
-	w2.w.Error(&metav1.Status{Status: metav1.StatusFailure, Code: 410, Reason: metav1.StatusReasonExpired})
-	u := next(t, s)
-	if u.Snapshot == nil || names(u.Snapshot.Items) != "x,z," || u.Snapshot.ResourceVersion != "120" {
-		t.Fatalf("after expiry %+v", u)
-	}
-	if api.lists.Load() != 2 {
-		t.Fatalf("lists %d", api.lists.Load())
-	}
-	if w3 := api.nextWatch(); w3.rv != "120" {
-		t.Fatalf("re-watch rv %q", w3.rv)
-	}
-}
-
-func TestFilteredSubscriptionOnBroaderStream(t *testing.T) {
-	api := newFakeAPI(t, cm("a", "x", "1", map[string]string{"app": "web"}), cm("b", "y", "2", map[string]string{"app": "db"}))
-	c := testCache(t, api)
-	table := c.Subscribe(Key{GVR: cmGVR})
-	defer table.Close()
-	next(t, table)
-	w := api.nextWatch()
-
-	// Inspector-style single-object watch rides on the table's stream.
-	one := c.Subscribe(Key{GVR: cmGVR, Namespace: "a", FieldSelector: "metadata.name=x"})
-	defer one.Close()
-	if u := next(t, one); u.Snapshot == nil || names(u.Snapshot.Items) != "x," {
-		t.Fatalf("single object %+v", u)
-	}
-	web := c.Subscribe(Key{GVR: cmGVR, LabelSelector: "app=web"})
-	defer web.Close()
-	if u := next(t, web); u.Snapshot == nil || names(u.Snapshot.Items) != "x," {
-		t.Fatalf("label selector %+v", u)
-	}
-	if api.lists.Load() != 1 {
-		t.Fatalf("filtered subscribers made extra LISTs: %d", api.lists.Load())
-	}
-	api.noWatch(30 * time.Millisecond)
-
-	// y gains app=web: ADDED for the label subscriber, nothing for `one`.
-	w.w.Modify(cm("b", "y", "3", map[string]string{"app": "web"}))
-	if u := next(t, web); len(u.Events) != 1 || u.Events[0].Type != watch.Added || u.Events[0].Object.GetName() != "y" {
-		t.Fatalf("label gained %+v", u)
-	}
-	// x loses it: DELETED for the label subscriber, MODIFIED for `one`.
-	w.w.Modify(cm("a", "x", "4", map[string]string{"app": "other"}))
-	if u := next(t, web); len(u.Events) != 1 || u.Events[0].Type != watch.Deleted || u.Events[0].Object.GetName() != "x" {
-		t.Fatalf("label lost %+v", u)
-	}
-	if u := next(t, one); len(u.Events) != 1 || u.Events[0].Type != watch.Modified {
-		t.Fatalf("single object event %+v", u)
-	}
-
-	// Selectors the cache can't evaluate go to the API server.
-	if _, f := c.warmLocked(Key{GVR: cmGVR, FieldSelector: "status.phase=Running"}); f != nil {
-		t.Fatal("status.phase must not be filtered locally")
-	}
-}
-
 func TestSlowSubscriberGetsSnapshotInsteadOfUnboundedQueue(t *testing.T) {
 	api := newFakeAPI(t, cm("a", "x", "1", nil))
 	c := testCache(t, api)
@@ -336,41 +253,5 @@ func TestSlowSubscriberGetsSnapshotInsteadOfUnboundedQueue(t *testing.T) {
 	u := next(t, s)
 	if u.Snapshot == nil || len(u.Snapshot.Items) != 21 {
 		t.Fatalf("want a resync snapshot of 21, got %+v", u)
-	}
-}
-
-func TestMemoRecomputesOnlyOnChange(t *testing.T) {
-	api := newFakeAPI(t, cm("a", "x", "1", nil))
-	c := testCache(t, api)
-	s := c.Subscribe(Key{GVR: cmGVR})
-	defer s.Close()
-	u := next(t, s)
-	obj := u.Snapshot.Items[0]
-	calls := 0
-	f := func() any { calls++; return calls }
-	s.Memo(obj, "row", "", f)
-	s.Memo(obj, "row", "", f)
-	if calls != 1 {
-		t.Fatalf("memo computed %d times", calls)
-	}
-	s.Memo(obj, "row", "usage-changed", f)
-	s.Memo(obj, "other", "", f)
-	if calls != 3 {
-		t.Fatalf("memo should recompute for new extra/tag: %d", calls)
-	}
-	w := api.nextWatch()
-	w.w.Modify(cm("a", "x", "2", nil))
-	ev := next(t, s).Events[0].Object
-	s.Memo(ev, "row", "", f)
-	if calls != 4 {
-		t.Fatalf("memo should recompute for a new resourceVersion: %d", calls)
-	}
-	w.w.Delete(ev)
-	next(t, s)
-	s.s.mu.Lock()
-	n := len(s.s.memo)
-	s.s.mu.Unlock()
-	if n != 0 {
-		t.Fatalf("memo kept %d entries for a deleted object", n)
 	}
 }

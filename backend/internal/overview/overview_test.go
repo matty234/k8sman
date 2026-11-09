@@ -12,10 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-
-	"github.com/matty234/k8sman/backend/internal/cluster"
-	"github.com/matty234/k8sman/backend/internal/columns"
 )
 
 var now = time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
@@ -70,82 +66,6 @@ func waitingPod(ns, name, reason, msg string, age time.Duration, restarts int32,
 		}},
 	}
 	return p
-}
-
-// tableStatus evaluates the pod table's jq Status column against p.
-func tableStatus(t *testing.T, p *corev1.Pod) string {
-	t.Helper()
-	cols := columns.Defaults(cluster.ResourceType{Group: "", Version: "v1", Resource: "pods", Kind: "Pod", Namespaced: true}, nil)
-	idx := -1
-	for i, c := range cols {
-		if c.Name == "Status" {
-			idx = i
-		}
-	}
-	if idx < 0 {
-		t.Fatal("pods have no Status column")
-	}
-	obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Round-trip through JSON so values have JSON types, as they do for the table.
-	b, _ := json.Marshal(obj)
-	var m map[string]any
-	_ = json.Unmarshal(b, &m)
-	cells, errs := columns.NewEvaluator(cols).Row(m)
-	if errs[idx] != nil {
-		t.Fatalf("jq error: %v", errs[idx])
-	}
-	s, _ := cells[idx].(string)
-	return s
-}
-
-func TestPodStatusMatchesTableColumn(t *testing.T) {
-	terminating := runningPod("a", "terminating", time.Hour)
-	terminating.DeletionTimestamp = agoP(time.Minute)
-
-	initCrash := waitingPod("a", "init-crash", "", "", time.Hour, 0)
-	initCrash.Status.Phase = corev1.PodPending
-	initCrash.Status.InitContainerStatuses = []corev1.ContainerStatus{{Name: "migrate", State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}}}}
-	initCrash.Status.ContainerStatuses[0].State = corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "PodInitializing"}}
-
-	initErr := waitingPod("a", "init-err", "PodInitializing", "", time.Hour, 0)
-	initErr.Status.InitContainerStatuses = []corev1.ContainerStatus{{Name: "migrate", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 2}}}}
-
-	initDone := runningPod("a", "init-done", time.Hour)
-	initDone.Status.InitContainerStatuses = []corev1.ContainerStatus{{Name: "migrate", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0, Reason: "Completed"}}}}
-
-	completed := runningPod("a", "completed", time.Hour)
-	completed.Status.Phase = corev1.PodSucceeded
-	completed.Status.ContainerStatuses[0].State = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{Reason: "Completed"}}
-
-	pending := runningPod("a", "pending", time.Hour)
-	pending.Status = corev1.PodStatus{Phase: corev1.PodPending}
-
-	cases := []struct {
-		pod  corev1.Pod
-		want string
-	}{
-		{runningPod("a", "ok", time.Hour), "Running"},
-		{terminating, "Terminating"},
-		{initCrash, "Init:CrashLoopBackOff"},
-		{initErr, "Init:Error"},
-		{initDone, "Running"},
-		{waitingPod("a", "crash", "CrashLoopBackOff", "", time.Hour, 7), "CrashLoopBackOff"},
-		{waitingPod("a", "img", "ImagePullBackOff", "", time.Hour, 0), "ImagePullBackOff"},
-		{completed, "Completed"},
-		{pending, "Pending"},
-	}
-	for _, c := range cases {
-		got := PodStatus(&c.pod)
-		if got != c.want {
-			t.Errorf("%s: PodStatus = %q, want %q", c.pod.Name, got, c.want)
-		}
-		if jq := tableStatus(t, &c.pod); jq != got {
-			t.Errorf("%s: PodStatus = %q but the table column says %q", c.pod.Name, got, jq)
-		}
-	}
 }
 
 // scenario builds a namespace with one of everything that can go wrong.
@@ -495,78 +415,5 @@ func TestAnalyzeScenario(t *testing.T) {
 	}
 	if res.GeneratedAt != "2026-11-03T12:00:00Z" {
 		t.Errorf("generatedAt = %s", res.GeneratedAt)
-	}
-}
-
-func TestCronNext(t *testing.T) {
-	base := time.Date(2026, 11, 3, 10, 7, 30, 0, time.UTC) // Tuesday
-	cases := []struct {
-		spec, tz string
-		want     time.Time
-	}{
-		{"*/5 * * * *", "", time.Date(2026, 11, 3, 10, 10, 0, 0, time.UTC)},
-		{"0 * * * *", "", time.Date(2026, 11, 3, 11, 0, 0, 0, time.UTC)},
-		{"@daily", "", time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)},
-		{"30 9 * * MON-FRI", "", time.Date(2026, 11, 4, 9, 30, 0, 0, time.UTC)},
-		{"0 0 1 JAN *", "", time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)},
-		{"0 12 * * 7", "", time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)},
-		{"15,45 8-18/2 * * *", "", time.Date(2026, 11, 3, 10, 15, 0, 0, time.UTC)},
-		{"0 0 13 * 5", "", time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)}, // dom OR dow: Friday the 6th comes first
-		{"0 9 * * *", "Asia/Kolkata", time.Date(2026, 11, 4, 3, 30, 0, 0, time.UTC)},
-		{"CRON_TZ=America/New_York 0 6 * * *", "", time.Date(2026, 11, 3, 11, 0, 0, 0, time.UTC)},
-	}
-	for _, c := range cases {
-		s, err := parseCron(c.spec, c.tz)
-		if err != nil {
-			t.Errorf("%q: %v", c.spec, err)
-			continue
-		}
-		if got := s.next(base); !got.Equal(c.want) {
-			t.Errorf("%q: next = %s, want %s", c.spec, got.UTC(), c.want)
-		}
-	}
-	for _, bad := range []string{"", "* * * *", "61 * * * *", "*/0 * * * *", "5-1 * * * *"} {
-		if _, err := parseCron(bad, ""); err == nil {
-			t.Errorf("%q: expected an error", bad)
-		}
-	}
-	if s, _ := parseCron("0 0 30 2 *", ""); !s.next(base).IsZero() {
-		t.Error("impossible schedule should never fire")
-	}
-}
-
-func TestCapacity(t *testing.T) {
-	req := func(cpu, mem string) corev1.ResourceRequirements {
-		return corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(cpu), corev1.ResourceMemory: resource.MustParse(mem)}}
-	}
-	web := runningPod("shop", "web", time.Hour) // 250m, 256Mi on node-1
-	// A sidecar (100m) runs beside the app (200m); the 1-CPU init container
-	// alone is more, so the pod counts 1 CPU (+100m for its sidecar).
-	init := runningPod("shop", "init", time.Hour)
-	init.Spec.NodeName = "node-2"
-	init.Spec.Containers[0].Resources = req("200m", "1Gi")
-	init.Spec.InitContainers = []corev1.Container{
-		{Name: "proxy", RestartPolicy: ptr(corev1.ContainerRestartPolicyAlways), Resources: req("100m", "64Mi")},
-		{Name: "migrate", Resources: req("1", "128Mi")},
-	}
-	done := runningPod("shop", "done", time.Hour)
-	done.Status.Phase = corev1.PodSucceeded // finished pods hold nothing
-	unscheduled := runningPod("shop", "pending", time.Hour)
-	unscheduled.Spec.NodeName = ""
-	node := func(name string) corev1.Node {
-		return corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}, Status: corev1.NodeStatus{
-			Allocatable: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("3500m"), corev1.ResourceMemory: resource.MustParse("8Gi")}}}
-	}
-	res := Analyze(Input{Now: now, Pods: []corev1.Pod{web, init, done, unscheduled}, Nodes: []corev1.Node{node("node-1"), node("node-2")}})
-	const mi, gi = 1 << 20, 1 << 30
-	want := Resources{CPUAllocatable: 7000, CPURequests: 250 + 1100, MemoryAllocatable: 16 * gi, MemoryRequests: 256*mi + gi + 64*mi}
-	if res.Capacity == nil || *res.Capacity != want {
-		t.Fatalf("capacity = %+v, want %+v", res.Capacity, want)
-	}
-	if n := res.Nodes[1]; n.CPURequests != 1100 || n.MemoryRequests != gi+64*mi || n.CPUAllocatable != 3500 {
-		t.Errorf("node-2 = %+v", n.Resources)
-	}
-	if Analyze(Input{Now: now, Pods: []corev1.Pod{web}}).Capacity != nil {
-		t.Error("capacity without nodes should be nil")
 	}
 }

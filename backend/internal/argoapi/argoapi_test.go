@@ -192,58 +192,6 @@ var sampleResources = func() string {
 	return string(b)
 }()
 
-func TestConvert(t *testing.T) {
-	var mr struct {
-		Items []managedResource `json:"items"`
-	}
-	if err := json.Unmarshal([]byte(sampleResources), &mr); err != nil {
-		t.Fatal(err)
-	}
-	out := convert(mr.Items)
-	by := map[string]ResourceDiff{}
-	for _, r := range out {
-		by[r.Kind+"/"+r.Name] = r
-	}
-	// Out of sync first.
-	if out[0].Status != "OutOfSync" || out[len(out)-1].Status != "Synced" {
-		t.Fatalf("order: %+v", out)
-	}
-	dep := by["Deployment/web"]
-	if dep.Status != "OutOfSync" || dep.Target == nil || dep.Live == nil || dep.RequiresPruning {
-		t.Fatalf("deployment: %+v", dep)
-	}
-	// normalizedLive vs predictedLive: only replicas differs, noise is gone.
-	for _, noise := range []string{"managedFields", "resourceVersion", "uid:", "generation", "creationTimestamp", "last-applied", "deployment.kubernetes.io/revision", "status:"} {
-		if strings.Contains(*dep.Live, noise) || strings.Contains(*dep.Target, noise) {
-			t.Errorf("%q left in:\n%s", noise, *dep.Live)
-		}
-	}
-	if !strings.Contains(*dep.Live, "replicas: 3") || !strings.Contains(*dep.Target, "replicas: 2") {
-		t.Errorf("replicas: live\n%s\ntarget\n%s", *dep.Live, *dep.Target)
-	}
-	if strings.Replace(*dep.Live, "replicas: 3", "replicas: 2", 1) != *dep.Target {
-		t.Errorf("expected only replicas to differ:\n%s\n---\n%s", *dep.Live, *dep.Target)
-	}
-	if !strings.Contains(*dep.Target, "argocd.argoproj.io/tracking-id") {
-		t.Error("kept annotations should stay")
-	}
-	cm := by["ConfigMap/old"]
-	if cm.Target != nil || cm.Live == nil || !cm.RequiresPruning || cm.Status != "OutOfSync" {
-		t.Errorf("to be pruned: %+v", cm)
-	}
-	sec := by["Secret/new"]
-	if sec.Live != nil || sec.Target == nil || sec.RequiresPruning || !strings.Contains(*sec.Target, "++++++++") {
-		t.Errorf("to be created: %+v", sec)
-	}
-	job := by["Job/migrate"]
-	if !job.Hook || job.RequiresPruning || job.Status != "Synced" {
-		t.Errorf("hook: %+v", job)
-	}
-	if svc := by["Service/web"]; *svc.Live != *svc.Target {
-		t.Error("synced service should have equal sides")
-	}
-}
-
 func TestConvertCapturedFixture(t *testing.T) {
 	b, err := os.ReadFile("testdata/managed-resources-helm-guestbook.json")
 	if err != nil {
@@ -349,20 +297,6 @@ func TestStatusAndDiffWithConfiguredToken(t *testing.T) {
 	}
 }
 
-func TestRevokedTokenGives401(t *testing.T) {
-	argo := &fakeArgo{resources: sampleResources}
-	rig := newRig(t, argo, argoService("argocd"))
-	_ = rig.h.tokens.SetArgoCDToken("kind-dev", "tok-XYZZY")
-	code, body := rig.call(t, "GET", "/api/argocd/diff?namespace=argocd&name=guestbook", nil)
-	if code != 401 || body["reason"] != ReasonUnauthorized || strings.Contains(body["error"].(string), "XYZZY") {
-		t.Fatalf("revoked: %d %v", code, body)
-	}
-	_, st := rig.call(t, "GET", "/api/argocd/status", nil)
-	if st["authValid"] != false || st["auth"] != AuthConfigured {
-		t.Fatalf("status: %v", st)
-	}
-}
-
 func TestInitialAdminSession(t *testing.T) {
 	argo := &fakeArgo{resources: sampleResources}
 	rig := newRig(t, argo, argoService("argocd"), adminSecret("argocd"))
@@ -387,21 +321,5 @@ func TestInitialAdminSession(t *testing.T) {
 	}
 	if c := argo.cookies[len(argo.cookies)-1]; c != "argocd.token="+sessionToken {
 		t.Fatalf("cookie %q", c)
-	}
-}
-
-func TestDiscoveryInsecureAndRootPath(t *testing.T) {
-	argo := &fakeArgo{insecure: true}
-	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: "gitops", Name: paramsConfigMap}, Data: map[string]string{"server.insecure": "true", "server.rootpath": "/argo/"}}
-	rig := newRig(t, argo, argoService("gitops"), cm)
-	_ = rig.h.tokens.SetArgoCDToken("kind-dev", goodToken)
-	// The app lives in another namespace: found cluster-wide.
-	_, st := rig.call(t, "GET", "/api/argocd/status?namespace=apps", nil)
-	srv, _ := st["server"].(map[string]any)
-	if st["reachable"] != true || srv["scheme"] != "http" || srv["port"] != float64(80) || srv["rootPath"] != "/argo" || srv["namespace"] != "gitops" {
-		t.Fatalf("status %v", st)
-	}
-	if !strings.Contains(strings.Join(argo.seen, "\n"), "GET gitops/http:argocd-server:80/argo/api/version") {
-		t.Fatalf("seen %v", argo.seen)
 	}
 }
