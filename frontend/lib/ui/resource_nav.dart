@@ -798,7 +798,12 @@ class _ViewItem extends StatelessWidget {
       ].join(' · '),
       child: _SourceListItem(
         key: ValueKey('nav-view-item-${view.id}'),
-        icon: open ? Icons.bookmark : Icons.bookmark_outline,
+        // The bookmark glyph sits high in its box (no descender, a notch at
+        // the bottom): nudge it down to centre on the label.
+        leading: (color) => Transform.translate(
+          offset: const Offset(0, 1.5),
+          child: Icon(open ? Icons.bookmark : Icons.bookmark_outline, size: 14, color: color),
+        ),
         label: view.name,
         selected: open,
         trailing: modified
