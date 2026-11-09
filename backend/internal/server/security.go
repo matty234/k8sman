@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -39,9 +38,29 @@ func (s *Server) securityRoutes() {
 	s.mux.HandleFunc("POST /api/security/scan", func(w http.ResponseWriter, r *http.Request) { handleScan(w, r, sc) })
 }
 
+// Soft deadline of /api/security, as for /api/overview: the response goes
+// out with the categories whose lists have completed by then (pods
+// excepted), the rest named in `pending`.
+const (
+	securitySoftWait = 1200 * time.Millisecond
+	securityMaxWait  = 10 * time.Second
+	securityHardWait = 30 * time.Second
+	securityReuse    = time.Second
+)
+
+// securityLists is one run of the security lists (see sourceRun).
+type securityLists = sourceRun[security.Input]
+
 // handleSecurity lists every relevant type once, in parallel, and returns
 // the security analysis. Lists that fail (e.g. RBAC forbids them) are
 // reported in `errors`, unless pods cannot be listed.
+//
+// It answers after the soft deadline (`wait`, default 1.2s, at most 10s)
+// with the categories whose lists have completed, naming the others in
+// `pending`; their lists keep running (detached from the request, under the
+// 30s limit) so the next poll finds them done. Pods are always waited for.
+// One run is shared per context and scope: includeSystem is applied at
+// analysis time.
 func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
 	q := r.URL.Query()
 	scope, err := kube.ParseNamespaces(q)
@@ -49,17 +68,27 @@ func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *secu
 		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
+	wait, err := parseSoftWait(r, securitySoftWait, securityMaxWait)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	ns := scope.String() // "" = all, "a" or a set "a,b" (see listScope)
 	c := s.mgr.Clients()
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
 
-	in, errs := listForSecurity(ctx, c, ns)
+	l := s.securityRuns.get(fmt.Sprintf("%p|%s", c, ns), func() *securityLists { return startSecurity(c, ns) })
+	if !l.await(r.Context(), wait) {
+		return
+	}
+	in, pending, errs := l.snap()
 	if err, ok := errs["pods"]; ok {
 		writeErr(w, err)
 		return
 	}
+	in.Now = time.Now()
+	in.Namespace = ns
 	in.IncludeSystem = q.Get("includeSystem") == "true"
+	in.Pending = security.PendingCategories(pending)
 	res := security.Analyze(in)
 	// Fill in images scanned on demand with the local trivy CLI.
 	for i := range res.Images {
@@ -104,174 +133,119 @@ func gatewayVersion(c *cluster.Clients) (string, map[string]bool) {
 	return "", nil
 }
 
-func listForSecurity(ctx context.Context, c *cluster.Clients, ns string) (security.Input, map[string]error) {
-	in := security.Input{Now: time.Now(), Namespace: ns}
+// securityList lists one core type into the input with set.
+func securityList[T any](l *securityLists, kc *kcache.Cache, name string, gvr schema.GroupVersionResource, ns string, set func(in *security.Input, v []T)) {
+	l.Go(name, func() (func(*security.Input), error) {
+		items, err := listTyped[T](l.Ctx, kc, gvr, ns, "")
+		if err != nil {
+			return nil, err
+		}
+		return func(in *security.Input) { set(in, items) }, nil
+	})
+}
+
+// startSecurity starts every list the analysis needs, under its own context
+// (the hard limit), not the request's, so the lists survive a request that
+// answered early.
+func startSecurity(c *cluster.Clients, ns string) *securityLists {
+	ctx, cancel := context.WithTimeout(context.Background(), securityHardWait)
+	l := newSourceRun[security.Input](ctx, "pods", nil, securityHardWait, securityReuse)
 	// Lists go through the shared watch cache (see listTyped).
 	kc := kcache.For(c)
 
-	var mu sync.Mutex
-	errs := map[string]error{}
-	var wg sync.WaitGroup
-	run := func(name string, f func() error) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := f(); err != nil {
-				mu.Lock()
-				errs[name] = fmt.Errorf("list %s: %w", name, err)
-				mu.Unlock()
-			}
-		}()
-	}
-	run("pods", func() error {
-		var err error
-		in.Pods, err = listTyped[corev1.Pod](ctx, kc, gvrPods, ns, "")
-		return err
-	})
-	run("namespaces", func() error {
+	securityList(l, kc, "pods", gvrPods, ns, func(in *security.Input, v []corev1.Pod) { in.Pods = v })
+	l.Go("namespaces", func() (func(*security.Input), error) {
+		var out []corev1.Namespace
 		if ns != "" {
 			// From a warm namespaces watch when there is one (no round trip),
 			// else a GET (listing every namespace may be forbidden).
 			if snap, ok := kc.Cached(kcache.Key{GVR: gvrNamespaces, FieldSelector: "metadata.name=" + ns}); ok && len(snap.Items) == 1 {
 				var n corev1.Namespace
-				err := runtime.DefaultUnstructuredConverter.FromUnstructured(snap.Items[0].Object, &n)
-				if err == nil {
-					in.Namespaces = append(in.Namespaces, n)
+				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(snap.Items[0].Object, &n); err != nil {
+					return nil, err
 				}
-				return err
+				out = append(out, n)
+			} else {
+				n, err := c.Typed.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, *n)
 			}
-			n, err := c.Typed.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
-			if err == nil {
-				in.Namespaces = append(in.Namespaces, *n)
+		} else {
+			var err error
+			if out, err = listTyped[corev1.Namespace](ctx, kc, gvrNamespaces, "", ""); err != nil {
+				return nil, err
 			}
-			return err
 		}
-		var err error
-		in.Namespaces, err = listTyped[corev1.Namespace](ctx, kc, gvrNamespaces, "", "")
-		return err
+		return func(in *security.Input) { in.Namespaces = out }, nil
 	})
-	run("deployments", func() error {
-		var err error
-		in.Deployments, err = listTyped[appsv1.Deployment](ctx, kc, gvrDeployments, ns, "")
-		return err
-	})
-	run("statefulsets", func() error {
-		var err error
-		in.StatefulSets, err = listTyped[appsv1.StatefulSet](ctx, kc, gvrStatefulSets, ns, "")
-		return err
-	})
-	run("daemonsets", func() error {
-		var err error
-		in.DaemonSets, err = listTyped[appsv1.DaemonSet](ctx, kc, gvrDaemonSets, ns, "")
-		return err
-	})
-	run("replicasets", func() error {
-		var err error
-		in.ReplicaSets, err = listTyped[appsv1.ReplicaSet](ctx, kc, gvrReplicaSets, ns, "")
-		return err
-	})
-	run("jobs", func() error {
-		var err error
-		in.Jobs, err = listTyped[batchv1.Job](ctx, kc, gvrJobs, ns, "")
-		return err
-	})
-	run("cronjobs", func() error {
-		var err error
-		in.CronJobs, err = listTyped[batchv1.CronJob](ctx, kc, gvrCronJobs, ns, "")
-		return err
-	})
-	run("services", func() error {
-		var err error
-		in.Services, err = listTyped[corev1.Service](ctx, kc, gvrServices, ns, "")
-		return err
-	})
-	run("serviceaccounts", func() error {
-		var err error
-		in.ServiceAccounts, err = listTyped[corev1.ServiceAccount](ctx, kc, gvrServiceAccounts, ns, "")
-		return err
-	})
-	run("ingresses", func() error {
-		var err error
-		in.Ingresses, err = listTyped[networkingv1.Ingress](ctx, kc, gvrIngresses, ns, "")
-		return err
-	})
-	run("networkpolicies", func() error {
-		var err error
-		in.NetworkPolicies, err = listTyped[networkingv1.NetworkPolicy](ctx, kc, gvrNetworkPolicies, ns, "")
-		return err
-	})
+	securityList(l, kc, "deployments", gvrDeployments, ns, func(in *security.Input, v []appsv1.Deployment) { in.Deployments = v })
+	securityList(l, kc, "statefulsets", gvrStatefulSets, ns, func(in *security.Input, v []appsv1.StatefulSet) { in.StatefulSets = v })
+	securityList(l, kc, "daemonsets", gvrDaemonSets, ns, func(in *security.Input, v []appsv1.DaemonSet) { in.DaemonSets = v })
+	securityList(l, kc, "replicasets", gvrReplicaSets, ns, func(in *security.Input, v []appsv1.ReplicaSet) { in.ReplicaSets = v })
+	securityList(l, kc, "jobs", gvrJobs, ns, func(in *security.Input, v []batchv1.Job) { in.Jobs = v })
+	securityList(l, kc, "cronjobs", gvrCronJobs, ns, func(in *security.Input, v []batchv1.CronJob) { in.CronJobs = v })
+	securityList(l, kc, "services", gvrServices, ns, func(in *security.Input, v []corev1.Service) { in.Services = v })
+	securityList(l, kc, "serviceaccounts", gvrServiceAccounts, ns, func(in *security.Input, v []corev1.ServiceAccount) { in.ServiceAccounts = v })
+	securityList(l, kc, "ingresses", gvrIngresses, ns, func(in *security.Input, v []networkingv1.Ingress) { in.Ingresses = v })
+	securityList(l, kc, "networkpolicies", gvrNetworkPolicies, ns, func(in *security.Input, v []networkingv1.NetworkPolicy) { in.NetworkPolicies = v })
 	// RBAC is listed cluster-wide: whether a role is bound, or a
 	// ClusterRoleBinding names a ServiceAccount in ns, needs every binding.
-	run("roles", func() error {
-		var err error
-		in.Roles, err = listTyped[rbacv1.Role](ctx, kc, gvrRoles, "", "")
-		return err
-	})
-	run("rolebindings", func() error {
-		var err error
-		in.RoleBindings, err = listTyped[rbacv1.RoleBinding](ctx, kc, gvrRoleBindings, "", "")
-		return err
-	})
-	run("clusterroles", func() error {
-		var err error
-		in.ClusterRoles, err = listTyped[rbacv1.ClusterRole](ctx, kc, gvrClusterRoles, "", "")
-		return err
-	})
-	run("clusterrolebindings", func() error {
-		var err error
-		in.ClusterRoleBindings, err = listTyped[rbacv1.ClusterRoleBinding](ctx, kc, gvrClusterRoleBindings, "", "")
-		return err
-	})
+	securityList(l, kc, "roles", gvrRoles, "", func(in *security.Input, v []rbacv1.Role) { in.Roles = v })
+	securityList(l, kc, "rolebindings", gvrRoleBindings, "", func(in *security.Input, v []rbacv1.RoleBinding) { in.RoleBindings = v })
+	securityList(l, kc, "clusterroles", gvrClusterRoles, "", func(in *security.Input, v []rbacv1.ClusterRole) { in.ClusterRoles = v })
+	securityList(l, kc, "clusterrolebindings", gvrClusterRoleBindings, "", func(in *security.Input, v []rbacv1.ClusterRoleBinding) { in.ClusterRoleBindings = v })
 
-	dyn := func(name string, gvr schema.GroupVersionResource, namespaced bool, dst *[]unstructured.Unstructured) {
-		run(name, func() error {
+	dyn := func(name string, gvr schema.GroupVersionResource, namespaced bool, set func(in *security.Input, v []unstructured.Unstructured)) {
+		l.Go(name, func() (func(*security.Input), error) {
 			lns := ""
 			if namespaced {
 				lns = ns
 			}
 			items, err := listCached(ctx, kc, gvr, lns)
-			if err == nil {
-				out := make([]unstructured.Unstructured, len(items))
-				for i, it := range items {
-					out[i] = *it // shares the object map: read only
-				}
-				mu.Lock()
-				*dst = out
-				mu.Unlock()
+			if err != nil {
+				return nil, err
 			}
-			return err
+			out := make([]unstructured.Unstructured, len(items))
+			for i, it := range items {
+				out[i] = *it // shares the object map: read only
+			}
+			return func(in *security.Input) { set(in, out) }, nil
 		})
 	}
 	// Optional CRDs: skipped gracefully when not installed.
 	if v, res := gatewayVersion(c); v != "" {
 		if res["gateways"] {
-			dyn("gateways", schema.GroupVersionResource{Group: gatewayGr, Version: v, Resource: "gateways"}, true, &in.Gateways)
+			dyn("gateways", schema.GroupVersionResource{Group: gatewayGr, Version: v, Resource: "gateways"}, true,
+				func(in *security.Input, v []unstructured.Unstructured) { in.Gateways = v })
 		}
 		if res["httproutes"] {
-			dyn("httproutes", schema.GroupVersionResource{Group: gatewayGr, Version: v, Resource: "httproutes"}, true, &in.HTTPRoutes)
+			dyn("httproutes", schema.GroupVersionResource{Group: gatewayGr, Version: v, Resource: "httproutes"}, true,
+				func(in *security.Input, v []unstructured.Unstructured) { in.HTTPRoutes = v })
 		}
 	}
 	if res := servedResources(c, trivyGV); res["vulnerabilityreports"] {
-		in.TrivyOperator = true
+		l.Set(func(in *security.Input) { in.TrivyOperator = true })
 		gvr := func(r string) schema.GroupVersionResource {
 			return schema.GroupVersionResource{Group: "aquasecurity.github.io", Version: "v1alpha1", Resource: r}
 		}
-		dyn("vulnerabilityreports", gvr("vulnerabilityreports"), true, &in.VulnerabilityReports)
+		dyn("vulnerabilityreports", gvr("vulnerabilityreports"), true, func(in *security.Input, v []unstructured.Unstructured) { in.VulnerabilityReports = v })
 		if res["configauditreports"] {
-			dyn("configauditreports", gvr("configauditreports"), true, &in.ConfigAuditReports)
+			dyn("configauditreports", gvr("configauditreports"), true, func(in *security.Input, v []unstructured.Unstructured) { in.ConfigAuditReports = v })
 		}
 		if res["exposedsecretreports"] {
-			dyn("exposedsecretreports", gvr("exposedsecretreports"), true, &in.ExposedSecretReports)
+			dyn("exposedsecretreports", gvr("exposedsecretreports"), true, func(in *security.Input, v []unstructured.Unstructured) { in.ExposedSecretReports = v })
 		}
 		if res["rbacassessmentreports"] {
-			dyn("rbacassessmentreports", gvr("rbacassessmentreports"), true, &in.RbacAssessmentReports)
+			dyn("rbacassessmentreports", gvr("rbacassessmentreports"), true, func(in *security.Input, v []unstructured.Unstructured) { in.RbacAssessmentReports = v })
 		}
 		if res["clusterrbacassessmentreports"] && ns == "" {
-			dyn("clusterrbacassessmentreports", gvr("clusterrbacassessmentreports"), false, &in.ClusterRbacAssessmentReports)
+			dyn("clusterrbacassessmentreports", gvr("clusterrbacassessmentreports"), false, func(in *security.Input, v []unstructured.Unstructured) { in.ClusterRbacAssessmentReports = v })
 		}
 	}
-	wg.Wait()
-	return in, errs
+	l.sealed(cancel)
+	return l
 }
 
 // OperatorStatus describes the in-cluster Trivy Operator.

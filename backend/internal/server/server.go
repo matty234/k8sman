@@ -46,6 +46,8 @@ type Server struct {
 	modules []Module
 	// overviewRuns shares one in-flight overview run per context and scope.
 	overviewRuns overviewRuns
+	// securityRuns shares one in-flight security run per context and scope.
+	securityRuns runRegistry[*securityLists]
 }
 
 // Options configures optional server behaviour.

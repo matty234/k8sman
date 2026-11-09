@@ -68,6 +68,9 @@ type Input struct {
 	// IncludeSystem includes kube-system & co. and the default `system:`
 	// RBAC objects, which are excluded by default.
 	IncludeSystem bool
+	// Pending lists the categories whose lists are still loading (see
+	// PendingCategories): their findings are dropped, not reported as zero.
+	Pending []string
 
 	Namespaces      []corev1.Namespace
 	Pods            []corev1.Pod
@@ -147,6 +150,9 @@ type Result struct {
 	TopCVEs       []CVE              `json:"topCVEs"`
 	Sources       Sources            `json:"sources"`
 	Errors        map[string]string  `json:"errors,omitempty"`
+	// Pending lists the categories still loading: their tiles, findings and
+	// sections are unknown (not zero), and the score leaves them out.
+	Pending []string `json:"pending,omitempty"`
 }
 
 // Sources reports which optional data sources contributed.
@@ -205,7 +211,11 @@ func Analyze(in Input) *Result {
 	a.workloads()
 	a.practices()
 	a.images()
+	a.dropPending()
 	a.finish()
+	if len(in.Pending) > 0 {
+		a.res.Pending = in.Pending
+	}
 	return a.res
 }
 

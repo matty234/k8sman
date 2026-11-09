@@ -335,6 +335,11 @@ class SecurityData {
   /// analysed.
   final Map<String, ClusterError> partialErrors;
 
+  /// Categories whose lists are still loading (the backend answered early):
+  /// their tiles, findings and sections are unknown, not zero, and the score
+  /// leaves them out.
+  final Set<String> pending;
+
   const SecurityData({
     required this.generatedAt,
     required this.namespace,
@@ -350,6 +355,7 @@ class SecurityData {
     this.gatewayApi = false,
     this.errors = const {},
     this.partialErrors = const {},
+    this.pending = const {},
   });
 
   factory SecurityData.fromJson(Json j) {
@@ -369,8 +375,11 @@ class SecurityData {
       gatewayApi: sources['gatewayAPI'] == true,
       errors: {for (final e in asMap(j['errors']).entries) e.key: '${e.value}'},
       partialErrors: parsePartialErrors(j['partialErrors']),
+      pending: {for (final p in (j['pending'] as List?) ?? const []) '$p'},
     );
   }
+
+  bool isPending(String category) => pending.contains(category);
 
   int countAll(SecSeverity s) => categories.fold(0, (n, c) => n + c.count(s));
 }

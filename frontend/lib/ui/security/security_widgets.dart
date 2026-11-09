@@ -150,15 +150,18 @@ class SummaryLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final score = data.score;
+    // While a category is still loading the score would leave it out: it
+    // waits (a placeholder) rather than read better than it is.
+    final partial = data.pending.isNotEmpty;
     return StatStrip(minCell: 104, maxCell: 150, items: [
       StatItem(
         'score',
-        '$score',
+        partial ? null : '$score',
         of: '/ 100',
         tooltip: 'A rough posture score: 100 with no findings; each critical costs ~9 points, high ~4, medium ~1.5.',
         tone: score < 50 ? Severity.error : (score < 80 ? Severity.warn : null),
       ),
-      StatItem(data.findings.length == 1 ? 'finding' : 'findings', '${data.findings.length}'),
+      StatItem(data.findings.length == 1 ? 'finding' : 'findings', '${data.findings.length}', note: partial ? 'so far' : null),
       for (final s in SecSeverity.values.take(3))
         if (data.countAll(s) > 0) StatItem(s.name, '${data.countAll(s)}', color: sevColor(context, s)),
     ]);
@@ -175,19 +178,22 @@ IconData categoryIcon(String id) => switch (id) {
 
 /// One unboxed cell per category, side by side: a hairline down the left
 /// (in the colour of its worst finding), the name, the total and a dot per
-/// severity. Clicking one filters the page to it.
+/// severity. Clicking one filters the page to it. A [pending] category
+/// (still loading) shows placeholders instead of its figures.
 class CategoryTiles extends StatelessWidget {
   final List<SecCategory> categories;
   final String? selected;
   final ValueChanged<String> onSelect;
-  const CategoryTiles({super.key, required this.categories, required this.selected, required this.onSelect});
+  final Set<String> pending;
+  const CategoryTiles({super.key, required this.categories, required this.selected, required this.onSelect, this.pending = const {}});
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
       final cols = (box.maxWidth / 170).floor().clamp(1, categories.length.clamp(1, 5));
       return evenGrid([
-        for (final c in categories) _CategoryTile(category: c, selected: selected == c.id, onTap: () => onSelect(c.id)),
+        for (final c in categories)
+          _CategoryTile(category: c, selected: selected == c.id, pending: pending.contains(c.id), onTap: () => onSelect(c.id)),
       ], cols, gap: 20, runGap: 14);
     });
   }
@@ -196,14 +202,32 @@ class CategoryTiles extends StatelessWidget {
 class _CategoryTile extends StatelessWidget {
   final SecCategory category;
   final bool selected;
+  final bool pending;
   final VoidCallback onTap;
-  const _CategoryTile({required this.category, required this.selected, required this.onTap});
+  const _CategoryTile({required this.category, required this.selected, required this.onTap, this.pending = false});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    final worst = SecSeverity.values.take(3).where((s) => category.count(s) > 0).firstOrNull;
+    final worst = pending ? null : SecSeverity.values.take(3).where((s) => category.count(s) > 0).firstOrNull;
+    if (pending) {
+      return HairlineCell(
+        key: ValueKey('pending-category-${category.id}'),
+        selected: selected,
+        accent: selected ? theme.colorScheme.primary : null,
+        onTap: onTap,
+        padding: const EdgeInsets.fromLTRB(12, 4, 8, 6),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _tileTitle(theme),
+          const SizedBox(height: 2),
+          // The figure's line (26px at 1.15) and the dots' line, as skeletons.
+          const SizedBox(height: 30, child: Align(alignment: Alignment.centerLeft, child: SkeletonBar(width: 34, height: 20))),
+          const SizedBox(height: 4),
+          SizedBox(height: 16, child: Align(alignment: Alignment.centerLeft, child: Text('Loading…', maxLines: 1, overflow: TextOverflow.ellipsis, style: hint))),
+        ]),
+      );
+    }
     return Tooltip(
       message: selected ? 'Show all findings' : 'Show only ${category.title}',
       waitDuration: const Duration(milliseconds: 600),
@@ -213,13 +237,7 @@ class _CategoryTile extends StatelessWidget {
         onTap: onTap,
         padding: const EdgeInsets.fromLTRB(12, 4, 8, 6),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(categoryIcon(category.id), size: 14, color: theme.hintColor),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(category.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-            ),
-          ]),
+          _tileTitle(theme),
           const SizedBox(height: 2),
           Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
             Text('${category.total}',
@@ -258,6 +276,32 @@ class _CategoryTile extends StatelessWidget {
       ),
     );
   }
+
+  Widget _tileTitle(ThemeData theme) => Row(children: [
+        Icon(categoryIcon(category.id), size: 14, color: theme.hintColor),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(category.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+        ),
+      ]);
+}
+
+/// Stands in for rows still loading: [rows] skeleton lines the height of a
+/// finding (or table) row, the later ones shorter.
+class PendingSecurityRows extends StatelessWidget {
+  final int rows;
+  const PendingSecurityRows({super.key, this.rows = 2});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (var i = 0; i < rows; i++)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+          child: FractionallySizedBox(alignment: Alignment.centerLeft, widthFactor: i == 0 ? 1 : 0.7, child: const SkeletonBar(height: 14)),
+        ),
+    ]);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +309,7 @@ class _CategoryTile extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 /// Findings grouped by category (in [categoryOrder]), sorted by severity.
+/// Categories in [pending] (still loading) show placeholder rows.
 class FindingList extends StatefulWidget {
   final List<SecFinding> findings;
   final List<SecCategory> categories;
@@ -274,7 +319,8 @@ class FindingList extends StatefulWidget {
 
   /// Hide each finding's namespace (the page is scoped to one).
   final bool hideNamespace;
-  const FindingList({super.key, required this.findings, required this.categories, this.grouped = true, this.hideNamespace = false});
+  final Set<String> pending;
+  const FindingList({super.key, required this.findings, required this.categories, this.grouped = true, this.hideNamespace = false, this.pending = const {}});
 
   @override
   State<FindingList> createState() => _FindingListState();
@@ -288,13 +334,14 @@ class _FindingListState extends State<FindingList> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (widget.findings.isEmpty) {
+    final pending = widget.pending;
+    if (widget.findings.isEmpty && pending.isEmpty) {
       return const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: InlineMessage('No findings.', icon: Icons.check_circle_outline));
     }
     final groups = <SecCategory, List<SecFinding>>{};
     for (final c in widget.categories) {
       final fs = widget.findings.where((f) => f.category == c.id).toList()..sort((a, b) => a.severity.index.compareTo(b.severity.index));
-      if (fs.isNotEmpty) groups[c] = fs;
+      if (fs.isNotEmpty || pending.contains(c.id)) groups[c] = fs;
     }
     final limit = widget.grouped ? _initial : 40;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -307,9 +354,10 @@ class _FindingListState extends State<FindingList> {
               const SizedBox(width: 6),
               Text(e.key.title, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600)),
               const SizedBox(width: 6),
-              Text('${e.value.length}', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
+              if (!pending.contains(e.key.id)) Text('${e.value.length}', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
             ]),
           ),
+        if (pending.contains(e.key.id)) PendingSecurityRows(key: ValueKey('pending-findings-${e.key.id}')),
         for (final (i, f) in (_showAll.contains(e.key.id) ? e.value : e.value.take(limit)).indexed) ...[
           if (i > 0) const Divider(height: 1),
           FindingTile(

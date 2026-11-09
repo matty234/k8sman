@@ -86,9 +86,26 @@ class _SecurityViewState extends State<SecurityView> {
     }
   }
 
-  /// Re-check while the operator is producing its first reports.
+  /// The backend answers early with the categories it has and lists the
+  /// rest in `pending`; while something is pending, fetch again after these
+  /// delays (the last repeats) instead of waiting for the normal poll.
+  static const _quickDelays = [Duration(milliseconds: 700), Duration(milliseconds: 1500), Duration(seconds: 3)];
+  int _quickStep = 0;
+
+  /// Re-fetch quickly while categories are pending, else re-check while the
+  /// operator is producing its first reports.
   void _schedulePoll() {
     _poll?.cancel();
+    _poll = null;
+    if (_data?.pending.isNotEmpty ?? false) {
+      final delay = _quickDelays[_quickStep.clamp(0, _quickDelays.length - 1)];
+      _quickStep++;
+      _poll = Timer(delay, () {
+        if (mounted && !_loading) _refresh();
+      });
+      return;
+    }
+    _quickStep = 0;
     if (_scanner?.operatorScanning == true) {
       _poll = Timer(widget.scanningPoll, () {
         if (mounted && !_loading) _refresh();
@@ -102,6 +119,7 @@ class _SecurityViewState extends State<SecurityView> {
     setState(() {
       _ns = ns;
       _data = null; // don't show another scope's numbers
+      _quickStep = 0;
     });
     _refresh();
   }
@@ -239,6 +257,14 @@ class _SecurityViewState extends State<SecurityView> {
     final filter = _filter;
     final findings = filter == null ? data.findings : data.findings.where((f) => f.category == filter).toList();
     bool show(String id) => filter == null || filter == id;
+    final pending = data.pending;
+    // A section whose category is still loading keeps its place with
+    // placeholder rows rather than reading as empty.
+    Widget pendingSection(String id, String title) => DetailSection(
+          key: ValueKey('pending-section-$id'),
+          title: title,
+          child: const PendingSecurityRows(rows: 3),
+        );
     final images = [for (final i in data.images) _scans[i.image] != null ? i.withScan(_scans[i.image]!) : i];
     return [
       SummaryLine(data: data),
@@ -251,20 +277,31 @@ class _SecurityViewState extends State<SecurityView> {
         InlineMessage('Could not list ${e.key}: ${e.value}', icon: Icons.lock_outline),
       ],
       const SizedBox(height: 14),
-      CategoryTiles(categories: data.categories, selected: filter, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
+      CategoryTiles(categories: data.categories, pending: pending, selected: filter, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
       const SizedBox(height: 14),
       DetailSection(
         title: 'Findings',
         trailing: _findingsTrailing(context, data, findings.length),
-        child: FindingList(key: ValueKey('findings-$filter'), findings: findings, categories: data.categories, grouped: filter == null, hideNamespace: _ns.single != null),
+        child: FindingList(
+          key: ValueKey('findings-$filter'),
+          findings: findings,
+          categories: data.categories,
+          grouped: filter == null,
+          hideNamespace: _ns.single != null,
+          pending: {for (final p in pending) if (show(p)) p},
+        ),
       ),
-      if (show('network'))
+      if (show('network') && data.isPending('network'))
+        pendingSection('network', 'Network exposure by namespace')
+      else if (show('network'))
         DetailSection(
           title: 'Network exposure by namespace',
           trailing: Text('${data.network.length}', style: hint),
           child: NetworkMatrix(rows: data.network),
         ),
-      if (show('rbac'))
+      if (show('rbac') && data.isPending('rbac'))
+        pendingSection('rbac', 'Most permissive grants')
+      else if (show('rbac'))
         DetailSection(
           title: 'Most permissive grants',
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -278,7 +315,9 @@ class _SecurityViewState extends State<SecurityView> {
           ]),
           child: PermissiveTable(grants: data.permissive),
         ),
-      if (show('images')) ...[
+      if (show('images') && data.isPending('images'))
+        pendingSection('images', 'Images')
+      else if (show('images')) ...[
         DetailSection(
           title: 'Images',
           trailing: Text(_imagesSummary(images), style: hint),

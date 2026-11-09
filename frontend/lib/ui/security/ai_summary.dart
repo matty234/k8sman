@@ -33,6 +33,9 @@ String securityReportForAgent(
     ..writeln('- **Scope:** $scope${d.includeSystem ? ' (including system namespaces and roles)' : ' (system namespaces and default roles excluded)'}')
     ..writeln('- **Score:** ${d.score}/100')
     ..writeln('- **Generated:** ${d.generatedAt}');
+  if (d.pending.isNotEmpty) {
+    b.writeln('- **Partial:** ${d.pending.join(', ')} still loading; the score and findings leave them out.');
+  }
   if (d.errors.isNotEmpty) {
     b.writeln('- **Incomplete data:** could not list ${d.errors.keys.join(', ')} (permissions?), so some checks are missing.');
   }
