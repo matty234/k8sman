@@ -395,7 +395,7 @@ class StatusBadge extends StatelessWidget {
         color: c.withValues(alpha: theme.brightness == Brightness.dark ? 0.15 : 0.11),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(text, style: theme.textTheme.labelSmall?.copyWith(color: c, fontSize: 11.5, fontWeight: FontWeight.w600, height: 1.4)),
+      child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelSmall?.copyWith(color: c, fontSize: 11.5, fontWeight: FontWeight.w600, height: 1.4)),
     );
   }
 }

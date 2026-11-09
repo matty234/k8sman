@@ -362,6 +362,9 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
         // ends just below them so the context picker isn't left floating.
         WindowDragArea(
           child: Builder(builder: (context) {
+            // Only macOS windowed has traffic lights here; in fullscreen (and
+            // with a native title bar elsewhere) just a little breathing room.
+            if (!nativeMacChrome || WindowChromeScope.isFullScreen(context)) return const SizedBox(height: 10);
             final band = toolbarRowHeight(context);
             const button = 32.0;
             final top = (band - button) / 2;

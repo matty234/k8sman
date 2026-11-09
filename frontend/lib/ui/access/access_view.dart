@@ -863,7 +863,18 @@ class _WhoCanTabState extends State<_WhoCanTab> {
               const SizedBox(width: 4),
               SizedBox(width: 300, child: SubjectLabel(e.subject, showKind: true)),
               if (e.fullWildcard) ...[const StatusBadge('* on *', severity: Severity.error), const SizedBox(width: 6)],
-              if (e.partial) ...[StatusBadge('only ${e.names.join(', ')}', severity: Severity.info), const SizedBox(width: 6)],
+              // Long name lists: the first two and a count, all of them in
+              // the tooltip, so the pill never pushes the row off screen.
+              if (e.partial) ...[
+                Flexible(child: Tooltip(
+                  message: 'Only these objects:\n${e.names.join('\n')}',
+                  child: StatusBadge(
+                    'only ${e.names.take(2).join(', ')}${e.names.length > 2 ? ' +${e.names.length - 2} more' : ''}',
+                    severity: Severity.info,
+                  ),
+                )),
+                const SizedBox(width: 6),
+              ],
               for (final s in e.scopes.take(3)) ...[StatusBadge(s, dense: true, severity: s == 'cluster' ? Severity.warn : Severity.info), const SizedBox(width: 8)],
               Expanded(child: Text('via $roles', style: hint, overflow: TextOverflow.ellipsis)),
               TextButton(
