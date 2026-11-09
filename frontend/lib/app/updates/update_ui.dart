@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../ui/theme.dart';
 import '../../util/format.dart';
+import '../../ui/widgets/common.dart' show AppLogo;
 import 'update_controller.dart';
 
 const repoUrl = 'https://github.com/matty234/k8sman';
@@ -142,7 +143,7 @@ class AboutPanel extends StatelessWidget {
         width: 340,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 4),
-          Icon(Icons.sailing_outlined, size: 44, color: theme.colorScheme.primary),
+          const AppLogo(size: 56),
           const SizedBox(height: 10),
           Text('k8sman', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),

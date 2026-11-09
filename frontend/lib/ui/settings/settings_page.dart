@@ -510,11 +510,10 @@ class _AboutRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final info = context.watch<UpdateController?>()?.info;
     final version = info == null || info.version.isEmpty ? 'unknown' : info.displayVersion;
     return SettingRow(
-      leading: Icon(Icons.sailing_outlined, size: 30, color: theme.colorScheme.primary),
+      leading: const AppLogo(size: 34),
       label: 'k8sman',
       description: 'Version $version · A Kubernetes desktop app',
       trailing: TextButton(onPressed: openRepo, child: const Text('GitHub')),

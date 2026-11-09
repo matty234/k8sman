@@ -794,3 +794,13 @@ Future<void> openUrl(String url) async {
   final uri = Uri.tryParse(url);
   if (uri != null) await launchUrl(uri);
 }
+
+/// The app's own icon (the macOS app icon), for About.
+class AppLogo extends StatelessWidget {
+  final double size;
+  const AppLogo({super.key, this.size = 40});
+
+  @override
+  Widget build(BuildContext context) =>
+      Image.asset('assets/icons/k8sman.png', width: size, height: size, filterQuality: FilterQuality.medium);
+}
