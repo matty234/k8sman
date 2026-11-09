@@ -13,6 +13,7 @@ import '../../util/k8s.dart';
 import '../helm/helm_api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 import '../widgets/group_icon.dart';
 import 'addon_install_dialog.dart';
 
@@ -177,45 +178,24 @@ class _AddonsViewState extends State<AddonsView> {
         child: st == null
             ? Center(child: _error == null ? const CircularProgressIndicator() : Padding(padding: const EdgeInsets.all(16), child: InlineMessage(_error!, isError: true)))
             : LayoutBuilder(builder: (context, box) {
-                const pad = 16.0, gap = 12.0;
-                final cols = ((box.maxWidth - 2 * pad + gap) / (360 + gap)).floor().clamp(1, 4);
-                final rows = <List<AddonStatus>>[for (var i = 0; i < st.length; i += cols) st.sublist(i, (i + cols).clamp(0, st.length))];
-                return ListView(padding: const EdgeInsets.all(pad), children: [
+                const pad = 20.0;
+                final cols = ((box.maxWidth - 2 * pad + 32) / (340 + 32)).floor().clamp(1, 4);
+                Widget cell(AddonStatus a) => AddonCard(
+                      key: ValueKey('addon-${a.addon.id}'),
+                      status: a,
+                      readOnly: app.readOnly,
+                      onInstall: () => _install(a),
+                      onUpgrade: () => _upgrade(a),
+                      onUninstall: () => _uninstall(a),
+                    );
+                return ListView(padding: const EdgeInsets.fromLTRB(pad, 14, pad, 24), children: [
                   if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: InlineMessage(_error!, isError: true)),
                   if (app.readOnly)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: InlineMessage('Read-only mode: k8sman was started with --read-only, so add-ons can\'t be installed, upgraded or removed here.',
-                          icon: Icons.lock_outline),
-                    )
+                    InlineMessage('Read-only mode: k8sman was started with --read-only, so add-ons can\'t be installed, upgraded or removed here.', icon: Icons.lock_outline)
                   else
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text('Cluster tools k8sman builds on, installed with Helm on ${app.currentContext}.',
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-                    ),
-                  for (final (i, row) in rows.indexed) ...[
-                    if (i > 0) const SizedBox(height: gap),
-                    IntrinsicHeight(
-                      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        for (var c = 0; c < cols; c++) ...[
-                          if (c > 0) const SizedBox(width: gap),
-                          Expanded(
-                            child: c < row.length
-                                ? AddonCard(
-                                    key: ValueKey('addon-${row[c].addon.id}'),
-                                    status: row[c],
-                                    readOnly: app.readOnly,
-                                    onInstall: () => _install(row[c]),
-                                    onUpgrade: () => _upgrade(row[c]),
-                                    onUninstall: () => _uninstall(row[c]),
-                                  )
-                                : const SizedBox(),
-                          ),
-                        ],
-                      ]),
-                    ),
-                  ],
+                    Text('Cluster tools k8sman builds on, installed with Helm on ${app.currentContext}.', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+                  const SizedBox(height: 22),
+                  evenGrid([for (final a in st) cell(a)], cols, gap: 32, runGap: 30),
                 ]);
               }),
       ),
@@ -244,7 +224,6 @@ class AddonCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = AppColors.of(context);
     final s = status;
     final a = s.addon;
     final r = s.release;
@@ -269,17 +248,13 @@ class AddonCard extends StatelessWidget {
       if (s.deployments.isNotEmpty) ('Workloads', '$ready/${s.deployments.length} deployment${s.deployments.length == 1 ? '' : 's'} available'),
     ];
     final problem = s.state == AddonState.unhealthy ? s.problem : '';
-    final border = s.state == AddonState.unhealthy ? severityColor(context, Severity.error).withValues(alpha: 0.5) : colors.separator;
     final app = context.read<AppState>();
     final compact = TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8));
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: border),
-      ),
+    // Unboxed: a hairline down the left, red while unhealthy.
+    return HairlineCell(
+      accent: s.state == AddonState.unhealthy ? severityColor(context, Severity.error) : null,
+      padding: const EdgeInsets.fromLTRB(14, 2, 0, 0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           GroupIcon(group: addonIconGroup(a.id), size: 30),
@@ -288,9 +263,9 @@ class AddonCard extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: 3),
-              Wrap(spacing: 4, runSpacing: 4, children: [
-                StatusBadge(pill, severity: sev),
-                if (s.upgradeAvailable) StatusBadge('Upgrade available: ${s.targetVersion}', severity: Severity.info),
+              Wrap(spacing: 12, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                _State(pill, sev),
+                if (s.upgradeAvailable) Text('Upgrade available: ${s.targetVersion}', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
               ]),
             ]),
           ),
@@ -353,6 +328,28 @@ class AddonCard extends StatelessWidget {
         ]),
       ]),
     );
+  }
+}
+
+/// "● Installed": a small dot in the state's colour (hollow when there's
+/// nothing to report) and the state in quiet type, red when unhealthy.
+class _State extends StatelessWidget {
+  final String text;
+  final Severity severity;
+  const _State(this.text, this.severity);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final quiet = severity == Severity.neutral || severity == Severity.info;
+    final c = quiet ? AppColors.of(context).faint : severityColor(context, severity);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: quiet ? null : c, border: quiet ? Border.all(color: c, width: 1.2) : null)),
+      const SizedBox(width: 6),
+      Flexible(
+        child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: severity == Severity.error ? c : theme.hintColor)),
+      ),
+    ]);
   }
 }
 

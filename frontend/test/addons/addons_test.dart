@@ -201,6 +201,8 @@ void main() {
 
     testWidgets('install flow: dry run, then confirm naming the context', (tester) async {
       final (_, helm) = await pumpAddons(tester);
+      await tester.ensureVisible(inCard(AddonIds.certManager, find.text('Install…')));
+      await tester.pump();
       await tester.tap(inCard(AddonIds.certManager, find.text('Install…')));
       await settle(tester);
       expect(find.text('Install cert-manager'), findsOneWidget);
