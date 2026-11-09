@@ -18,6 +18,7 @@ import '../../util/k8s.dart';
 import '../theme.dart';
 import 'drain_dialog.dart';
 import '../widgets/common.dart';
+import '../widgets/editorial.dart';
 
 /// Cluster nodes as a sortable list, grouped by role: health, utilisation
 /// bars and a per-node menu (cordon / uncordon). Clicking a row opens the
@@ -248,7 +249,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
       ),
       const Divider(),
       // Cluster-wide summary strip (wraps on narrow widths).
-      if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 12, 4), child: _Summary(nodes, _usage, _metricsError)),
+      if (nodes != null) Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 8), child: _Summary(nodes, _usage, _metricsError)),
       if (_error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: InlineMessage(_error!, isError: true)),
       Expanded(
         child: visible == null
@@ -402,28 +403,39 @@ class _GroupHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final notReady = group.nodes.where((n) => !n.ready).length;
     final cordoned = group.nodes.where((n) => n.cordoned).length;
+    // The app's section heading: the role, a hairline, the count (and any
+    // trouble, in its colour) at the end.
     return Hoverable(
       cursor: SystemMouseCursors.basic,
       onTap: onToggle,
       builder: (hovered) => Container(
-        height: 32,
-        padding: const EdgeInsets.fromLTRB(_Layout.hPad - 4, 8, _Layout.hPad, 2),
-        child: Row(children: [
-          Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 16, color: theme.hintColor),
-          const SizedBox(width: 3),
-          Flexible(
-            child: Text(group.role, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
+        height: 34,
+        padding: const EdgeInsets.fromLTRB(_Layout.hPad - 4, 10, _Layout.hPad, 2),
+        child: TitleRule(
+          title: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 16, color: hovered || collapsed ? theme.hintColor : AppColors.of(context).faint),
+            const SizedBox(width: 3),
+            Flexible(child: Text(group.role, maxLines: 1, overflow: TextOverflow.ellipsis, style: sectionTitleStyle(context))),
+          ]),
+          trailing: Text.rich(
+            TextSpan(children: [
+              if (notReady > 0) TextSpan(text: '$notReady not ready  ·  ', style: TextStyle(color: severityColor(context, Severity.error))),
+              if (cordoned > 0) TextSpan(text: '$cordoned cordoned  ·  ', style: TextStyle(color: severityColor(context, Severity.warn))),
+              TextSpan(text: '${group.nodes.length}'),
+            ]),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontFeatures: tabularFigures),
           ),
-          const SizedBox(width: 8),
-          Text('${group.nodes.length}', style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)),
-          if (notReady > 0) ...[const SizedBox(width: 10), StatusBadge('$notReady not ready', severity: Severity.error, dense: true)],
-          if (cordoned > 0) ...[const SizedBox(width: 10), StatusBadge('$cordoned cordoned', severity: Severity.warn, dense: true)],
-        ]),
+        ),
       ),
     );
   }
 }
 
+/// The cluster at a glance: large figures divided by hairlines (ready,
+/// cordoned, under pressure, then usage and requests), coloured only when
+/// something is wrong, with the metrics legend or note under them.
 class _Summary extends StatelessWidget {
   final List<NodeSummary> nodes;
   final Map<String, NodeUsage>? usage;
@@ -439,16 +451,36 @@ class _Summary extends StatelessWidget {
     final cpuAll = nodes.fold<double>(0, (a, n) => a + n.cpuAlloc);
     final memReq = nodes.fold<double>(0, (a, n) => a + n.alloc.total.memRequest);
     final memAll = nodes.fold<double>(0, (a, n) => a + n.memAlloc);
-    String pct(double a, double b) => b > 0 ? '${(a / b * 100).toStringAsFixed(0)}%' : '–';
-    return Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      StatusBadge('$ready/${nodes.length} ready', severity: ready == nodes.length ? Severity.ok : Severity.error, dense: true),
-      if (cordoned > 0) StatusBadge('$cordoned cordoned', severity: Severity.warn, dense: true),
-      if (pressure > 0) StatusBadge('$pressure under pressure', severity: Severity.error, dense: true),
-      if (usage != null)
-        Text('CPU ${pct(usage!.values.fold(0.0, (a, u) => a + u.usage.cpuMillis), cpuAll)} · Memory ${pct(usage!.values.fold(0.0, (a, u) => a + u.usage.memoryBytes), memAll)} used',
-            style: Theme.of(context).textTheme.bodySmall),
-      Text('CPU ${pct(cpuReq, cpuAll)} · Memory ${pct(memReq, memAll)} requested', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor)),
-      if (usage != null) const MeterLegend() else if (metricsError != null) MetricsUnavailableNote(metricsError),
+    StatItem pct(String label, double a, double b) {
+      if (b <= 0) return StatItem(label, '–');
+      final f = a / b;
+      final sev = thresholdSeverity(f);
+      return StatItem(label, '${(f * 100).toStringAsFixed(0)}%', tone: sev == Severity.neutral ? null : sev, frac: f);
+    }
+
+    final total = nodes.length;
+    final u = usage;
+    final note = u != null ? const MeterLegend() : (metricsError != null ? MetricsUnavailableNote(metricsError) : null);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      StatStrip(minCell: 110, maxCell: 170, items: [
+        StatItem(
+          'nodes ready',
+          '$ready',
+          of: ready < total ? '/ $total' : null,
+          // Red only when none are ready; some is amber, as on the Overview.
+          tone: ready < total ? (ready == 0 ? Severity.error : Severity.warn) : null,
+          frac: total > 0 ? ready / total : null,
+        ),
+        if (cordoned > 0) StatItem('cordoned', '$cordoned', tone: Severity.warn),
+        if (pressure > 0) StatItem('under pressure', '$pressure', tone: Severity.error),
+        if (u != null) ...[
+          pct('CPU in use', u.values.fold(0.0, (a, x) => a + x.usage.cpuMillis), cpuAll),
+          pct('memory in use', u.values.fold(0.0, (a, x) => a + x.usage.memoryBytes), memAll),
+        ],
+        pct('CPU requested', cpuReq, cpuAll),
+        pct('memory requested', memReq, memAll),
+      ]),
+      if (note != null) Padding(padding: const EdgeInsets.only(top: 8), child: Align(alignment: Alignment.centerLeft, child: note)),
     ]);
   }
 }
