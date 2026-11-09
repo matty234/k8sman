@@ -194,7 +194,13 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
   late final Set<String> _favs = {...widget.favourites};
   late List<_NsRow> _allNamespaces = _buildAll();
   late List<_NsRow> _matches = _allNamespaces;
-  int _active = 0;
+  // The highlighted row. A notifier, so moving it rebuilds only the rows that
+  // gain or lose it, not the whole popover (hover fires on every scroll frame).
+  final _activeRow = ValueNotifier<int>(0);
+  int get _active => _activeRow.value;
+  set _active(int i) => _activeRow.value = i;
+  late List<_Row> _header = _buildHeader();
+  int _favCount = 0;
   bool _done = false;
 
   String get _q => _query.text.trim().toLowerCase();
@@ -233,7 +239,13 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     return [for (final n in _favs.toList()..sort()) _NsRow(n, missing: widget.listed && !known.contains(n))];
   }
 
-  List<_Row> get _header => [const _AllRow(), ..._favRows, if (_q.isEmpty) ...[for (final r in widget.recents) _RecentRow(r)]];
+  /// The rows above the list; recomputed only when the search, stars or
+  /// remembered namespaces change, not on every build.
+  List<_Row> _buildHeader() {
+    final favs = _favRows;
+    _favCount = favs.length;
+    return [const _AllRow(), ...favs, if (_q.isEmpty) ...[for (final r in widget.recents) _RecentRow(r)]];
+  }
 
   int get _count => _header.length + _matches.length;
 
@@ -256,6 +268,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
   void dispose() {
     _query.dispose();
     _scroll.dispose();
+    _activeRow.dispose();
     super.dispose();
   }
 
@@ -263,6 +276,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     final q = _q;
     setState(() {
       _matches = _filter();
+      _header = _buildHeader();
       // While searching, Enter takes the first match.
       _active = q.isNotEmpty && _matches.isNotEmpty ? _header.length : 0;
     });
@@ -315,6 +329,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
       // Remember it, and show it as an ordinary row from now on.
       widget.onRemember(row.name);
       _remembered.add(row.name);
+      _header = _buildHeader();
       _allNamespaces = _buildAll();
       _matches = _filter();
     }
@@ -329,6 +344,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     widget.onFavourite(name);
     setState(() {
       _favs.contains(name) ? _favs.remove(name) : _favs.add(name);
+      _header = _buildHeader();
       _active = _active.clamp(0, math.max(0, _count - 1));
     });
   }
@@ -349,6 +365,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     widget.onForget(name);
     setState(() {
       _remembered.remove(name);
+      _header = _buildHeader();
       _allNamespaces = _buildAll();
       _matches = _filter();
       _active = _active.clamp(0, math.max(0, _count - 1));
@@ -384,7 +401,8 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     final header = _header;
-    final favCount = _favRows.length;
+    final favCount = _favCount;
+    final selectedNs = _value.namespaces.toSet();
     final recentCount = header.length - 1 - favCount;
     final listHeight = math.min(_matches.length * _rowHeight + 8, 320.0);
     final width = math.min(widget.width, widget.overlaySize.width - 16);
@@ -398,12 +416,13 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
         key: ValueKey('picker-option-$i'),
         row: r,
         query: r is _NsRow ? _q : '',
-        value: _value,
-        active: i == _active,
+        selected: r is _AllRow ? _value.isAll : r is _NsRow && selectedNs.contains(r.name),
+        index: i,
+        activeRow: _activeRow,
         // ⌘-click (Ctrl-click) or ⇧-click adds or removes, like a Finder list.
         onTap: () => primaryModifierPressed || HardwareKeyboard.instance.isShiftPressed ? _toggle(i) : _pick(i),
         onToggle: () => _toggle(i),
-        onHover: () => setState(() => _active = i),
+        onHover: () => _active = i,
         onRemove: r is _NsRow && r.custom ? () => _forget(r.name) : null,
         starred: r is _NsRow && !r.add && _favs.contains(r.name),
         onStar: r is _NsRow && !r.add ? () => _star(r.name) : null,
@@ -499,11 +518,18 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
   }
 }
 
-class _PickerRow extends StatelessWidget {
+/// Tests: how many picker rows have been built.
+@visibleForTesting
+int debugRowBuilds = 0;
+
+class _PickerRow extends StatefulWidget {
   final _Row row;
   final String query;
-  final NamespaceScope value;
-  final bool active;
+  final bool selected;
+
+  /// This row's position, and the notifier holding the highlighted position.
+  final int index;
+  final ValueNotifier<int> activeRow;
   final VoidCallback onTap;
   final VoidCallback onToggle;
   final VoidCallback onHover;
@@ -514,8 +540,9 @@ class _PickerRow extends StatelessWidget {
     super.key,
     required this.row,
     required this.query,
-    required this.value,
-    required this.active,
+    required this.selected,
+    required this.index,
+    required this.activeRow,
     required this.onTap,
     required this.onToggle,
     required this.onHover,
@@ -525,14 +552,59 @@ class _PickerRow extends StatelessWidget {
   });
 
   @override
+  State<_PickerRow> createState() => _PickerRowState();
+}
+
+class _PickerRowState extends State<_PickerRow> {
+  late bool active = widget.activeRow.value == widget.index;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.activeRow.addListener(_sync);
+  }
+
+  @override
+  void didUpdateWidget(_PickerRow old) {
+    super.didUpdateWidget(old);
+    if (old.activeRow != widget.activeRow) {
+      old.activeRow.removeListener(_sync);
+      widget.activeRow.addListener(_sync);
+    }
+    active = widget.activeRow.value == widget.index;
+  }
+
+  @override
+  void dispose() {
+    widget.activeRow.removeListener(_sync);
+    super.dispose();
+  }
+
+  void _sync() {
+    final now = widget.activeRow.value == widget.index;
+    if (now != active) setState(() => active = now);
+  }
+
+  _Row get row => widget.row;
+  String get query => widget.query;
+  VoidCallback get onTap => widget.onTap;
+  VoidCallback get onToggle => widget.onToggle;
+  VoidCallback get onHover => widget.onHover;
+  VoidCallback? get onRemove => widget.onRemove;
+  bool get starred => widget.starred;
+  VoidCallback? get onStar => widget.onStar;
+
+  @override
   Widget build(BuildContext context) {
+    debugRowBuilds++;
     final theme = Theme.of(context);
     final fg = active ? theme.colorScheme.onPrimary : null;
     final base = theme.textTheme.bodyMedium!.copyWith(color: fg);
-    final (String label, bool selected, bool missing) = switch (row) {
-      _AllRow() => ('All namespaces', value.isAll, false),
-      _RecentRow(:final scope) => (scope.label, false, false),
-      _NsRow(:final name, :final missing, :final add) => (add ? 'Use namespace “$name”' : name, value.namespaces.contains(name), missing),
+    final selected = widget.selected;
+    final (String label, bool missing) = switch (row) {
+      _AllRow() => ('All namespaces', false),
+      _RecentRow(:final scope) => (scope.label, false),
+      _NsRow(:final name, :final missing, :final add) => (add ? 'Use namespace “$name”' : name, missing),
     };
     final spans = <TextSpan>[];
     final i = query.isEmpty ? -1 : label.toLowerCase().indexOf(query);
