@@ -72,6 +72,9 @@ type Settings struct {
 	// AppLinks makes "Copy link" copy the k8sman:// form instead of the
 	// https://k8sman.dev/o/ one.
 	AppLinks bool `json:"appLinks,omitempty"`
+	// LinkClusterMap maps a cluster fingerprint from a shared link to the
+	// local context the user chose to open such links in.
+	LinkClusterMap map[string]string `json:"linkClusterMap,omitempty"`
 
 	// LogsNewestFirst shows log lines newest first in every log view.
 	LogsNewestFirst bool `json:"logsNewestFirst,omitempty"`
@@ -334,6 +337,7 @@ func (st *Store) Get() Settings {
 	out.Sidebar = cloneSidebar(st.s.Sidebar)
 	out.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
 	out.ContextAppearance = maps.Clone(st.s.ContextAppearance)
+	out.LinkClusterMap = maps.Clone(st.s.LinkClusterMap)
 	out.Tables = cloneTables(st.s.Tables)
 	out.DisabledModules = slices.Clone(st.s.DisabledModules)
 	out.Views = slices.Clone(st.s.Views)
@@ -358,6 +362,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	next.Sidebar = cloneSidebar(st.s.Sidebar)
 	next.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
 	next.ContextAppearance = maps.Clone(st.s.ContextAppearance)
+	next.LinkClusterMap = maps.Clone(st.s.LinkClusterMap)
 	next.Tables = cloneTables(st.s.Tables)
 	next.DisabledModules = slices.Clone(st.s.DisabledModules)
 	next.Views = slices.Clone(st.s.Views)

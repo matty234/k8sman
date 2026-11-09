@@ -59,6 +59,9 @@ type ContextInfo struct {
 	Namespace string `json:"namespace,omitempty"`
 	// Server is the cluster's API server URL.
 	Server string `json:"server,omitempty"`
+	// Fingerprint identifies the cluster in shareable links (see
+	// Fingerprint); "" when the server URL has no host.
+	Fingerprint string `json:"fingerprint,omitempty"`
 	// Auth names the exec credential plugin or auth provider that signs the
 	// user in (e.g. "kubelogin", "aws", "gke-gcloud-auth-plugin"); "" for
 	// static credentials. Such plugins may wait for a browser login.

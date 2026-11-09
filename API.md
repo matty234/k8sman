@@ -63,7 +63,7 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | `{ok, connected, context, host, kubeconfig, readOnly, error?}` |
-| GET | `/api/contexts` | `{current, contexts:[{name,cluster,user,namespace,server,auth?}]}`; `auth` names an exec plugin / auth provider (e.g. `kubelogin`) |
+| GET | `/api/contexts` | `{current, contexts:[{name,cluster,user,namespace,server,fingerprint?,auth?}]}`; `auth` names an exec plugin / auth provider (e.g. `kubelogin`); `fingerprint` identifies the cluster in shareable links (see below) |
 | POST | `/api/contexts/current` | body `{name}`: switch the kube context (remembered per kubeconfig) |
 | GET | `/api/kubeconfigs` | `{current, currentKey, context, home, merged?, candidates:[{path, contexts:[names], currentContext, source, error?}]}`. `current` is the active file (`""` = default rules merging the `merged` $KUBECONFIG files). `currentKey` is its canonical identity (see [Saved views](#saved-views)). Candidates: each `$KUBECONFIG` entry, `~/.kube/config`, other files under `~/.kube` that parse as kubeconfig (cache dirs skipped), and recently used files. `source` is `KUBECONFIG`, `default`, `kube-dir` or `recent`. Only paths and context names are returned |
 | POST | `/api/kubeconfigs/current` | body `{path}` (absolute or `~/…`): validate the file, make it active and connect to its last used context (else its current-context). Returns the same shape as GET |
@@ -78,6 +78,7 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | GET/PUT/DELETE | `/api/columns` | read `{columns, isDefault, defaults}`, save `{columns}`, or reset the user's column override |
 | GET/PUT/DELETE | `/api/settings/sidebar` | the sidebar's top section, persisted in settings.json: read `{sidebar: {items} \| null}` (null = app default), save `{items}`, or reset. Each item is a page `{view, hidden?}` (hidden pages fold under "More") or a pinned kind `{group, kind, namespace?}` (keyed by group/kind, applies across clusters). Works without a cluster connection |
 | GET/PUT | `/api/settings/links` | which form the app's Copy link produces, in settings.json: read or save `{appLinks: bool}` (false = `https://k8sman.dev/o/?…`, true = `k8sman://open?…`). Works without a cluster connection |
+| GET/PUT | `/api/settings/link-clusters` | remembered "Always open links for this cluster here" choices, in settings.json as `linkClusterMap`: read `{linkClusterMap: {fingerprint: context}}`; save one with `{fingerprint, context}` (`context: ""` removes it). `fingerprint` must match `^[0-9a-f]{12}$`; `context` is at most 253 characters with no control characters (it need not exist). 204 on success. Works without a cluster connection |
 | PUT | `/api/settings/readonly` | lock or unlock a kube context: `{context, readOnly: true \| false \| null}` (null = automatic: read-only when the name looks like production). Returns `{context, readOnly, readOnlyReason}`. `GET /api/health` reports the current context's `readOnly` and `readOnlyReason` (`flag`, `context` or `auto`); `GET /api/contexts` adds `readOnly: {context: reason}` |
 | GET | `/api/settings/views` | saved views (see [Saved views](#saved-views)): `{views: [View], launchView, kubeconfigKeys: {path: key}}`. Works without a cluster connection |
 | PUT/DELETE | `/api/settings/views/{id}` | add or replace a view (body: the View, its `id` matching the URL), or delete it. `PUT ?index=N` places the view at position N of the order (moving it if it exists; clamped to the end), so undoing a delete restores the old position. Without `index` a new view goes last and an existing one keeps its place |
@@ -167,6 +168,34 @@ namespaces. One namespace in the set behaves exactly like `namespace=`.
   (same shape as in `/api/table`), so pages show the table's banner. Metrics
   Top reads its pod list through `/api/items`, which has `partialErrors`;
   Alerts filter by label and read no namespace, so they have none. Custom and external metrics stay per namespace.
+
+## Shareable links
+
+Links are built and parsed by the app (`frontend/lib/app/links.dart`); the
+backend only supplies each context's cluster **fingerprint** and stores the
+remembered mappings (`/api/settings/link-clusters`).
+
+**Fingerprint.** `fingerprint` on each `/api/contexts` item is the first 12
+hex characters of SHA-256 over the context's API server URL, normalised
+(`cluster.NormalizeServer`) so that the same server spelled differently on
+two machines matches:
+
+- scheme and host lowercased (a URL without a scheme is taken as `https`);
+- the default port dropped (`:443` for https, `:80` for http);
+- trailing slashes dropped;
+- the path kept as written (Rancher and Teleport put the cluster in it);
+- userinfo, query and fragment dropped.
+
+`https://Prod.Example.com:443/k8s/clusters/c-1/` → `https://prod.example.com/k8s/clusters/c-1`.
+Contexts without a server host have no fingerprint. The hash is not secret:
+anyone who can guess a server address can check it against a link.
+
+**Link forms.** `https://k8sman.dev/o/?kind=…&group=…&ns=…&name=…#c=<fp>&ctx=<context>`
+(the fragment never reaches the web server) and
+`k8sman://open?kind=…&group=…&ns=…&name=…&c=<fp>&ctx=<context>` (`c` and
+`ctx` are also accepted in a `#` fragment there). `view=<page>` replaces the
+kind parameters for a page link. Older links with `ctx` in the query of either
+form still open, matched by context name.
 
 ## Columns
 

@@ -113,6 +113,7 @@ func (m *Manager) Contexts() (current string, out []ContextInfo, err error) {
 		info := ContextInfo{Name: name, Cluster: c.Cluster, User: c.AuthInfo, Namespace: c.Namespace}
 		if cl := raw.Clusters[c.Cluster]; cl != nil {
 			info.Server = cl.Server
+			info.Fingerprint = Fingerprint(cl.Server)
 		}
 		if ai := raw.AuthInfos[c.AuthInfo]; ai != nil {
 			info.Auth = authName(ai)
