@@ -165,6 +165,43 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       expect(api.controller!.hasListener, isFalse);
     });
+
+    testWidgets('moving to a seeded object renders it in the same frame, watching once settled', (tester) async {
+      final api = _SidebarApi();
+      final cm = jsonDecode(File('../dev/fixtures/cm-web-config.json').readAsStringSync()) as Json;
+      Json named(String name, String mode) => jsonDecode(jsonEncode(cm))
+        ..['metadata']['name'] = name
+        ..['metadata']['uid'] = 'uid-$name'
+        ..['data']['APP_MODE'] = mode;
+      final type = testType('', 'ConfigMap');
+      final app = AppState(api)..types = testTypes;
+      app.openDetail(DetailTarget(type: type, name: 'one', namespace: 'demo', seed: named('one', 'first-mode')));
+      tester.view.physicalSize = const Size(600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          Provider<ApiClient>.value(value: api),
+          ChangeNotifierProvider<AppState>.value(value: app),
+          ChangeNotifierProvider<LogDock>(create: (_) => LogDock(api)),
+        ],
+        child: MaterialApp(theme: buildTheme(Brightness.dark), home: const Scaffold(body: DetailSidebar())),
+      ));
+      expect(find.text('first-mode'), findsWidgets);
+      // Sections may show their own loaders; the inspector must add none.
+      final spinners = find.byType(CircularProgressIndicator).evaluate().length;
+
+      app.openDetail(DetailTarget(type: type, name: 'two', namespace: 'demo', seed: named('two', 'second-mode')));
+      await tester.pump();
+      expect(find.text('second-mode'), findsWidgets);
+      expect(find.text('first-mode'), findsNothing);
+      expect(find.byType(CircularProgressIndicator).evaluate().length, spinners);
+      // No watch until the selection settles.
+      expect(api.watches, 1);
+      await tester.pump(const Duration(milliseconds: 121));
+      expect(api.watches, 2);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 }
 

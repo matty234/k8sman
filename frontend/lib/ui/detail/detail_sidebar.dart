@@ -38,13 +38,13 @@ class DetailSidebar extends StatelessWidget {
     final app = context.watch<AppState>();
     final target = app.detail;
     if (target == null) return const SizedBox.shrink();
-    return _LiveObject(key: ValueKey(target), target: target);
+    return _LiveObject(target: target);
   }
 }
 
 class _LiveObject extends StatefulWidget {
   final DetailTarget target;
-  const _LiveObject({super.key, required this.target});
+  const _LiveObject({required this.target});
 
   @override
   State<_LiveObject> createState() => _LiveObjectState();
@@ -52,6 +52,14 @@ class _LiveObject extends StatefulWidget {
 
 class _LiveObjectState extends State<_LiveObject> {
   Json? _object;
+
+  /// Set while [_object] is the previous target's (the new one has not
+  /// arrived): shown dimmed in place of a spinner. Holds that target.
+  DetailTarget? _staleTarget;
+  bool _spin = false;
+  Timer? _settle, _spinTimer;
+  /// Recently seen objects, so going back to one renders at once.
+  static final _recent = <DetailTarget, Json>{};
   bool _deleted = false;
   String? _error;
   StreamSubscription<WatchMessage>? _sub;
@@ -65,10 +73,37 @@ class _LiveObjectState extends State<_LiveObject> {
   @override
   void initState() {
     super.initState();
+    _object = widget.target.seed;
     _subscribe();
     // Module tabs can depend on a module's detection (e.g. Hubble's Flows
     // tab only where Hubble is installed).
     moduleStatuses.addListener(_onModuleStatus);
+  }
+
+  @override
+  void didUpdateWidget(_LiveObject old) {
+    super.didUpdateWidget(old);
+    final t = widget.target;
+    if (t == old.target) return;
+    // The state outlives the target: no blank frame, tab and sections kept.
+    _sub?.cancel();
+    _retry?.cancel();
+    _spinTimer?.cancel();
+    _attempt = 0;
+    _deleted = false;
+    _error = null;
+    _spin = false;
+    final seed = t.seed ?? _recent[t];
+    if (seed != null) {
+      _object = seed;
+      _staleTarget = null;
+    } else if (_object != null) {
+      _staleTarget ??= old.target;
+      _spinTimer = Timer(const Duration(milliseconds: 300), () => mounted ? setState(() => _spin = true) : null);
+    }
+    // Holding an arrow key moves faster than it is worth watching.
+    _settle?.cancel();
+    _settle = Timer(const Duration(milliseconds: 120), () => mounted ? _subscribe() : null);
   }
 
   void _onModuleStatus() {
@@ -88,6 +123,22 @@ class _LiveObjectState extends State<_LiveObject> {
   }
 
   void _apply(WatchMessage m) {
+    if (_staleTarget != null && m.type != 'DELETED') {
+      _staleTarget = null;
+      _object = null;
+    }
+    _spinTimer?.cancel();
+    _spin = false;
+    _apply1(m);
+    final o = _object;
+    if (o != null && !_deleted) {
+      final t = widget.target;
+      _recent..remove(t)..[t] = o;
+      if (_recent.length > 20) _recent.remove(_recent.keys.first);
+    }
+  }
+
+  void _apply1(WatchMessage m) {
     switch (m.type) {
       case 'SNAPSHOT':
         _attempt = 0;
@@ -126,6 +177,8 @@ class _LiveObjectState extends State<_LiveObject> {
   void dispose() {
     moduleStatuses.removeListener(_onModuleStatus);
     _retry?.cancel();
+    _settle?.cancel();
+    _spinTimer?.cancel();
     _sub?.cancel();
     super.dispose();
   }
@@ -133,7 +186,9 @@ class _LiveObjectState extends State<_LiveObject> {
   @override
   Widget build(BuildContext context) {
     final app = context.read<AppState>();
-    final t = widget.target;
+    // While stale the body and actions are the previous object's.
+    final stale = _staleTarget != null;
+    final t = _staleTarget ?? widget.target;
     final obj = _object;
     // Rebuilt when an integration is turned on or off.
     context.select<AppState, Set<String>>((a) => a.disabledModules);
@@ -177,11 +232,11 @@ class _LiveObjectState extends State<_LiveObject> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       // With no primary actions there is no action row: the destructive
       // ones become header icons instead of a lone ⋯ menu.
-      _Header(target: t, deleted: _deleted, actions: primary.isEmpty ? rest : const []),
-      if (primary.isNotEmpty) _ActionBar(primary: primary, rest: rest),
+      _Header(target: widget.target, deleted: _deleted, actions: primary.isEmpty && !stale ? rest : const []),
+      if (primary.isNotEmpty) _dim(stale, _ActionBar(primary: primary, rest: rest)),
       const Divider(),
       Expanded(
-        child: obj == null
+        child: _dim(stale, spin: stale && _spin, obj == null
             ? Center(child: _error != null ? Padding(padding: const EdgeInsets.all(16), child: InlineMessage(_error!, isError: true)) : const CircularProgressIndicator())
             : DefaultTabController(
                 // Tab count can change between kinds; key forces a fresh controller.
@@ -231,9 +286,19 @@ class _LiveObjectState extends State<_LiveObject> {
                   ),
                 ])),
               ),
+        ),
       ),
     ]);
   }
+
+  /// [child] dimmed, inert and optionally with a spinner over it, while it
+  /// still shows the previous object.
+  static Widget _dim(bool stale, Widget child, {bool spin = false}) => !stale
+      ? child
+      : Stack(alignment: Alignment.center, children: [
+          IgnorePointer(child: Opacity(opacity: 0.55, child: child)),
+          if (spin) const CircularProgressIndicator(),
+        ]);
 
   /// Switches to the tab the table asked for (once). Returns an empty
   /// widget so it can sit in the column's children.

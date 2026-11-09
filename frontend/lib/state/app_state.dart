@@ -54,7 +54,11 @@ class DetailTarget {
   final ResourceType type;
   final String name;
   final String? namespace;
-  const DetailTarget({required this.type, required this.name, this.namespace});
+
+  /// The object as the opener had it (a table row's), shown at once while
+  /// the inspector's own watch connects. Not part of the identity.
+  final Json? seed;
+  const DetailTarget({required this.type, required this.name, this.namespace, this.seed});
 
   @override
   bool operator ==(Object other) =>

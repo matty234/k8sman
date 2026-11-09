@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
@@ -144,6 +145,36 @@ void main() {
 
     await tester.tap(find.text('crashy'));
     expect((app.detail?.type.kind, app.detail?.namespace, app.detail?.name), ('Pod', 'demo', 'crashy'));
+    await tester.pumpWidget(const SizedBox()); // dispose the poll timer
+  });
+
+  testWidgets('arrow keys move through nodes and → expands one', (tester) async {
+    final api = FakeApiClient(itemsByResource: {'nodes': _nodes(), 'pods': _pods()});
+    final app = AppState(api)
+      ..types = testTypes
+      ..currentContext = 'kind-k8sman-dev';
+    tester.view.physicalSize = const Size(1400, 860);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+      child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(Brightness.dark), home: const Scaffold(body: NodesView())),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    // Problem nodes sort first: worker-sick, then the control plane.
+    await tester.tap(find.text('worker-sick'));
+    await tester.pump();
+    expect(app.detail?.name, 'worker-sick');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(app.detail?.name, 'k8sman-dev-control-plane');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(find.text('crashy'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(app.detail?.type.kind, 'Pod');
     await tester.pumpWidget(const SizedBox()); // dispose the poll timer
   });
 }

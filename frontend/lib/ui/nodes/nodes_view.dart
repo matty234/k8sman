@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../actions/actions.dart';
@@ -249,6 +250,92 @@ class _NodesViewState extends State<NodesView> with PollingState {
 
   ApiClient get _api => context.read<ApiClient>();
 
+  /// Keyboard: the list takes focus on a click (the filter field keeps its
+  /// own), and arrows walk the visible rows.
+  final _focus = FocusNode(debugLabel: 'nodes-list');
+  final _scroll = ScrollController();
+  List<Object> _shown = const [];
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  DetailTarget? _targetOf(AppState app, Object item) {
+    final node = app.typeFor('', 'Node'), pod = app.typeFor('', 'Pod');
+    if (item is NodeSummary && node != null) return DetailTarget(type: node, name: item.name, seed: item.node);
+    if (item is _PodItem && pod != null) {
+      return DetailTarget(type: pod, name: dig<String>(item.pod, ['metadata', 'name']) ?? '', namespace: dig<String>(item.pod, ['metadata', 'namespace']), seed: item.pod);
+    }
+    return null;
+  }
+
+  /// Rows that can be selected: nodes and pods (not pool headers or "Show all").
+  bool _selectable(Object o) => o is NodeSummary || o is _PodItem;
+
+  void _scrollTo(int i) {
+    if (!_scroll.hasClients) return;
+    double h(Object o) => switch (o) { _Group() => 34, NodeSummary() => 46, _PodItem() => 30, _ => 28 };
+    var y = 0.0;
+    for (var k = 0; k < i; k++) {
+      y += h(_shown[k]);
+    }
+    final view = _scroll.position.viewportDimension;
+    if (y < _scroll.offset) {
+      _scroll.jumpTo(y);
+    } else if (y + h(_shown[i]) > _scroll.offset + view) {
+      _scroll.jumpTo((y + h(_shown[i]) - view).clamp(0, _scroll.position.maxScrollExtent));
+    }
+  }
+
+  void _select(AppState app, int i) {
+    final t = _targetOf(app, _shown[i]);
+    if (t != null) app.openDetail(t);
+    _scrollTo(i);
+  }
+
+  KeyEventResult _onKey(KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final k = HardwareKeyboard.instance;
+    if (k.isMetaPressed || k.isControlPressed || k.isAltPressed) return KeyEventResult.ignored;
+    final key = e.logicalKey;
+    final app = context.read<AppState>();
+    final rows = [for (var i = 0; i < _shown.length; i++) if (_selectable(_shown[i])) i];
+    if (rows.isEmpty) return KeyEventResult.ignored;
+    final cur = _shown.indexWhere((o) {
+      final t = _selectable(o) ? _targetOf(app, o) : null;
+      return t != null && t == app.detail;
+    });
+    final at = rows.indexOf(cur);
+    if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.arrowUp) {
+      final next = at < 0 ? 0 : (at + (key == LogicalKeyboardKey.arrowDown ? 1 : -1)).clamp(0, rows.length - 1);
+      _select(app, rows[next]);
+    } else if (key == LogicalKeyboardKey.home || key == LogicalKeyboardKey.end) {
+      _select(app, key == LogicalKeyboardKey.home ? rows.first : rows.last);
+    } else if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+      _select(app, rows[at < 0 ? 0 : at]);
+    } else if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.arrowLeft) {
+      if (cur < 0) return KeyEventResult.handled;
+      final o = _shown[cur];
+      final n = o is NodeSummary ? o : (o as _PodItem).node;
+      if (key == LogicalKeyboardKey.arrowRight) {
+        if (o is NodeSummary && !_expanded.contains(n.name) && n.pods.isNotEmpty) setState(() => _expanded.add(n.name));
+      } else if (_expanded.contains(n.name)) {
+        setState(() => _expanded.remove(n.name));
+        // A pod's node takes over the selection when its pods fold away.
+        if (o is _PodItem) {
+          final t = _targetOf(app, n);
+          if (t != null) app.openDetail(t);
+        }
+      }
+    } else {
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -386,7 +473,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
                 ? Center(child: Text('No nodes', style: TextStyle(color: theme.hintColor)))
                 : LayoutBuilder(builder: (context, box) {
                     final layout = NodeLayout.forWidth(box.maxWidth);
-                    final items = _items(visible);
+                    final items = _shown = _items(visible);
                     // Until usage answers, assume it will (no "requests" flip).
                     final metrics = _usage != null || _usageLoading;
                     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -394,7 +481,13 @@ class _NodesViewState extends State<NodesView> with PollingState {
                       Expanded(
                         // Lazy: only the rows on screen are built, laid out
                         // and painted.
-                        child: ListView.builder(
+                        child: Listener(
+                         onPointerDown: (_) => _focus.requestFocus(),
+                         child: Focus(
+                          focusNode: _focus,
+                          onKeyEvent: (_, e) => _onKey(e),
+                          child: ListView.builder(
+                          controller: _scroll,
                           padding: const EdgeInsets.only(bottom: 12),
                           itemCount: items.length,
                           itemBuilder: (context, i) => switch (items[i]) {
@@ -430,7 +523,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
                                 onChanged: _refresh,
                               ),
                           },
-                        ),
+                        ))),
                       ),
                     ]);
                   }),
@@ -749,7 +842,7 @@ class _NodeRow extends StatelessWidget {
 
     return Hoverable(
       cursor: SystemMouseCursors.basic,
-      onTap: type == null ? null : () => app.openDetail(DetailTarget(type: type, name: n.name)),
+      onTap: type == null ? null : () => app.openDetail(DetailTarget(type: type, name: n.name, seed: n.node)),
       // The same menu as a table row: cordon, drain, copy link, kubectl…
       onSecondaryTapUp: type == null
           ? null
@@ -882,7 +975,7 @@ class _PodRow extends StatelessWidget {
 
     return Hoverable(
       cursor: SystemMouseCursors.basic,
-      onTap: type == null ? null : () => app.openDetail(DetailTarget(type: type, name: name, namespace: ns)),
+      onTap: type == null ? null : () => app.openDetail(DetailTarget(type: type, name: name, namespace: ns, seed: pod)),
       onSecondaryTapUp: type == null
           ? null
           : (d) => showRowContextMenu(context, d.globalPosition, type, TableRowData(uid: '$ns/$name', name: name, namespace: ns, resourceVersion: '', cells: const [])),

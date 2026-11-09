@@ -371,7 +371,7 @@ class _TableBodyState extends State<_TableBody> {
       app.detail?.type == type && app.detail?.name == row.name && app.detail?.namespace == (type.namespaced ? row.namespace : null);
 
   void _open(AppState app, ResourceType type, TableRowData row, {DetailTab? tab}) =>
-      app.openDetail(DetailTarget(type: type, name: row.name, namespace: type.namespaced ? row.namespace : null), tab: tab);
+      app.openDetail(DetailTarget(type: type, name: row.name, namespace: type.namespaced ? row.namespace : null, seed: row.object), tab: tab);
 
   /// Plain click: select just this row and inspect it. ⌘-click toggles it
   /// in the selection; ⇧-click selects the range from the anchor.
