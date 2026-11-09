@@ -89,7 +89,7 @@ class _ContainerRowState extends State<ContainerRow> {
       onTap: _toggle,
       builder: (hovered) => Container(
         decoration: BoxDecoration(
-          color: hovered && !_open ? colors.hover.withValues(alpha: 0.5) : null,
+          color: hovered && !_open ? colors.hover : null,
           borderRadius: BorderRadius.circular(5),
         ),
         padding: const EdgeInsets.fromLTRB(4, 7, 2, 7),
