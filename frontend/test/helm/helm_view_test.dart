@@ -87,7 +87,6 @@ void main() {
     final y = {for (final n in ['worker', 'api', 'web', 'metrics-server']) n: tester.getTopLeft(find.text(n).first).dy};
     expect(y['worker']! < y['api']! && y['api']! < y['web']! && y['web']! < y['metrics-server']!, isTrue);
     expect(find.textContaining('Stuck in pending-upgrade'), findsOneWidget);
-    await saveScreenshot(tester, 'helm-list');
 
     await tester.enterText(find.byType(TextField).first, 'metrics');
     await settle(tester);
@@ -117,14 +116,12 @@ void main() {
     expect(app.detail?.namespace, 'helm-demo');
     app.closeDetail();
     await settle(tester);
-    await saveScreenshot(tester, 'helm-detail');
 
     await openTab(tester, 'Values');
     expect(tester.widget<HelmYamlView>(find.byType(HelmYamlView)).text, contains('replicaCount: 2'));
     await tester.tap(find.text('Computed'));
     await tester.pumpAndSettle();
     expect(tester.widget<HelmYamlView>(find.byType(HelmYamlView)).text, contains('pullPolicy: IfNotPresent'));
-    await saveScreenshot(tester, 'helm-values');
 
     await openTab(tester, 'Manifest');
     expect(tester.widget<HelmYamlView>(find.byType(HelmYamlView)).text, contains('kind: Deployment'));
@@ -135,13 +132,11 @@ void main() {
 
     await openTab(tester, 'History');
     expect(find.text('current'), findsOneWidget);
-    await saveScreenshot(tester, 'helm-history');
     await tester.tap(find.byTooltip('Diff with current').at(1)); // revision 3
     await tester.pumpAndSettle();
     expect(helm.calls, contains('diff helm-demo/web 3→5'));
     expect(find.text('web: revision 3 → 5'), findsOneWidget);
     expect(find.byType(DiffView), findsOneWidget);
-    await saveScreenshot(tester, 'helm-history-diff');
     await tester.tap(find.textContaining('Values  '));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Close'));
@@ -157,14 +152,12 @@ void main() {
     await tester.tap(find.text('Edit values'));
     await tester.pumpAndSettle();
     expect(find.text('Edit values of api'), findsOneWidget);
-    await saveScreenshot(tester, 'helm-upgrade-editor');
     await tester.tap(find.text('Dry run & review'));
     await tester.pumpAndSettle();
     expect(helm.calls, ['upgrade helm-demo/api dryRun=true']);
     expect(find.text('Upgrade api with these values?'), findsOneWidget);
     expect(find.byType(DiffView), findsOneWidget);
     expect(find.text('kind-k8sman-dev'), findsOneWidget);
-    await saveScreenshot(tester, 'helm-upgrade-confirm');
 
     // Cancel goes back to the editor with the edits kept…
     await tester.tap(find.text('Cancel').last);
@@ -247,7 +240,6 @@ void main() {
         }
         await selectRelease(tester, 'worker');
         expect(tester.takeException(), isNull, reason: 'overflow at ${w}x$h (stuck banner)');
-        if (h == 900 && (w == 720 || w == 1020)) await saveScreenshot(tester, 'helm-${w.toInt()}');
         await dispose(tester);
       }
     }

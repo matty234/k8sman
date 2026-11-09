@@ -45,7 +45,6 @@ void main() {
     await gesture.moveTo(tester.getCenter(chart) + const Offset(60, 0));
     await tester.pump();
     expect(find.text('CPU'), findsNWidgets(2)); // chart title + tooltip row
-    await saveScreenshot(tester, 'pod-history');
     await gesture.removePointer();
 
     // Per-container breakdown.
@@ -54,7 +53,6 @@ void main() {
     expect(find.text('nginx'), findsWidgets);
     expect(find.text('log-sidecar'), findsWidgets);
     expect(tester.takeException(), isNull);
-    await saveScreenshot(tester, 'pod-history-containers');
   });
 
   testWidgets('pod panel puts the metrics charts after the status and containers', (tester) async {

@@ -90,7 +90,6 @@ void main() {
     expect(find.byType(AlertLabelChips), findsWidgets);
     final link = find.descendant(of: find.byType(AlertTargetLink), matching: find.textContaining('demo/crashy'));
     expect(link, findsWidgets);
-    await saveScreenshot(tester, 'alerts-page');
     await tester.tap(link.first);
     await tester.pump();
     expect(app.detail?.name, 'crashy');
@@ -151,7 +150,6 @@ void main() {
     expect(find.textContaining('Matches 1 current alert'), findsOneWidget);
     await tester.tap(find.text('4h'));
     await tester.pump();
-    await saveScreenshot(tester, 'alerts-silence-dialog');
     await tester.tap(find.widgetWithText(FilledButton, 'Silence'));
     await tester.pumpAndSettle();
     expect(api.sent, hasLength(1));
@@ -181,7 +179,6 @@ void main() {
     await loadRealFonts();
     await pumpAlerts(tester, api: FixturePromApi(missing: true), size: const Size(900, 600));
     expect(find.text('No Alertmanager found'), findsOneWidget);
-    await saveScreenshot(tester, 'alerts-missing');
     await tester.tap(find.text('Install Prometheus stack…'));
     await tester.pumpAndSettle();
     expect(find.text('Install Prometheus stack'), findsOneWidget);
@@ -213,7 +210,6 @@ void main() {
     await pumpAlerts(tester, size: const Size(360, 900));
     await tester.tap(find.text('K8smanDemoPodCrashLooping'));
     await tester.pump();
-    await saveScreenshot(tester, 'alerts-narrow');
     await disposeView(tester);
   });
 }

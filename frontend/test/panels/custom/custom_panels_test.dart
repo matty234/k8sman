@@ -118,7 +118,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('timeoutSeconds'), findsOneWidget);
       expect(find.text('int-or-string'), findsOneWidget);
-      await saveScreenshot(tester, 'custom-crd-backups');
 
       await tester.enterText(find.byType(TextField), 'secret');
       await tester.pumpAndSettle();
@@ -134,12 +133,6 @@ void main() {
       expect(find.text('preserve-unknown-fields'), findsWidgets);
     });
 
-    testWidgets('widgets CRD screenshot', (tester) async {
-      await loadRealFonts();
-      final api = FakeApiClient(itemsByResource: {'widgets.example.k8sman.dev': [_devFixture('widget-sprocket.json')]});
-      await pumpPanel(tester, _devFixture('crd-widgets.example.k8sman.dev.json'), api: api, size: const Size(560, 1800));
-      await saveScreenshot(tester, 'custom-crd-widgets');
-    });
   });
 
   group('generic fallback', () {
@@ -162,7 +155,6 @@ void main() {
       expect(find.text('core'), findsOneWidget); // tags as chips
       expect(find.text('platform@example.com'), findsOneWidget);
       expect(find.text('CRD'), findsOneWidget);
-      await saveScreenshot(tester, 'custom-widget-sprocket');
     });
 
     testWidgets('CR with refs, tables, generation drift and schema descriptions', (tester) async {
@@ -192,7 +184,6 @@ void main() {
       final tip = tester.widget<Tooltip>(find.ancestor(of: find.text('Schedule'), matching: find.byType(Tooltip)).first);
       expect(tip.message, contains('Cron schedule in UTC'));
 
-      await saveScreenshot(tester, 'custom-backup-nightly');
 
       await tester.tap(find.text('Secret/s3-creds'));
       await tester.pump();
@@ -262,7 +253,6 @@ void main() {
       expect(find.text('Holder identity'), findsOneWidget);
       expect(find.text('Lease duration seconds'), findsOneWidget);
       expect(find.textContaining('ago'), findsWidgets);
-      await saveScreenshot(tester, 'custom-lease');
     });
 
     testWidgets('built-in APIService (cluster-scoped, conditions)', (tester) async {
@@ -271,7 +261,6 @@ void main() {
       await pumpGeneric(tester, _fixture('apiservice-v1alpha1.example.k8sman.dev.json'), t, size: const Size(560, 600));
       expect(find.text('Available'), findsWidgets);
       expect(find.text('Group priority minimum'), findsOneWidget);
-      await saveScreenshot(tester, 'custom-apiservice');
     });
 
     testWidgets('top-level fields beyond spec/status, and empty objects', (tester) async {
@@ -304,7 +293,6 @@ void main() {
       expect(find.text('Webhooks'), findsOneWidget);
       expect(find.text('Service/ops-system/injector'), findsOneWidget);
       expect(find.text('CREATE'), findsOneWidget);
-      await saveScreenshot(tester, 'custom-mwc');
 
       await pumpGeneric(tester, {'apiVersion': 'example.dev/v1', 'kind': 'Thing', 'metadata': {'name': 'x'}},
           const ResourceType(group: 'example.dev', version: 'v1', resource: 'things', kind: 'Thing', namespaced: false));

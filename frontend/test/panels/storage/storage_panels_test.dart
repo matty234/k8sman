@@ -51,7 +51,6 @@ void main() {
     testWidgets('bound claim: capacity, links, mounted by, statefulset', (tester) async {
       await loadRealFonts();
       final app = await pumpPanel(tester, pvc, api: api());
-      await saveScreenshot(tester, 'storage-pvc-bound');
 
       expect(find.text('Bound'), findsOneWidget);
       expect(find.text('requested'), findsNothing); // same as provisioned
@@ -82,7 +81,6 @@ void main() {
       p['metadata']['annotations'].remove('volume.kubernetes.io/selected-node');
       p['status'] = {'phase': 'Pending'};
       await pumpPanel(tester, p, api: api(pods: []));
-      await saveScreenshot(tester, 'storage-pvc-pending');
       expect(find.text('Pending: waiting for a pod to be scheduled'), findsOneWidget);
       expect(find.textContaining('No pod in this namespace uses this claim'), findsOneWidget);
     });
@@ -150,7 +148,6 @@ void main() {
     testWidgets('hostPath volume from kind', (tester) async {
       await loadRealFonts();
       final app = await pumpPanel(tester, pv, api: api());
-      await saveScreenshot(tester, 'storage-pv-hostpath');
       expect(find.text('Source · hostPath'), findsOneWidget);
       expect(find.text('Reclaim policy: Delete'), findsOneWidget);
       expect(find.text('demo/data-redis-0'), findsOneWidget);
@@ -188,7 +185,6 @@ void main() {
       };
       p['status'] = {'phase': 'Released'};
       await pumpPanel(tester, p, api: api());
-      await saveScreenshot(tester, 'storage-pv-csi');
       expect(find.text('Source · CSI'), findsOneWidget);
       await openSection(tester, 'pv-source');
       await openSection(tester, 'pv-affinity');
@@ -247,7 +243,6 @@ void main() {
       other['metadata']['name'] = 'elsewhere';
       other['spec']['storageClassName'] = 'fast';
       final app = await pumpPanel(tester, sc, api: api(pvcs: [pvc, pending, other]));
-      await saveScreenshot(tester, 'storage-sc-standard');
       expect(find.text('default'), findsOneWidget);
       expect(find.text('WaitForFirstConsumer'), findsOneWidget);
       expect(find.textContaining('only once a pod using the claim is scheduled'), findsOneWidget);

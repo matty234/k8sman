@@ -13,7 +13,6 @@ import 'package:provider/provider.dart';
 
 import 'group_icon_test.dart' show solidPng;
 import 'support/fixture_api.dart';
-import 'support/screenshot.dart';
 
 ResourceType crd(String group, String kind, {bool namespaced = true}) => ResourceType(
       group: group,
@@ -116,9 +115,9 @@ Future<void> settleImages(WidgetTester tester) async {
 void main() {
   setUp(GroupIconCache.clear);
 
-  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
-    testWidgets('nav with custom resource groups (${mode.name})', (tester) async {
-      await loadRealFonts();
+  {
+    const mode = ThemeMode.light;
+    testWidgets('nav with custom resource groups', (tester) async {
       final png = (await tester.runAsync(() => solidPng(const Color(0xFF24A1C1), size: 64)))!;
       final app = await pumpApp(tester, CrdFixtureApi(png), mode);
       // CRD groups live under a collapsed "Custom Resources" header.
@@ -147,8 +146,6 @@ void main() {
       app.openDetail(DetailTarget(type: app.typeFor('argoproj.io', 'Application')!, name: 'guestbook', namespace: 'argocd'));
       await tester.pump(const Duration(milliseconds: 50));
       await settleImages(tester);
-      // ignore: avoid_print
-      print('screenshot: ${await saveScreenshot(tester, 'nav-group-icons-${mode.name}')}');
       expect(tester.takeException(), isNull);
     });
   }

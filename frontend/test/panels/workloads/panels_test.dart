@@ -34,7 +34,6 @@ void main() {
     // Owner of the live pods is the live rev-1 RS uid; add it with that uid.
     final api = fakeApi({'pods': [...pods, strayWebPod()], 'replicasets.apps': rs});
     final app = await pumpPanel(tester, loadFixture('deploy-web.json'), api: api);
-    await saveScreenshot(tester, 'workloads-deployment');
 
     expect(find.text('Available 2/2'), findsOneWidget);
     expect(find.text('Rollout complete · revision 1'), findsOneWidget);
@@ -89,7 +88,6 @@ void main() {
     final retained = clone(pvcs.first, (c) => c['metadata']['name'] = 'data-redis-3');
     final api = fakeApi({'pods': pods, 'persistentvolumeclaims': [...pvcs, retained]});
     final app = await pumpPanel(tester, loadFixture('sts-redis.json'), api: api);
-    await saveScreenshot(tester, 'workloads-statefulset');
 
     expect(find.text('Up to date'), findsOneWidget);
     await expandSection(tester, 'claims');
@@ -108,7 +106,6 @@ void main() {
     await loadRealFonts();
     final api = fakeApi({'pods': pods});
     final app = await pumpPanel(tester, loadFixture('ds-node-agent.json'), api: api);
-    await saveScreenshot(tester, 'workloads-daemonset');
 
     expect(find.text('Ready on 1/1 nodes'), findsOneWidget);
     expect(find.text('1 toleration'), findsOneWidget); // Scheduling, collapsed
@@ -125,7 +122,6 @@ void main() {
     final rs = loadLocal('replicasets-demo.json').firstWhere((r) => r['metadata']['name'] == 'web-6fd47b8fcb');
     final api = fakeApi({'pods': [...pods, strayWebPod()]});
     final app = await pumpPanel(tester, rs, api: api);
-    await saveScreenshot(tester, 'workloads-replicaset');
 
     expect(find.text('Ready 2/2'), findsOneWidget);
     expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget);
@@ -138,7 +134,6 @@ void main() {
   testWidgets('HPA: target link, range, metric with missing current', (tester) async {
     await loadRealFonts();
     final app = await pumpPanel(tester, loadFixture('hpa-web.json'));
-    await saveScreenshot(tester, 'workloads-hpa');
 
     expect(find.text('Scaling inactive'), findsOneWidget);
     expect(find.text('ScalingActive: FailedGetResourceMetric'), findsOneWidget);
@@ -188,7 +183,6 @@ void main() {
       };
     });
     await pumpPanel(tester, hpa);
-    await saveScreenshot(tester, 'workloads-hpa-full');
     expect(find.text('Scaling limited'), findsOneWidget);
     expect(find.text('ScalingLimited: TooManyReplicas'), findsOneWidget);
     await expandSection(tester, 'behavior');
@@ -218,7 +212,6 @@ void main() {
       },
     };
     await pumpPanel(tester, pdb, api: fakeApi({'pods': pods}), type: pdbType);
-    await saveScreenshot(tester, 'workloads-pdb');
     expect(find.text('Blocks voluntary evictions'), findsOneWidget);
     expect(find.text('0 disruptions allowed'), findsOneWidget);
     expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget);

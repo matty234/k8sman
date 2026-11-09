@@ -73,7 +73,6 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('container-row-log-sidecar')));
     await tester.tap(find.byKey(const ValueKey('pod-section-configuration')));
     await tester.pump();
-    await saveScreenshot(tester, 'pod-web');
     expect(find.text('HTTP :http/ · 5s · fails after 3'), findsOneWidget); // readiness, one line
     expect(find.text('Burstable'), findsOneWidget);
     expect(find.text('field metadata.name'), findsOneWidget);
@@ -118,7 +117,6 @@ void main() {
   testWidgets('pod-crashy shows CrashLoop insight and last state', (tester) async {
     await loadRealFonts();
     await pumpPanel(tester, fixture('pod-crashy'));
-    await saveScreenshot(tester, 'pod-crashy');
     expect(tester.takeException(), isNull);
     expect(find.textContaining('is in CrashLoopBackOff: restarted 6 times, last exit code 3'), findsOneWidget);
     expect(find.text('Last state'), findsOneWidget);
@@ -130,7 +128,6 @@ void main() {
   testWidgets('pod-bad-image explains the image pull failure', (tester) async {
     await loadRealFonts();
     await pumpPanel(tester, fixture('pod-bad-image'));
-    await saveScreenshot(tester, 'pod-bad-image');
     expect(tester.takeException(), isNull);
     expect(find.textContaining("can't pull image registry.invalid/nope:latest"), findsOneWidget);
     expect(find.text('ImagePullBackOff'), findsWidgets);
@@ -174,7 +171,6 @@ void main() {
     expect(find.textContaining('ended'), findsOneWidget);
     // Pinned to the bottom: the last line is visible.
     expect(find.textContaining('200 299'), findsOneWidget);
-    await saveScreenshot(tester, 'pod-logs');
 
     await tester.enterText(find.byType(TextField), 'upstream');
     await tester.pump();
@@ -184,7 +180,6 @@ void main() {
     await tester.pump();
     expect(find.textContaining('upstream timed out (7)'), findsOneWidget);
     expect(find.textContaining('GET /healthz'), findsNothing);
-    await saveScreenshot(tester, 'pod-logs-filtered');
 
     // Clear empties the buffer and counts the dropped lines.
     await tester.tap(find.byTooltip('Clear'));
@@ -209,7 +204,6 @@ void main() {
     await loadRealFonts();
     var dock = await pumpLogDock(tester, fixture('pod-bad-image'), size: const Size(560, 300));
     expect(find.textContaining('has not started yet: ImagePullBackOff'), findsOneWidget);
-    await saveScreenshot(tester, 'pod-logs-not-started');
     dock.closeAll();
 
     dock = await pumpLogDock(tester, fixture('pod-crashy'),

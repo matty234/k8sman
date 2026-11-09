@@ -83,7 +83,6 @@ void main() {
     expect(find.text('  replicas: 2'), findsOneWidget);
     expect(find.text('Deployment/helm-guestbook'), findsOneWidget);
     expect(find.text('will be pruned'), findsNothing);
-    await saveScreenshot(tester, 'argocd-app-diff');
 
     await tester.tap(toggle(cmKey));
     await tester.pumpAndSettle();
@@ -111,7 +110,6 @@ void main() {
     await pumpArgo(tester, fx('app-helm-guestbook-drift.json'), diffApi: fake(auth: 'none'));
     expect(find.text('Connect to the Argo CD API to see diffs'), findsOneWidget);
     expect(toggle(depKey), findsNothing);
-    await saveScreenshot(tester, 'argocd-app-diff-connect');
     await tester.tap(find.text('Connect…'));
     await tester.pumpAndSettle();
     expect(find.text('Use initial admin password'), findsOneWidget);

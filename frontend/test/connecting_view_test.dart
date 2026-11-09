@@ -108,13 +108,11 @@ void main() {
     expect(find.text('Cancel goes back to prod.'), findsOneWidget);
     expect(find.byKey(const ValueKey('connecting-explanation-reaching')), findsNothing);
     await tester.pump(const Duration(seconds: 1));
-    await saveScreenshot(tester, 'connecting-early');
 
     await tester.pump(const Duration(seconds: 4));
     expect(find.byKey(const ValueKey('connecting-explanation-reaching')), findsOneWidget);
     expect(find.textContaining('VPN'), findsOneWidget);
     expect(find.text('5s'), findsOneWidget);
-    await saveScreenshot(tester, 'connecting-explained');
 
     await tester.tap(find.byKey(const ValueKey('connecting-cancel')));
     await tester.pump();
@@ -144,7 +142,6 @@ void main() {
     expect(find.text('· via kubelogin'), findsOneWidget);
     expect(find.byKey(const ValueKey('connecting-explanation-signingIn')), findsOneWidget);
     expect(find.textContaining('Check your browser'), findsOneWidget);
-    await saveScreenshot(tester, 'connecting-sso');
 
     await tester.tap(find.byKey(const ValueKey('connecting-cancel')));
     await tester.pump();
@@ -172,7 +169,6 @@ void main() {
     expect(find.byKey(const ValueKey('cluster-error-unreachable')), findsOneWidget);
     expect(find.text("Can't reach the cluster API at https://127.0.0.1:1"), findsOneWidget);
     expect(find.text('Back to prod'), findsOneWidget);
-    await saveScreenshot(tester, 'connecting-unreachable');
 
     await tester.tap(find.byKey(const ValueKey('cluster-error-back')));
     await tester.pump(const Duration(milliseconds: 50));

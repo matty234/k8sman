@@ -42,7 +42,6 @@ void main() {
     expect(find.text('Firing'), findsNWidgets(2));
     expect(find.text('OK'), findsOneWidget);
     expect(find.textContaining('recording rule'), findsOneWidget);
-    await saveScreenshot(tester, 'prometheusrule-panel');
     await tester.tap(find.text('Open Alerts'));
     expect(app.view, MainView.alerts);
   });
@@ -64,7 +63,6 @@ void main() {
     expect(find.text('0 up · 2 down', findRichText: true), findsWidgets);
     expect(find.textContaining('unsupported Content-Type'), findsWidgets);
     expect(find.text('http · http/metrics'), findsOneWidget);
-    await saveScreenshot(tester, 'servicemonitor-panel');
     await tester.tap(find.text('web').first);
     await tester.pump();
     expect(app.detail?.type.kind, 'Service');
@@ -78,7 +76,6 @@ void main() {
     expect(find.text('monitoring'), findsOneWidget);
     expect(find.text('1 matching pod'), findsOneWidget);
     expect(find.text('1 up · 0 down', findRichText: true), findsWidgets);
-    await saveScreenshot(tester, 'podmonitor-panel');
   });
 
   testWidgets('Prometheus and Alertmanager CRs show config and live status', (tester) async {
@@ -89,7 +86,6 @@ void main() {
     expect(find.text('Reachable'), findsOneWidget);
     expect(find.text('ServiceMonitors'), findsOneWidget);
     expect(find.text('Sends alerts to'), findsOneWidget);
-    await saveScreenshot(tester, 'prometheus-panel');
 
     await pumpPanel(tester, obj('alertmanager'), type: amType, size: const Size(560, 1000));
     expect(tester.takeException(), isNull);

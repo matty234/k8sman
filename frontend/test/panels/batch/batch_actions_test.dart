@@ -100,7 +100,6 @@ void main() {
       await loadRealFonts();
       final api = _ActionApi([...liveJobs]);
       await _pump(tester, suspendedCron(), api);
-      await saveScreenshot(tester, 'batch-cronjob-actions');
       expect(find.widgetWithText(OutlinedButton, 'Resume'), findsOneWidget);
       expect(find.widgetWithText(OutlinedButton, 'Run now'), findsOneWidget);
 
@@ -169,7 +168,6 @@ void main() {
       await loadRealFonts();
       final api = _ActionApi([]);
       await _pump(tester, suspendedJob(), api);
-      await saveScreenshot(tester, 'batch-job-suspended');
       expect(find.text('Suspended: no new pods will be created'), findsOneWidget);
       await tester.tap(find.widgetWithText(OutlinedButton, 'Resume'));
       await _openDialog(tester);

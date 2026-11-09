@@ -160,16 +160,6 @@ void main() {
     expect(find.text('security-demo-overprivileged'), findsOneWidget);
     expect(find.textContaining('Trivy Operator '), findsOneWidget);
     expect(find.textContaining('brew install trivy'), findsOneWidget);
-    await saveScreenshot(tester, 'security-live-1000');
-  });
-
-  testWidgets('wide screenshot with an expanded finding', (tester) async {
-    await loadRealFonts();
-    await pumpSecurity(tester, fixture('security-demo'), size: const Size(1500, 2200), scope: 'security-demo');
-    await tester.tap(find.textContaining('fails the baseline Pod Security profile'));
-    await tester.pump();
-    expect(find.textContaining('privileged (shell)'), findsWidgets);
-    await saveScreenshot(tester, 'security-ns-1500');
   });
 
   testWidgets('has its own scope: defaults to all namespaces, ignores app.namespace, picker refetches', (tester) async {
@@ -239,7 +229,6 @@ void main() {
     // Scan is disabled without the CLI.
     final scan = tester.widget<TextButton>(find.widgetWithText(TextButton, 'Scan').first);
     expect(scan.onPressed, isNull);
-    await saveScreenshot(tester, 'security-no-scanner-1000');
     await tester.tap(find.text('Install Trivy Operator'));
     await tester.pumpAndSettle();
     expect(find.text('Dry run'), findsOneWidget);

@@ -35,7 +35,6 @@ void main() {
       SectionMemory.set(id, true);
     }
     final app = await pumpPanel(tester, node, api: FakeApiClient(itemsByResource: {'pods': _local('pods-on-node')}));
-    await saveScreenshot(tester, 'cluster-node');
 
     expect(find.text('Cordoned: SchedulingDisabled'), findsOneWidget);
     expect(find.text('Ready'), findsWidgets);
@@ -74,7 +73,6 @@ void main() {
     );
     SectionMemory.set('ns-quotas', true);
     final app = await pumpPanel(tester, ns, api: api);
-    await saveScreenshot(tester, 'cluster-namespace');
 
     expect(find.text('Pods'), findsOneWidget);
     expect(find.text('ResourceQuota/compute'), findsOneWidget);
@@ -99,7 +97,6 @@ void main() {
       ],
     };
     await pumpPanel(tester, ns, api: FakeApiClient());
-    await saveScreenshot(tester, 'cluster-namespace-terminating');
     expect(find.text('spec: kubernetes'), findsOneWidget);
     expect(find.textContaining('NamespaceContentRemaining'), findsOneWidget);
     expect(find.textContaining('ResourcesDiscovered'), findsNothing);
@@ -109,7 +106,6 @@ void main() {
     final events = [for (final e in _load('../dev/fixtures/events-demo.json')) Json.from(e)];
     final ev = events.firstWhere((e) => e['type'] == 'Warning' && e['reason'] == 'BackOff', orElse: () => events.firstWhere((e) => e['type'] == 'Warning'));
     final app = await pumpPanel(tester, ev, api: FakeApiClient(eventItems: events.where((e) => e['involvedObject']['uid'] == ev['involvedObject']['uid']).toList()));
-    await saveScreenshot(tester, 'cluster-event');
     expect(find.textContaining('Warning'), findsWidgets);
     expect(find.text('${ev['message']}'), findsWidgets);
     final link = '${ev['involvedObject']['kind']}/${ev['involvedObject']['name']}';
@@ -137,7 +133,6 @@ void main() {
     };
     final app = await pumpPanel(tester, ev,
         type: const ResourceType(group: 'events.k8s.io', version: 'v1', resource: 'events', kind: 'Event'), api: FakeApiClient());
-    await saveScreenshot(tester, 'cluster-event-new');
     expect(find.text('Warning · ×42'), findsOneWidget);
     expect(find.text('Back-off restarting failed container crashy in pod crashy_demo'), findsOneWidget);
     expect(find.text('spec.containers{crashy}'), findsOneWidget);
@@ -150,7 +145,6 @@ void main() {
   testWidgets('ResourceQuota: bars and scopes', (tester) async {
     await pumpPanel(tester, _quota(),
         type: const ResourceType(group: '', version: 'v1', resource: 'resourcequotas', kind: 'ResourceQuota'), size: const Size(560, 900));
-    await saveScreenshot(tester, 'cluster-quota');
     expect(find.text('requests.cpu'), findsOneWidget);
     expect(find.text('750m / 2'), findsOneWidget);
     expect(find.text('38%'), findsOneWidget);
@@ -161,7 +155,6 @@ void main() {
   testWidgets('LimitRange: per-type tables', (tester) async {
     await pumpPanel(tester, _limitRange(),
         type: const ResourceType(group: '', version: 'v1', resource: 'limitranges', kind: 'LimitRange'), size: const Size(560, 700));
-    await saveScreenshot(tester, 'cluster-limitrange');
     expect(find.text('Container'), findsOneWidget);
     expect(find.text('PersistentVolumeClaim'), findsOneWidget);
     expect(find.text('256 MiB'), findsWidgets);
@@ -171,7 +164,6 @@ void main() {
   testWidgets('Role: rules and bound-by', (tester) async {
     final app = await pumpPanel(tester, _dev('role-pod-reader'),
         api: FakeApiClient(itemsByResource: {'rolebindings.$_rbac': _local('rolebindings')}), size: const Size(560, 900));
-    await saveScreenshot(tester, 'cluster-role');
     expect(find.text('core'), findsNWidgets(2)); // permission matrix group + rules table
     expect(find.text('Permission matrix'), findsOneWidget);
     expect(find.text('Edit rules'), findsOneWidget);
@@ -211,7 +203,6 @@ void main() {
     ];
     final app = await pumpPanel(tester, _dev('clusterrole-view'),
         api: FakeApiClient(itemsByResource: {'rolebindings.$_rbac': rbs, 'clusterrolebindings.$_rbac': crbs}), size: const Size(560, 2000));
-    await saveScreenshot(tester, 'cluster-clusterrole-view');
     expect(find.text('rbac.authorization.k8s.io/aggregate-to-view=true'), findsOneWidget);
     expect(find.text('edit'), findsOneWidget); // aggregated into
     expect(find.text('devs-view'), findsOneWidget);
@@ -226,7 +217,6 @@ void main() {
   testWidgets('RoleBinding: roleRef, subjects, inline rules', (tester) async {
     final app = await pumpPanel(tester, _dev('rolebinding-web-pod-reader'),
         api: FakeApiClient(objects: {'roles.$_rbac/demo/pod-reader': _dev('role-pod-reader')}), size: const Size(560, 900));
-    await saveScreenshot(tester, 'cluster-rolebinding');
     expect(find.text('pod-reader'), findsOneWidget);
     expect(find.text('pods, pods/log'), findsOneWidget);
     expect(find.text('get'), findsOneWidget);
@@ -248,7 +238,6 @@ void main() {
       ],
     };
     await pumpPanel(tester, crb, api: FakeApiClient(objects: {'clusterroles.$_rbac//cluster-admin': admin}), size: const Size(560, 900));
-    await saveScreenshot(tester, 'cluster-crb-admin');
     expect(find.text('Dangerous grants'), findsOneWidget);
     expect(find.textContaining('Full wildcard'), findsOneWidget);
     expect(find.text('system:masters'), findsOneWidget);

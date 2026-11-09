@@ -108,7 +108,6 @@ void main() {
     expect(find.text('only named objects'), findsOneWidget);
     expect(find.text('Only: app-db'), findsOneWidget);
     expect(find.textContaining('Reads Secrets'), findsWidgets);
-    await saveScreenshot(tester, 'access-explorer-cell');
 
     await tester.tap(find.text('Verify'));
     await tester.pump();
@@ -122,7 +121,6 @@ void main() {
     await tester.pump();
     expect(find.text('Granted by'), findsOneWidget);
     expect(find.text('demo-reader'), findsWidgets);
-    await saveScreenshot(tester, 'access-explorer');
   });
 
   testWidgets('explorer: dividers resize panels within their minimum; double-click resets', (tester) async {
@@ -156,14 +154,12 @@ void main() {
     expect(find.text('Reads Secrets (including ServiceAccount tokens)'), findsOneWidget);
     expect(find.textContaining('3 only for named objects'), findsOneWidget);
     expect(find.text('* on *'), findsWidgets);
-    await saveScreenshot(tester, 'access-whocan');
 
     await tester.tap(find.text('Can I…?'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.textContaining('kubernetes-admin'), findsWidgets);
     expect(find.textContaining('system:masters'), findsWidgets);
-    await saveScreenshot(tester, 'access-cani');
   });
 
   testWidgets('read-only hides grant and new role', (tester) async {
@@ -188,7 +184,6 @@ void main() {
     expect(find.text('Rule 4'), findsOneWidget);
     // No namespace yet: can't apply.
     expect(find.textContaining('Pick a namespace'), findsOneWidget);
-    await saveScreenshot(tester, 'access-role-editor');
     final editor = tester.state(find.byType(RoleEditor));
     expect(editor, isNotNull);
     expect(api.applied, isEmpty);

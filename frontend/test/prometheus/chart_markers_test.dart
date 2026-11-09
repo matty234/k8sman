@@ -60,7 +60,6 @@ void main() {
     await tester.pump();
     expect(find.textContaining('BackOff'), findsOneWidget);
     expect(find.textContaining('Unhealthy'), findsOneWidget);
-    await saveScreenshot(tester, 'chart-event-markers');
 
     // Away from the marker band the readout is back.
     await g.moveTo(Offset(box.dx + 150, box.dy + 30));

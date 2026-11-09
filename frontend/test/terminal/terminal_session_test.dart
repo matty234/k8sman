@@ -7,7 +7,6 @@ import 'package:k8sman/ui/terminal/exec_protocol.dart';
 import 'package:k8sman/ui/terminal/terminal_session.dart';
 import 'package:k8sman/ui/terminal/terminal_tab.dart';
 
-import '../support/screenshot.dart';
 import 'fake_exec.dart';
 
 /// Stream events land in a microtask after the frame; pump once more to render them.
@@ -181,42 +180,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(dock.tabs, isEmpty);
     expect(transport.last.closed, isTrue);
-  });
-
-  testWidgets('screenshot: a session in the dock', (tester) async {
-    await loadRealFonts();
-    final transport = FakeExecTransport();
-    final tab = newTab(transport);
-    await pumpDock(tester, tabs: [tab], size: const Size(1100, 380));
-    final c = transport.last;
-    c.emit(const ExecStarted('nginx', ['/bin/sh']));
-    c.output('/ # ls -la /etc/nginx\r\n'
-        'total 48\r\n'
-        'drwxr-xr-x    3 root     root          4096 Oct 28 10:12 \x1b[1;34m.\x1b[0m\r\n'
-        'drwxr-xr-x    1 root     root          4096 Nov  3 11:40 \x1b[1;34m..\x1b[0m\r\n'
-        'drwxr-xr-x    2 root     root          4096 Oct 28 10:12 \x1b[1;34mconf.d\x1b[0m\r\n'
-        '-rw-r--r--    1 root     root          1077 Oct 28 10:12 fastcgi.conf\r\n'
-        '-rw-r--r--    1 root     root           648 Oct 28 10:12 \x1b[32mnginx.conf\x1b[0m\r\n'
-        '/ # echo -e "\\e[38;5;208m256-colour\\e[0m \\e[38;2;120;200;255mtruecolour\\e[0m"\r\n'
-        '\x1b[38;5;208m256-colour\x1b[0m \x1b[38;2;120;200;255mtruecolour\x1b[0m\r\n'
-        '/ # ');
-    await flush(tester);
-    await tester.tap(find.byKey(const ValueKey('terminal-view')));
-    await tester.pump(const Duration(milliseconds: 200));
-    await saveScreenshot(tester, 'terminal-session');
-
-    c.emit(const ExecExit(0));
-    await tester.pump(const Duration(milliseconds: 200));
-    await saveScreenshot(tester, 'terminal-session-exited');
-
-    final t2 = newTab(transport, container: 'pause');
-    t2.terminal.write('');
-    transport.last.emit(const ExecError(ExecReason.noShell, 'OCI runtime exec failed: exec: "/bin/sh": stat /bin/sh: no such file or directory'));
-    await pumpDock(tester, tabs: [t2], size: const Size(1100, 380));
-    await tester.pump(const Duration(milliseconds: 200));
-    await saveScreenshot(tester, 'terminal-session-noshell');
-    tab.dispose();
-    t2.dispose();
   });
 
   test('frames round-trip through the tab', () async {

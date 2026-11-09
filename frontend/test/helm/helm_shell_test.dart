@@ -57,8 +57,6 @@ void main() {
           await tester.pump(const Duration(milliseconds: 60));
         }
         expect(tester.takeException(), isNull, reason: 'overflow at $w, inspector ${inspector ? 'open' : 'closed'}');
-        if (w == 1600 && inspector) await saveScreenshot(tester, 'helm-shell-1600-inspector');
-        if (w == 1300 && !inspector) await saveScreenshot(tester, 'helm-shell-1300');
       }
     }
     await tester.pumpWidget(const SizedBox());

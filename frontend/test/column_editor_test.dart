@@ -40,7 +40,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump(const Duration(milliseconds: 50));
-    await saveScreenshot(tester, 'column-editor');
     expect(tester.takeException(), isNull);
   });
 }

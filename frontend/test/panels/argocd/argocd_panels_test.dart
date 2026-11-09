@@ -220,7 +220,6 @@ void main() {
       expect(find.text('guestbook-ui'), findsWidgets);
       expect(find.text('#0'), findsOneWidget);
       expect(find.text('Sync'), findsOneWidget);
-      await saveScreenshot(tester, 'argocd-app-synced');
     });
 
     testWidgets('resource tree shows ReplicaSet and Pod children', (tester) async {
@@ -237,7 +236,6 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('OutOfSync'), findsWidgets);
       expect(find.textContaining('replicaCount', findRichText: true), findsOneWidget);
-      await saveScreenshot(tester, 'argocd-app-outofsync');
     });
 
     testWidgets('degraded app derives health from live objects', (tester) async {
@@ -246,7 +244,6 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('Degraded'), findsWidgets);
       expect(find.textContaining('timed out progressing'), findsWidgets);
-      await saveScreenshot(tester, 'argocd-app-degraded');
     });
 
     testWidgets('sync error: condition and failed resources', (tester) async {
@@ -255,7 +252,6 @@ void main() {
       expect(find.text('SyncError'), findsOneWidget);
       expect(find.text('Failed resources'), findsOneWidget);
       expect(find.textContaining('namespaces "does-not-exist" not found'), findsWidgets);
-      await saveScreenshot(tester, 'argocd-app-syncerror');
     });
 
     testWidgets('comparison error and multi-source', (tester) async {
@@ -265,7 +261,6 @@ void main() {
       await pumpArgo(tester, fx('app-multi-source.json'));
       expect(find.text('Sources (2)'), findsOneWidget);
       expect(find.textContaining('values ref'), findsOneWidget);
-      await saveScreenshot(tester, 'argocd-app-multisource');
     });
 
     testWidgets('project and namespace links navigate', (tester) async {
@@ -285,7 +280,6 @@ void main() {
       await tester.enterText(find.byType(TextField), 'master');
       await tester.pumpAndSettle();
       await loadRealFonts();
-      await saveScreenshot(tester, 'argocd-sync-dialog');
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
       expect(find.textContaining('deleted (prune)'), findsOneWidget);
@@ -347,7 +341,6 @@ void main() {
       expect(find.text('guestbook-staging'), findsOneWidget);
       expect(find.text('staging'), findsOneWidget);
       expect(find.textContaining('Preserve'), findsOneWidget);
-      await saveScreenshot(tester, 'argocd-appset');
     });
   });
 
@@ -360,7 +353,6 @@ void main() {
       expect(find.textContaining('CI pipeline', findRichText: true), findsOneWidget);
       expect(find.text('ResourceQuota'), findsOneWidget);
       expect(find.text('guestbook'), findsOneWidget); // an app in this project
-      await saveScreenshot(tester, 'argocd-project');
     });
 
     testWidgets('default project is unrestricted', (tester) async {
@@ -373,7 +365,6 @@ void main() {
     await loadRealFonts();
     await pumpArgo(tester, fx('app-guestbook-degraded.json'), size: const Size(320, 2400));
     expect(tester.takeException(), isNull);
-    await saveScreenshot(tester, 'argocd-app-degraded-320');
   });
 
   testWidgets('no overflow from 320 to 760px', (tester) async {

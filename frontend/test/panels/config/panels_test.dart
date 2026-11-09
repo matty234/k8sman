@@ -26,7 +26,6 @@ void main() {
 
   testWidgets('ConfigMap: data entries and used-by from the web pod', (tester) async {
     final app = await pumpPanel(tester, fixture('cm-web-config'), api: podsApi([fixture('pod-web')]));
-    await saveScreenshot(tester, 'config-cm-web');
     expect(find.text('APP_MODE'), findsWidgets);
     expect(find.text('nginx.conf'), findsWidgets);
     expect(find.text('pod uses it'), findsOneWidget);
@@ -42,7 +41,6 @@ void main() {
 
   testWidgets('ConfigMap: formats, long values, binaryData and missing keys', (tester) async {
     await pumpPanel(tester, richConfigMap, api: podsApi([richPod]), size: const Size(560, 3000));
-    await saveScreenshot(tester, 'config-cm-rich');
     for (final f in ['json', 'yaml', 'properties', 'shell']) {
       expect(find.textContaining(RegExp('^$f · ')), findsWidgets, reason: f);
     }
@@ -64,7 +62,6 @@ void main() {
 
   testWidgets('Secret: masked by default, reveal decodes, reveal all', (tester) async {
     await pumpPanel(tester, fixture('secret-web-secret'), api: podsApi([fixture('pod-web')]));
-    await saveScreenshot(tester, 'config-secret-masked');
     expect(find.text('hunter2'), findsNothing);
     expect(find.text('s3cr3t-token'), findsNothing);
     expect(find.textContaining('Arbitrary user-defined'), findsOneWidget);
@@ -79,7 +76,6 @@ void main() {
     await tester.pump();
     expect(find.text('hunter2'), findsOneWidget);
     expect(find.text('s3cr3t-token'), findsOneWidget);
-    await saveScreenshot(tester, 'config-secret-revealed');
 
     await tester.tap(find.text('Hide all'));
     await tester.pump();
@@ -88,7 +84,6 @@ void main() {
 
   testWidgets('Secret: TLS shows PEM blocks', (tester) async {
     await pumpPanel(tester, tlsSecret, api: podsApi([]));
-    await saveScreenshot(tester, 'config-secret-tls');
     expect(find.textContaining('CERTIFICATE ×2'), findsOneWidget);
     expect(find.text('PRIVATE KEY'), findsOneWidget);
     expect(find.text('not present'), findsOneWidget);
@@ -96,7 +91,6 @@ void main() {
 
   testWidgets('Secret: dockerconfigjson lists registries, passwords masked', (tester) async {
     await pumpPanel(tester, dockerSecret, api: podsApi([]));
-    await saveScreenshot(tester, 'config-secret-docker');
     expect(find.text('ghcr.io'), findsOneWidget);
     expect(find.text('robot'), findsOneWidget);
     expect(find.text('ghp_dummy'), findsNothing);
@@ -109,7 +103,6 @@ void main() {
     final app = await pumpPanel(tester, saTokenSecret, api: podsApi([]));
     await tester.tap(find.text('Reveal all'));
     await tester.pump();
-    await saveScreenshot(tester, 'config-secret-satoken');
     expect(find.text('binary · 5 bytes'), findsOneWidget);
     expect(find.textContaining('ff fe 00 01 02'), findsOneWidget);
     await tester.tap(find.text('web'));
@@ -139,7 +132,6 @@ void main() {
       },
     );
     final app = await pumpPanel(tester, fixture('sa-web'), api: api);
-    await saveScreenshot(tester, 'config-sa-web');
     expect(find.text('web-6fd47b8fcb-4v4m9'), findsOneWidget);
     expect(find.text('api-7d9f-abcde'), findsNothing); // runs as default
     expect(find.text('2 grants · 2 bindings'), findsOneWidget); // the collapsed summary
@@ -176,7 +168,6 @@ void main() {
     });
     await loadRealFonts();
     await pumpPanel(tester, fixture('sa-web'), api: api);
-    await saveScreenshot(tester, 'config-sa-defaults');
     expect(find.text('defaults only'), findsOneWidget);
     await openSection(tester, 'sa-permissions');
     expect(find.textContaining('Nothing beyond the cluster defaults'), findsOneWidget);

@@ -51,7 +51,6 @@ void main() {
       itemsFilter: (r, item, ls, fs) => r.resource != 'pods' || ls == '$labelWorkflow=build-and-test-v9vnz',
     );
     await pumpWf(tester, wf, api: api, size: const Size(560, 2600));
-    await saveScreenshot(tester, 'argowf-workflow-failed');
 
     expect(find.text('Failed'), findsWidgets);
     expect(find.text('1 failed step'), findsOneWidget);
@@ -67,7 +66,6 @@ void main() {
     expect(find.text('Attempts'), findsOneWidget);
     expect(find.text('Exit code'), findsOneWidget);
     expect(find.text('Input parameters'), findsOneWidget);
-    await saveScreenshot(tester, 'argowf-workflow-node');
 
     // Logs: finds the last attempt's pod by its node-id annotation and opens
     // the main container in the dock.
@@ -116,7 +114,6 @@ void main() {
       itemsFilter: (r, item, ls, fs) => ls == '$labelCronWorkflow=nightly-report',
     );
     await pumpWf(tester, cron, api: api, size: const Size(560, 1800));
-    await saveScreenshot(tester, 'argowf-cron');
     expect(find.text('Every 15 minutes'), findsOneWidget);
     expect(find.textContaining('Europe/London (BST'), findsOneWidget);
     // 10:07 UTC = 11:07 BST; next */15 is 11:15 BST.
@@ -130,7 +127,6 @@ void main() {
     await loadRealFonts();
     final tmpl = wfFixture('wftmpl-build-and-test.json');
     await pumpWf(tester, tmpl, size: const Size(560, 1800));
-    await saveScreenshot(tester, 'argowf-template');
     expect(find.text('fail-tests'), findsOneWidget);
     expect(find.text('Where to deploy'), findsOneWidget);
     expect(find.text('pipeline'), findsWidgets);
@@ -156,7 +152,6 @@ void main() {
     ));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    await saveScreenshot(tester, 'argowf-submit-dialog');
     // Enum params are menus showing their default; free text is prefilled.
     expect(find.text('staging'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'hello'), findsOneWidget);

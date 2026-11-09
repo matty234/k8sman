@@ -223,7 +223,6 @@ void main() {
     testWidgets('complete job: summary, pods via legacy controller-uid label', (tester) async {
       await loadRealFonts();
       final app = await pumpPanel(tester, migrateDb, api: _api(pods: migratePods));
-      await saveScreenshot(tester, 'batch-job-complete');
       expect(find.text('Complete in 11s'), findsOneWidget);
       expect(find.text('1 succeeded'), findsOneWidget); // the Pods summary
       expect(find.text('took'), findsOneWidget);
@@ -245,7 +244,6 @@ void main() {
     testWidgets('failed job: reason, attempts and exit codes', (tester) async {
       await loadRealFonts();
       final app = await pumpPanel(tester, failedJob(), api: _api(pods: failedPods()));
-      await saveScreenshot(tester, 'batch-job-failed');
       expect(find.text('Failed'), findsWidgets);
       expect(find.textContaining('BackoffLimitExceeded'), findsWidgets);
       expect(find.text('Job has reached the specified backoff limit'), findsWidgets);
@@ -296,7 +294,6 @@ void main() {
     testWidgets('schedule, next runs, status and history', (tester) async {
       await loadRealFonts();
       final app = await pumpPanel(tester, cronReport, api: _api(jobs: liveJobs));
-      await saveScreenshot(tester, 'batch-cronjob');
       expect(find.text('*/5 * * * *'), findsOneWidget);
       expect(find.text('Every 5 minutes'), findsOneWidget);
       expect(find.text('in 2m'), findsOneWidget); // next run
@@ -340,7 +337,6 @@ void main() {
 
       cj['spec']['suspend'] = true;
       await pumpPanel(tester, cj, api: _api(jobs: liveJobs));
-      await saveScreenshot(tester, 'batch-cronjob-suspended');
       expect(find.text('Suspended: no new jobs will be scheduled'), findsOneWidget);
       expect(find.text('Next runs (if resumed)'), findsOneWidget);
       expect(find.textContaining('Missed schedule'), findsNothing);

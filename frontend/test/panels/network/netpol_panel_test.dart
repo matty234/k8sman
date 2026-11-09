@@ -9,7 +9,6 @@ void main() {
     await loadRealFonts();
     final app = await pumpPanel(tester, devFixture('netpol-web-allow-frontend'),
         api: FakeApiClient(itemsByResource: {'pods': demoPods()}, itemsFilter: labelSelectorFilter));
-    await saveScreenshot(tester, 'network-netpol-web');
     expect(find.text('Applies to pods matching app=web in demo (2 pods).'), findsOneWidget);
     expect(find.text('Restricts ingress'), findsOneWidget);
     expect(find.text('Restricted · 2 allowed'), findsOneWidget);
@@ -53,7 +52,6 @@ void main() {
       },
       api: FakeApiClient(itemsByResource: {'pods': demoPods()}, itemsFilter: labelSelectorFilter),
     );
-    await saveScreenshot(tester, 'network-netpol-deny');
     expect(find.text('Applies to all pods in demo (9 pods).'), findsOneWidget);
     expect(find.text('Default deny ingress'), findsNothing);
     expect(find.text('Restricts ingress and egress'), findsOneWidget);

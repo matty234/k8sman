@@ -58,7 +58,6 @@ void main() {
     final api = TableFakeApi()..onWatch = () => [WatchMessage(type: 'SNAPSHOT', table: table)];
     final app = await pumpTable(tester, api, podType, size: const Size(1280, 440), brightness: Brightness.dark);
     await tester.pump();
-    await saveScreenshot(tester, 'metrics-pods-usage');
     expect(tester.takeException(), isNull);
 
     final ctx = tester.element(find.text('2%'));
@@ -118,7 +117,6 @@ void main() {
     final api = TableFakeApi()..onWatch = () => [WatchMessage(type: 'SNAPSHOT', table: table)];
     await pumpTable(tester, api, pvcType, size: const Size(1100, 300), brightness: Brightness.dark);
     await tester.pump();
-    await saveScreenshot(tester, 'metrics-pvc-used');
     expect(find.text('12 / 50 Gi'), findsOneWidget);
     expect(find.text('24%'), findsOneWidget);
     final ctx = tester.element(find.text('24%'));

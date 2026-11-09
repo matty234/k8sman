@@ -42,7 +42,6 @@ void main() {
     expect(find.byKey(const ValueKey('pending-category-network')), findsNothing);
     expect(find.text('Network exposure by namespace'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await saveScreenshot(tester, 'security-pending');
 
     // The backend has finished: the next quick fetch (0.7s) fills everything in.
     source.response = fixture('security');

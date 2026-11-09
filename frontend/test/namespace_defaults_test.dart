@@ -53,7 +53,6 @@ void main() {
     await tester.ensureVisible(find.byKey(const ValueKey('settings-allowed-namespaces')));
     await tester.pump();
     expect(find.byKey(const ValueKey('allowed-namespace-team-a')), findsOneWidget);
-    await saveScreenshot(tester, 'namespace-settings');
   });
 
   testWidgets('changing the default applies at once, unless a scope was picked this session', (tester) async {

@@ -67,7 +67,6 @@ void main() {
   testWidgets('edit → review → apply runs dry-run then apply', (tester) async {
     await loadRealFonts();
     final api = await _pump(tester);
-    await saveScreenshot(tester, 'yaml-view');
     await tester.tap(find.text('Edit'));
     await tester.pumpAndSettle();
     final editor = tester.widget<CodeEditor>(find.byType(CodeEditor));
@@ -75,13 +74,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Diff'));
     await tester.pumpAndSettle();
-    await saveScreenshot(tester, 'yaml-diff');
     expect(find.text('  replicas: 5'), findsOneWidget);
 
     await tester.tap(find.text('Review & apply'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Apply changes to Deployment web'), findsOneWidget);
-    await saveScreenshot(tester, 'yaml-confirm');
     await tester.tap(find.widgetWithText(FilledButton, 'Apply'));
     await tester.pumpAndSettle();
     expect(api.calls, ['dry', 'apply']);

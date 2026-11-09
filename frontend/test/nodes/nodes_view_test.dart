@@ -89,7 +89,6 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
       expect(tester.takeException(), isNull, reason: 'overflow at width $w');
-      if (w == 701 || w == 1259) await saveScreenshot(tester, 'nodes-${size.width.toInt()}');
     }
     expect(find.text('worker-sick'), findsOneWidget);
     // Cordon / uncordon live in the row menu, not on the page.
@@ -141,7 +140,6 @@ void main() {
     final firstHealthy = [for (final p in _pods()) p['metadata']['name'] as String].where((n) => n != 'bad-image' && n != 'crashy').map(y).reduce((a, b) => a < b ? a : b);
     expect(y('bad-image'), lessThan(firstHealthy));
     expect(y('crashy'), lessThan(firstHealthy));
-    await saveScreenshot(tester, 'nodes-overview');
 
     await tester.tap(find.text('crashy'));
     expect((app.detail?.type.kind, app.detail?.namespace, app.detail?.name), ('Pod', 'demo', 'crashy'));

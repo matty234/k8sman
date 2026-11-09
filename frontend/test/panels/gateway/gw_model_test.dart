@@ -109,7 +109,6 @@ void main() {
       await loadRealFonts();
       final svc = Map<String, dynamic>.from((gwFixtureRaw('services-demo') as List).first as Map);
       final app = await pumpGwPanel(tester, svc);
-      await saveScreenshot(tester, 'service-web-routed-by');
       expect(find.text('Routed by'), findsOneWidget);
       expect(find.text('HTTPRoute demo/web-route'), findsOneWidget);
       expect(find.textContaining('90% of its rule'), findsOneWidget);

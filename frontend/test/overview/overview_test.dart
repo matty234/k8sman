@@ -163,7 +163,6 @@ void main() {
     expect(find.text('bad-image'), findsWidgets);
     expect(find.text('k8sman-dev-control-plane'), findsOneWidget);
     expect(find.text('BackOff'), findsOneWidget);
-    await saveScreenshot(tester, 'overview-live-1000');
 
     // Clicking a name opens the sidebar.
     await tester.tap(find.text('crashy').first);
@@ -173,7 +172,6 @@ void main() {
 
     tester.view.physicalSize = const Size(1500, 900);
     await tester.pump();
-    await saveScreenshot(tester, 'overview-live-1500');
   });
 
   testWidgets('a long issue list previews 8 rows until Show all', (tester) async {
@@ -187,7 +185,6 @@ void main() {
   testWidgets('scenario: grouped by owner, tile filters, expands', (tester) async {
     await loadRealFonts();
     await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 1400));
-    await saveScreenshot(tester, 'overview-scenario-1500');
 
     // Three crashlooping pods of deployment web collapse into one row.
     // (The page is built in full, so web-5c-b may also appear further down,
@@ -199,7 +196,6 @@ void main() {
     await tester.pump();
     expect(find.text('web-5c-b').evaluate().length, before + 1);
     expect(find.text('web-5c-d').evaluate().length, beforeD + 1);
-    await saveScreenshot(tester, 'overview-scenario-expanded');
 
     // Filter by the count of the "Stuck terminating" row of the Pods card.
     await tester.tap(find.byKey(const ValueKey('area-count-stuckTerminating')));
@@ -211,12 +207,6 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('area-count-stuckTerminating')));
     await tester.pump();
     expect(find.text('img-1'), findsOneWidget);
-  });
-
-  testWidgets('scenario at 1000x800', (tester) async {
-    await loadRealFonts();
-    await pumpOverview(tester, scenarioFixture(), size: const Size(1000, 800));
-    await saveScreenshot(tester, 'overview-scenario-1000');
   });
 
   for (final width in [360.0, 420.0, 500.0, 600.0, 700.0, 900.0, 1200.0, 1600.0]) {
@@ -231,12 +221,6 @@ void main() {
     });
   }
 
-  testWidgets('narrow screenshot (700px)', (tester) async {
-    await loadRealFonts();
-    await pumpOverview(tester, scenarioFixture(), size: const Size(700, 1400));
-    await saveScreenshot(tester, 'overview-scenario-700');
-  });
-
   testWidgets('healthy cluster shows a calm state', (tester) async {
     await loadRealFonts();
     await pumpOverview(tester, healthyResponse(), size: const Size(1000, 600));
@@ -244,7 +228,6 @@ void main() {
     expect(find.text('All 10 pods healthy · All 3 workloads healthy · 1 node ready'), findsOneWidget);
     expect(find.text('Issues'), findsNothing); // no empty list under the banner
     expect(find.text('No warning events in the last hour.'), findsOneWidget);
-    await saveScreenshot(tester, 'overview-healthy');
   });
 
   testWidgets('restart action fetches the owner and runs restart', (tester) async {

@@ -88,7 +88,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200))); // decode the PNGs
     await tester.pump();
-    await saveScreenshot(tester, 'node-os-icons');
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('node-os/talos')), findsOneWidget);
     expect(find.byTooltip('Bottlerocket OS 1.20.0 (aws-k8s-1.29) · EKS · containerd 1.7.2'), findsOneWidget);

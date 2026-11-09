@@ -23,7 +23,6 @@ void main() {
       'targetRef': {'kind': 'Pod', 'name': 'web-old', 'namespace': 'demo'},
     });
     final app = await pumpPanel(tester, slice);
-    await saveScreenshot(tester, 'network-endpointslice-web');
     expect(find.text('IPv4'), findsOneWidget);
     expect(find.text('http 8080/TCP'), findsOneWidget);
     expect(find.text('2 of 3 ready'), findsWidgets);
@@ -45,7 +44,6 @@ void main() {
       }
     ];
     final app = await pumpPanel(tester, ep);
-    await saveScreenshot(tester, 'network-endpoints-web');
     expect(find.text('2 of 3 ready'), findsWidgets);
     expect(find.text('not ready'), findsWidgets);
     await tester.tap(find.text('web-starting'));

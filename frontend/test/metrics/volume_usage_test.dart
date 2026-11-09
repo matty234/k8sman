@@ -93,7 +93,6 @@ void main() {
     expect(find.text('90%'), findsOneWidget);
     expect(find.textContaining('via kubelet'), findsOneWidget);
     expect(api.summaryQueries.single['node'], 'k8sman-dev-control-plane');
-    await saveScreenshot(tester, 'pvc-usage-kubelet');
   });
 
 }

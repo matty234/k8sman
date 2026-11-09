@@ -130,7 +130,6 @@ void main() {
     for (final w in [480.0, 760.0, 1180.0]) {
       await _pumpView(tester, Size(w, 1000));
       expect(tester.takeException(), isNull, reason: 'overflow at width $w');
-      if (w == 1180) await saveScreenshot(tester, 'gpus-${w.toInt()}');
     }
     expect(find.text('gpu-node-a'), findsOneWidget);
     expect(find.text('No exporter'), findsOneWidget);
@@ -146,7 +145,6 @@ void main() {
     await loadRealFonts();
     addTearDown(tester.view.reset);
     await _pumpView(tester, const Size(1200, 800));
-    await saveScreenshot(tester, 'gpus-1200x800');
     expect(find.text('GPU 1'), findsOneWidget);
     expect(find.text('Idle'), findsOneWidget);
     await tester.tap(find.byIcon(Icons.expand_more).first); // gpu-node-b's chevron (gpu-node-a has no devices)
@@ -157,7 +155,6 @@ void main() {
     expect(find.text('GPU 1'), findsOneWidget);
     await _pumpView(tester, const Size(800, 600));
     expect(tester.takeException(), isNull);
-    await saveScreenshot(tester, 'gpus-800x600');
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -176,7 +173,6 @@ void main() {
     for (final b in Brightness.values) {
       await tester.pumpWidget(const SizedBox()); // no theme cross-fade
       await _pumpView(tester, const Size(1100, 760), brightness: b);
-      await saveScreenshot(tester, 'gpu-cleanup-${b.name}');
     }
     await tester.pumpWidget(const SizedBox());
   });
@@ -199,7 +195,6 @@ void main() {
     expect(find.text('GPU history'), findsOneWidget);
     expect(find.text('2/3 allocated'), findsOneWidget);
     expect(prom.queries.any((q) => q.contains('DCGM_FI_DEV_GPU_UTIL{UUID=~"GPU-11111111')), isTrue);
-    await saveScreenshot(tester, 'gpu-node-panel');
 
     final pod = {
       'apiVersion': 'v1',

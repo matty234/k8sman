@@ -58,7 +58,6 @@ void main() {
   testWidgets('Deployment shows scale control, HPA note, per-revision rollback and pod menus', (tester) async {
     await loadRealFonts();
     await pumpWorkload(tester, loadFixture('deploy-web.json'), api());
-    await saveScreenshot(tester, 'workloads-deployment-actions');
 
     expect(find.byType(ScaleControl), findsOneWidget);
     expect(find.textContaining('manual scaling will be overridden'), findsOneWidget);
@@ -76,7 +75,6 @@ void main() {
     expect(find.byType(AlertDialog), findsOneWidget);
     expect(find.text('Roll back web to revision 2?'), findsOneWidget);
     expect(find.textContaining('nginx: nginx:1.28-alpine → nginx:1.27.1-alpine'), findsOneWidget);
-    await saveScreenshot(tester, 'workloads-rollback-dialog');
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(find.byType(CircularProgressIndicator), findsNothing);
@@ -102,7 +100,6 @@ void main() {
     await loadRealFonts();
     final d = clone(loadFixture('deploy-web.json'), (c) => c['spec']['paused'] = true);
     await pumpWorkload(tester, d, api());
-    await saveScreenshot(tester, 'workloads-deployment-paused');
     expect(find.text('Paused'), findsOneWidget);
     expect(find.text('Rollout paused'), findsOneWidget);
     expect(find.widgetWithText(ActionButton, 'Resume'), findsOneWidget);

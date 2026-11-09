@@ -10,9 +10,7 @@ import 'package:k8sman/ui/settings/sidebar_settings.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
-import 'support/fixture_api.dart';
 import 'support/harness.dart';
-import 'support/screenshot.dart';
 
 const _deploy = SidebarPin(group: 'apps', kind: 'Deployment');
 const _podsKs = SidebarPin(group: '', kind: 'Pod', namespace: 'kube-system');
@@ -186,32 +184,4 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('screenshots: customised sidebar and Settings ▸ Sidebar', (tester) async {
-    await loadRealFonts();
-    final api = FixtureApi();
-    final (app, _) = await pumpShell(tester, api, size: const Size(1200, 780));
-    app.setSidebar(SidebarConfig([
-      const SidebarEntry.view(MainView.overview),
-      const SidebarEntry.pin(SidebarPin(group: 'apps', kind: 'Deployment')),
-      const SidebarEntry.pin(_podsKs),
-      const SidebarEntry.view(MainView.nodes),
-      const SidebarEntry.view(HelmModule.page),
-      ...SidebarConfig.defaults.entries.map((e) => e.view == MainView.security ? e.withHidden(true) : e),
-    ]));
-    app.openPin(_podsKs);
-    for (var i = 0; i < 3; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    await saveScreenshot(tester, 'sidebar-customised');
-    // Settings (the sidebar's gear) ▸ Sidebar.
-    await tester.tap(find.byKey(const ValueKey('nav-settings')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.tap(find.text('Sidebar').last);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(find.byType(SidebarLayoutEditor), findsOneWidget);
-    await saveScreenshot(tester, 'sidebar-settings');
-    expect(tester.takeException(), isNull);
-  });
 }

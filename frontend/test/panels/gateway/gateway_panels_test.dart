@@ -29,7 +29,6 @@ void main() {
   testWidgets('Gateway demo-gw: healthy, listeners, attached routes, topology', (tester) async {
     await loadRealFonts();
     final app = await pumpGwPanel(tester, opened(gwFixture('gateway-demo-gw')), size: const Size(560, 3000));
-    await saveScreenshot(tester, 'gateway-demo-gw');
     expect(find.text('Programmed'), findsWidgets);
     expect(find.text('10.96.230.213'), findsWidgets);
     // Listener rows.
@@ -57,7 +56,6 @@ void main() {
   testWidgets('Gateway legacy-gw: missing certificate Secret on a listener', (tester) async {
     await loadRealFonts();
     await pumpGwPanel(tester, gwFixture('gateway-legacy-gw'));
-    await saveScreenshot(tester, 'gateway-legacy-gw');
     expect(find.text('1 of 2 listeners has problems'), findsOneWidget);
     expect(find.text('Certificate Secret missing or invalid'), findsWidgets);
     expect(find.text('Secret not found'), findsOneWidget);
@@ -66,7 +64,6 @@ void main() {
   testWidgets('Gateway pending-gw: no controller', (tester) async {
     await loadRealFonts();
     await pumpGwPanel(tester, gwFixture('gateway-pending-gw'));
-    await saveScreenshot(tester, 'gateway-pending-gw');
     expect(find.text('No controller has picked up this Gateway'), findsOneWidget);
     expect(find.textContaining('controller example.com/not-installed'), findsOneWidget);
   });
@@ -74,7 +71,6 @@ void main() {
   testWidgets('HTTPRoute web-route: rules, weights, filters, curl', (tester) async {
     await loadRealFonts();
     final app = await pumpGwPanel(tester, opened(gwFixture('httproute-web-route')), size: const Size(560, 2600));
-    await saveScreenshot(tester, 'httproute-web-route');
     expect(find.text('Accepted'), findsWidgets);
     expect(find.text('path /api*  ·  header x-canary = true'), findsOneWidget);
     expect(find.text('90%'), findsOneWidget);
@@ -94,7 +90,6 @@ void main() {
   testWidgets('HTTPRoute admin-api: NotAccepted, listener not found', (tester) async {
     await loadRealFonts();
     await pumpGwPanel(tester, gwFixture('httproute-admin-api'));
-    await saveScreenshot(tester, 'httproute-admin-api');
     expect(find.text('Not accepted'), findsWidgets);
     expect(find.text("Listener 'admin-api' not found on Gateway gateway-demo/demo-gw"), findsOneWidget);
     expect(find.text('It has: http, https, admin, redis. Fix sectionName in parentRefs, or add the listener.'), findsOneWidget);
@@ -109,7 +104,6 @@ void main() {
   testWidgets('HTTPRoute cache-admin: RefNotPermitted needs a ReferenceGrant', (tester) async {
     await loadRealFonts();
     await pumpGwPanel(tester, opened(gwFixture('httproute-cache-admin')));
-    await saveScreenshot(tester, 'httproute-cache-admin');
     expect(find.text('Unresolved refs'), findsWidgets);
     expect(find.text('backendRef to Service demo/redis requires a ReferenceGrant in demo'), findsOneWidget);
     expect(find.text('needs ReferenceGrant'), findsWidgets);
@@ -132,7 +126,6 @@ void main() {
   testWidgets('GRPCRoute greeter: method match and grpcurl', (tester) async {
     await loadRealFonts();
     await pumpGwPanel(tester, opened(gwFixture('grpcroute-greeter')));
-    await saveScreenshot(tester, 'grpcroute-greeter');
     expect(find.text('helloworld.Greeter/SayHello  ·  header x-tenant = acme'), findsOneWidget);
     expect(find.text("grpcurl -plaintext -authority grpc.example.com -H 'x-tenant: acme' 10.96.230.213:80 helloworld.Greeter/SayHello"), findsOneWidget);
   });
@@ -147,7 +140,6 @@ void main() {
   testWidgets('GatewayClass eg: controller, parameters, gateways', (tester) async {
     await loadRealFonts();
     await pumpGwPanel(tester, gwFixture('gatewayclass-eg'));
-    await saveScreenshot(tester, 'gatewayclass-eg');
     expect(find.text('gateway.envoyproxy.io/gatewayclass-controller'), findsOneWidget);
     expect(find.text('EnvoyProxy/clusterip-proxy'), findsOneWidget);
     expect(find.text('gateway-demo/demo-gw'), findsOneWidget);
@@ -159,7 +151,6 @@ void main() {
   testWidgets('GatewayClass orphan: no controller, offers Envoy Gateway', (tester) async {
     await loadRealFonts();
     await pumpGwPanel(tester, gwFixture('gatewayclass-orphan'));
-    await saveScreenshot(tester, 'gatewayclass-orphan');
     expect(find.text('No controller has accepted this class'), findsOneWidget);
     expect(find.text('gateway-demo/pending-gw'), findsOneWidget);
     await tester.tap(find.text('Install Envoy Gateway'));
@@ -170,7 +161,6 @@ void main() {
   testWidgets('ReferenceGrant: summary, routes relying on it, uncovered refs', (tester) async {
     await loadRealFonts();
     await pumpGwPanel(tester, gwFixture('referencegrant-allow-gateway-demo-to-web'));
-    await saveScreenshot(tester, 'referencegrant');
     expect(find.text('Allows HTTPRoutes in namespace gateway-demo to reference the Service web in demo.'), findsOneWidget);
     expect(find.text('Allows GRPCRoutes in namespace gateway-demo to reference the Service web in demo.'), findsOneWidget);
     expect(find.text('HTTPRoute gateway-demo/shop'), findsOneWidget);

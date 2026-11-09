@@ -60,7 +60,6 @@ void main() {
       expect(find.text('CPU requests'), findsNothing, reason: 'the columns show usage once it is known');
       expect(find.text('CPU requested'), findsOneWidget, reason: 'request totals are in the stat strip');
       expect(find.byType(UsageCell), findsNWidgets(2), reason: 'CPU and memory usage cells');
-      await saveScreenshot(tester, 'metrics-nodes-usage');
       for (var w = 360.0; w <= 1800; w += 60) {
         await _resize(tester, w, 700);
         expect(tester.takeException(), isNull, reason: 'overflow at $w');
@@ -88,7 +87,6 @@ void main() {
     expect(find.text('Usage & allocation'), findsOneWidget);
     expect(find.text('limit'), findsOneWidget, reason: 'legend shows the limit tick');
     expect(find.byWidgetPredicate((w) => w is Tooltip && (w.message ?? '').startsWith('Sampled')), findsOneWidget);
-    await saveScreenshot(tester, 'metrics-node-panel');
     expect(tester.takeException(), isNull);
   });
 
@@ -103,7 +101,6 @@ void main() {
     // nginx has a limit: shown against it, with the request.
     expect(tip('of 200m limit · 50m request'), findsOneWidget);
     expect(tip('of 5m request'), findsOneWidget, reason: 'log-sidecar has only a request');
-    await saveScreenshot(tester, 'metrics-pod-panel');
     expect(tester.takeException(), isNull);
   });
 
@@ -127,7 +124,6 @@ void main() {
     final usage = find.textContaining('total vs their requests');
     await tester.ensureVisible(usage);
     await tester.pump();
-    await saveScreenshot(tester, 'metrics-deployment-usage');
     expect(tester.takeException(), isNull);
   });
 
@@ -143,7 +139,6 @@ void main() {
     expect(find.text('driving'), findsOneWidget);
     expect(find.textContaining('drives the decision: 2 replicas'), findsOneWidget);
     expect(find.textContaining('HPA status'), findsNWidgets(2));
-    await saveScreenshot(tester, 'metrics-hpa-panel');
     expect(tester.takeException(), isNull);
   });
 

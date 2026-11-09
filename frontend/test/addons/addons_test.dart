@@ -12,7 +12,6 @@ import 'package:k8sman/ui/helm/helm_api.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
-import '../support/screenshot.dart';
 import 'addons_fakes.dart';
 
 Map<String, AddonStatus> detectAll({String dir = '', List<HelmRelease>? releases, List<Json>? deployments, List<ResourceType>? types}) {
@@ -315,25 +314,4 @@ void main() {
     });
   });
 
-  testWidgets('screenshots', (tester) async {
-    await loadRealFonts();
-    await pumpAddons(tester, size: const Size(1200, 860));
-    await saveScreenshot(tester, 'addons_page');
-    await tester.tap(inCard(AddonIds.certManager, find.text('Install…')));
-    await settle(tester);
-    await tester.tap(find.text('Dry run'));
-    await settle(tester);
-    await saveScreenshot(tester, 'addons_install_dialog');
-    await tester.tap(find.text('Install…').last);
-    await settle(tester);
-    await saveScreenshot(tester, 'addons_install_confirm');
-    await tester.pumpWidget(const SizedBox());
-    await pumpAddons(tester, size: const Size(420, 900));
-    await saveScreenshot(tester, 'addons_page_narrow');
-    await tester.pumpWidget(const SizedBox());
-    final deps = fixtureDeployments();
-    deps.firstWhere((d) => d['metadata']['name'] == 'trivy-operator')['status'] = {'replicas': 1, 'unavailableReplicas': 1};
-    await pumpAddons(tester, size: const Size(1200, 860), api: AddonsApiClient(deployments: deps));
-    await saveScreenshot(tester, 'addons_page_unhealthy');
-  });
 }

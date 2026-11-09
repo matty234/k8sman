@@ -48,7 +48,6 @@ void main() {
     await loadRealFonts();
     final app = await pumpPanel(tester, devFixture('ingress-web'),
         api: FakeApiClient(objects: {'services/demo/web': devFixture('svc-web')}));
-    await saveScreenshot(tester, 'network-ingress-web');
     expect(find.text('web.demo.local'), findsWidgets);
     expect(find.text(':http (80)'), findsOneWidget);
     expect(find.text(':80'), findsOneWidget);
@@ -67,7 +66,6 @@ void main() {
       'services/demo/web': devFixture('svc-web'),
       'secrets/demo/web-tls': {'kind': 'Secret'},
     }));
-    await saveScreenshot(tester, 'network-ingress-extras');
     expect(find.text('nginx'), findsOneWidget);
     expect(find.text('172.18.0.2'), findsOneWidget);
     expect(find.text('missing'), findsOneWidget);
@@ -105,7 +103,6 @@ void main() {
     await pumpPanel(tester, ic, api: FakeApiClient(itemsByResource: {
       'ingresses.networking.k8s.io': [devFixture('ingress-web'), ingressWithExtras()..['metadata']['name'] = 'web2'],
     }));
-    await saveScreenshot(tester, 'network-ingressclass');
     expect(find.text('Default class'), findsOneWidget);
     expect(find.text('k8s.io/ingress-nginx'), findsOneWidget);
     expect(find.text('demo/web'), findsOneWidget); // no class → default

@@ -39,7 +39,6 @@ void main() {
       for (var w = 320.0; w <= 760; w += 40) {
         await pumpPanel(tester, obj, size: Size(w, 1600));
         expect(tester.takeException(), isNull, reason: 'overflow at width $w');
-        if (w == 400) await saveScreenshot(tester, 'config-narrow-${obj['kind']}');
       }
       // Reveal everything (Secret) and re-check the narrowest width.
       final reveal = find.byTooltip('Reveal');
