@@ -44,6 +44,9 @@ type Settings struct {
 	// ReadOnlyContexts maps kube context → the user's choice: true =
 	// read-only, false = writable. Absent = automatic (see AutoReadOnly).
 	ReadOnlyContexts map[string]bool `json:"readOnlyContexts,omitempty"`
+	// ContextAppearance maps kube context → the icon and colour the user
+	// picked for its badge. Absent = the default badge.
+	ContextAppearance map[string]Appearance `json:"contextAppearance,omitempty"`
 	// Tables maps a resource kind ("group/Kind", "" group for core) to its
 	// table preferences.
 	Tables map[string]TablePrefs `json:"tables,omitempty"`
@@ -321,6 +324,7 @@ func (st *Store) Get() Settings {
 	out.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
 	out.Sidebar = cloneSidebar(st.s.Sidebar)
 	out.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
+	out.ContextAppearance = maps.Clone(st.s.ContextAppearance)
 	out.Tables = cloneTables(st.s.Tables)
 	out.DisabledModules = slices.Clone(st.s.DisabledModules)
 	out.Views = slices.Clone(st.s.Views)
@@ -344,6 +348,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	next.ArgoCDUseCLI = maps.Clone(st.s.ArgoCDUseCLI)
 	next.Sidebar = cloneSidebar(st.s.Sidebar)
 	next.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
+	next.ContextAppearance = maps.Clone(st.s.ContextAppearance)
 	next.Tables = cloneTables(st.s.Tables)
 	next.DisabledModules = slices.Clone(st.s.DisabledModules)
 	next.Views = slices.Clone(st.s.Views)
@@ -397,6 +402,32 @@ func (st *Store) SetContextReadOnly(context string, readOnly *bool) error {
 			s.ReadOnlyContexts = map[string]bool{}
 		}
 		s.ReadOnlyContexts[context] = *readOnly
+	})
+}
+
+// Appearance is a context's badge: Icon is a stable id from the app's icon
+// set (or "text:PR", a 1-2 character monogram), Color a palette id or
+// "#rrggbb". Either may be empty (default). The store doesn't know the
+// sets, so ids written by a newer version survive.
+type Appearance struct {
+	Icon  string `json:"icon,omitempty"`
+	Color string `json:"color,omitempty"`
+}
+
+// SetContextAppearance saves a context's badge; an empty one forgets it.
+func (st *Store) SetContextAppearance(context string, a Appearance) error {
+	return st.Update(func(s *Settings) {
+		if a == (Appearance{}) {
+			delete(s.ContextAppearance, context)
+			if len(s.ContextAppearance) == 0 {
+				s.ContextAppearance = nil
+			}
+			return
+		}
+		if s.ContextAppearance == nil {
+			s.ContextAppearance = map[string]Appearance{}
+		}
+		s.ContextAppearance[context] = a
 	})
 }
 

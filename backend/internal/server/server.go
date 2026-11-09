@@ -82,6 +82,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.readOnlyRoutes()
 	s.tablePrefsRoutes()
 	s.namespaceRoutes()
+	s.appearanceRoutes()
 	s.execRoutes()
 	s.localShellRoutes()
 	s.securityRoutes()

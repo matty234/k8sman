@@ -34,6 +34,12 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   per context. A multi-namespace selection shows as "3 namespaces" on the
   button, and as removable chips with Clear inside the picker. Removing the
   last one falls back to the kubeconfig namespace, else All.
+- Cluster icon and colour: right-click the context switcher (or a context in
+  its list, or use Settings > Clusters) for "Change icon & colour...": about
+  thirty outlined icons or a 1-2 character monogram, and ten palette colours
+  (or Default). The badge shows in the sidebar header, the switcher list and
+  Settings > Clusters. Saved per context in settings.json, local only, so it
+  works on read-only contexts.
 - Namespace sets work for users whose access covers only those namespaces:
   each namespace is watched on its own and merged. A namespace you can't
   read shows a banner ("No access to team-5 (forbidden)") while the others
