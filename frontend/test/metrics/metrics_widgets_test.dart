@@ -138,11 +138,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('HPA panel: live values and the driving metric', (tester) async {
+  testWidgets('HPA panel: live current values next to the targets, and the driving metric', (tester) async {
     await loadRealFonts();
     final hpa = _fixture('test/metrics/fixtures/hpa-web-object.json');
     await pumpPanel(tester, hpa, api: MetricsFakeApi(), size: const Size(560, 1800));
-    expect(find.text('Live metrics'), findsOneWidget);
+    // One Metrics section: the External metric's live value (custom/external
+    // metrics API) beside its target, and CPU's.
+    expect(find.text('Live metrics'), findsNothing);
+    expect(find.textContaining('avg 1  /  target avg 1', findRichText: true), findsOneWidget);
+    expect(find.textContaining('7%  /  target 70%', findRichText: true), findsOneWidget);
     expect(find.text('driving'), findsOneWidget);
     expect(find.textContaining('drives the decision: 2 replicas'), findsOneWidget);
     expect(find.textContaining('HPA status'), findsNWidgets(2));

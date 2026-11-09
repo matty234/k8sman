@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
 import '../../metrics/hpa_live.dart';
+import '../../metrics/metrics_api.dart' show HpaLiveMetric;
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -182,14 +183,13 @@ class HpaPanel extends ResourcePanel {
           ],
         ),
       ),
-      DetailSection(
-        title: 'Metrics',
-        icon: Icons.speed,
-        child: metrics.isEmpty
-            ? const InlineMessage('No metrics: defaults to 80% average CPU utilization')
-            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final m in metrics) _MetricRow(m)]),
-      ),
-      hpaLiveSection(ctx),
+      metrics.isEmpty
+          ? const DetailSection(
+              title: 'Metrics',
+              icon: Icons.speed,
+              child: InlineMessage('No metrics: defaults to 80% average CPU utilization'),
+            )
+          : hpaMetricsSection(ctx),
       DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(st['conditions'] as List?)),
       DetailSection(title: 'Behavior', icon: Icons.tune, child: _Behavior(asMap(spec['behavior']))),
     ];
@@ -328,17 +328,39 @@ class _Stat extends StatelessWidget {
   }
 }
 
-class _MetricRow extends StatelessWidget {
+/// One row of the Metrics section: the metric, its current value next to
+/// its target, and a bar of current against target (the tick). [live], when
+/// the metrics APIs answered, supplies the current value (read now from the
+/// resource, custom or external metrics API, as the controller would) and
+/// the replicas it proposes; otherwise the HPA's own status is shown.
+class HpaMetricRow extends StatelessWidget {
   final HpaMetric m;
-  const _MetricRow(this.m);
+  final HpaLiveMetric? live;
+
+  /// This metric sets the replica count (several can tie).
+  final bool drives;
+  const HpaMetricRow(this.m, {super.key, this.live, this.drives = false});
+
+  String _fmt(String? v) => v == null || v.isEmpty ? '—' : (m.isPercent ? '$v%' : v);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final small = theme.textTheme.bodySmall;
-    final ratio = m.ratio;
+    final hint = small?.copyWith(color: theme.hintColor);
+    final warn = severityColor(context, Severity.warn);
+    final l = live;
+    final liveValue = l != null && l.error == null && l.current != null && l.current!.isNotEmpty;
+    final ratio = liveValue ? l.ratio : m.ratio;
     final over = ratio != null && ratio > 1;
-    final barColor = ratio == null ? theme.hintColor : severityColor(context, over ? Severity.warn : Severity.ok);
+    final avg = m.targetType == 'AverageValue' ? 'avg ' : '';
+    final currentText = liveValue ? '$avg${_fmt(l.current)}' : m.currentText;
+    final missing = !liveValue && m.current == null;
+    final notes = [
+      if (liveValue && m.current != null) 'HPA status ${m.currentText}',
+      if (l != null && l.pods > 0) 'over ${l.pods} pod${l.pods == 1 ? '' : 's'}',
+      if (l?.proposed != null) '→ ${l!.proposed} replica${l.proposed == 1 ? '' : 's'}',
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
@@ -349,80 +371,112 @@ class _MetricRow extends StatelessWidget {
             children: [
               Chipish(text: m.type),
               const SizedBox(width: 6),
-              Text(m.label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-              if (m.subject != null) ...[
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    m.subject!,
-                    style: small?.copyWith(color: theme.hintColor),
-                    overflow: TextOverflow.ellipsis,
+              Expanded(
+                child: Row(children: [
+                  Flexible(
+                    child: Text(
+                      m.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
                   ),
-                ),
-              ],
-              const Spacer(),
-              Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: m.currentText,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: m.current == null ? severityColor(context, Severity.warn) : (over ? severityColor(context, Severity.warn) : null),
-                      ),
-                    ),
-                    TextSpan(
-                      text: '  /  target ',
-                      style: TextStyle(color: theme.hintColor),
-                    ),
-                    TextSpan(
-                      text: m.targetText,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                  if (drives) ...[
+                    const SizedBox(width: 6),
+                    Tooltip(
+                      message: 'This metric sets the replica count',
+                      child: Text('driving', style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
                     ),
                   ],
+                  if (m.subject != null) ...[
+                    const SizedBox(width: 6),
+                    Flexible(child: Text(m.subject!, maxLines: 1, style: hint, overflow: TextOverflow.ellipsis)),
+                  ],
+                ]),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: liveValue ? 'Live, from the metrics API' : 'From the HPA status',
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: currentText,
+                        style: TextStyle(fontWeight: FontWeight.w700, color: missing || over ? warn : null),
+                      ),
+                      TextSpan(text: '  /  target ', style: TextStyle(color: theme.hintColor)),
+                      TextSpan(text: m.targetText, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  style: small?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
                 ),
-                style: small,
               ),
             ],
           ),
           const SizedBox(height: 4),
-          // Bar: current relative to target (target mark at 2/3 width).
-          SizedBox(
-            height: 6,
-            child: LayoutBuilder(
-              builder: (context, c) {
-                final w = c.maxWidth;
-                final targetX = w * 2 / 3;
-                final fill = ratio == null ? 0.0 : (ratio * targetX).clamp(0.0, w);
-                return Stack(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                    Container(
-                      width: fill,
-                      decoration: BoxDecoration(color: barColor, borderRadius: BorderRadius.circular(3)),
-                    ),
-                    Positioned(
-                      left: targetX - 1,
-                      top: -2,
-                      bottom: -2,
-                      child: Container(width: 2, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-          if (m.current == null)
+          _TargetBar(ratio: ratio, color: over ? warn : theme.colorScheme.onSurface.withValues(alpha: 0.42)),
+          if (missing)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text('no current value reported (metrics unavailable?)', style: small?.copyWith(color: theme.hintColor, fontSize: 11)),
+              child: Text('no current value reported (metrics unavailable?)', style: hint?.copyWith(fontSize: 11)),
+            )
+          else if (notes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(notes.join('  ·  '), maxLines: 1, overflow: TextOverflow.ellipsis, style: hint?.copyWith(fontSize: 11)),
             ),
+          if (l?.error != null)
+            Text(l!.error!, maxLines: 2, overflow: TextOverflow.ellipsis, style: hint?.copyWith(fontSize: 11, color: warn)),
         ],
+      ),
+    );
+  }
+}
+
+/// Current against target: the fill is the ratio, the tick (at 2/3 of the
+/// width) the target, so going over shows past it.
+class _TargetBar extends StatelessWidget {
+  final double? ratio;
+  final Color color;
+  const _TargetBar({required this.ratio, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      height: 6,
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final w = c.maxWidth;
+          final targetX = w * 2 / 3;
+          final fill = ratio == null ? 0.0 : (ratio! * targetX).clamp(0.0, w);
+          return Stack(
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 1.5,
+                height: 3,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: theme.colorScheme.onSurface.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(3)),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                width: fill,
+                top: 1.5,
+                height: 3,
+                child: DecoratedBox(decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+              ),
+              Positioned(
+                left: targetX - 1,
+                top: 0,
+                bottom: 0,
+                child: Container(width: 2, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
