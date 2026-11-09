@@ -134,6 +134,22 @@ Future<void> hover(WidgetTester tester, Finder target) async {
 
 TestGesture? _mouse;
 
+/// The cluster fixture with CPU usage a tenth of its real value.
+class _QuietCpuProm extends FixturePromApi {
+  @override
+  Future<dynamic> getJson(String path, [Map<String, String?> query = const {}]) async {
+    final r = await super.getJson(path, query);
+    if (path == 'query_range' && (query['query'] ?? '').contains('resource="cpu"')) {
+      for (final s in r['result'] as List) {
+        if (s['metric']['series'] == 'usage') {
+          s['values'] = [for (final v in s['values'] as List) [v[0], '${double.parse(v[1] as String) / 10}']];
+        }
+      }
+    }
+    return r;
+  }
+}
+
 void main() {
   testWidgets('live fixture: cards, issues, nodes and events', (tester) async {
     await loadRealFonts();
@@ -331,6 +347,20 @@ void main() {
       await settle(tester);
       expect(prom.queries.where((q) => q.contains('kube_pod_container_resource_requests')), hasLength(4));
     }
+  });
+
+  testWidgets('capacity chart scales to usage and labels requests far above it', (tester) async {
+    addTearDown(() => PromApi.debugOverride = null);
+    PromApi.debugOverride = (_) => _QuietCpuProm();
+    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400), showAllIssues: false);
+    await settle(tester);
+    // Usage peaks at 0.18 cores, requests are 3.5: the scale follows usage
+    // and requests become a label instead of a line along the top.
+    final cpu = tester.widget<AreaChart>(find.descendant(of: find.byKey(const ValueKey('history-cpu')), matching: find.byType(AreaChart)));
+    expect(cpu.yMax, lessThan(0.25));
+    expect(find.text('requested 3.50 cores ↑'), findsOneWidget);
+    // Memory requests sit within reach of usage, so stay a line.
+    expect(find.text('requested (now)'), findsOneWidget);
   });
 
   testWidgets('read-only hides actions', (tester) async {
