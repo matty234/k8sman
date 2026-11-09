@@ -92,6 +92,21 @@ bool pageEnabled(AppState app, MainView v) {
 /// [allPages] that are on, in order.
 List<AppPage> enabledPages(AppState app) => [for (final p in allPages) if (pageEnabled(app, p.view)) p];
 
+/// The kinds enabled pages are the home of (`group/Kind` → page; see
+/// [AppPage.homeFor]). The first page to claim a kind wins.
+Map<String, MainView> kindHomes(AppState app) {
+  final out = <String, MainView>{};
+  for (final p in enabledPages(app)) {
+    for (final gk in p.homeFor) {
+      out.putIfAbsent(gk, () => p.view);
+    }
+  }
+  return out;
+}
+
+/// The page that is the home of kind [gk], if an enabled one claims it.
+MainView? kindHome(AppState app, String gk) => kindHomes(app)[gk];
+
 /// Sidebar glyphs the modules give their kinds.
 final Map<String, IconData> moduleKindIcons = {for (final m in builtInModules) ...m.kindIcons};
 

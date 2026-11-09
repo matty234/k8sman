@@ -258,7 +258,10 @@ class PageHeader extends StatelessWidget {
 
   /// Before the title, e.g. a Back button.
   final Widget? leading;
-  const PageHeader({super.key, required this.title, this.subtitle, this.actions = const [], this.leading});
+
+  /// Right after the title, before [subtitle] (e.g. a [PageModeSwitch]).
+  final Widget? afterTitle;
+  const PageHeader({super.key, required this.title, this.subtitle, this.actions = const [], this.leading, this.afterTitle});
 
   @override
   Widget build(BuildContext context) {
@@ -273,6 +276,7 @@ class PageHeader extends StatelessWidget {
             Expanded(
               child: Row(children: [
                 Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge)),
+                if (afterTitle != null) ...[const SizedBox(width: 12), afterTitle!],
                 if (subtitle != null) ...[
                   const SizedBox(width: 10),
                   Flexible(

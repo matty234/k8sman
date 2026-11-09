@@ -111,9 +111,11 @@ CommandResults rankCommand(
 
   // Kinds: exact short name, plural or kind first, then fuzzy.
   final scored = <(bool, int, PaletteItem)>[];
+  // Kinds with a page of their own (Node) are found as the page.
+  final homes = kindHomes(app);
   if (cmd.isNotEmpty) {
     for (final t in app.types) {
-      if (t.gk == 'events.k8s.io/Event') continue;
+      if (t.gk == 'events.k8s.io/Event' || homes.containsKey(t.gk)) continue;
       final item = PaletteItem(
         group: PaletteGroup.kinds,
         title: t.kind,
@@ -137,18 +139,19 @@ CommandResults rankCommand(
     // `:name` goes to a page by its commands.
     for (final p in enabledPages(app)) {
       if (p.view == MainView.settings) continue;
+      final names = [...p.commands, ...pageKindNames(app, p).map((n) => n.toLowerCase())];
       final item = PaletteItem(
         group: PaletteGroup.pages,
         title: p.label,
         typeLabel: 'Page',
         icon: _icon(p.icon),
-        aliases: p.commands,
-        exactAliases: p.commands,
-        current: app.view == p.view,
+        aliases: names,
+        exactAliases: names,
+        current: app.view == p.view || app.activeHomePage == p.view,
         run: () => app.showView(p.view),
       );
       final s = cmd.isEmpty ? 0 : item.score(cmd);
-      if (s != null) pages.add((p.commands.contains(cmd), s, item));
+      if (s != null) pages.add((names.contains(cmd), s, item));
     }
     pages.sort((a, b) => a.$1 != b.$1 ? (a.$1 ? -1 : 1) : b.$2 - a.$2);
   }

@@ -38,6 +38,8 @@ import 'widgets/group_icon.dart';
 import 'widgets/namespace_picker.dart';
 import 'widgets/partial_banner.dart';
 import 'views/saved_views_ui.dart';
+import 'widgets/page_mode_switch.dart';
+import '../modules/modules.dart' show pageFor;
 
 /// Live table for the selected resource type. Re-created (via key) whenever
 /// the type, namespace or column config changes.
@@ -686,6 +688,7 @@ class _Toolbar extends StatelessWidget {
     final colors = AppColors.of(context);
     final t = controller.type;
     final session = controller.session;
+    final home = app.homePageOf(t);
     final count = shown == controller.totalCount ? '$shown' : '$shown of ${controller.totalCount}';
     return WindowDragArea(
       child: SizedBox(
@@ -720,10 +723,15 @@ class _Toolbar extends StatelessWidget {
                           Flexible(
                             child: Tooltip(
                               message: session == null ? '' : 'Saved view · ${t.kind} · ${viewContextLabel(session.view)}',
-                              child: Text(session?.view.name ?? t.kind,
+                              child: Text(session?.view.name ?? (home != null ? pageFor(home)?.label ?? t.kind : t.kind),
                                   key: const ValueKey('table-title-text'), overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.titleLarge),
                             ),
                           ),
+                          // The kind's home page in its Table mode: switch back to its Overview.
+                          if (home != null) ...[
+                            const SizedBox(width: 12),
+                            Baseline(baseline: 16, baselineType: TextBaseline.alphabetic, child: PageModeSwitch(page: home)),
+                          ],
                           if (session != null && session.modified) ...[
                             const SizedBox(width: 5),
                             Tooltip(

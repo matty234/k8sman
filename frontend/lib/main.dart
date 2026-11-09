@@ -11,6 +11,7 @@ import 'app/updates/update_ui.dart';
 import 'app/window_chrome.dart';
 import 'state/app_state.dart';
 import 'state/log_dock.dart';
+import 'modules/modules.dart' show kindHomes;
 import 'prometheus/metric_history_chart.dart' show ChartHoverScope;
 import 'ui/shell.dart';
 import 'ui/theme.dart';
@@ -19,7 +20,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   WindowChrome.init();
   final api = ApiClient();
-  final app = AppState(api);
+  final app = AppState(api)..kindHomes = kindHomes;
   // Spawns the embedded backend (macOS/Windows app) or uses K8SMAN_BACKEND, then
   // loads the app state whenever the backend (re)connects.
   final dock = LogDock(api);

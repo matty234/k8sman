@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/models.dart';
-import '../../modules/modules.dart' show pageEnabled, pageFor;
+import '../../modules/modules.dart' show kindHomes, pageEnabled, pageFor;
 import '../../state/app_state.dart';
 import '../resource_nav.dart' show kindIconWidget;
 import '../theme.dart';
@@ -36,7 +36,9 @@ class SidebarLayoutEditor extends StatelessWidget {
   Future<void> _pickKind(BuildContext anchor) async {
     final app = anchor.read<AppState>();
     final pinned = {for (final e in app.sidebar.entries) if (e.pin != null && e.pin!.namespace == null) e.pin!.gk};
-    final types = [for (final t in app.types) if (!pinned.contains(t.gk)) t]..sort((a, b) => a.kind.compareTo(b.kind));
+    // Kinds with a page of their own (Node) are pinned as that page.
+    final homes = kindHomes(app);
+    final types = [for (final t in app.types) if (!pinned.contains(t.gk) && !homes.containsKey(t.gk)) t]..sort((a, b) => a.kind.compareTo(b.kind));
     final picked = await showSearchablePicker<ResourceType>(
       anchor,
       hint: 'Find kind',

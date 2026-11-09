@@ -28,6 +28,7 @@ List<PaletteItem> paletteItems(BuildContext context) {
   final app = context.read<AppState>();
   final dock = context.read<LogDock?>();
   final updates = context.read<UpdateController?>();
+  final homes = kindHomes(app);
   return [
     // Every saved view; one bound to another context names it (⇄: opening
     // it switches cluster).
@@ -39,12 +40,16 @@ List<PaletteItem> paletteItems(BuildContext context) {
           title: p.label,
           typeLabel: 'Page',
           icon: _icon(p.icon),
-          current: app.view == p.view,
+          // The kinds it is the home of find it too ("Node", "no").
+          aliases: pageKindNames(app, p),
+          exactAliases: pageKindNames(app, p),
+          current: app.view == p.view || app.activeHomePage == p.view,
           run: () => app.showView(p.view),
         ),
     for (final t in app.types)
-      // events.k8s.io/Event duplicates core Event (the sidebar hides it too).
-      if (t.gk != 'events.k8s.io/Event')
+      // events.k8s.io/Event duplicates core Event (the sidebar hides it
+      // too); kinds with a page of their own are found as the page.
+      if (t.gk != 'events.k8s.io/Event' && !homes.containsKey(t.gk))
         PaletteItem(
           group: PaletteGroup.kinds,
           title: t.kind,

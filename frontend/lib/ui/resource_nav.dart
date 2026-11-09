@@ -222,6 +222,14 @@ String kindLabel(ResourceType type) {
   return r[0].toUpperCase() + r.substring(1);
 }
 
+/// What finds page [p] in the palette besides its label and commands: the
+/// names of the kinds it is the home of (`Node`, `nodes`, `no`).
+List<String> pageKindNames(AppState app, AppPage p) => [
+      for (final gk in p.homeFor)
+        for (final t in app.types)
+          if (t.gk == gk) ...[t.kind, t.resource, ...t.shortNames],
+    ];
+
 class ResourceNav extends StatefulWidget {
   const ResourceNav({super.key});
 
@@ -315,7 +323,7 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final curated = _curatedFor(app);
-    final groups = _group(app.types, curated);
+    final groups = _group(app.types, curated, homes: kindHomes(app).keys.toSet());
     // A new context (once connected): its badges right away.
     final connected = !app.loading && app.error == null && app.types.isNotEmpty;
     if (connected && app.currentContext != _summaryContext) {
@@ -463,8 +471,10 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
     });
   }
 
-  Map<String, List<ResourceType>> _group(List<ResourceType> types, Map<String, List<String>> curated) {
-    final byGk = {for (final t in types) t.gk: t};
+  /// Kinds in [homes] have a page of their own (Node: the Nodes page), so
+  /// they aren't listed.
+  Map<String, List<ResourceType>> _group(List<ResourceType> types, Map<String, List<String>> curated, {Set<String> homes = const {}}) {
+    final byGk = {for (final t in types) if (!homes.contains(t.gk)) t.gk: t};
     final out = <String, List<ResourceType>>{};
     final used = <String>{};
     for (final e in curated.entries) {
@@ -473,7 +483,9 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
       if (list.isNotEmpty) out[e.key] = list;
     }
     // events.k8s.io/Event duplicates core Event; hide it.
-    used.add('events.k8s.io/Event');
+    used
+      ..add('events.k8s.io/Event')
+      ..addAll(homes);
     final custom = <String, List<ResourceType>>{};
     final other = <ResourceType>[];
     for (final t in types) {
@@ -692,7 +704,9 @@ class _TopEntry extends StatelessWidget {
         key: ValueKey('nav-view-${view.name}'),
         icon: icon,
         label: label,
-        selected: context.select<AppState, bool>((a) => a.view == view),
+        // A kind's home page is selected in its Table mode too (not while
+        // a saved view of the kind is open: the view's row is).
+        selected: context.select<AppState, bool>((a) => a.view == view || (a.viewSession == null && a.activeHomePage == view)),
         onTap: () => app.showView(view),
         onSecondaryTap: (pos) => showSidebarMenu(context, pos, [
           entry.hidden

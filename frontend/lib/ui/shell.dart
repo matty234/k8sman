@@ -100,7 +100,10 @@ class _ShellState extends State<Shell> {
     WindowChrome.onCommandPalette = _palette;
     WindowChrome.onSettings = _settings;
     // "Alerts" and "Port Forwards" (palette, links) open their dock panes.
-    _app = context.read<AppState>()..showInDock = _showInDock;
+    _app = context.read<AppState>()
+      ..showInDock = _showInDock
+      // Pages that are a kind's home (the Nodes page for Node).
+      ..kindHomes ??= kindHomes;
     HardwareKeyboard.instance.addHandler(_strayKey);
   }
 

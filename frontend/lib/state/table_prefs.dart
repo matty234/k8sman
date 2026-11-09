@@ -3,7 +3,9 @@ import 'dart:async';
 import '../api/client.dart';
 import '../api/models.dart';
 
-/// How a resource kind's table was left: sort, column widths and filter.
+/// How a resource kind's table was left: sort, column widths and filter,
+/// and, for a kind with a home page (the Nodes page for Node), the page's
+/// last mode.
 class TablePrefs {
   String? sortColumn;
   bool sortDescending = false;
@@ -12,13 +14,17 @@ class TablePrefs {
   final Map<String, double> widths = {};
   String filter = '';
 
+  /// The home page's last mode: `table`, or '' for its default (Overview).
+  String mode = '';
+
   TablePrefs();
 
   factory TablePrefs.fromJson(Json j) {
     final p = TablePrefs()
       ..sortColumn = (j['sortColumn'] as String?)?.isNotEmpty == true ? j['sortColumn'] as String : null
       ..sortDescending = j['sortDescending'] == true
-      ..filter = (j['filter'] as String?) ?? '';
+      ..filter = (j['filter'] as String?) ?? ''
+      ..mode = (j['mode'] as String?) ?? '';
     final w = j['widths'];
     if (w is Map) {
       for (final e in w.entries) {
@@ -28,13 +34,14 @@ class TablePrefs {
     return p;
   }
 
-  bool get isEmpty => sortColumn == null && widths.isEmpty && filter.isEmpty;
+  bool get isEmpty => sortColumn == null && widths.isEmpty && filter.isEmpty && mode.isEmpty;
 
   Json toJson() => {
     if (sortColumn != null) 'sortColumn': sortColumn,
     if (sortDescending) 'sortDescending': true,
     if (widths.isNotEmpty) 'widths': widths,
     if (filter.isNotEmpty) 'filter': filter,
+    if (mode.isNotEmpty) 'mode': mode,
   };
 }
 
@@ -78,7 +85,8 @@ class TablePrefsStore {
       ..sortColumn = null
       ..sortDescending = false
       ..widths.clear()
-      ..filter = '';
+      ..filter = ''
+      ..mode = '';
     changed(kind);
   }
 

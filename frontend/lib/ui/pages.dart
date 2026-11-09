@@ -37,6 +37,12 @@ class AppPage {
   final Widget Function(Widget navItem)? navGate;
   final String? navNote;
 
+  /// Kinds (`group/Kind`) this page is the home of: the sidebar lists the
+  /// page instead of the kind, and choosing the kind anywhere (the palette,
+  /// `:` commands, links) opens the page. The page shows the kind's table
+  /// as its Table mode (see [AppState.setPageMode] and [PageModeSwitch]).
+  final List<String> homeFor;
+
   const AppPage({
     required this.view,
     required this.icon,
@@ -48,6 +54,7 @@ class AppPage {
     this.underMore = false,
     this.navGate,
     this.navNote,
+    this.homeFor = const [],
   });
 }
 
@@ -57,7 +64,7 @@ final corePages = <AppPage>[
   AppPage(view: MainView.overview, icon: Icons.space_dashboard_outlined, label: 'Overview', commands: const ['overview'], builder: (_) => const OverviewView()),
   AppPage(
       view: MainView.alerts, icon: Icons.notifications_none, label: 'Alerts', commands: const ['alerts'], inSidebar: false, builder: (_) => const AlertsView()),
-  AppPage(view: MainView.nodes, icon: Icons.dns_outlined, label: 'Nodes', commands: const ['nodes'], builder: (_) => const NodesView()),
+  AppPage(view: MainView.nodes, icon: Icons.dns_outlined, label: 'Nodes', commands: const ['nodes'], homeFor: const ['/Node'], builder: (_) => const NodesView()),
   AppPage(view: MainView.security, icon: Icons.shield_outlined, label: 'Security', commands: const ['security'], builder: (_) => const SecurityView()),
   AppPage(view: MainView.access, icon: Icons.manage_accounts_outlined, label: 'Access', commands: const ['access', 'rbac'], builder: (_) => const AccessView()),
   AppPage(

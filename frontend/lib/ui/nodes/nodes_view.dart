@@ -19,6 +19,7 @@ import '../theme.dart';
 import 'drain_dialog.dart';
 import '../widgets/common.dart';
 import '../widgets/editorial.dart';
+import '../widgets/page_mode_switch.dart';
 
 /// Cluster nodes as a sortable list, grouped by role: health, utilisation
 /// bars and a per-node menu (cordon / uncordon). Clicking a row opens the
@@ -224,6 +225,8 @@ class _NodesViewState extends State<NodesView> with PollingState {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PageHeader(
         title: 'Nodes',
+        // Overview | Table (the Node kind's table, in place).
+        afterTitle: context.select<AppState, bool>((a) => a.homeKindOf(MainView.nodes) != null) ? const PageModeSwitch(page: MainView.nodes) : null,
         subtitle: nodes == null ? null : Text('${nodes.length} node${nodes.length == 1 ? '' : 's'}'),
         actions: [
           if (_updated != null) AgeText(_updated!.toUtc().toIso8601String(), suffix: ' ago'),

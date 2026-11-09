@@ -264,15 +264,81 @@ class AppState extends ChangeNotifier {
   bool Function(MainView v)? showInDock;
 
   /// Shows page [v]. [focus] is handed to the page as [pageFocus] (e.g. the
-  /// Helm page's `namespace/name` release to select).
+  /// Helm page's `namespace/name` release to select). A page that is a
+  /// kind's home opens in its last mode (see [setPageMode]).
   void showView(MainView v, {String? focus}) {
     if (focus != null) pageFocus = focus;
     if (showInDock?.call(v) ?? false) return;
+    final kind = homeKindOf(v);
+    if (kind != null && pageInTableMode(v)) {
+      selectType(kind, asTable: true);
+      return;
+    }
     _seedHistory();
     if (v != view && detail != null) inspectorCollapsed = true;
     if (v != view) previousView = view;
     view = v;
     _recordNav();
+    notifyListeners();
+  }
+
+  // ---- pages that are a kind's home ----
+
+  /// The kinds pages are the home of (`group/Kind` → page), e.g. the Nodes
+  /// page for Node. Set from the page registry (`kindHomes` in
+  /// lib/modules/modules.dart) by main and the shell; null leaves every
+  /// kind on its plain table.
+  Map<String, MainView> Function(AppState app)? kindHomes;
+
+  /// The page that is the home of [t], if any.
+  MainView? homePageOf(ResourceType? t) => t == null ? null : kindHomes?.call(this)[t.gk];
+
+  /// The kind page [v] is the home of (its Table mode shows that kind).
+  ResourceType? homeKindOf(MainView v) {
+    final homes = kindHomes?.call(this);
+    if (homes == null) return null;
+    for (final e in homes.entries) {
+      if (e.value != v) continue;
+      final i = e.key.indexOf('/');
+      final t = typeFor(e.key.substring(0, i), e.key.substring(i + 1));
+      if (t != null) return t;
+    }
+    return null;
+  }
+
+  /// Whether home page [v] was last left in its Table mode (remembered with
+  /// its kind's table preferences, so across launches too).
+  bool pageInTableMode(MainView v) {
+    final t = homeKindOf(v);
+    return t != null && tablePrefs.of(t.gk).mode == 'table';
+  }
+
+  /// The home page whose mode is showing: [view] itself, or, on the
+  /// table of a kind that has a home page, that page (its Table mode).
+  MainView? get activeHomePage => view == MainView.resources ? homePageOf(selectedType) : (homeKindOf(view) != null ? view : null);
+
+  /// Switches home page [page] to its Table mode ([table]) or its own
+  /// Overview, and remembers the choice. History replaces the current
+  /// entry rather than adding one per switch.
+  void setPageMode(MainView page, {required bool table}) {
+    final t = homeKindOf(page);
+    if (t == null) return;
+    final p = tablePrefs.of(t.gk);
+    final mode = table ? 'table' : '';
+    if (p.mode != mode) {
+      p.mode = mode;
+      tablePrefs.changed(t.gk);
+    }
+    _seedHistory();
+    if (table) {
+      selectedType = t;
+      view = MainView.resources;
+    } else {
+      _endViewSession();
+      if (view != page) previousView = view;
+      view = page;
+    }
+    _recordNav(replace: true);
     notifyListeners();
   }
 
@@ -613,8 +679,15 @@ class AppState extends ChangeNotifier {
   }
 
   /// Shows [t]'s table. Ends an open view's session unless [keepSession]
-  /// (used by [openView]).
-  void selectType(ResourceType t, {bool keepSession = false}) {
+  /// (used by [openView]). A kind with a home page (Node: the Nodes page)
+  /// opens the page in its last mode instead, unless [asTable] asks for
+  /// the table (its Table mode) or a view is being opened.
+  void selectType(ResourceType t, {bool keepSession = false, bool asTable = false}) {
+    final home = homePageOf(t);
+    if (home != null && !keepSession && !asTable && !pageInTableMode(home)) {
+      showView(home);
+      return;
+    }
     _seedHistory();
     if (!keepSession) _endViewSession();
     if (detail != null && (t != selectedType || view != MainView.resources)) inspectorCollapsed = true;
@@ -640,7 +713,8 @@ class AppState extends ChangeNotifier {
         tablePrefs.changed(t.gk);
       }
     }
-    selectType(t);
+    // A filtered table is asked for: a home page's Table mode.
+    selectType(t, asTable: filter != null);
     return true;
   }
 
@@ -790,7 +864,9 @@ class AppState extends ChangeNotifier {
     _seedHistory();
     if (t.namespace != null && !namespaceScope.contains(t.namespace)) setNamespace(t.namespace);
     selectedType = t.type;
-    view = MainView.resources;
+    // A kind with a home page: the page, in its last mode.
+    final home = homePageOf(t.type);
+    view = home != null && !pageInTableMode(home) ? home : MainView.resources;
     if (detail != null) inspectorCollapsed = true;
     _recordNav();
     notifyListeners();

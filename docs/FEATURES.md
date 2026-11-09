@@ -279,7 +279,16 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   in within a few seconds.
 - **Alerts** (in the bottom dock): Alertmanager alerts, silences (create,
   expire, "why is this silenced?") and runbook links.
-- **Nodes**: a sortable list grouped by role, with health, allocation and live
+- **Nodes**: the one home for nodes (the sidebar has no separate Node
+  table). **Overview | Table** beside the title switches between the page's
+  own list and the Node table in place, with its columns, filter language,
+  sorting, multi-select, k9s keys, bulk actions and saved views. The last
+  mode is remembered (saved with the kind's table settings). `:nodes`,
+  `:no`, ⌘K "Nodes" and any link to the Node kind open the page in that
+  mode; a saved view of nodes, or a filtered link such as the Overview's
+  "nodes not ready", opens the Table; a link to one node opens it in the
+  inspector. Switching modes replaces the history entry rather than adding
+  one. The Overview is a sortable list grouped by role, with health, allocation and live
   usage, plus cordon/uncordon and **drain**. Drain works like `kubectl drain
   --ignore-daemonsets`. It first shows the pods it will evict, what it skips
   (DaemonSet and mirror pods), and anything blocking it. Options cover

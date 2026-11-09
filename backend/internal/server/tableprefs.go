@@ -37,7 +37,7 @@ func (s *Server) handlePutTablePrefs(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusBadRequest, apiError{Error: "body must be {kind, prefs}", Code: http.StatusBadRequest})
 		return
 	}
-	if p := body.Prefs; p != nil && (len(p.Filter) > 1000 || len(p.Widths) > 100) {
+	if p := body.Prefs; p != nil && (len(p.Filter) > 1000 || len(p.Widths) > 100 || len(p.Mode) > 40) {
 		httpx.WriteJSON(w, http.StatusBadRequest, apiError{Error: "prefs too large", Code: http.StatusBadRequest})
 		return
 	}

@@ -159,6 +159,9 @@ type TablePrefs struct {
 	// Widths maps column name → width the user dragged it to.
 	Widths map[string]float64 `json:"widths,omitempty"`
 	Filter string             `json:"filter,omitempty"`
+	// Mode is the last mode of the page that is the kind's home ("table"
+	// for its Table mode; "" = the page's default), e.g. the Nodes page.
+	Mode string `json:"mode,omitempty"`
 }
 
 // MaxTables caps how many kinds' table preferences are kept.
@@ -444,7 +447,7 @@ func (st *Store) SetTablePrefs(kind string, p *TablePrefs) error {
 		if _, ok := s.Tables[kind]; !ok && len(s.Tables) >= MaxTables {
 			return
 		}
-		s.Tables[kind] = TablePrefs{SortColumn: p.SortColumn, SortDescending: p.SortDescending, Widths: maps.Clone(p.Widths), Filter: p.Filter}
+		s.Tables[kind] = TablePrefs{SortColumn: p.SortColumn, SortDescending: p.SortDescending, Widths: maps.Clone(p.Widths), Filter: p.Filter, Mode: p.Mode}
 	})
 }
 
