@@ -62,7 +62,7 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
   }
 
   final entries = <PopupMenuEntry<VoidCallback>>[
-    item(Icons.open_in_new, 'Open', () => app.openDetail(target), shortcut: '↵'),
+    item(Icons.open_in_new, 'Open', () => app.openDetail(target), shortcut: '↩'),
     if (safe.isNotEmpty) const PopupMenuDivider(height: 9),
     for (final a in safe) item(a.icon, a.label, () => a.run(context)),
     const PopupMenuDivider(height: 9),

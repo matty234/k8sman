@@ -659,7 +659,9 @@ class _TableBodyState extends State<_TableBody> {
     final sum = w.fold<double>(0, (a, b) => a + b) + 24;
     final stretchy = [
       for (var i = 0; i < cols.length; i++)
-        if ((cols[i].type == 'string' || cols[i].type == 'labels') && !sized.containsKey(cols[i].name)) i,
+        // Namespaces are short and repetitive: they keep their base width
+        // rather than sharing the spare space with names and images.
+        if ((cols[i].type == 'string' || cols[i].type == 'labels') && cols[i].query != '.metadata.namespace' && !sized.containsKey(cols[i].name)) i,
     ];
     if (sum < available && stretchy.isNotEmpty) {
       final extra = (available - sum) / stretchy.length;
