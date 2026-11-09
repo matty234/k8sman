@@ -158,7 +158,7 @@ void main() {
     expect(find.text('All namespaces'), findsOneWidget);
     expect(find.textContaining('CrashLoopBackOff', findRichText: true), findsWidgets); // card row + reason
     expect(find.textContaining('Image pull errors', findRichText: true), findsOneWidget);
-    expect(find.text('All 7 workloads healthy'), findsOneWidget); // a problem-free area folds into a line
+    expect(find.textContaining('7 workloads healthy'), findsOneWidget); // problem-free areas sit quietly under the status line
     expect(find.text('crashy'), findsWidgets); // issue row + warning event example
     expect(find.text('bad-image'), findsWidgets);
     expect(find.text('k8sman-dev-control-plane'), findsOneWidget);

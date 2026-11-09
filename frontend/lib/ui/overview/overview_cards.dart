@@ -149,8 +149,10 @@ class _StatusLine extends StatelessWidget {
         style: hint,
       );
     }
-    final lines = healthy ? _healthyLines(data) : const <String>[];
-    return StatusLine(mark: StatusMark(severity: mark), headline: headline, detail: detail, note: lines.join(' · '));
+    // What is fine, quietly under the headline: "All 7 workloads healthy"
+    // when everything is, else "7 workloads healthy · 3 nodes ready".
+    final lines = _healthyLines(data, brief: !healthy);
+    return StatusLine(mark: StatusMark(severity: mark), headline: headline, detail: detail, note: lines.join(' · '), faintNote: !healthy);
   }
 }
 
@@ -433,33 +435,37 @@ IconData _sectionIcon(String section) => switch (section) {
       _ => Icons.extension_outlined,
     };
 
-/// "All 17 pods healthy" (or "1 pod healthy").
-String _all(int n, String noun, String state, [String? many]) => n == 1 ? '1 $noun $state' : 'All ${plural(n, noun, many)} $state';
+/// "All 17 pods healthy" (or "1 pod healthy"); [brief]: "17 pods healthy".
+String _all(int n, String noun, String state, {bool brief = false}) => n == 1 ? '1 $noun $state' : '${brief ? '' : 'All '}${plural(n, noun)} $state';
 
 /// What a problem-free [section] says, or null when it has nothing to report.
-String? _healthyLine(OverviewData d, String section) {
+/// [brief] drops the "All" and starts lower case, for a run of them under
+/// the status line beside problems.
+String? _healthyLine(OverviewData d, String section, {bool brief = false}) {
+  String all(int n, String noun, String state) => _all(n, noun, state, brief: brief);
+  String line(String text) => brief ? '${text[0].toLowerCase()}${text.substring(1)}' : text;
   switch (section) {
     case 'pods':
       final n = d.count('pods', 'total') - d.count('pods', 'completed');
-      return n > 0 ? _all(n, 'pod', 'healthy') : null;
+      return n > 0 ? all(n, 'pod', 'healthy') : null;
     case 'workloads':
       final n = d.count('deployments', 'total') + d.count('statefulSets', 'total') + d.count('daemonSets', 'total');
-      return n > 0 ? _all(n, 'workload', 'healthy') : null;
+      return n > 0 ? all(n, 'workload', 'healthy') : null;
     case 'jobs':
       final n = d.count('jobs', 'total') + d.count('cronJobs', 'total');
-      return n > 0 ? 'No failing jobs' : null;
+      return n > 0 ? line('No failing jobs') : null;
     case 'nodes':
       final n = d.count('nodes', 'total');
-      return n > 0 ? _all(n, 'node', 'ready') : null;
+      return n > 0 ? all(n, 'node', 'ready') : null;
     case 'storage':
       final n = d.count('pvcs', 'total');
-      return n > 0 ? _all(n, 'PVC', 'bound') : null;
+      return n > 0 ? all(n, 'PVC', 'bound') : null;
     case 'network':
       final n = d.count('gateways', 'total') + d.count('routes', 'total');
-      return n > 0 ? 'Gateways and routes healthy' : null;
+      return n > 0 ? line('Gateways and routes healthy') : null;
     case 'argocd':
       final n = d.count('argoApps', 'total');
-      return n > 0 ? _all(n, 'Argo CD app', 'healthy') : null;
+      return n > 0 ? all(n, 'Argo CD app', 'healthy') : null;
   }
   return null;
 }
@@ -471,9 +477,9 @@ List<String> _sections(OverviewData data) => [
     ];
 
 /// The lines of every problem-free, loaded area ("All 7 workloads healthy").
-List<String> _healthyLines(OverviewData data) => [
+List<String> _healthyLines(OverviewData data, {bool brief = false}) => [
       for (final s in _sections(data))
-        if (!data.categories.any((c) => c.section == s) && !data.loadingSections.contains(s)) ?_healthyLine(data, s),
+        if (!data.categories.any((c) => c.section == s) && !data.loadingSections.contains(s)) ?_healthyLine(data, s, brief: brief),
     ];
 
 /// The issues behind a category, in words: "4 pods, 2 workloads".
@@ -512,7 +518,6 @@ class AreaCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final loading = data.loadingSections;
     final groups = <Widget>[];
     final weights = <int>[];
@@ -534,19 +539,12 @@ class AreaCards extends StatelessWidget {
     }
     if (groups.isEmpty) return const SizedBox.shrink();
     final allHealthy = _allHealthy(data);
-    final healthy = allHealthy ? const <String>[] : _healthyLines(data);
     final tally = _Tally(data);
     return EditorialSection(
       title: allHealthy ? 'Worth a look' : 'Needs attention',
       collapsible: false,
       trailing: tally.problems == 0 ? null : Text(plural(tally.problems, 'problem')),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        AttentionList(groups: groups, weights: weights),
-        if (healthy.isNotEmpty) ...[
-          Divider(height: 1, thickness: 1, color: AppColors.of(context).separator.withValues(alpha: 0.6)),
-          Padding(padding: const EdgeInsets.only(top: 12), child: HealthyLines(lines: healthy, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
-        ],
-      ]),
+      child: AttentionList(groups: groups, weights: weights),
     );
   }
 }

@@ -189,7 +189,11 @@ class StatusLine extends StatelessWidget {
   final String headline;
   final Widget? detail;
   final String? note;
-  const StatusLine({super.key, required this.mark, required this.headline, this.detail, this.note});
+
+  /// Draws [note] in the faint colour rather than the hint one, e.g. for
+  /// what is fine listed beside problems.
+  final bool faintNote;
+  const StatusLine({super.key, required this.mark, required this.headline, this.detail, this.note, this.faintNote = false});
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +216,7 @@ class StatusLine extends StatelessWidget {
       if (note != null && note!.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(left: 22, top: 4),
-          child: Text(note!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+          child: Text(note!, style: theme.textTheme.bodySmall?.copyWith(color: faintNote ? AppColors.of(context).faint : theme.hintColor)),
         ),
     ]);
   }
