@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../ui/widgets/node_os_icon.dart';
 import '../../api/models.dart';
 import '../../gpu/gpu_sections.dart';
 import '../../metrics/metrics_api.dart' show Usage;
@@ -79,10 +80,16 @@ class NodePanel extends ResourcePanel {
         id: 'node-system',
         title: 'System info',
         initiallyExpanded: false,
-        trailing: SectionSummary([
-          ?info['osImage'] as String?,
-          if (info['containerRuntimeVersion'] != null) '${info['containerRuntimeVersion']}'.replaceFirst('://', ' '),
-        ].join(' · ')),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          NodeOsIcon(ctx.object, size: 13),
+          const SizedBox(width: 6),
+          Flexible(
+            child: SectionSummary([
+              ?info['osImage'] as String?,
+              if (info['containerRuntimeVersion'] != null) '${info['containerRuntimeVersion']}'.replaceFirst('://', ' '),
+            ].join(' · ')),
+          ),
+        ]),
         child: _SystemInfo(ctx, labels),
       ),
       PodSection(
@@ -394,7 +401,7 @@ class _SystemInfo extends StatelessWidget {
       ('Region', l(['topology.kubernetes.io/region', 'failure-domain.beta.kubernetes.io/region'])),
       ('Instance type', l(['node.kubernetes.io/instance-type', 'beta.kubernetes.io/instance-type'])),
       ('OS / arch', '${l(['kubernetes.io/os', 'beta.kubernetes.io/os']) ?? info['operatingSystem'] ?? '?'} / ${l(['kubernetes.io/arch', 'beta.kubernetes.io/arch']) ?? info['architecture'] ?? '?'}'),
-      ('OS image', info['osImage']),
+      ('OS image', Row(mainAxisSize: MainAxisSize.min, children: [NodeOsIcon(ctx.object, size: 14), const SizedBox(width: 6), Flexible(child: Text('${info['osImage'] ?? ''}'))])),
       ('Kernel', info['kernelVersion']),
       ('Runtime', info['containerRuntimeVersion']),
       ('Kubelet', info['kubeletVersion']),
