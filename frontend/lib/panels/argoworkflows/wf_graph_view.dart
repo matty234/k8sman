@@ -604,7 +604,7 @@ class _NodeList extends StatelessWidget {
               color: sel ? theme.colorScheme.primary.withValues(alpha: 0.14) : (h ? theme.hoverColor : null),
               padding: EdgeInsets.fromLTRB(4.0 + depth * 14, 3, 4, 3),
               child: Row(children: [
-                PhaseBadge(n.isWaiting ? 'Suspended' : n.phase, iconOnly: true),
+                wfPhaseBadge(context, n.isWaiting ? 'Suspended' : n.phase, iconOnly: true),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text.rich(
@@ -676,7 +676,7 @@ class NodeDetails extends StatelessWidget {
           Expanded(
             child: Text(node.displayName, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
           ),
-          PhaseBadge(phase),
+          wfPhaseBadge(context, phase),
           IconButton(tooltip: 'Close', visualDensity: VisualDensity.compact, iconSize: 16, icon: const Icon(Icons.close), onPressed: onClose),
         ]),
         const SizedBox(height: 6),
@@ -737,7 +737,7 @@ class NodeDetails extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(children: [
-                PhaseBadge(a.phase, iconOnly: true),
+                wfPhaseBadge(context, a.phase, iconOnly: true),
                 const SizedBox(width: 6),
                 Text('#${i + 1}', style: monoStyle(context, size: 11.5)),
                 const SizedBox(width: 8),
@@ -778,7 +778,7 @@ class NodeDetails extends StatelessWidget {
             for (final c in nodes.values.where((x) => x.boundaryId == node.id && !x.isJunction && !x.name.endsWith(')')).take(40))
               ActionChip(
                 visualDensity: VisualDensity.compact,
-                avatar: PhaseBadge(c.phase, iconOnly: true),
+                avatar: wfPhaseBadge(context, c.phase, iconOnly: true),
                 label: Text(c.displayName, style: theme.textTheme.bodySmall),
                 onPressed: () => onSelect(c.id),
               ),

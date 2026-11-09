@@ -10,6 +10,7 @@ import '../../util/text.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
+import '../workloads/widgets/pod_template.dart';
 import 'batch_common.dart';
 import '../../util/json.dart';
 import '../../ui/widgets/atoms.dart';
@@ -79,7 +80,7 @@ class JobPanel extends ResourcePanel {
         title: 'Pod template',
         initiallyExpanded: false,
         trailing: SectionSummary(podTemplateSummaryLine(template)),
-        child: PodTemplateSummary(template, namespace: ctx.namespace),
+        child: PodTemplateSummary(template: template, namespace: ctx.namespace, memoryKey: ctx.uid),
       ),
       InspectorSection(
         id: 'job-conditions',

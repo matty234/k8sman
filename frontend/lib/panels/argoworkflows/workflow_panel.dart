@@ -90,7 +90,7 @@ class WorkflowSummary extends StatelessWidget {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
-        PhaseBadge(phase, large: true),
+        wfPhaseBadge(context, phase, large: true),
         const SizedBox(width: 12),
         if (total > 0) ...[
           Expanded(
@@ -208,7 +208,7 @@ class FailedSteps extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(padding: const EdgeInsets.only(top: 2), child: PhaseBadge(n.phase, iconOnly: true)),
+        Padding(padding: const EdgeInsets.only(top: 2), child: wfPhaseBadge(context, n.phase, iconOnly: true)),
         const SizedBox(width: 6),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

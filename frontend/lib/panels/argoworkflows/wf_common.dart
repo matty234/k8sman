@@ -13,7 +13,7 @@ import '../../state/log_dock.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../argocd/argo_common.dart' show ArgoStyle;
+import '../argocd/argo_common.dart' show ArgoBadge, ArgoStyle;
 import 'wf_graph.dart';
 
 const wfGroup = 'argoproj.io';
@@ -64,35 +64,8 @@ bool workflowSuspended(Json wf) {
 bool workflowCompleted(Json wf) => const {'Succeeded', 'Failed', 'Error'}.contains(dig<String>(wf, ['status', 'phase']));
 
 /// Small phase pill: icon + text, or just the icon.
-class PhaseBadge extends StatelessWidget {
-  final String phase;
-  final bool large;
-  final bool iconOnly;
-  const PhaseBadge(this.phase, {super.key, this.large = false, this.iconOnly = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final s = wfPhaseStyle(context, phase);
-    final theme = Theme.of(context);
-    if (iconOnly) return Tooltip(message: phase, child: Icon(s.icon, size: 14, color: s.color));
-    if (!large) {
-      return Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(s.icon, size: 13, color: s.color),
-        const SizedBox(width: 4),
-        Flexible(child: Text(phase, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: s.color, fontWeight: FontWeight.w500))),
-      ]);
-    }
-    return Container(
-      padding: const EdgeInsets.fromLTRB(7, 3, 9, 3),
-      decoration: BoxDecoration(color: s.color.withValues(alpha: theme.brightness == Brightness.dark ? 0.16 : 0.12), borderRadius: BorderRadius.circular(6)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(s.icon, size: 16, color: s.color),
-        const SizedBox(width: 6),
-        Text(phase, style: theme.textTheme.bodyMedium?.copyWith(color: s.color, fontWeight: FontWeight.w600)),
-      ]),
-    );
-  }
-}
+Widget wfPhaseBadge(BuildContext context, String phase, {bool large = false, bool iconOnly = false}) =>
+    ArgoBadge(wfPhaseStyle(context, phase), phase, large: large, iconOnly: iconOnly);
 
 // ---------------------------------------------------------------------------
 // Durations
@@ -283,7 +256,7 @@ class WorkflowRow extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(children: [
-          PhaseBadge(phase, iconOnly: true),
+          wfPhaseBadge(context, phase, iconOnly: true),
           const SizedBox(width: 6),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -328,7 +301,7 @@ class WorkflowList extends StatelessWidget {
         for (final p in const ['Running', 'Suspended', 'Pending', 'Succeeded', 'Failed', 'Error'])
           if (counts[p] != null)
             Row(mainAxisSize: MainAxisSize.min, children: [
-              PhaseBadge(p, iconOnly: true),
+              wfPhaseBadge(context, p, iconOnly: true),
               const SizedBox(width: 4),
               Text('${counts[p]} ${p.toLowerCase()}', style: theme.textTheme.bodySmall),
             ]),

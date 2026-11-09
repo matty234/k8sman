@@ -141,12 +141,12 @@ class AlertTargetLink extends StatelessWidget {
 }
 
 /// A small text button for row actions.
-class RowAction extends StatelessWidget {
+class TextRowAction extends StatelessWidget {
   final String label;
   final IconData icon;
   final VoidCallback? onPressed;
   final String? tooltip;
-  const RowAction({super.key, required this.label, required this.icon, this.onPressed, this.tooltip});
+  const TextRowAction({super.key, required this.label, required this.icon, this.onPressed, this.tooltip});
 
   @override
   Widget build(BuildContext context) {
@@ -244,7 +244,7 @@ class AlertGroupTile extends StatelessWidget {
                 if (onSilenceGroup != null && expanded && !narrow && !muted)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: RowAction(
+                    child: TextRowAction(
                       label: 'Silence…',
                       icon: Icons.notifications_off_outlined,
                       tooltip: alerts.length > 1 ? 'Silence all ${alerts.length} instances' : null,
@@ -312,8 +312,8 @@ class AlertInstanceRow extends StatelessWidget {
             padding: const EdgeInsets.only(top: 3),
             child: Wrap(spacing: 4, children: [
               if (a.runbookUrl != null)
-                RowAction(label: 'Runbook', icon: Icons.menu_book_outlined, tooltip: a.runbookUrl, onPressed: () => openUrl(a.runbookUrl!)),
-              if (silenceable) RowAction(label: 'Silence…', icon: Icons.notifications_off_outlined, onPressed: () => onSilence!(a)),
+                TextRowAction(label: 'Runbook', icon: Icons.menu_book_outlined, tooltip: a.runbookUrl, onPressed: () => openUrl(a.runbookUrl!)),
+              if (silenceable) TextRowAction(label: 'Silence…', icon: Icons.notifications_off_outlined, onPressed: () => onSilence!(a)),
             ]),
           ),
       ]),

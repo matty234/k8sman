@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
 import '../../ui/theme.dart';
-import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../../util/json.dart';
@@ -200,86 +199,6 @@ String podTemplateSummaryLine(Json template) {
     if (init.isNotEmpty) '${init.length} init',
     'restart ${spec['restartPolicy'] ?? 'Always'}',
   ].join(' · ');
-}
-
-/// Containers, images, commands and pod-level settings of a pod template.
-class PodTemplateSummary extends StatelessWidget {
-  /// `spec.template` (with `metadata` and `spec`).
-  final Json template;
-  final String? namespace;
-  const PodTemplateSummary(this.template, {super.key, this.namespace});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final spec = asMap(template['spec']);
-    final sa = spec['serviceAccountName'] as String?;
-    final nodeSel = asMap(spec['nodeSelector']);
-    final rp = '${spec['restartPolicy'] ?? 'Always'}';
-    final init = asMapList(spec['initContainers']);
-    final ctrs = asMapList(spec['containers']);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      KeyValueTable([
-        ('Restart policy', Align(alignment: Alignment.centerLeft, child: Chipish(text: rp))),
-        if (sa != null && sa.isNotEmpty) ('Service account', ResourceLink(ObjectRef(kind: 'ServiceAccount', name: sa, namespace: namespace), label: sa)),
-        if (nodeSel.isNotEmpty) ('Node selector', LabelChips(nodeSel)),
-        if (spec['priorityClassName'] != null) ('Priority class', '${spec['priorityClassName']}'),
-      ], keyWidth: 120),
-      for (final c in init) _ContainerCard(c, init: true, namespace: namespace),
-      for (final c in ctrs) _ContainerCard(c, namespace: namespace),
-      if (ctrs.isEmpty) Text('No containers', style: TextStyle(color: theme.hintColor)),
-    ]);
-  }
-}
-
-class _ContainerCard extends StatelessWidget {
-  final Json c;
-  final bool init;
-  final String? namespace;
-  const _ContainerCard(this.c, {this.init = false, this.namespace});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cmd = [...?(c['command'] as List?), ...?(c['args'] as List?)];
-    final req = asMap(dig(c, ['resources', 'requests']));
-    final lim = asMap(dig(c, ['resources', 'limits']));
-    String res(String k) {
-      final r = req[k], l = lim[k];
-      if (r == null && l == null) return '';
-      return '$k ${r ?? '–'}${l != null ? ' / $l' : ''}';
-    }
-
-    final resources = [res('cpu'), res('memory')].where((s) => s.isNotEmpty).join(' · ');
-    final envFrom = asMapList(c['envFrom']);
-    final env = asMapList(c['env']);
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Icon(init ? Icons.play_circle_outline : Icons.inventory_2_outlined, size: 14, color: theme.colorScheme.primary),
-          Text('${c['name']}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-          if (init) const StatusBadge('init', dense: true, severity: Severity.neutral),
-          Chipish(text: '${c['image'] ?? '?'}', copyValue: '${c['image'] ?? ''}'),
-        ]),
-        if (cmd.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: CodeBlock(shellJoin(cmd))),
-        if (cmd.isEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: HintText('Image default entrypoint')),
-        if (resources.isNotEmpty || env.isNotEmpty || envFrom.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Wrap(spacing: 10, runSpacing: 2, children: [
-              if (resources.isNotEmpty) HintText(resources),
-              if (env.isNotEmpty) HintText('${env.length} env var${env.length == 1 ? '' : 's'}'),
-              for (final ef in envFrom)
-                if (ef['configMapRef'] != null)
-                  ResourceLink(ObjectRef(kind: 'ConfigMap', name: '${ef['configMapRef']['name']}', namespace: namespace))
-                else if (ef['secretRef'] != null)
-                  ResourceLink(ObjectRef(kind: 'Secret', name: '${ef['secretRef']['name']}', namespace: namespace)),
-            ]),
-          ),
-      ]),
-    );
-  }
 }
 
 /// Compact mono text.

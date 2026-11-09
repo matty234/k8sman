@@ -11,6 +11,7 @@ import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
+import '../workloads/widgets/pod_template.dart';
 import 'batch_common.dart';
 import 'cron.dart';
 import 'job_panel.dart' show jobSpecSummary;
@@ -162,7 +163,7 @@ class CronJobPanel extends ResourcePanel {
             if (jobSpec['ttlSecondsAfterFinished'] is num) ('TTL after finished', formatSeconds((jobSpec['ttlSecondsAfterFinished'] as num).toInt())),
             for (final r in podFailurePolicySummary(jobSpec['podFailurePolicy'])) ('Pod failure rule', r),
           ], keyWidth: 120),
-          PodTemplateSummary(asMap(jobSpec['template']), namespace: ctx.namespace),
+          PodTemplateSummary(template: asMap(jobSpec['template']), namespace: ctx.namespace, memoryKey: ctx.uid),
         ]),
       ),
     ];

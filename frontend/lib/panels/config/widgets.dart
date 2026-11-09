@@ -222,7 +222,7 @@ class _UsageList extends StatelessWidget {
     final total = report.workloads.length + groups.length;
     // Few rows: show how each uses it; many: one line each, open on demand.
     final open = total <= 3;
-    Widget pods(List<PodUsage> ps) => Wrap(spacing: 10, runSpacing: 2, children: [for (final pu in ps) _PodLink(pu)]);
+    Widget pods(List<ConfigPodUsage> ps) => Wrap(spacing: 10, runSpacing: 2, children: [for (final pu in ps) _PodLink(pu)]);
     final rows = <Widget>[
       for (final w in report.workloads)
         InspectorRow(
@@ -278,7 +278,7 @@ class _UsageList extends StatelessWidget {
 }
 
 class _PodLink extends StatelessWidget {
-  final PodUsage pu;
+  final ConfigPodUsage pu;
   const _PodLink(this.pu);
 
   @override

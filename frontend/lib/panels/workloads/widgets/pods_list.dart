@@ -119,7 +119,7 @@ class _PodsListState extends State<PodsList> {
           ? const SectionSpinner()
           : pods.isEmpty
           ? const InlineMessage('No matching pods')
-          : PodRows(pods: pods, showNode: widget.showNode, actionCtx: widget.actionCtx);
+          : WorkloadPodRows(pods: pods, showNode: widget.showNode, actionCtx: widget.actionCtx);
       final title = widget.sectionTitle;
       if (title == null) return body;
       final problems = pods == null ? 0 : pods.where(podHasProblem).length;
@@ -159,11 +159,11 @@ String podCountsSummary(List<Json> pods) {
 /// Pods as compact rows, problems first: a state dot, the name, its state
 /// when not plainly running, ready containers, restarts, node and age; the
 /// restart/delete menu shows on hover. Long lists are trimmed.
-class PodRows extends StatelessWidget {
+class WorkloadPodRows extends StatelessWidget {
   final List<Json> pods;
   final bool showNode;
   final PanelContext? actionCtx;
-  const PodRows({super.key, required this.pods, this.showNode = true, this.actionCtx});
+  const WorkloadPodRows({super.key, required this.pods, this.showNode = true, this.actionCtx});
 
   PanelContext? _podCtx(Json pod) {
     final a = actionCtx;

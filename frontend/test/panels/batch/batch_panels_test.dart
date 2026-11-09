@@ -233,8 +233,9 @@ void main() {
       await tester.pump();
       expect(find.textContaining('exit 0', findRichText: true), findsOneWidget);
       await openSection(tester, 'job-template');
+      await tester.tap(find.byKey(const ValueKey('container-row-migrate')));
+      await tester.pump();
       expect(find.text("sh -c 'echo running migrations; sleep 3; echo done'"), findsOneWidget);
-      expect(find.text('Never'), findsOneWidget);
       await tester.tap(find.text('migrate-db-xgbx9'));
       await tester.pump();
       expect(app.detail?.name, 'migrate-db-xgbx9');
@@ -260,6 +261,8 @@ void main() {
       expect(find.textContaining('will be deleted in 28m'), findsOneWidget);
       expect(find.text('FailJob when exit code in [42] (container import)'), findsOneWidget);
       await openSection(tester, 'job-template');
+      await tester.tap(find.byKey(const ValueKey('container-row-import')));
+      await tester.pump();
       expect(find.textContaining("'s3://bucket/data set.csv'"), findsOneWidget);
       await tester.tap(find.text('importer'));
       await tester.pump();

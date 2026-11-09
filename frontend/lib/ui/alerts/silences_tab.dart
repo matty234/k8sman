@@ -136,7 +136,7 @@ class SilenceRow extends StatelessWidget {
         ),
         if (onExpire != null && (s.active || s.pending)) ...[
           const SizedBox(width: 8),
-          RowAction(label: 'Expire', icon: Icons.timer_off_outlined, onPressed: () => onExpire!(s)),
+          TextRowAction(label: 'Expire', icon: Icons.timer_off_outlined, onPressed: () => onExpire!(s)),
         ],
       ]),
     );

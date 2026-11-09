@@ -77,10 +77,10 @@ class ConfigUsage {
   String get signature => '$kind|$container|$initContainer|$volume|$mountPath|$subPath|$envName|${keys.join(',')}|$optional';
 }
 
-class PodUsage {
+class ConfigPodUsage {
   final Json pod;
   final List<ConfigUsage> usages;
-  const PodUsage(this.pod, this.usages);
+  const ConfigPodUsage(this.pod, this.usages);
 
   String get name => dig<String>(pod, ['metadata', 'name']) ?? '';
   String? get namespace => dig<String>(pod, ['metadata', 'namespace']);
@@ -99,8 +99,8 @@ List<String> _itemKeys(Json source) => [for (final i in asMapList(source['items'
 /// Finds every reference to the ConfigMap/Secret [name] in [pods].
 /// Pods without any reference are omitted. Only pods in [namespace] are
 /// considered when it is given.
-List<PodUsage> findUsages(List<Json> pods, {required RefKind kind, required String name, String? namespace}) {
-  final out = <PodUsage>[];
+List<ConfigPodUsage> findUsages(List<Json> pods, {required RefKind kind, required String name, String? namespace}) {
+  final out = <ConfigPodUsage>[];
   final volKey = kind == RefKind.configMap ? 'configMap' : 'secret';
   final volNameKey = kind == RefKind.configMap ? 'name' : 'secretName';
   final keyRef = kind == RefKind.configMap ? 'configMapKeyRef' : 'secretKeyRef';
@@ -115,7 +115,7 @@ List<PodUsage> findUsages(List<Json> pods, {required RefKind kind, required Stri
     if (kind == RefKind.serviceAccount) {
       final sa = spec['serviceAccountName'] ?? spec['serviceAccount'] ?? 'default';
       // `optional` is reused to flag that the API token is not mounted.
-      if (sa == name) out.add(PodUsage(pod, [ConfigUsage(kind: UsageKind.serviceAccount, optional: spec['automountServiceAccountToken'] == false)]));
+      if (sa == name) out.add(ConfigPodUsage(pod, [ConfigUsage(kind: UsageKind.serviceAccount, optional: spec['automountServiceAccountToken'] == false)]));
       continue;
     }
 
@@ -190,7 +190,7 @@ List<PodUsage> findUsages(List<Json> pods, {required RefKind kind, required Stri
       }
     }
 
-    if (usages.isNotEmpty) out.add(PodUsage(pod, usages));
+    if (usages.isNotEmpty) out.add(ConfigPodUsage(pod, usages));
   }
   out.sort((a, b) => a.name.compareTo(b.name));
   return out;
@@ -206,7 +206,7 @@ class MissingKey {
   const MissingKey(this.key, this.allOptional, this.pods);
 }
 
-List<MissingKey> missingKeys(List<PodUsage> usages, Set<String> existing) {
+List<MissingKey> missingKeys(List<ConfigPodUsage> usages, Set<String> existing) {
   final optional = <String, bool>{};
   final pods = <String, Set<String>>{};
   for (final pu in usages) {
@@ -223,8 +223,8 @@ List<MissingKey> missingKeys(List<PodUsage> usages, Set<String> existing) {
 }
 
 /// Groups pods whose usages are identical (e.g. replicas of a Deployment).
-List<List<PodUsage>> groupIdentical(List<PodUsage> usages) {
-  final groups = <String, List<PodUsage>>{};
+List<List<ConfigPodUsage>> groupIdentical(List<ConfigPodUsage> usages) {
+  final groups = <String, List<ConfigPodUsage>>{};
   for (final u in usages) {
     (groups[u.signature] ??= []).add(u);
   }
@@ -232,29 +232,29 @@ List<List<PodUsage>> groupIdentical(List<PodUsage> usages) {
 }
 
 /// A workload that references the object, with the pods it currently owns.
-class WorkloadUsage {
+class ConfigWorkloadUsage {
   final ObjectRef ref;
 
   /// Usages found in the workload's pod template (empty if the template
   /// no longer references the object but older pods still do).
   final List<ConfigUsage> template;
-  final List<PodUsage> pods;
-  WorkloadUsage(this.ref, this.template, this.pods);
+  final List<ConfigPodUsage> pods;
+  ConfigWorkloadUsage(this.ref, this.template, this.pods);
 
   List<ConfigUsage> get usages => template.isNotEmpty ? template : pods.first.usages;
 }
 
 class UsageReport {
-  final List<WorkloadUsage> workloads;
+  final List<ConfigWorkloadUsage> workloads;
 
   /// Pods with no owning workload.
-  final List<PodUsage> standalone;
+  final List<ConfigPodUsage> standalone;
 
   /// Every pod (not template) that references the object.
-  final List<PodUsage> pods;
+  final List<ConfigPodUsage> pods;
 
   /// Pods plus template-only entries, for key checks.
-  final List<PodUsage> all;
+  final List<ConfigPodUsage> all;
   const UsageReport(this.workloads, this.standalone, this.pods, this.all);
   bool get isEmpty => workloads.isEmpty && standalone.isEmpty;
 }
@@ -287,8 +287,8 @@ UsageReport buildUsageReport({
     return parents['${ref.kind}/${ref.name}'] ?? ref;
   }
 
-  final byKey = <String, WorkloadUsage>{};
-  final standalone = <PodUsage>[];
+  final byKey = <String, ConfigWorkloadUsage>{};
+  final standalone = <ConfigPodUsage>[];
   final all = [...podUsages];
 
   // Template scan (skips Jobs that belong to a CronJob).
@@ -302,7 +302,7 @@ UsageReport buildUsageReport({
       final found = findUsages([fake], kind: kind, name: name);
       if (found.isEmpty) continue;
       final ref = ObjectRef(group: wk == 'Job' || wk == 'CronJob' ? 'batch' : 'apps', kind: wk, name: wname, namespace: namespace);
-      byKey['$wk/$wname'] = WorkloadUsage(ref, found.single.usages, []);
+      byKey['$wk/$wname'] = ConfigWorkloadUsage(ref, found.single.usages, []);
       all.add(found.single);
     }
   }
@@ -311,7 +311,7 @@ UsageReport buildUsageReport({
     if (o == null) {
       standalone.add(pu);
     } else {
-      (byKey['${o.kind}/${o.name}'] ??= WorkloadUsage(o, const [], [])).pods.add(pu);
+      (byKey['${o.kind}/${o.name}'] ??= ConfigWorkloadUsage(o, const [], [])).pods.add(pu);
     }
   }
   final workloads = byKey.values.toList()
