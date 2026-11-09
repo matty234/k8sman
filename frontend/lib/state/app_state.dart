@@ -567,6 +567,26 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Shows the table of kind ([group], [kind]) for [scope] (cluster-scoped
+  /// kinds ignore it), with [filter] typed into its filter box as if by the
+  /// user (remembered per kind, so it can be cleared). Ends an open view's
+  /// session rather than touching the saved view. False if the kind isn't
+  /// served.
+  bool openTable(String group, String kind, {NamespaceScope? scope, String? filter}) {
+    final t = typeFor(group, kind);
+    if (t == null) return false;
+    if (t.namespaced && scope != null) namespaceScope = scope;
+    if (filter != null) {
+      final p = tablePrefs.of(t.gk);
+      if (p.filter != filter) {
+        p.filter = filter;
+        tablePrefs.changed(t.gk);
+      }
+    }
+    selectType(t);
+    return true;
+  }
+
   // ---- sidebar layout ----
 
   /// Which pages the sidebar shows, in what order, and pinned kinds.

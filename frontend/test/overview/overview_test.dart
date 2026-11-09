@@ -165,14 +165,14 @@ void main() {
     expect(find.text('web-5c-d').evaluate().length, beforeD + 1);
     await saveScreenshot(tester, 'overview-scenario-expanded');
 
-    // Filter by the "Stuck terminating" row of the Pods card.
-    await tester.tap(areaRow('Stuck terminating'));
+    // Filter by the count of the "Stuck terminating" row of the Pods card.
+    await tester.tap(find.byKey(const ValueKey('area-count-stuckTerminating')));
     await tester.pump();
     expect(find.text('legacy-abc'), findsOneWidget);
     expect(find.text('img-1'), findsNothing);
     expect(find.textContaining('Stuck terminating · 1'), findsOneWidget);
     // Tapping again clears the filter.
-    await tester.tap(areaRow('Stuck terminating'));
+    await tester.tap(find.byKey(const ValueKey('area-count-stuckTerminating')));
     await tester.pump();
     expect(find.text('img-1'), findsOneWidget);
   });

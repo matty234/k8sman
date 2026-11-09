@@ -222,7 +222,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                   CapacityStrip(capacity: data.isPending('nodes') ? null : data.capacity, usage: _usage, nodes: data.nodes.length),
                 ],
                 const SizedBox(height: 16),
-                AreaCards(data: data, selected: _filter, checkedAt: _updatedAt, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
+                AreaCards(data: data, scope: _ns, selected: _filter, checkedAt: _updatedAt, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
                 const SizedBox(height: 16),
                 if (issues.isNotEmpty || _filter != null || data.loadingSections.isNotEmpty)
                   DetailSection(

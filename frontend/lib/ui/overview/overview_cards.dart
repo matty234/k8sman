@@ -14,7 +14,9 @@ import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../../modules/modules.dart' show enabledPages;
 import 'overview_api.dart';
+import 'overview_nav.dart';
 import 'overview_widgets.dart' show SkeletonBar, issueColor, issueIcon, openObject;
 
 const _gap = 10.0;
@@ -423,7 +425,10 @@ class AreaCards extends StatelessWidget {
   final String? selected;
   final ValueChanged<String> onSelect;
   final DateTime? checkedAt;
-  const AreaCards({super.key, required this.data, required this.selected, required this.onSelect, this.checkedAt});
+
+  /// The Overview's namespaces: tables opened from a card show these.
+  final NamespaceScope scope;
+  const AreaCards({super.key, required this.data, required this.selected, required this.onSelect, this.checkedAt, this.scope = NamespaceScope.all});
 
   @override
   Widget build(BuildContext context) {
@@ -451,6 +456,7 @@ class AreaCards extends StatelessWidget {
         data: data,
         selected: selected,
         onSelect: onSelect,
+        scope: scope,
       ));
     }
     // Never "All healthy" while a source is loading: its problems are unknown.
@@ -541,6 +547,7 @@ class _AreaCard extends StatelessWidget {
   final OverviewData data;
   final String? selected;
   final ValueChanged<String> onSelect;
+  final NamespaceScope scope;
   const _AreaCard({
     required this.section,
     required this.problems,
@@ -550,7 +557,20 @@ class _AreaCard extends StatelessWidget {
     required this.data,
     required this.selected,
     required this.onSelect,
+    required this.scope,
   });
+
+  Widget _row(BuildContext context, OverviewCategory c) {
+    final target = rowTarget(data, c);
+    return _AreaRow(
+      category: c,
+      sublabel: categorySublabel(data, c),
+      selected: selected == c.id,
+      onFilter: () => onSelect(c.id),
+      // A kind the cluster doesn't serve falls back to the Issues filter.
+      onOpen: target == null ? null : () => openOverviewTarget(context, target, scope) ? null : onSelect(c.id),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -558,6 +578,13 @@ class _AreaCard extends StatelessWidget {
     final worst = problems.isEmpty ? null : problems.map((c) => c.severity).reduce((a, b) => a.index <= b.index ? a : b);
     final total = problems.fold<int>(0, (n, c) => n + c.count);
     final ok = severityColor(context, Severity.ok).withValues(alpha: 0.8);
+    final page = enabledPages(context.read<AppState>()).any((p) => p.view.name == section) ? OverviewTarget.page(MainView(section)) : null;
+    final title = titleTarget(data, section) ?? page;
+    final titleRow = Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(_sectionIcon(section), size: 15, color: theme.hintColor),
+      const SizedBox(width: 7),
+      Flexible(child: Text(sectionLabel(section), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall)),
+    ]);
     return Container(
       key: ValueKey('area-$section'),
       decoration: _panel(context),
@@ -566,9 +593,30 @@ class _AreaCard extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(6, 0, 4, 4),
           child: Row(children: [
-            Icon(_sectionIcon(section), size: 15, color: theme.hintColor),
-            const SizedBox(width: 7),
-            Expanded(child: Text(sectionLabel(section), maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall)),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: title == null
+                    ? titleRow
+                    : Hoverable(
+                        key: ValueKey('area-title-$section'),
+                        onTap: () => openOverviewTarget(context, title, scope),
+                        builder: (hovered) => Tooltip(
+                          message: 'Open ${sectionLabel(section)}',
+                          waitDuration: const Duration(milliseconds: 600),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Flexible(
+                              child: DefaultTextStyle.merge(
+                                style: TextStyle(decoration: hovered ? TextDecoration.underline : null, decorationColor: theme.hintColor),
+                                child: titleRow,
+                              ),
+                            ),
+                            Icon(Icons.chevron_right, size: 15, color: hovered ? theme.hintColor : Colors.transparent),
+                          ]),
+                        ),
+                      ),
+              ),
+            ),
             if (worst != null) ...[
               Icon(issueIcon(worst), size: 14, color: issueColor(context, worst)),
               const SizedBox(width: 4),
@@ -585,7 +633,7 @@ class _AreaCard extends StatelessWidget {
               Expanded(child: Text(healthyLine!, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
             ]),
           ),
-        for (final c in problems) _AreaRow(category: c, sublabel: categorySublabel(data, c), selected: selected == c.id, onTap: () => onSelect(c.id)),
+        for (final c in problems) _row(context, c),
         if (pending)
           Padding(
             key: ValueKey('pending-tile-$section'),
@@ -596,19 +644,22 @@ class _AreaCard extends StatelessWidget {
               Text('Checking…', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
             ]),
           ),
-        for (final c in info) _AreaRow(category: c, sublabel: categorySublabel(data, c), selected: selected == c.id, onTap: () => onSelect(c.id)),
+        for (final c in info) _row(context, c),
       ]),
     );
   }
 }
 
-/// "● 4  CrashLoopBackOff · 4 pods, 2 workloads". Click to filter the issues.
+/// "● 4  CrashLoopBackOff · 4 pods, 2 workloads". Click goes to what the row
+/// names ([onOpen]); the count filters the Issues list ([onFilter]), as does
+/// the whole row when it has nowhere to go.
 class _AreaRow extends StatelessWidget {
   final OverviewCategory category;
   final String sublabel;
   final bool selected;
-  final VoidCallback onTap;
-  const _AreaRow({required this.category, required this.sublabel, required this.selected, required this.onTap});
+  final VoidCallback onFilter;
+  final VoidCallback? onOpen;
+  const _AreaRow({required this.category, required this.sublabel, required this.selected, required this.onFilter, this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -617,55 +668,60 @@ class _AreaRow extends StatelessWidget {
     final info = category.severity == IssueSeverity.info;
     final c = issueColor(context, category.severity);
     final hint = theme.textTheme.bodySmall?.copyWith(color: info ? colors.faint : theme.hintColor);
-    return Tooltip(
-      message: selected ? 'Show all issues' : 'Show only ${category.label}',
-      waitDuration: const Duration(milliseconds: 600),
-      child: Hoverable(
-        onTap: onTap,
-        builder: (hovered) => Container(
-          padding: const EdgeInsets.fromLTRB(6, 3, 6, 3),
-          decoration: BoxDecoration(
-            color: selected ? colors.selection : (hovered ? colors.hover : null),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Row(children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: info ? null : c,
-                border: info ? Border.all(color: colors.faint) : null,
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 22,
-              child: Text(
-                '${category.count}',
-                textAlign: TextAlign.right,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  fontFeatures: _tabular,
-                  color: info ? theme.hintColor : null,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // One line: the detail is what an ellipsis cuts first.
-            Expanded(
-              child: Text.rich(
-                TextSpan(children: [
-                  TextSpan(text: category.label, style: TextStyle(color: info ? theme.hintColor : theme.colorScheme.onSurface)),
-                  if (sublabel.isNotEmpty) TextSpan(text: ' · $sublabel', style: hint),
-                ]),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-          ]),
+    final count = Text(
+      '${category.count}',
+      textAlign: TextAlign.right,
+      style: theme.textTheme.bodySmall?.copyWith(
+        fontWeight: FontWeight.w600,
+        fontFeatures: _tabular,
+        color: info ? theme.hintColor : null,
+      ),
+    );
+    return Hoverable(
+      key: ValueKey('area-row-${category.id}'),
+      onTap: onOpen ?? onFilter,
+      builder: (hovered) => Container(
+        padding: const EdgeInsets.fromLTRB(6, 3, 6, 3),
+        decoration: BoxDecoration(
+          color: selected ? colors.selection : (hovered ? colors.hover : null),
+          borderRadius: BorderRadius.circular(5),
         ),
+        child: Row(children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: info ? null : c,
+              border: info ? Border.all(color: colors.faint) : null,
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 22,
+            child: onOpen == null
+                ? Tooltip(message: selected ? 'Show all issues' : 'Show only ${category.label}', waitDuration: const Duration(milliseconds: 600), child: count)
+                : Tooltip(
+                    message: selected ? 'Show all issues' : 'Show these in Issues',
+                    waitDuration: const Duration(milliseconds: 600),
+                    child: GestureDetector(key: ValueKey('area-count-${category.id}'), behavior: HitTestBehavior.opaque, onTap: onFilter, child: count),
+                  ),
+          ),
+          const SizedBox(width: 8),
+          // One line: the detail is what an ellipsis cuts first.
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: category.label, style: TextStyle(color: info ? theme.hintColor : theme.colorScheme.onSurface)),
+                if (sublabel.isNotEmpty) TextSpan(text: ' · $sublabel', style: hint),
+              ]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          if (onOpen != null) Icon(Icons.chevron_right, size: 14, color: hovered ? theme.hintColor : Colors.transparent),
+        ]),
       ),
     );
   }
