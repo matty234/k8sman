@@ -50,7 +50,9 @@ void main() {
       expect(find.byKey(const ValueKey('log-tab-demo/$_webPod/nginx')), findsOneWidget);
       expect(find.textContaining('upstream timed out'), findsWidgets);
 
-      // A container card's "View logs" for another container adds a tab…
+      // A container row's "View logs" (shown once it is open or hovered)
+      // for another container adds a tab…
+      await _expandContainer(tester, 'init-wait');
       final initLogs = find.byKey(const ValueKey('view-logs-init-wait'));
       await tester.ensureVisible(initLogs);
       await tester.tap(initLogs);
@@ -59,6 +61,7 @@ void main() {
       expect(dock.active?.container, 'init-wait');
 
       // …and the same stream again focuses the existing tab.
+      await _expandContainer(tester, 'nginx');
       final nginxLogs = find.byKey(const ValueKey('view-logs-nginx'));
       await tester.ensureVisible(nginxLogs);
       await tester.tap(nginxLogs);
@@ -370,4 +373,11 @@ void main() {
     expect(tester.takeException(), isNull);
     dock.closeAll();
   });
+}
+
+Future<void> _expandContainer(WidgetTester tester, String name) async {
+  final row = find.byKey(ValueKey('container-row-$name'));
+  await tester.ensureVisible(row);
+  await tester.tap(row, warnIfMissed: false);
+  await tester.pump();
 }

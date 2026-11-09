@@ -37,6 +37,8 @@ void main() {
     final api = _PfApi();
     final pod = _fx('pod-web.json');
     await pumpPanel(tester, pod, api: api);
+    await tester.tap(find.byKey(const ValueKey('container-row-nginx'))); // ports are in the details
+    await tester.pump();
     final btn = find.byKey(const ValueKey('quick-forward-pod-8080'));
     expect(btn, findsOneWidget);
     await tester.tap(btn);
@@ -57,6 +59,8 @@ void main() {
 
   testWidgets('read-only hides quick forwards', (tester) async {
     await pumpPanel(tester, _fx('pod-web.json'), api: _PfApi(), readOnly: true);
+    await tester.tap(find.byKey(const ValueKey('container-row-nginx')));
+    await tester.pump();
     expect(find.byKey(const ValueKey('quick-forward-pod-8080')), findsNothing);
   });
 }

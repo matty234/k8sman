@@ -97,6 +97,10 @@ void main() {
     await loadRealFonts();
     final pod = _fixture('test/metrics/fixtures/pod-web.json');
     await pumpPanel(tester, pod, api: MetricsFakeApi(), size: const Size(560, 2600));
+    // Per-container meters sit in the expanded rows.
+    await tester.tap(find.byKey(const ValueKey('container-row-nginx')));
+    await tester.tap(find.byKey(const ValueKey('container-row-log-sidecar')));
+    await tester.pumpAndSettle();
     // Status row + one row per running container.
     expect(find.text('Usage'), findsNWidgets(3));
     expect(find.textContaining('of request'), findsWidgets);
@@ -110,6 +114,10 @@ void main() {
   testWidgets('Pod panel without metrics stays calm', (tester) async {
     final pod = _fixture('test/metrics/fixtures/pod-web.json');
     await pumpPanel(tester, pod, api: MetricsFakeApi(resourceMetrics: false));
+    // Per-container meters sit in the expanded rows.
+    await tester.tap(find.byKey(const ValueKey('container-row-nginx')));
+    await tester.tap(find.byKey(const ValueKey('container-row-log-sidecar')));
+    await tester.pumpAndSettle();
     expect(find.text('Install metrics-server'), findsOneWidget, reason: 'one install link in the status summary');
     expect(find.text('Usage'), findsNWidgets(3));
     expect(find.text('—'), findsAtLeastNWidgets(2), reason: 'containers show a dash');

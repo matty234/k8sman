@@ -7,6 +7,7 @@ import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/panel.dart';
 import 'package:k8sman/panels/pod/pod_logic.dart';
 import 'package:k8sman/panels/pod/pod_panel.dart';
+import 'package:k8sman/panels/pod/pod_section.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/state/log_dock.dart';
 import 'package:provider/provider.dart';
@@ -19,6 +20,8 @@ import 'package:k8sman/util/text.dart';
 Json fixture(String name) => jsonDecode(File('../dev/fixtures/$name.json').readAsStringSync()) as Json;
 
 void main() {
+  setUp(PodSectionMemory.reset);
+
   group('logic', () {
     test('effective status matches table semantics', () {
       expect(podStatus(fixture('pod-web')), 'Running');
@@ -58,18 +61,35 @@ void main() {
   testWidgets('pod-web overview renders all sections', (tester) async {
     await loadRealFonts();
     await pumpPanel(tester, fixture('pod-web'), size: const Size(560, 3000));
-    await saveScreenshot(tester, 'pod-web');
     expect(tester.takeException(), isNull);
-    for (final t in ['Status', 'Containers', 'Volumes', 'Scheduling', 'Conditions']) {
+    for (final t in ['Containers', 'Volumes', 'Scheduling', 'Configuration', 'Conditions']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
-    expect(find.text('INIT'), findsOneWidget);
+    expect(find.text('Init'), findsOneWidget);
     expect(find.textContaining('Healthy: all 2 containers'), findsOneWidget);
+    expect(find.text('nginx:1.27-alpine'), findsOneWidget); // the row's short image
+    // Details open on demand.
+    await tester.tap(find.byKey(const ValueKey('container-row-nginx')));
+    await tester.tap(find.byKey(const ValueKey('container-row-log-sidecar')));
+    await tester.tap(find.byKey(const ValueKey('pod-section-configuration')));
+    await tester.pump();
+    await saveScreenshot(tester, 'pod-web');
     expect(find.text('HTTP GET :http/ every 5s · timeout 1s · fail after 3'), findsOneWidget);
     expect(find.text('Burstable'), findsOneWidget);
-    expect(find.text('nginx:1.27-alpine'), findsOneWidget);
     expect(find.text('field metadata.name'), findsOneWidget);
     expect(find.textContaining('heartbeat'), findsOneWidget); // command CodeBlock
+  });
+
+  testWidgets('healthy containers start collapsed, troubled ones open; reference sections summarise when collapsed', (tester) async {
+    await pumpPanel(tester, fixture('pod-web'), size: const Size(560, 3000));
+    expect(find.text('Image'), findsNothing); // nginx and log-sidecar collapsed
+    expect(find.text('2 · 1 ConfigMap, 1 emptyDir'), findsOneWidget); // Volumes, collapsed
+    expect(find.text('web-config'), findsNothing);
+
+    await pumpPanel(tester, fixture('pod-crashy'), size: const Size(560, 3000));
+    expect(find.text('Image'), findsOneWidget); // app is open
+    expect(find.text('Waiting: CrashLoopBackOff'), findsOneWidget);
+    expect(find.text('Ready, ContainersReady false'), findsOneWidget);
   });
 
   testWidgets('a slim inspector (320px) lays the pod out without overflow', (tester) async {
@@ -87,7 +107,8 @@ void main() {
     expect(find.textContaining('is in CrashLoopBackOff: restarted 6 times, last exit code 3'), findsOneWidget);
     expect(find.text('Last state'), findsOneWidget);
     expect(find.textContaining('Error · exit 3'), findsOneWidget);
-    expect(find.text('6 restarts'), findsNWidgets(2));
+    expect(find.byTooltip('6 restarts'), findsOneWidget); // the row
+    expect(find.text('restarts'), findsOneWidget); // the status figure
   });
 
   testWidgets('pod-bad-image explains the image pull failure', (tester) async {
@@ -102,6 +123,12 @@ void main() {
   testWidgets('links navigate to ConfigMap, Secret, Node and ServiceAccount', (tester) async {
     Future<void> tapAndExpect(String label, String kind, String name) async {
       final app = await pumpPanel(tester, fixture('pod-web'), size: const Size(560, 3000));
+      // Env links sit in nginx's details, the volume in Volumes.
+      if (find.text(label).evaluate().isEmpty) {
+        await tester.tap(find.byKey(const ValueKey('container-row-nginx')));
+        await tester.tap(find.byKey(const ValueKey('pod-section-volumes')));
+        await tester.pump();
+      }
       await tester.tap(find.text(label).first);
       await tester.pump();
       expect(app.detail?.type.kind, kind, reason: label);
@@ -177,7 +204,7 @@ void main() {
     dock.closeAll();
   });
 
-  testWidgets('container cards open logs (and previous-instance logs after restarts)', (tester) async {
+  testWidgets('container rows open logs (and previous-instance logs after restarts)', (tester) async {
     await pumpPanel(tester, fixture('pod-crashy'), size: const Size(560, 3000));
     final dock = Provider.of<LogDock>(tester.element(find.byType(ListView).first), listen: false);
     await tester.tap(find.byKey(const ValueKey('view-logs-app')));

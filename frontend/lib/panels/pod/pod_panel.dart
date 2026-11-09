@@ -17,8 +17,10 @@ import '../dra/dra_sections.dart';
 import '../panel.dart';
 import 'pod_containers.dart';
 import 'pod_logic.dart';
+import 'pod_section.dart';
+import 'pod_status.dart';
 import 'pod_widgets.dart';
-import '../../util/pod.dart';
+import '../../util/text.dart';
 
 class PodPanel extends ResourcePanel {
   const PodPanel();
@@ -32,50 +34,140 @@ class PodPanel extends ResourcePanel {
     final containers = podContainers(pod);
     final volumes = asMapList(ctx.spec['volumes']);
     final scheduling = _schedulingEntries(context, ctx);
+    final conditions = asMapList(ctx.status['conditions']);
+    final falseConds = [for (final c in conditions) if (c['status'] != 'True') '${c['type']}'];
+
+    // Problems first (any kind), then the healthy main containers and
+    // sidecars; healthy init and ephemeral containers go in quieter groups.
+    final troubled = [for (final c in containers) if (c.hasProblem) c];
+    final healthyMain = [for (final c in containers) if (!c.hasProblem && (c.kind == ContainerKind.regular || c.kind == ContainerKind.sidecar)) c];
+    final healthyInit = [for (final c in containers) if (!c.hasProblem && c.kind == ContainerKind.init) c];
+    final healthyEph = [for (final c in containers) if (!c.hasProblem && c.kind == ContainerKind.ephemeral) c];
+    Widget row(PodContainer c, {bool quiet = false}) => ContainerRow(
+      c,
+      key: ValueKey('container-${ctx.uid}/${c.name}'),
+      podUid: ctx.uid,
+      namespace: ctx.namespace,
+      quiet: quiet,
+      onViewLogs: (context, previous) => openPodLogs(context, ctx.object, container: c.name, previous: previous),
+      onOpenTerminal: ctx.app.readOnly ? null : (context) => openPodTerminal(context, ctx.object, container: c.name),
+      miniUsage: c.isRunning ? ContainerMiniUsage(pod: ctx.object, container: c.name, spec: c.spec) : null,
+      usage: c.isRunning ? ContainerUsageLine(pod: ctx.object, container: c.name, spec: c.spec) : null,
+      // One-click forward per port (only while the container runs).
+      portAction: c.isRunning
+          ? (p) => QuickForwardButton(
+              api: ctx.api,
+              app: ctx.app,
+              namespace: ctx.namespace ?? 'default',
+              kind: 'pod',
+              name: ctx.name,
+              port: '${p['containerPort']}',
+              protocol: p['protocol'] as String?,
+            )
+          : null,
+    );
+
     return [
-      // CPU / memory history first (hidden when Prometheus isn't available).
-      podHistory(ctx),
-      // Live network from the kubelet when there is no Prometheus.
-      liveNetworkSection(ctx),
-      DetailSection(title: 'Status', icon: Icons.monitor_heart_outlined, child: _StatusSummary(ctx)),
-      gpuPodSection(ctx),
-      DetailSection(
+      // Is this pod OK, and if not, why?
+      PodStatusHeader(ctx),
+      PodSection(
+        id: 'containers',
         title: 'Containers',
-        icon: Icons.view_in_ar_outlined,
-        trailing: Hint(_containerCounts(containers)),
+        trailing: SectionSummary(_containerCounts(containers)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final c in containers)
-              ContainerCard(
-                c,
-                namespace: ctx.namespace,
-                onViewLogs: (context, previous) => openPodLogs(context, ctx.object, container: c.name, previous: previous),
-                onOpenTerminal: ctx.app.readOnly ? null : (context) => openPodTerminal(context, ctx.object, container: c.name),
-                usage: c.isRunning ? ContainerUsageLine(pod: ctx.object, container: c.name, spec: c.spec) : null,
-                // One-click forward per port (only while the container runs).
-                portAction: c.isRunning
-                    ? (p) => QuickForwardButton(
-                        api: ctx.api,
-                        app: ctx.app,
-                        namespace: ctx.namespace ?? 'default',
-                        kind: 'pod',
-                        name: ctx.name,
-                        port: '${p['containerPort']}',
-                        protocol: p['protocol'] as String?,
-                      )
-                    : null,
-              ),
+            for (final c in troubled) row(c),
+            for (final c in healthyMain) row(c),
+            if (healthyInit.isNotEmpty) ...[const _GroupLabel('Init'), for (final c in healthyInit) row(c, quiet: true)],
+            if (healthyEph.isNotEmpty) ...[const _GroupLabel('Ephemeral'), for (final c in healthyEph) row(c, quiet: true)],
             if (containers.isEmpty) const Hint('No containers'),
           ],
         ),
       ),
-      if (volumes.isNotEmpty)
-        DetailSection(title: 'Volumes', icon: Icons.storage_outlined, trailing: Hint('${volumes.length}'), child: _Volumes(volumes, containers, ctx.namespace, ctx.name)),
+      // CPU / memory history (hidden when Prometheus isn't available).
+      podHistory(ctx),
+      // Live network from the kubelet when there is no Prometheus.
+      liveNetworkSection(ctx),
+      gpuPodSection(ctx),
       draPodSection(ctx),
-      if (scheduling.isNotEmpty) DetailSection(title: 'Scheduling', icon: Icons.account_tree_outlined, child: KeyValueTable(scheduling, keyWidth: 110)),
-      DetailSection(title: 'Conditions', icon: Icons.fact_check_outlined, child: ConditionsTable(ctx.status['conditions'] as List?)),
+      // Reference detail: collapsed by default, a one-line summary in the
+      // header; opening one keeps it open for the next pod.
+      if (volumes.isNotEmpty)
+        PodSection(
+          id: 'volumes',
+          title: 'Volumes',
+          initiallyExpanded: false,
+          trailing: SectionSummary(_volumeSummary(volumes)),
+          child: _Volumes(volumes, containers, ctx.namespace, ctx.name),
+        ),
+      if (scheduling.isNotEmpty)
+        PodSection(
+          id: 'scheduling',
+          title: 'Scheduling',
+          initiallyExpanded: false,
+          trailing: SectionSummary(_schedulingSummary(ctx.spec)),
+          child: KeyValueTable(scheduling, keyWidth: 110),
+        ),
+      PodSection(
+        id: 'configuration',
+        title: 'Configuration',
+        initiallyExpanded: false,
+        trailing: SectionSummary(_configSummary(ctx)),
+        child: _Configuration(ctx),
+      ),
+      PodSection(
+        id: 'conditions',
+        title: 'Conditions',
+        initiallyExpanded: false,
+        trailing: SectionSummary(
+          conditions.isEmpty ? 'none' : (falseConds.isEmpty ? 'all ${conditions.length} true' : '${falseConds.join(', ')} false'),
+          color: falseConds.isEmpty ? null : severityColor(context, Severity.warn),
+        ),
+        child: ConditionsTable(ctx.status['conditions'] as List?),
+      ),
     ];
+  }
+
+  /// "1 PVC, 2 ConfigMaps, 1 emptyDir" (the service account token aside).
+  static String _volumeSummary(List<Json> volumes) {
+    final counts = <String, int>{};
+    for (final v in volumes) {
+      if (_Volumes._isDefaultToken(v)) continue;
+      final type = v.keys.firstWhere((k) => k != 'name', orElse: () => 'unknown');
+      final label = switch (type) {
+        'persistentVolumeClaim' || 'ephemeral' => 'PVC',
+        'configMap' => 'ConfigMap',
+        'secret' => 'Secret',
+        final t => t,
+      };
+      counts[label] = (counts[label] ?? 0) + 1;
+    }
+    if (counts.isEmpty) return 'service account token';
+    final n = counts.values.fold<int>(0, (a, b) => a + b);
+    String name(String label, int c) => c == 1 || !RegExp(r'^[A-Z]').hasMatch(label) ? label : '${label}s';
+    return '$n · ${counts.entries.map((e) => '${e.value} ${name(e.key, e.value)}').join(', ')}';
+  }
+
+  static String _schedulingSummary(Json spec) {
+    final aff = asMap(spec['affinity']);
+    final tols = asMapList(spec['tolerations']);
+    final custom = tols.where((t) => !isDefaultToleration(t)).length;
+    return [
+      if (asMap(spec['nodeSelector']).isNotEmpty) 'node selector',
+      if (aff['nodeAffinity'] != null) 'node affinity',
+      if (aff['podAffinity'] != null) 'pod affinity',
+      if (aff['podAntiAffinity'] != null) 'anti-affinity',
+      if (asMapList(spec['topologySpreadConstraints']).isNotEmpty) 'spread',
+      if (custom > 0) plural(custom, 'toleration'),
+      if (custom == 0 && tols.isNotEmpty) 'default tolerations',
+    ].join(' · ');
+  }
+
+  static String _configSummary(PanelContext ctx) {
+    final qos = ctx.status['qosClass'] as String?;
+    final pc = ctx.spec['priorityClassName'] as String?;
+    return [?qos, ?pc, '${ctx.spec['restartPolicy'] ?? 'Always'}'].join(' · ');
   }
 
   /// Logs open in the bottom dock (not a sidebar tab) so they keep
@@ -182,107 +274,49 @@ class PodPanel extends ResourcePanel {
   }
 }
 
-class _StatusSummary extends StatelessWidget {
-  final PanelContext ctx;
-  const _StatusSummary(this.ctx);
+/// A quiet caption over a group of healthy init or ephemeral containers.
+class _GroupLabel extends StatelessWidget {
+  final String text;
+  const _GroupLabel(this.text);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final small = theme.textTheme.bodySmall;
-    final pod = ctx.object;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 10, 0, 2),
+      child: Text(text, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
+    );
+  }
+}
+
+/// Pod-level settings that rarely explain a problem: QoS, priority, restart
+/// policy and grace period, start time and the pod security context.
+class _Configuration extends StatelessWidget {
+  final PanelContext ctx;
+  const _Configuration(this.ctx);
+
+  @override
+  Widget build(BuildContext context) {
+    final small = Theme.of(context).textTheme.bodySmall;
     final spec = ctx.spec;
     final status = ctx.status;
-    final effective = podStatus(pod);
-    final phase = '${status['phase'] ?? ''}';
-    final containers = podContainers(pod);
-    final main = containers.where((c) => c.kind == ContainerKind.regular || c.kind == ContainerKind.sidecar).toList();
-    final readyCount = main.where((c) => c.ready).length;
-    final restarts = containers.fold<int>(0, (a, c) => a + c.restarts);
-    final insights = podInsights(pod);
-    final ips = [for (final i in asMapList(status['podIPs'])) '${i['ip']}'];
-    if (ips.isEmpty && status['podIP'] != null) ips.add('${status['podIP']}');
-    final node = spec['nodeName'] as String?;
-    final sa = (spec['serviceAccountName'] ?? spec['serviceAccount']) as String?;
     final qos = status['qosClass'] as String?;
     final podSc = asMap(spec['securityContext']);
-    final hostNs = [if (spec['hostNetwork'] == true) 'hostNetwork', if (spec['hostPID'] == true) 'hostPID', if (spec['hostIPC'] == true) 'hostIPC'];
-    final inits = containers.where((c) => c.kind == ContainerKind.init).toList();
-    final initsDone = inits.where((c) => c.isTerminated && c.terminated['exitCode'] == 0).length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            StatusBadge(effective),
-            if (effective != phase && phase.isNotEmpty) Hint('phase $phase'),
-            StatusBadge(
-              '$readyCount/${main.length} ready',
-              severity: phase == 'Succeeded' ? Severity.neutral : (readyCount == main.length ? Severity.ok : Severity.error),
-            ),
-            if (inits.isNotEmpty) StatusBadge('init $initsDone/${inits.length}', severity: initsDone == inits.length ? Severity.ok : Severity.warn),
-            StatusBadge('$restarts restart${restarts == 1 ? '' : 's'}', severity: restarts > 0 ? Severity.warn : Severity.neutral),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (insights.isNotEmpty)
-          InsightList(insights)
-        else if (phase == 'Running')
-          InsightList([PodInsight(Severity.ok, 'Healthy: all ${main.length} container${main.length == 1 ? '' : 's'} running and ready')])
-        else if (phase == 'Succeeded')
-          const InsightList([PodInsight(Severity.ok, 'Completed: all containers exited successfully')]),
-        const SizedBox(height: 4),
-        KeyValueTable(keyWidth: 110, [
-          (
-            'Node',
-            node == null
-                ? Text(
-                    status['nominatedNodeName'] != null ? 'unscheduled (nominated ${status['nominatedNodeName']})' : 'unscheduled',
-                    style: small?.copyWith(color: severityColor(context, Severity.warn)),
-                  )
-                : ResourceLink(
-                    ObjectRef(kind: 'Node', name: node),
-                    label: node,
-                  ),
-          ),
-          if (ips.isNotEmpty) ('Pod IP', InlineWrap([for (final ip in ips) Chipish(text: ip, copyValue: ip)])),
-          if (status['hostIP'] != null) ('Host IP', InlineWrap([Chipish(text: '${status['hostIP']}', copyValue: '${status['hostIP']}')])),
-          if (status['startTime'] != null)
-            (
-              'Started',
-              InlineWrap([
-                AgeText(status['startTime'], suffix: ' ago', style: small),
-                Hint(parseTime(status['startTime'])!.toLocal().toString().split('.').first),
-              ]),
-            ),
-          ('Usage', PodUsageSummary(pod: pod)),
-          if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), Hint(_qosHint(qos))])),
-          (
-            'Priority',
-            InlineWrap([
-              Text('${spec['priority'] ?? 0}', style: small),
-              if (spec['priorityClassName'] != null) Hint('class ${spec['priorityClassName']}'),
-              if (spec['preemptionPolicy'] == 'Never') const Hint('never preempts'),
-            ]),
-          ),
-          if (sa != null)
-            (
-              'Service account',
-              ResourceLink(
-                ObjectRef(kind: 'ServiceAccount', name: sa, namespace: ctx.namespace),
-                label: sa,
-              ),
-            ),
-          ('Restart policy', Text('${spec['restartPolicy'] ?? 'Always'} · grace ${spec['terminationGracePeriodSeconds'] ?? 30}s', style: small)),
-          if (hostNs.isNotEmpty) ('Host namespaces', InlineWrap([for (final h in hostNs) Chipish(text: h, color: severityColor(context, Severity.warn))])),
-          if (podSc.isNotEmpty) ('Pod security', securityChips(context, podSc)),
+    final started = parseTime(status['startTime']);
+    return KeyValueTable(keyWidth: 110, [
+      if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), Hint(_qosHint(qos))])),
+      (
+        'Priority',
+        InlineWrap([
+          Text('${spec['priority'] ?? 0}', style: small),
+          if (spec['priorityClassName'] != null) Hint('class ${spec['priorityClassName']}'),
+          if (spec['preemptionPolicy'] == 'Never') const Hint('never preempts'),
         ]),
-      ],
-    );
+      ),
+      ('Restart policy', Text('${spec['restartPolicy'] ?? 'Always'} · grace ${spec['terminationGracePeriodSeconds'] ?? 30}s', style: small)),
+      if (started != null) ('Started', InlineWrap([Text(started.toLocal().toString().split('.').first, style: small), AgeText(status['startTime'], suffix: ' ago')])),
+      if (podSc.isNotEmpty) ('Pod security', securityChips(context, podSc)),
+    ]);
   }
 
   static String _qosHint(String q) => switch (q) {
