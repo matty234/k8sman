@@ -291,7 +291,7 @@ class InstallMetricsServerLink extends StatelessWidget {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () => requestAddon(context, AddonIds.metricsServer),
-        child: Text('Install metrics-server', style: (style ?? const TextStyle()).copyWith(color: accent)),
+        child: SelectionContainer.disabled(child: Text('Install metrics-server', style: (style ?? const TextStyle()).copyWith(color: accent))),
       ),
     );
   }

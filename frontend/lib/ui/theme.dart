@@ -207,7 +207,9 @@ ThemeData buildTheme(Brightness b) {
     visualDensity: VisualDensity.compact,
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     minimumSize: const WidgetStatePropertyAll(Size(0, 28)),
-    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12)),
+    // One pixel more below than above: mixed-case labels are centred on
+    // their line box (which reserves room for descenders), so they read low.
+    padding: const WidgetStatePropertyAll(EdgeInsets.fromLTRB(12, 0, 12, 2)),
     shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: radius6)),
     textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
     iconSize: const WidgetStatePropertyAll(15),
@@ -368,8 +370,10 @@ ThemeData buildTheme(Brightness b) {
       surfaceTintColor: Colors.transparent,
       elevation: 24,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: dark ? const Color(0x1FFFFFFF) : const Color(0x14000000), width: 0.5),
+        // macOS alert proportions: a tighter corner and a hairline that only
+        // just separates the sheet from the window behind it.
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: dark ? const Color(0x14FFFFFF) : const Color(0x0F000000), width: 0.5),
       ),
       titleTextStyle: textTheme.titleMedium,
       contentTextStyle: textTheme.bodyMedium,

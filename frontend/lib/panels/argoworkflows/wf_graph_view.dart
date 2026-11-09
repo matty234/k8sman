@@ -493,7 +493,7 @@ class _GraphNode extends StatelessWidget {
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
             onTap: onTap,
-            child: Container(
+            child: SelectionContainer.disabled(child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(11),
@@ -509,7 +509,7 @@ class _GraphNode extends StatelessWidget {
                       style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontSize: 10.5, height: 1.1)),
                 ),
               ]),
-            ),
+            )),
           ),
         ),
       );
@@ -572,7 +572,7 @@ class _GraphNode extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 500),
-      child: MouseRegion(cursor: SystemMouseCursors.click, child: GestureDetector(onTap: onTap, child: body)),
+      child: MouseRegion(cursor: SystemMouseCursors.click, child: GestureDetector(onTap: onTap, child: SelectionContainer.disabled(child: body))),
     );
   }
 }

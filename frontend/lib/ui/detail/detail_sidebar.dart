@@ -298,6 +298,8 @@ class _ActionBar extends StatelessWidget {
           PopupMenuButton<ResourceAction>(
             popUpAnimationStyle: AnimationStyle.noAnimation,
             tooltip: 'More actions',
+            padding: EdgeInsets.zero,
+            iconSize: 18,
             icon: const Icon(Icons.more_horiz, size: 18),
             onSelected: (a) => a.run(context),
             itemBuilder: (_) => [
@@ -444,6 +446,9 @@ class _HistoryButton extends StatelessWidget {
       popUpAnimationStyle: AnimationStyle.noAnimation,
       tooltip: 'Recently inspected',
       enabled: recent.isNotEmpty,
+      // No padding of its own: the icon button theme's 26px square centres it.
+      padding: EdgeInsets.zero,
+      iconSize: 16,
       icon: const Icon(Icons.history, size: 16),
       onSelected: app.openDetail,
       itemBuilder: (_) => [

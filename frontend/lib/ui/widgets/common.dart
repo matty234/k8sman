@@ -130,7 +130,10 @@ class _HoverableState extends State<Hoverable> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
-        child: widget.builder(_hover),
+        // Clickable things aren't selectable text: inside a SelectionArea
+        // (the inspector) their text would otherwise show the I-beam cursor
+        // over the click cursor, and a click could start a selection.
+        child: widget.onTap == null ? widget.builder(_hover) : SelectionContainer.disabled(child: widget.builder(_hover)),
       ),
     );
   }
