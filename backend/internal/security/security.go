@@ -138,18 +138,21 @@ type Category struct {
 
 // Result is the GET /api/security payload.
 type Result struct {
-	GeneratedAt   string             `json:"generatedAt"`
-	Namespace     string             `json:"namespace"`
-	IncludeSystem bool               `json:"includeSystem"`
-	Score         int                `json:"score"`
-	Categories    []Category         `json:"categories"`
-	Findings      []Finding          `json:"findings"`
-	Permissive    []Grant            `json:"permissive"`
-	Network       []NamespaceNetwork `json:"network"`
-	Images        []ImageSummary     `json:"images"`
-	TopCVEs       []CVE              `json:"topCVEs"`
-	Sources       Sources            `json:"sources"`
-	Errors        map[string]string  `json:"errors,omitempty"`
+	GeneratedAt   string     `json:"generatedAt"`
+	Namespace     string     `json:"namespace"`
+	IncludeSystem bool       `json:"includeSystem"`
+	Score         int        `json:"score"`
+	Categories    []Category `json:"categories"`
+	Findings      []Finding  `json:"findings"`
+	// Ignored are the findings hidden by the user's ignore rules (see
+	// ApplyIgnores); the score, categories and Findings leave them out.
+	Ignored    []IgnoredFinding   `json:"ignored"`
+	Permissive []Grant            `json:"permissive"`
+	Network    []NamespaceNetwork `json:"network"`
+	Images     []ImageSummary     `json:"images"`
+	TopCVEs    []CVE              `json:"topCVEs"`
+	Sources    Sources            `json:"sources"`
+	Errors     map[string]string  `json:"errors,omitempty"`
 	// Pending lists the categories still loading: their tiles, findings and
 	// sections are unknown (not zero), and the score leaves them out.
 	Pending []string `json:"pending,omitempty"`
@@ -198,6 +201,7 @@ func Analyze(in Input) *Result {
 		Namespace:     in.Namespace,
 		IncludeSystem: in.IncludeSystem,
 		Findings:      []Finding{},
+		Ignored:       []IgnoredFinding{},
 		Permissive:    []Grant{},
 		Network:       []NamespaceNetwork{},
 		Images:        []ImageSummary{},
@@ -401,7 +405,14 @@ func (a *analyzer) finish() {
 		}
 		return fs[i].ID < fs[j].ID
 	})
+	summarise(a.res)
+}
+
+// summarise fills the categories and the score from res.Findings.
+func summarise(res *Result) {
+	fs := res.Findings
 	penalty := 0.0
+	res.Categories = nil
 	cats := map[string]*Category{}
 	for _, c := range categoryTitles {
 		cat := &Category{ID: c.id, Title: c.title, Counts: map[string]int{}}
@@ -409,7 +420,7 @@ func (a *analyzer) finish() {
 			cat.Counts[s] = 0
 		}
 		cats[c.id] = cat
-		a.res.Categories = append(a.res.Categories, Category{})
+		res.Categories = append(res.Categories, Category{})
 	}
 	for _, f := range fs {
 		if c := cats[f.Category]; c != nil {
@@ -419,9 +430,9 @@ func (a *analyzer) finish() {
 		penalty += scoreWeight[f.Severity]
 	}
 	for i, c := range categoryTitles {
-		a.res.Categories[i] = *cats[c.id]
+		res.Categories[i] = *cats[c.id]
 	}
-	a.res.Score = int(math.Round(100 * 100 / (100 + penalty)))
+	res.Score = int(math.Round(100 * 100 / (100 + penalty)))
 }
 
 func catIndex(id string) int {

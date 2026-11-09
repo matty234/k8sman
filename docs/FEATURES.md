@@ -339,7 +339,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   **Copy for AI**. It loads progressively: it answers after about a second
   with the categories whose lists are in; the rest show placeholders (never
   "0 findings") and the score waits, while the page re-fetches quickly until
-  everything is in.
+  everything is in. Findings can be ignored (this finding, this check in a
+  namespace, or this check everywhere, with an optional reason): they leave
+  the list, score and Copy for AI, and stay one click away under "N ignored".
+  Rules are per context and listed in Settings.
 - **Add-ons**: one-click Helm installs of metrics-server, the Prometheus
   stack, Trivy Operator, Argo CD, Envoy Gateway and cert-manager.
 - **Hubble** (on clusters running Cilium with Hubble Relay): a **Map** of

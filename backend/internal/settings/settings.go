@@ -8,6 +8,7 @@ package settings
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/matty234/k8sman/backend/internal/security"
 	"maps"
 	"os"
 	"path/filepath"
@@ -69,6 +70,9 @@ type Settings struct {
 	Namespaces map[string][]string `json:"namespaces,omitempty"`
 	// FavouriteNamespaces maps kube context → starred namespaces.
 	FavouriteNamespaces map[string][]string `json:"favouriteNamespaces,omitempty"`
+	// SecurityIgnores maps kube context → the Security findings the user
+	// chose to ignore (see security.IgnoreRule).
+	SecurityIgnores map[string][]security.IgnoreRule `json:"securityIgnores,omitempty"`
 	// AppLinks makes "Copy link" copy the k8sman:// form instead of the
 	// https://k8sman.dev/o/ one.
 	AppLinks bool `json:"appLinks,omitempty"`
@@ -338,6 +342,7 @@ func (st *Store) Get() Settings {
 	out.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
 	out.ContextAppearance = maps.Clone(st.s.ContextAppearance)
 	out.LinkClusterMap = maps.Clone(st.s.LinkClusterMap)
+	out.SecurityIgnores = cloneIgnores(st.s.SecurityIgnores)
 	out.Tables = cloneTables(st.s.Tables)
 	out.DisabledModules = slices.Clone(st.s.DisabledModules)
 	out.Views = slices.Clone(st.s.Views)
@@ -363,6 +368,7 @@ func (st *Store) Update(fn func(*Settings)) error {
 	next.ReadOnlyContexts = maps.Clone(st.s.ReadOnlyContexts)
 	next.ContextAppearance = maps.Clone(st.s.ContextAppearance)
 	next.LinkClusterMap = maps.Clone(st.s.LinkClusterMap)
+	next.SecurityIgnores = cloneIgnores(st.s.SecurityIgnores)
 	next.Tables = cloneTables(st.s.Tables)
 	next.DisabledModules = slices.Clone(st.s.DisabledModules)
 	next.Views = slices.Clone(st.s.Views)
@@ -706,6 +712,41 @@ func (st *Store) write(s Settings) error {
 		return err
 	}
 	return os.Rename(tmp, st.path)
+}
+
+func cloneIgnores(m map[string][]security.IgnoreRule) map[string][]security.IgnoreRule {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string][]security.IgnoreRule, len(m))
+	for k, v := range m {
+		out[k] = slices.Clone(v)
+	}
+	return out
+}
+
+// SecurityIgnores returns a context's ignore rules.
+func (st *Store) SecurityIgnores(context string) []security.IgnoreRule {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return slices.Clone(st.s.SecurityIgnores[context])
+}
+
+// SetSecurityIgnores saves a context's ignore rules (empty forgets them).
+func (st *Store) SetSecurityIgnores(context string, rules []security.IgnoreRule) error {
+	return st.Update(func(s *Settings) {
+		if len(rules) == 0 {
+			delete(s.SecurityIgnores, context)
+			if len(s.SecurityIgnores) == 0 {
+				s.SecurityIgnores = nil
+			}
+			return
+		}
+		if s.SecurityIgnores == nil {
+			s.SecurityIgnores = map[string][]security.IgnoreRule{}
+		}
+		s.SecurityIgnores[context] = slices.Clone(rules)
+	})
 }
 
 func cloneNamespaces(m map[string][]string) map[string][]string {

@@ -102,6 +102,11 @@ func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *secu
 			img.TopCVEs = cr.Vulnerabilities[:n]
 		}
 	}
+	// Ignore rules are applied here, to this request's own result, not in
+	// the shared run: editing them takes effect on the next fetch.
+	if s.settings != nil {
+		security.ApplyIgnores(res, s.settings.SecurityIgnores(c.Context))
+	}
 	if len(errs) > 0 {
 		res.Errors = map[string]string{}
 		for k, e := range errs {
