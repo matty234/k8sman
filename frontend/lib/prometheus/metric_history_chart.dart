@@ -608,14 +608,27 @@ class _AreaChartState extends State<AreaChart> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       LayoutBuilder(builder: (context, box) {
         final width = box.maxWidth;
-        DateTime? hoverT;
-        if (_hoverX != null && tMax > tMin) {
-          hoverT = DateTime.fromMillisecondsSinceEpoch((tMin + (_hoverX! / width).clamp(0.0, 1.0) * (tMax - tMin)).round());
+        final sync = ChartHoverSync.maybeOf(context);
+        DateTime timeAt(double x) => DateTime.fromMillisecondsSinceEpoch((tMin + (x / width).clamp(0.0, 1.0) * (tMax - tMin)).round());
+        // Hovered here, or following another chart's hover when its time
+        // falls inside this chart's range.
+        double? hoverX = _hoverX;
+        final shared = sync?.value;
+        if (hoverX == null && shared != null && tMax > tMin) {
+          final ms = shared.millisecondsSinceEpoch.toDouble();
+          if (ms >= tMin && ms <= tMax) hoverX = (ms - tMin) / (tMax - tMin) * width;
         }
+        final hoverT = hoverX == null || tMax <= tMin ? null : timeAt(hoverX);
         final readout = hoverT == null ? null : _readout(hoverT);
         return MouseRegion(
-          onHover: (e) => setState(() => _hoverX = e.localPosition.dx),
-          onExit: (_) => setState(() => _hoverX = null),
+          onHover: (e) {
+            setState(() => _hoverX = e.localPosition.dx);
+            if (tMax > tMin) sync?.value = timeAt(e.localPosition.dx);
+          },
+          onExit: (_) {
+            setState(() => _hoverX = null);
+            sync?.value = null;
+          },
           child: SizedBox(
             height: widget.height,
             child: Stack(clipBehavior: Clip.none, children: [
@@ -628,7 +641,7 @@ class _AreaChartState extends State<AreaChart> {
                     tMax: tMax,
                     vMax: vMax,
                     grid: AppColors.of(context).separator,
-                    hoverX: _hoverX,
+                    hoverX: hoverX,
                     fill: !multi,
                     guides: onScale,
                     guideColor: theme.hintColor,
@@ -640,8 +653,8 @@ class _AreaChartState extends State<AreaChart> {
               if (readout != null)
                 Positioned(
                   top: 2,
-                  left: (_hoverX! + 8 + 150 > width) ? null : _hoverX! + 8,
-                  right: (_hoverX! + 8 + 150 > width) ? width - _hoverX! + 8 : null,
+                  left: (hoverX! + 8 + 150 > width) ? null : hoverX + 8,
+                  right: (hoverX + 8 + 150 > width) ? width - hoverX + 8 : null,
                   child: _Tooltip(
                     time: hoverT!,
                     rows: [
@@ -883,4 +896,40 @@ class _AreaPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_AreaPainter old) => old.series != series || old.guides != guides || old.hoverX != hoverX || old.vMax != vMax || old.colors != colors;
+}
+
+
+/// The time under the pointer on any chart, shared so every other chart in
+/// scope draws its cursor and readout at the same moment (hover CPU, see
+/// memory then too). Charts publish while hovered and follow it otherwise;
+/// a chart whose range doesn't include the time shows nothing.
+///
+/// Put a [ChartHoverScope] around everything that should move together
+/// (the app shell has one, so all charts on screen are linked).
+class ChartHoverSync extends InheritedNotifier<ValueNotifier<DateTime?>> {
+  const ChartHoverSync({super.key, required ValueNotifier<DateTime?> super.notifier, required super.child});
+
+  static ValueNotifier<DateTime?>? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<ChartHoverSync>()?.notifier;
+}
+
+/// Owns the shared hover time for the charts below it.
+class ChartHoverScope extends StatefulWidget {
+  final Widget child;
+  const ChartHoverScope({super.key, required this.child});
+
+  @override
+  State<ChartHoverScope> createState() => _ChartHoverScopeState();
+}
+
+class _ChartHoverScopeState extends State<ChartHoverScope> {
+  final _time = ValueNotifier<DateTime?>(null);
+
+  @override
+  void dispose() {
+    _time.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ChartHoverSync(notifier: _time, child: widget.child);
 }

@@ -11,6 +11,7 @@ import 'app/updates/update_ui.dart';
 import 'app/window_chrome.dart';
 import 'state/app_state.dart';
 import 'state/log_dock.dart';
+import 'prometheus/metric_history_chart.dart' show ChartHoverScope;
 import 'ui/shell.dart';
 import 'ui/theme.dart';
 
@@ -67,6 +68,8 @@ class K8sManApp extends StatelessWidget {
         themeMode: themeMode,
         navigatorKey: context.read<UpdateController?>()?.navigatorKey,
         builder: (context, child) => WindowChromeScope(child: UpdateHost(child: child ?? const SizedBox.shrink())),
-        home: const BackendGate(child: Shell()),
+        // One shared chart hover: hovering any chart moves the cursor on
+        // every other chart on screen to the same time.
+        home: const ChartHoverScope(child: BackendGate(child: Shell())),
       );
 }
