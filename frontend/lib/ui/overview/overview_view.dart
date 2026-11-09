@@ -10,6 +10,7 @@ import '../../state/poller.dart';
 import '../widgets/common.dart';
 import 'overview_api.dart';
 import 'overview_cards.dart';
+import 'overview_summary.dart';
 import 'overview_widgets.dart';
 import '../widgets/namespace_picker.dart';
 import '../widgets/partial_banner.dart';
@@ -93,6 +94,8 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
     try {
       final data = await source.fetch(scope: ns);
       if (!mounted || seq != _seq) return;
+      // The sidebar's problem badges count all namespaces.
+      if (ns.isAll) OverviewSummary.of(source.api).feed(data, source.api.context);
       _scheduleQuick(data);
       setState(() {
         _data = data;
