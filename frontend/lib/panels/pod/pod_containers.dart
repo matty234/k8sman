@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../api/models.dart';
 import '../../metrics/pod_usage.dart';
+import '../../metrics/quantity.dart' show formatPercent;
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -46,8 +48,8 @@ class ContainerRow extends StatefulWidget {
   /// Small CPU/memory bars for the row, or null.
   final Widget? miniUsage;
 
-  /// Live CPU/memory usage meters for the details, or null to hide them.
-  final Widget? usage;
+  /// The pod's volumes, so mounts can link to what backs them.
+  final List<Json> volumes;
 
   /// Optional per-port trailing action (e.g. one-click port-forward).
   final Widget Function(Json port)? portAction;
@@ -60,7 +62,7 @@ class ContainerRow extends StatefulWidget {
     this.onViewLogs,
     this.onOpenTerminal,
     this.miniUsage,
-    this.usage,
+    this.volumes = const [],
     this.portAction,
   });
 
@@ -105,7 +107,7 @@ class _ContainerRowState extends State<ContainerRow> {
                 cursor: SystemMouseCursors.basic,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(15, 10, 6, 4),
-                  child: ContainerDetails(c, namespace: widget.namespace, usage: widget.usage, portAction: widget.portAction),
+                  child: ContainerDetails(c, namespace: widget.namespace, volumes: widget.volumes, portAction: widget.portAction),
                 ),
               ),
             ),
@@ -263,12 +265,22 @@ class _IconAction extends StatelessWidget {
 }
 
 /// CPU and memory as two short stacked bars against the container's limit
-/// (else its request); grey unless close to the limit.
+/// (else its request); grey unless close to the limit. The tooltip spells
+/// out usage, request and limit.
 class ContainerMiniUsage extends StatelessWidget {
   final Json pod;
   final String container;
   final Json spec;
   const ContainerMiniUsage({super.key, required this.pod, required this.container, required this.spec});
+
+  /// "CPU 12m · 6% of 200m limit · 50m request".
+  static String usageLine(String label, double used, double? limit, double? request, String Function(double?) f) => [
+        '$label ${f(used)}',
+        if (limit != null && limit > 0) '${formatPercent(used / limit)} of ${f(limit)} limit',
+        if (limit == null && request != null && request > 0) '${formatPercent(used / request)} of ${f(request)} request',
+        if (limit != null && request != null) '${f(request)} request',
+        if (limit == null && request == null) 'no request or limit',
+      ].join(' · ');
 
   @override
   Widget build(BuildContext context) {
@@ -283,11 +295,9 @@ class ContainerMiniUsage extends StatelessWidget {
         final r = containerResources(spec);
         final cpuBase = r.cpuLim ?? r.cpuReq;
         final memBase = r.memLim ?? r.memReq;
-        String line(String label, String used, double? lim, double? req, String Function(double?) f) =>
-            '$label ${usageAgainst(used, limit: lim == null ? null : f(lim), request: req == null ? null : f(req))}';
         final tip = [
-          line('CPU', formatCpu(u.cpuMillis), r.cpuLim, r.cpuReq, formatCpu),
-          line('Memory', formatBytes(u.memoryBytes), r.memLim, r.memReq, formatBytes),
+          usageLine('CPU', u.cpuMillis, r.cpuLim, r.cpuReq, formatCpu),
+          usageLine('Memory', u.memoryBytes, r.memLim, r.memReq, formatBytes),
         ].join('\n');
         return Tooltip(
           message: tip,
@@ -334,61 +344,121 @@ class _MiniBar extends StatelessWidget {
   }
 }
 
-/// A container's details, shown when its row is expanded: state, last
-/// state, image, command, ports, resources and usage, probes, lifecycle,
-/// env, mounts and security context.
+/// The pull policy Kubernetes defaults to for [image]: Always for
+/// `:latest` or no tag, IfNotPresent otherwise (a digest counts as pinned).
+String defaultPullPolicy(String image) {
+  if (image.contains('@')) return 'IfNotPresent';
+  final last = image.split('/').last;
+  final colon = last.lastIndexOf(':');
+  final tag = colon < 0 ? '' : last.substring(colon + 1);
+  return tag.isEmpty || tag == 'latest' ? 'Always' : 'IfNotPresent';
+}
+
+/// A probe on one line: "HTTPS :8000/startupz · 10s · fails after 360"
+/// (the action, its period and failure threshold).
+String probeShort(Json p) {
+  final String action;
+  if (p['httpGet'] is Map) {
+    final h = asMap(p['httpGet']);
+    action = '${h['scheme'] == 'HTTPS' ? 'HTTPS' : 'HTTP'} ${h['host'] ?? ''}:${h['port'] ?? ''}${h['path'] ?? '/'}';
+  } else if (p['tcpSocket'] is Map) {
+    final t = asMap(p['tcpSocket']);
+    action = 'TCP ${t['host'] ?? ''}:${t['port'] ?? ''}';
+  } else if (p['grpc'] is Map) {
+    final g = asMap(p['grpc']);
+    action = 'gRPC :${g['port'] ?? ''}${g['service'] != null ? ' (${g['service']})' : ''}';
+  } else if (p['exec'] is Map) {
+    action = 'exec ${shellJoin([for (final c in (dig<List>(p, ['exec', 'command']) ?? const [])) '$c'])}';
+  } else {
+    action = 'unknown probe';
+  }
+  return '$action · ${p['periodSeconds'] ?? 10}s · fails after ${p['failureThreshold'] ?? 3}';
+}
+
+/// The rest of a probe's timing, for its tooltip.
+String probeTiming(Json p) => [
+      'every ${p['periodSeconds'] ?? 10}s',
+      'timeout ${p['timeoutSeconds'] ?? 1}s',
+      'initial delay ${p['initialDelaySeconds'] ?? 0}s',
+      'fails after ${p['failureThreshold'] ?? 3} in a row',
+      'succeeds after ${p['successThreshold'] ?? 1}',
+    ].join(' · ');
+
+/// A container's details, shown when its row is expanded, in small
+/// labelled groups (each hidden when empty): runtime (state, image,
+/// command), network (ports), health (probes, lifecycle hooks), config
+/// (env, mounts, resources) and security. Usage lives in the row header.
 class ContainerDetails extends StatelessWidget {
   final PodContainer c;
   final String? namespace;
-  final Widget? usage;
+
+  /// The pod's volumes, so a mount can link to what backs it.
+  final List<Json> volumes;
   final Widget Function(Json port)? portAction;
-  const ContainerDetails(this.c, {super.key, this.namespace, this.usage, this.portAction});
+  const ContainerDetails(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall;
     final spec = c.spec;
     final cmd = [for (final x in (spec['command'] as List? ?? const [])) '$x', for (final x in (spec['args'] as List? ?? const [])) '$x'];
     final probes = [
-      ('startup', asMap(spec['startupProbe'])),
-      ('liveness', asMap(spec['livenessProbe'])),
-      ('readiness', asMap(spec['readinessProbe'])),
+      ('Startup', asMap(spec['startupProbe'])),
+      ('Liveness', asMap(spec['livenessProbe'])),
+      ('Readiness', asMap(spec['readinessProbe'])),
     ].where((p) => p.$2.isNotEmpty).toList();
+    final hooks = asMap(spec['lifecycle']);
+    final ports = asMapList(spec['ports']);
+    final env = asMapList(spec['env']);
+    final envFrom = asMapList(spec['envFrom']);
+    final mounts = asMapList(spec['volumeMounts']);
+    final sc = asMap(spec['securityContext']);
     // Running and ready says it all in the row: just when it started.
     final plainRunning = c.isRunning && c.kind != ContainerKind.init && (c.ready || c.kind == ContainerKind.ephemeral);
 
-    return KeyValueTable(keyWidth: 78, [
-      if (plainRunning)
-        ('Started', AgeText(c.running['startedAt'], suffix: ' ago', style: theme.textTheme.bodySmall))
-      else
-        ('State', _stateWidget(context)),
-      if (c.lastTerminated.isNotEmpty) ('Last state', _lastStateWidget(context)),
-      if (c.kind == ContainerKind.ephemeral && spec['targetContainerName'] != null) ('Target', MonoValue('${spec['targetContainerName']}')),
-      ('Image', _imageWidget(context)),
-      if (cmd.isNotEmpty) ('Command', CodeBlock(shellJoin(cmd))),
-      if (spec['workingDir'] != null) ('Working dir', MonoValue('${spec['workingDir']}')),
-      if (asMapList(spec['ports']).isNotEmpty) ('Ports', _portsWidget(context)),
-      if (_hasResources(spec)) ('Resources', _resourcesWidget(context)),
-      if (usage != null) ('Usage', usage!),
-      if (probes.isNotEmpty)
-        (
-          'Probes',
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            for (final (label, p) in probes)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  SizedBox(width: 62, child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
-                  Expanded(child: Text(probeSentence(p), style: theme.textTheme.bodySmall)),
-                ]),
+    final config = <Widget>[
+      if (env.isNotEmpty || envFrom.isNotEmpty)
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (env.isNotEmpty) _envWidget(context, env),
+          if (env.isNotEmpty && envFrom.isNotEmpty) const SizedBox(height: 3),
+          if (envFrom.isNotEmpty) _envFromWidget(context, envFrom),
+        ]),
+      if (mounts.isNotEmpty) _mountsWidget(context, mounts),
+      if (_hasResources(spec)) _resourcesWidget(context),
+    ];
+
+    final groups = <Widget>[
+      _Group(key: const ValueKey('container-group-runtime'), 'Runtime', [
+        if (plainRunning)
+          _Field('Started', AgeText(c.running['startedAt'], suffix: ' ago', style: small))
+        else
+          _Field('State', _stateWidget(context)),
+        if (c.lastTerminated.isNotEmpty) _Field('Last state', _lastStateWidget(context)),
+        if (c.kind == ContainerKind.ephemeral && spec['targetContainerName'] != null) _Field('Target', Text('${spec['targetContainerName']}', style: small)),
+        _Field('Image', _imageWidget(context)),
+        if (cmd.isNotEmpty) _Field('Command', _Copyable(shellJoin(cmd))),
+        if (spec['workingDir'] != null) _Field('Workdir', _Copyable('${spec['workingDir']}')),
+      ]),
+      if (ports.isNotEmpty) _Group(key: const ValueKey('container-group-network'), 'Network', [_portsWidget(context, ports)]),
+      if (probes.isNotEmpty || hooks.isNotEmpty)
+        _Group(key: const ValueKey('container-group-health'), 'Health', [
+          for (final (label, p) in probes)
+            _Field(
+              label,
+              Tooltip(
+                message: '${probeSentence(p).split(' every ').first}\n${probeTiming(p)}',
+                waitDuration: const Duration(milliseconds: 400),
+                child: Text(probeShort(p), maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
               ),
-          ]),
-        ),
-      if (asMap(spec['lifecycle']).isNotEmpty) ('Lifecycle', _lifecycleWidget(context)),
-      if (asMapList(spec['env']).isNotEmpty) ('Env', _envWidget(context)),
-      if (asMapList(spec['envFrom']).isNotEmpty) ('Env from', _envFromWidget(context)),
-      if (asMapList(spec['volumeMounts']).isNotEmpty) ('Mounts', _mountsWidget(context)),
-      if (asMap(spec['securityContext']).isNotEmpty) ('Security', securityChips(context, asMap(spec['securityContext']))),
+            ),
+          for (final e in hooks.entries) _Field(e.key, Text(_hookText(asMap(e.value)), style: small)),
+        ]),
+      if (config.isNotEmpty) _Group(key: const ValueKey('container-group-config'), 'Config', config, gap: 10),
+      if (sc.isNotEmpty) _Group(key: const ValueKey('container-group-security'), 'Security', [securityLine(context, sc)]),
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final (i, g) in groups.indexed) Padding(padding: EdgeInsets.only(top: i == 0 ? 0 : 14), child: g),
     ]);
   }
 
@@ -455,42 +525,28 @@ class ContainerDetails extends StatelessWidget {
     );
   }
 
+  /// The image as plain text (copy on hover), the pull policy only when
+  /// it isn't the default for the tag, the digest in the tooltip (and a
+  /// copy-digest action on hover).
   Widget _imageWidget(BuildContext context) {
     final image = '${c.spec['image'] ?? ''}';
-    final policy = c.spec['imagePullPolicy'];
+    final policy = c.spec['imagePullPolicy'] as String?;
     final id = '${c.status['imageID'] ?? ''}';
+    final at = id.indexOf('@');
+    final digest = at >= 0 ? id.substring(at + 1) : id;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      InlineWrap([
-        Chipish(text: image, copyValue: image),
-        if (policy != null) Hint('pull $policy'),
-      ]),
-      if (id.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: _imageIdWidget(context, id)),
+      _Copyable(
+        image,
+        key: ValueKey('container-image-${c.name}'),
+        tooltip: digest.isEmpty ? null : '$image\n$digest',
+        extra: digest.isEmpty ? null : _HoverIcon(icon: Icons.fingerprint, tooltip: 'Copy digest $digest', onTap: () => copyToClipboard(context, id)),
+      ),
+      if (policy != null && policy != defaultPullPolicy(image)) Hint('pull $policy'),
     ]);
   }
 
-  Widget _imageIdWidget(BuildContext context, String id) {
-    final at = id.indexOf('@');
-    final digest = at >= 0 ? id.substring(at + 1) : id;
-    final short = digest.length > 19 ? '${digest.substring(0, 19)}…' : digest;
-    return Tooltip(
-      message: id,
-      child: Row(children: [Flexible(child: Text(short, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: Theme.of(context).hintColor))), CopyIcon(id)]),
-    );
-  }
-
-  Widget _portsWidget(BuildContext context) => InlineWrap([
-        for (final p in asMapList(c.spec['ports']))
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Chipish(
-              text: [
-                if (p['name'] != null) '${p['name']}',
-                '${p['containerPort']}/${p['protocol'] ?? 'TCP'}',
-                if (p['hostPort'] != null) 'host ${p['hostIP'] ?? ''}:${p['hostPort']}',
-              ].join(' '),
-              copyValue: '${p['containerPort']}',
-            ),
-            if (portAction != null) ...[const SizedBox(width: 2), portAction!(p)],
-          ]),
+  Widget _portsWidget(BuildContext context, List<Json> ports) => Wrap(spacing: 14, runSpacing: 4, children: [
+        for (final p in ports) _Port(p, key: ValueKey('container-port-${c.name}-${p['containerPort']}'), action: portAction),
       ]);
 
   static bool _hasResources(Json spec) {
@@ -498,54 +554,49 @@ class ContainerDetails extends StatelessWidget {
     return asMap(r['requests']).isNotEmpty || asMap(r['limits']).isNotEmpty;
   }
 
+  /// One line per resource: "50m request · 200m limit".
   Widget _resourcesWidget(BuildContext context) {
     final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall;
+    final hint = small?.copyWith(color: theme.hintColor);
     final r = asMap(c.spec['resources']);
     final req = asMap(r['requests']);
     final lim = asMap(r['limits']);
     final keys = {...req.keys, ...lim.keys}.toList()..sort();
-    final head = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontSize: 11);
-    TableRow row(List<Widget> cells) => TableRow(children: [for (final w in cells) Padding(padding: const EdgeInsets.only(bottom: 2), child: w)]);
-    return Table(
-      defaultColumnWidth: const IntrinsicColumnWidth(),
-      columnWidths: const {3: FlexColumnWidth()},
-      children: [
-        row([const SizedBox(), Padding(padding: const EdgeInsets.only(left: 16), child: Text('request', style: head)), Padding(padding: const EdgeInsets.only(left: 16), child: Text('limit', style: head)), const SizedBox()]),
-        for (final k in keys)
-          row([
-            Text(k, style: monoStyle(context, size: 11, color: theme.hintColor)),
-            Padding(padding: const EdgeInsets.only(left: 16), child: Text('${req[k] ?? '—'}', style: monoStyle(context, size: 11))),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: Text('${lim[k] ?? '—'}', style: monoStyle(context, size: 11, color: lim[k] == null && k == 'memory' ? theme.hintColor : null)),
-            ),
-            const SizedBox(),
-          ]),
-      ],
-    );
-  }
-
-  Widget _lifecycleWidget(BuildContext context) {
-    final lc = asMap(c.spec['lifecycle']);
-    String handler(Json h) {
-      if (h['exec'] is Map) return 'exec ${shellJoin([for (final x in (dig<List>(h, ['exec', 'command']) ?? const [])) '$x'])}';
-      if (h['httpGet'] is Map) return 'HTTP GET :${dig(h, ['httpGet', 'port'])}${dig(h, ['httpGet', 'path']) ?? '/'}';
-      if (h['sleep'] is Map) return 'sleep ${dig(h, ['sleep', 'seconds'])}s';
-      if (h['tcpSocket'] is Map) return 'TCP :${dig(h, ['tcpSocket', 'port'])}';
-      return h.keys.join(', ');
-    }
-
+    String label(String k) => switch (k) { 'cpu' => 'CPU', 'memory' => 'Memory', 'ephemeral-storage' => 'Storage', _ => k };
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (final e in lc.entries) Text('${e.key}: ${handler(asMap(e.value))}', style: Theme.of(context).textTheme.bodySmall),
+      for (final k in keys)
+        _Field(
+          label(k),
+          Text.rich(
+            TextSpan(style: small, children: [
+              if (req[k] != null) ...[TextSpan(text: '${req[k]}'), TextSpan(text: ' request', style: hint)],
+              if (req[k] != null && lim[k] != null) TextSpan(text: '  ·  ', style: hint),
+              if (lim[k] != null) ...[TextSpan(text: '${lim[k]}'), TextSpan(text: ' limit', style: hint)],
+              if (lim[k] == null && k == 'memory') TextSpan(text: '  ·  no limit', style: hint),
+            ]),
+          ),
+          tooltip: k,
+        ),
     ]);
   }
 
-  Widget _envWidget(BuildContext context) {
+  static String _hookText(Json h) {
+    if (h['exec'] is Map) return 'exec ${shellJoin([for (final x in (dig<List>(h, ['exec', 'command']) ?? const [])) '$x'])}';
+    if (h['httpGet'] is Map) return 'HTTP GET :${dig(h, ['httpGet', 'port'])}${dig(h, ['httpGet', 'path']) ?? '/'}';
+    if (h['sleep'] is Map) return 'sleep ${dig(h, ['sleep', 'seconds'])}s';
+    if (h['tcpSocket'] is Map) return 'TCP :${dig(h, ['tcpSocket', 'port'])}';
+    return h.keys.join(', ');
+  }
+
+  /// Names in plain text, literal values in mono (copy on hover), and
+  /// references as links. Long lists show the first few.
+  Widget _envWidget(BuildContext context, List<Json> env) {
     final theme = Theme.of(context);
     final small = theme.textTheme.bodySmall;
     final hint = small?.copyWith(color: theme.hintColor);
     Widget value(Json e) {
-      if (e.containsKey('value')) return MonoValue('${e['value']}', size: 11);
+      if (e.containsKey('value')) return _Copyable('${e['value']}');
       final vf = asMap(e['valueFrom']);
       String optional(Json r) => r['optional'] == true ? ' (optional)' : '';
       if (vf['configMapKeyRef'] is Map || vf['secretKeyRef'] is Map) {
@@ -553,7 +604,8 @@ class ContainerDetails extends StatelessWidget {
         final r = asMap(vf[isCm ? 'configMapKeyRef' : 'secretKeyRef']);
         return InlineWrap([
           ResourceLink(ObjectRef(kind: isCm ? 'ConfigMap' : 'Secret', name: '${r['name']}', namespace: namespace), label: '${isCm ? 'cm' : 'secret'}/${r['name']}'),
-          Text('key ${r['key']}${optional(r)}', style: monoStyle(context, size: 11, color: theme.hintColor)),
+          // The key only when it differs from the variable's name.
+          if (r['key'] != e['name'] || r['optional'] == true) Text('${r['key'] != e['name'] ? 'key ${r['key']}' : ''}${optional(r)}'.trim(), style: hint),
         ]);
       }
       if (vf['fieldRef'] is Map) return Text('field ${dig(vf, ['fieldRef', 'fieldPath'])}', style: hint);
@@ -564,107 +616,335 @@ class ContainerDetails extends StatelessWidget {
       return Text(vf.keys.join(', '), style: hint);
     }
 
-    final env = asMapList(c.spec['env']);
-    return Table(
-      defaultVerticalAlignment: TableCellVerticalAlignment.top,
-      columnWidths: const {0: IntrinsicColumnWidth(), 1: FlexColumnWidth()},
-      children: [
-        for (final e in env)
-          TableRow(children: [
-            Padding(
-              padding: const EdgeInsets.only(right: 10, bottom: 3),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 170),
-                child: Text('${e['name']}', style: monoStyle(context, size: 11, color: theme.colorScheme.primary)),
-              ),
-            ),
-            Padding(padding: const EdgeInsets.only(bottom: 3), child: value(e)),
-          ]),
-      ],
+    return _Trimmed(
+      key: ValueKey('container-env-${c.name}'),
+      total: env.length,
+      builder: (shown) => Table(
+        defaultVerticalAlignment: TableCellVerticalAlignment.top,
+        // Names take what they need up to 40%; values the rest.
+        columnWidths: const {0: MinColumnWidth(IntrinsicColumnWidth(), FractionColumnWidth(0.4)), 1: FlexColumnWidth()},
+        children: [
+          for (final e in env.take(shown))
+            TableRow(children: [
+              Padding(padding: const EdgeInsets.only(right: 12, bottom: 3), child: Text('${e['name']}', style: small)),
+              Padding(padding: const EdgeInsets.only(bottom: 3), child: value(e)),
+            ]),
+        ],
+      ),
     );
   }
 
-  Widget _envFromWidget(BuildContext context) {
+  Widget _envFromWidget(BuildContext context, List<Json> envFrom) {
     final theme = Theme.of(context);
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (final e in asMapList(c.spec['envFrom']))
+      for (final e in envFrom)
         Padding(
           padding: const EdgeInsets.only(bottom: 2),
           child: InlineWrap([
-            Hint('all keys from'),
+            Text('all keys from', style: hint),
             if (e['configMapRef'] is Map)
               ResourceLink(ObjectRef(kind: 'ConfigMap', name: '${dig(e, ['configMapRef', 'name'])}', namespace: namespace),
                   label: 'cm/${dig(e, ['configMapRef', 'name'])}'),
             if (e['secretRef'] is Map)
               ResourceLink(ObjectRef(kind: 'Secret', name: '${dig(e, ['secretRef', 'name'])}', namespace: namespace),
                   label: 'secret/${dig(e, ['secretRef', 'name'])}'),
-            if (e['prefix'] != null) Text('prefix ${e['prefix']}', style: monoStyle(context, size: 11, color: theme.hintColor)),
+            if (e['prefix'] != null) Text('prefix ${e['prefix']}', style: hint),
           ]),
         ),
     ]);
   }
 
-  Widget _mountsWidget(BuildContext context) {
+  /// "path ← volume": the path in mono, the volume a link to what backs it
+  /// (ConfigMap, Secret, PVC) or plain text with its type in a tooltip.
+  Widget _mountsWidget(BuildContext context, List<Json> all) {
     final theme = Theme.of(context);
-    final all = asMapList(c.spec['volumeMounts']);
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     final token = all.where(isDefaultTokenMount).firstOrNull;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (final m in all)
-        if (m != token)
-          Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Text.rich(
-            TextSpan(children: [
-              TextSpan(text: '${m['mountPath']}', style: monoStyle(context, size: 11)),
-              TextSpan(text: '  ←  ', style: monoStyle(context, size: 11, color: theme.hintColor)),
-              TextSpan(text: '${m['name']}', style: monoStyle(context, size: 11, color: theme.colorScheme.primary)),
-              if (m['subPath'] != null || m['subPathExpr'] != null)
-                TextSpan(text: '  subPath ${m['subPath'] ?? m['subPathExpr']}', style: monoStyle(context, size: 11, color: theme.hintColor)),
-              if (m['readOnly'] == true) TextSpan(text: '  ro', style: TextStyle(fontSize: 11, color: theme.hintColor, fontWeight: FontWeight.w600)),
-              if (m['mountPropagation'] != null) TextSpan(text: '  ${m['mountPropagation']}', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+    final shown = [for (final m in all) if (m != token) m];
+    Widget volume(String name) {
+      final v = volumes.where((v) => v['name'] == name).firstOrNull ?? const {};
+      final type = v.keys.firstWhere((k) => k != 'name', orElse: () => '');
+      final src = asMap(v[type]);
+      final ref = switch (type) {
+        'configMap' => ObjectRef(kind: 'ConfigMap', name: '${src['name']}', namespace: namespace),
+        'secret' => ObjectRef(kind: 'Secret', name: '${src['secretName']}', namespace: namespace),
+        'persistentVolumeClaim' => ObjectRef(kind: 'PersistentVolumeClaim', name: '${src['claimName']}', namespace: namespace),
+        _ => null,
+      };
+      if (ref == null) return Tooltip(message: type.isEmpty ? 'volume $name' : '$type volume', child: Text(name, style: hint));
+      return Tooltip(message: '${ref.kind} ${ref.name}', waitDuration: const Duration(milliseconds: 400), child: ResourceLink(ref, label: name));
+    }
+
+    Widget mount(Json m) => Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Hoverable(
+            builder: (h) => Wrap(spacing: 6, runSpacing: 0, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text('${m['mountPath']}', style: monoStyle(context, size: 11)),
+              Text('←', style: hint),
+              volume('${m['name']}'),
+              if (m['subPath'] != null || m['subPathExpr'] != null) Text('subPath ${m['subPath'] ?? m['subPathExpr']}', style: hint),
+              if (m['readOnly'] == true) Text('read-only', style: hint),
+              if (m['mountPropagation'] != null) Text('${m['mountPropagation']}', style: hint),
+              if (h) _HoverIcon(icon: Icons.copy, tooltip: 'Copy path', onTap: () => copyToClipboard(context, '${m['mountPath']}')),
             ]),
           ),
+        );
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (shown.isNotEmpty)
+        _Trimmed(
+          key: ValueKey('container-mounts-${c.name}'),
+          total: shown.length,
+          builder: (n) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final m in shown.take(n)) mount(m)]),
         ),
       // Every pod has it: one quiet line instead of the full path.
       if (token != null)
-        Tooltip(
-          message: '${token['mountPath']}  ←  ${token['name']}${token['readOnly'] == true ? '  ro' : ''}',
-          child: const Hint('+ service account token'),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Tooltip(
+            message: '${token['mountPath']}  ←  ${token['name']}${token['readOnly'] == true ? '  read-only' : ''}',
+            child: Hint(shown.isEmpty ? 'service account token' : '+ service account token'),
+          ),
         ),
     ]);
   }
 }
 
-/// Compact chip summary of a (pod or container) securityContext.
-Widget securityChips(BuildContext context, Json sc) {
+/// A quiet group in the container details: a small semibold label in the
+/// hint colour over its rows.
+class _Group extends StatelessWidget {
+  final String label;
+  final List<Widget> children;
+
+  /// Space between the rows.
+  final double gap;
+  const _Group(this.label, this.children, {super.key, this.gap = 4});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(label.toUpperCase(), style: theme.textTheme.bodySmall?.copyWith(fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.7, color: theme.hintColor)),
+      for (final (i, w) in children.indexed) Padding(padding: EdgeInsets.only(top: i == 0 ? 5 : gap), child: w),
+    ]);
+  }
+}
+
+/// A label in a narrow aligned column beside its value.
+class _Field extends StatelessWidget {
+  final String label;
+  final Widget child;
+  final String? tooltip;
+  const _Field(this.label, this.child, {this.tooltip});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall;
+    final text = Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: small?.copyWith(color: theme.hintColor));
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(width: 72, child: Padding(padding: const EdgeInsets.only(right: 8), child: tooltip == null ? text : Tooltip(message: tooltip!, child: text))),
+      Expanded(child: DefaultTextStyle.merge(style: small, child: child)),
+    ]);
+  }
+}
+
+/// Mono text with copy (and optional [extra]) icons after it on hover.
+class _Copyable extends StatelessWidget {
+  final String text;
+  final String? tooltip;
+  final Widget? extra;
+  const _Copyable(this.text, {super.key, this.tooltip, this.extra});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Text(text, style: monoStyle(context, size: 11));
+    return Hoverable(
+      builder: (h) => Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Flexible(child: tooltip == null ? t : Tooltip(message: tooltip!, waitDuration: const Duration(milliseconds: 400), child: t)),
+        // Trailing, so showing them moves nothing.
+        if (h) ...[_HoverIcon(icon: Icons.copy, tooltip: 'Copy', onTap: () => copyToClipboard(context, text)), ?extra],
+      ]),
+    );
+  }
+}
+
+class _HoverIcon extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  const _HoverIcon({required this.icon, required this.tooltip, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: Hoverable(
+        onTap: onTap,
+        builder: (h) => Padding(
+          padding: const EdgeInsets.fromLTRB(5, 2, 1, 0),
+          child: Icon(icon, size: 12, color: h ? theme.colorScheme.onSurface : theme.hintColor),
+        ),
+      ),
+    );
+  }
+}
+
+/// "postgresql 5432/TCP" in mono; its port-forward icon shows on hover.
+/// A live forward (the action draws a wider `localhost:N` link instead
+/// of the icon) stays visible.
+class _Port extends StatefulWidget {
+  final Json p;
+  final Widget Function(Json port)? action;
+  const _Port(this.p, {super.key, this.action});
+
+  @override
+  State<_Port> createState() => _PortState();
+}
+
+class _PortState extends State<_Port> {
+  bool _wide = false;
+
+  void _measured(Size size) {
+    final wide = size.width > 28;
+    if (wide == _wide) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _wide = wide);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.p;
+    final action = widget.action;
+    final theme = Theme.of(context);
+    final mono = monoStyle(context, size: 11);
+    final text = Text.rich(TextSpan(style: mono, children: [
+      if (p['name'] != null) TextSpan(text: '${p['name']} ', style: mono.copyWith(color: theme.hintColor)),
+      TextSpan(text: '${p['containerPort']}/${p['protocol'] ?? 'TCP'}'),
+      if (p['hostPort'] != null) TextSpan(text: ' host ${p['hostIP'] ?? ''}:${p['hostPort']}', style: mono.copyWith(color: theme.hintColor)),
+    ]));
+    return Hoverable(
+      builder: (h) => Row(mainAxisSize: MainAxisSize.min, children: [
+        text,
+        // Always laid out (no jump on hover); visible only on hover.
+        if (action != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 3),
+            child: Opacity(opacity: h || _wide ? 1 : 0, child: _SizeObserver(onSize: _measured, child: action(p))),
+          ),
+      ]),
+    );
+  }
+}
+
+/// Reports its child's size after each layout.
+class _SizeObserver extends SingleChildRenderObjectWidget {
+  final ValueChanged<Size> onSize;
+  const _SizeObserver({required this.onSize, super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderSizeObserver(onSize);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderSizeObserver renderObject) => renderObject.onSize = onSize;
+}
+
+class _RenderSizeObserver extends RenderProxyBox {
+  ValueChanged<Size> onSize;
+  _RenderSizeObserver(this.onSize);
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    onSize(size);
+  }
+}
+
+/// A list that shows its first 4 items with "Show N more" when it has
+/// more than 6.
+class _Trimmed extends StatefulWidget {
+  final int total;
+  final Widget Function(int shown) builder;
+  const _Trimmed({super.key, required this.total, required this.builder});
+
+  @override
+  State<_Trimmed> createState() => _TrimmedState();
+}
+
+class _TrimmedState extends State<_Trimmed> {
+  bool _all = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final trims = widget.total > 6;
+    final shown = trims && !_all ? 4 : widget.total;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      widget.builder(shown),
+      if (trims)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Hoverable(
+            key: const ValueKey('show-more'),
+            onTap: () => setState(() => _all = !_all),
+            builder: (h) => Text(
+              _all ? 'Show fewer' : 'Show ${widget.total - shown} more',
+              style: theme.textTheme.bodySmall?.copyWith(color: h ? theme.colorScheme.onSurface : theme.hintColor, decoration: h ? TextDecoration.underline : null),
+            ),
+          ),
+        ),
+    ]);
+  }
+}
+
+/// A (pod or container) securityContext as one quiet line: "non-root ·
+/// read-only root fs · no privilege escalation · drops ALL · seccomp
+/// default", risky settings in amber or red.
+Widget securityLine(BuildContext context, Json sc) {
+  final theme = Theme.of(context);
+  final small = theme.textTheme.bodySmall;
   final err = severityColor(context, Severity.error);
-  final ok = severityColor(context, Severity.ok);
-  final chips = <Widget>[];
-  void add(String t, [Color? c]) => chips.add(Chipish(text: t, color: c));
+  final warn = severityColor(context, Severity.warn);
+  final parts = <(String, Color?)>[];
+  void add(String t, [Color? c]) => parts.add((t, c));
   if (sc['privileged'] == true) add('privileged', err);
-  if (sc['runAsUser'] != null) add('uid ${sc['runAsUser']}', sc['runAsUser'] == 0 ? err : null);
+  if (sc['runAsUser'] == 0) {
+    add('runs as root', err);
+  } else if (sc['runAsUser'] != null) {
+    add('uid ${sc['runAsUser']}');
+  }
+  if (sc['runAsNonRoot'] == true) add('non-root');
   if (sc['runAsGroup'] != null) add('gid ${sc['runAsGroup']}');
   if (sc['fsGroup'] != null) add('fsGroup ${sc['fsGroup']}');
-  if (sc['runAsNonRoot'] == true) add('runAsNonRoot', ok);
-  if (sc['readOnlyRootFilesystem'] == true) add('read-only rootfs', ok);
-  if (sc['allowPrivilegeEscalation'] == false) add('no privilege escalation', ok);
-  if (sc['allowPrivilegeEscalation'] == true) add('privilege escalation allowed', err);
+  if (sc['readOnlyRootFilesystem'] == true) add('read-only root fs');
+  if (sc['allowPrivilegeEscalation'] == false) add('no privilege escalation');
+  if (sc['allowPrivilegeEscalation'] == true) add('privilege escalation allowed', warn);
   final caps = asMap(sc['capabilities']);
-  for (final a in (caps['add'] as List? ?? const [])) {
-    add('+$a', err);
-  }
-  for (final d in (caps['drop'] as List? ?? const [])) {
-    add('-$d');
-  }
+  final added = [for (final a in (caps['add'] as List? ?? const [])) '$a'];
+  final dropped = [for (final d in (caps['drop'] as List? ?? const [])) '$d'];
+  if (added.isNotEmpty) add('adds ${added.join(', ')}', warn);
+  if (dropped.isNotEmpty) add('drops ${dropped.join(', ')}');
   final seccomp = dig(sc, ['seccompProfile', 'type']);
-  if (seccomp != null) add('seccomp $seccomp');
-  if (sc['supplementalGroups'] is List) add('groups ${(sc['supplementalGroups'] as List).join(',')}');
-  if (sc['procMount'] != null) add('procMount ${sc['procMount']}');
-  if (sc['sysctls'] is List) {
-    for (final s in asMapList(sc['sysctls'])) {
-      add('${s['name']}=${s['value']}');
-    }
+  if (seccomp != null) {
+    add(switch ('$seccomp') { 'RuntimeDefault' => 'seccomp default', 'Unconfined' => 'seccomp unconfined', _ => 'seccomp $seccomp' }, seccomp == 'Unconfined' ? warn : null);
   }
-  if (chips.isEmpty) return Hint(sc.keys.join(', '));
-  return InlineWrap(chips);
+  if (sc['supplementalGroups'] is List) add('groups ${(sc['supplementalGroups'] as List).join(',')}');
+  if (sc['procMount'] != null) add('procMount ${sc['procMount']}', sc['procMount'] == 'Unmasked' ? warn : null);
+  for (final s in asMapList(sc['sysctls'])) {
+    add('${s['name']}=${s['value']}');
+  }
+  if (parts.isEmpty) return Hint(sc.keys.join(', '));
+  final sep = TextSpan(text: '  ·  ', style: small?.copyWith(color: theme.hintColor));
+  return Text.rich(
+    key: const ValueKey('security-line'),
+    TextSpan(style: small, children: [
+      for (final (i, (t, c)) in parts.indexed) ...[
+        if (i > 0) sep,
+        TextSpan(text: t, style: c == null ? null : TextStyle(color: c, fontWeight: FontWeight.w600)),
+      ],
+    ]),
+  );
 }

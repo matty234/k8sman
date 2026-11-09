@@ -74,7 +74,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('pod-section-configuration')));
     await tester.pump();
     await saveScreenshot(tester, 'pod-web');
-    expect(find.text('HTTP GET :http/ every 5s · timeout 1s · fail after 3'), findsOneWidget);
+    expect(find.text('HTTP :http/ · 5s · fails after 3'), findsOneWidget); // readiness, one line
     expect(find.text('Burstable'), findsOneWidget);
     expect(find.text('field metadata.name'), findsOneWidget);
     expect(find.textContaining('heartbeat'), findsOneWidget); // command CodeBlock
@@ -97,6 +97,22 @@ void main() {
       await pumpPanel(tester, fixture(f), size: const Size(320, 3000));
       expect(tester.takeException(), isNull, reason: f);
     }
+  });
+
+  testWidgets('container details trim long env lists and sum up security on one line', (tester) async {
+    final pod = fixture('pod-web');
+    final nginx = (pod['spec']['containers'] as List)[0] as Map;
+    (nginx['env'] as List).addAll([for (var i = 0; i < 5; i++) {'name': 'EXTRA_$i', 'value': 'v$i'}]);
+    nginx['securityContext'] = {'runAsNonRoot': true, 'allowPrivilegeEscalation': true, 'capabilities': {'drop': ['ALL']}};
+    await pumpPanel(tester, pod, size: const Size(560, 3000));
+    await tester.tap(find.byKey(const ValueKey('container-row-nginx')));
+    await tester.pump();
+    expect(find.text('LOG_LEVEL'), findsOneWidget); // the 4th of 9
+    expect(find.text('EXTRA_0'), findsNothing);
+    await tester.tap(find.text('Show 5 more'));
+    await tester.pump();
+    expect(find.text('EXTRA_4'), findsOneWidget);
+    expect(find.text('non-root  ·  privilege escalation allowed  ·  drops ALL', findRichText: true), findsOneWidget);
   });
 
   testWidgets('pod-crashy shows CrashLoop insight and last state', (tester) async {

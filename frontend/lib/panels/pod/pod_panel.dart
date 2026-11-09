@@ -7,7 +7,6 @@ import '../../api/models.dart';
 import '../../gpu/gpu_sections.dart';
 import '../../prometheus/metric_history_chart.dart';
 import '../../metrics/network_usage.dart';
-import '../../metrics/pod_usage.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/terminal/open_terminal.dart';
 import '../../ui/theme.dart';
@@ -52,7 +51,7 @@ class PodPanel extends ResourcePanel {
       onViewLogs: (context, previous) => openPodLogs(context, ctx.object, container: c.name, previous: previous),
       onOpenTerminal: ctx.app.readOnly ? null : (context) => openPodTerminal(context, ctx.object, container: c.name),
       miniUsage: c.isRunning ? ContainerMiniUsage(pod: ctx.object, container: c.name, spec: c.spec) : null,
-      usage: c.isRunning ? ContainerUsageLine(pod: ctx.object, container: c.name, spec: c.spec) : null,
+      volumes: volumes,
       // One-click forward per port (only while the container runs).
       portAction: c.isRunning
           ? (p) => QuickForwardButton(
@@ -315,7 +314,7 @@ class _Configuration extends StatelessWidget {
       ),
       ('Restart policy', Text('${spec['restartPolicy'] ?? 'Always'} · grace ${spec['terminationGracePeriodSeconds'] ?? 30}s', style: small)),
       if (started != null) ('Started', InlineWrap([Text(started.toLocal().toString().split('.').first, style: small), AgeText(status['startTime'], suffix: ' ago')])),
-      if (podSc.isNotEmpty) ('Pod security', securityChips(context, podSc)),
+      if (podSc.isNotEmpty) ('Pod security', securityLine(context, podSc)),
     ]);
   }
 
