@@ -53,6 +53,15 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   per context ("added by you", with a remove button) next to the kubeconfig
   context's own namespace. The app opens in the kubeconfig namespace, else
   the first remembered one, else `default`.
+- **Links**: Copy link (row menu, inspector ⋯, a kind's or a page's
+  right-click menu in the sidebar or table header) copies
+  `https://k8sman.dev/o/?ctx=…&ns=…&kind=…&group=…&name=…`, which opens the
+  same object, table or page in a colleague's k8sman or offers the
+  download. Hold ⌥ (or turn on Settings > General > Links) for the
+  `k8sman://open?…` form, registered on macOS, Windows (installer) and
+  Linux (`.desktop`). A link carries only the context, namespace, kind and
+  name; opening one only navigates, asks before switching context, and
+  says so when the context isn't in your kubeconfig.
 
 ## Saved views
 

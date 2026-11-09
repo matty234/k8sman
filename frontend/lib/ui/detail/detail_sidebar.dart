@@ -13,6 +13,7 @@ import '../../state/app_state.dart';
 import '../../state/table_controller.dart';
 import '../../util/k8s.dart';
 import '../kubectl_menu.dart';
+import '../links_ui.dart';
 import '../logs/open_logs.dart';
 import '../terminal/open_terminal.dart';
 import '../theme.dart';
@@ -147,10 +148,18 @@ class _LiveObjectState extends State<_LiveObject> {
     final primary = actions.where((a) => !a.destructive && !a.advanced).take(3).toList();
     final others = actions.where((a) => !primary.contains(a)).toList();
     // "Copy kubectl command…" sits after the other safe actions.
+    final link = ResourceAction(
+      id: 'copy-link',
+      label: 'Copy link',
+      icon: Icons.link,
+      tooltip: 'Copy a link to this object (⌥: the k8sman:// form)',
+      run: (context) async => copyLink(context, app, objectLink(app, t)),
+    );
     final rest = obj == null || _deleted
         ? others
         : [
             ...others.where((a) => !a.destructive),
+            link,
             ResourceAction(
               id: 'kubectl',
               label: 'Copy kubectl…',

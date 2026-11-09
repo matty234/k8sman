@@ -14,6 +14,7 @@ import '../state/startup_gate.dart';
 import '../util/k8s.dart' show Severity;
 import 'context_badge.dart';
 import 'keys.dart' show shortcutLabel;
+import 'links_ui.dart';
 import 'overview/overview_summary.dart';
 import 'palette/command_palette.dart';
 import 'settings/settings_page.dart';
@@ -277,6 +278,8 @@ Future<void> showKindMenu(BuildContext context, Offset globalPosition, ResourceT
   return showSidebarMenu(context, globalPosition, [
     (app.sidebar.isPinned(pin) ? 'Unpin from Sidebar' : 'Pin to Sidebar', () => toggle(pin)),
     if (nsPin != null) (app.sidebar.isPinned(nsPin) ? 'Unpin “${type.kind} in $ns”' : 'Pin to Sidebar in “$ns”', () => toggle(nsPin)),
+    null,
+    ('Copy Link to Table', () => copyLink(context, app, tableLink(app, type))),
     null,
     ('Customise Sidebar…', () => openSettings(context, section: SettingsSection.sidebar)),
   ]);
@@ -712,6 +715,7 @@ class _TopEntry extends StatelessWidget {
           entry.hidden
               ? ('Show $label in Sidebar', () => app.setSidebar(app.sidebar.setHidden(view, false)))
               : ('Hide $label', () => app.setSidebar(app.sidebar.setHidden(view, true))),
+          ('Copy Link', () => copyLink(context, app, pageLink(app, view))),
           null,
           ('Customise Sidebar…', () => openSettings(context, section: SettingsSection.sidebar)),
         ]),

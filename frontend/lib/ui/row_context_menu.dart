@@ -9,6 +9,7 @@ import '../panels/registry.dart';
 import '../state/app_state.dart';
 import 'detail/detail_sidebar.dart' show resourceActionsFor;
 import 'kubectl_menu.dart';
+import 'links_ui.dart';
 
 /// Right-click menu for a table row: Open, the same resource actions the
 /// inspector header offers (logs, terminal, port-forward, scale, restart,
@@ -67,6 +68,8 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
     const PopupMenuDivider(height: 9),
     item(Icons.content_copy, 'Copy name', () => copy(row.name, 'name')),
     if (ns != null) item(Icons.content_copy, 'Copy namespace/name', () => copy(qualified, qualified)),
+    // ⌥ while choosing: the k8sman:// form.
+    item(Icons.link, 'Copy link', () => copyLink(context, app, objectLink(app, target))),
     item(Icons.description_outlined, 'Copy YAML', () async {
       try {
         final yaml = await api.objectYaml(type.ref, namespace: ns, name: row.name);

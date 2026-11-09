@@ -335,6 +335,20 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
         SettingItem.row(
+          key: const ValueKey('settings-app-links'),
+          group: 'Links',
+          label: 'Use links that open the app directly (k8sman://)',
+          description: 'Copy link (on an object, a table\'s kind or a page) copies a k8sman.dev link that opens the same place in a '
+              'colleague\'s k8sman, or offers the download. A link only names the context, namespace, kind and object, and '
+              'opening one only navigates: switching context asks first. Hold ⌥ while choosing Copy link for the k8sman:// form.',
+          keywords: const ['link', 'links', 'share', 'url', 'deep link', 'k8sman.dev', 'scheme', 'copy link'],
+          trailing: (context) => SettingSwitch(
+            key: const ValueKey('app-links-switch'),
+            value: context.select<AppState, bool>((a) => a.appLinks),
+            onChanged: context.read<AppState>().setAppLinks,
+          ),
+        ),
+        SettingItem.row(
           group: 'Appearance',
           label: 'Appearance',
           description: 'k8sman follows the system\'s light or dark appearance.',
