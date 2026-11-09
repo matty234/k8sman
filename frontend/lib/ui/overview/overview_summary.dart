@@ -66,6 +66,11 @@ class OverviewSummary extends ChangeNotifier {
     'argoDegraded': 'argoproj.io/Application',
     'argoMissing': 'argoproj.io/Application',
     'argoOutOfSync': 'argoproj.io/Application',
+    'gatewayNotReady': 'gateway.networking.k8s.io/Gateway',
+    'gatewayListener': 'gateway.networking.k8s.io/Gateway',
+    // Routes: the issue's own kind (HTTPRoute, GRPCRoute, …), see summarise.
+    'routeNotAccepted': '',
+    'routeUnresolvedRefs': '',
   };
   static const _sourceOf = {
     '/Pod': 'pods',
@@ -77,11 +82,17 @@ class OverviewSummary extends ChangeNotifier {
     '/Node': 'nodes',
     '/PersistentVolumeClaim': 'pvcs',
     'argoproj.io/Application': 'argocd',
+    'gateway.networking.k8s.io/Gateway': 'gateway',
   };
 
   String? _context;
   DateTime? _at;
   bool _busy = false;
+
+  /// The context whose first answer had sources still loading and got one
+  /// quick re-check (so badges don't wait a whole [interval] on connect).
+  String? _rechecked;
+  static const recheckAfter = Duration(seconds: 2);
   Map<String, KindProblems> _byKind = const {};
 
   /// Problems per kind for [context] (empty for another context or before
@@ -117,7 +128,17 @@ class OverviewSummary extends ChangeNotifier {
     try {
       final data = await source.fetch();
       // The context switched while fetching: drop it.
-      if (source.api.context == ctx) feed(data, ctx);
+      if (source.api.context == ctx) {
+        feed(data, ctx);
+        if (data.pending.isNotEmpty && _rechecked != ctx) {
+          _rechecked = ctx;
+          Future.delayed(recheckAfter, () {
+            if (source.api.context != ctx) return;
+            _at = null;
+            refreshIfStale();
+          });
+        }
+      }
       return true;
     } catch (_) {
       // Remember the attempt, so a failing backend isn't asked again
@@ -141,8 +162,9 @@ class OverviewSummary extends ChangeNotifier {
     final worst = <String, IssueSeverity>{};
     final cats = <String, Set<String>>{};
     for (final i in data.issues) {
-      final gk = _kindOf[i.category];
-      if (gk == null || i.severity == IssueSeverity.info || data.isPending(_sourceOf[gk]!)) continue;
+      var gk = _kindOf[i.category];
+      if (gk == '') gk = '${i.group}/${i.kind}'; // a route of any kind
+      if (gk == null || i.severity == IssueSeverity.info || data.isPending(_sourceOf[gk] ?? 'gateway')) continue;
       objects.putIfAbsent(gk, () => {}).add('${i.namespace}/${i.name}');
       cats.putIfAbsent(gk, () => {}).add(i.category);
       if (worst[gk] == null || i.severity.index < worst[gk]!.index) worst[gk] = i.severity;
