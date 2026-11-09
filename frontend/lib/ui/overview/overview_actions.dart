@@ -124,12 +124,14 @@ class _QuickActionButtonState extends State<QuickActionButton> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final a = widget.action;
-    final color = a.destructive ? theme.colorScheme.error : null;
+    // Neutral outline; only a destructive label is tinted (the confirmation
+    // dialog carries the red button).
     return OutlinedButton.icon(
       style: OutlinedButton.styleFrom(
         visualDensity: VisualDensity.compact,
-        foregroundColor: color,
-        side: color != null ? BorderSide(color: color.withValues(alpha: 0.5)) : null,
+        foregroundColor: a.destructive ? theme.colorScheme.error : theme.colorScheme.onSurface,
+        backgroundColor: theme.colorScheme.surface,
+        side: BorderSide(color: theme.colorScheme.outline.withValues(alpha: 0.7)),
         padding: const EdgeInsets.symmetric(horizontal: 8),
         minimumSize: const Size(0, 28),
         textStyle: theme.textTheme.labelSmall,

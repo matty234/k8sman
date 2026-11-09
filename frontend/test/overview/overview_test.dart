@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
@@ -101,14 +102,35 @@ Json healthyResponse() => {
       'topWarnings': [],
     };
 
+/// Problem rows in the area cards ("1 Stuck terminating · pod legacy-abc").
+Finder areaRow(String label) => find.textContaining(label, findRichText: true).first;
+
+/// Moves a mouse over [target] so its row shows its actions.
+Future<void> hover(WidgetTester tester, Finder target) async {
+  if (_mouse == null) {
+    final g = _mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await g.addPointer(location: tester.getCenter(target));
+    addTearDown(() async {
+      await g.removePointer();
+      _mouse = null;
+    });
+  } else {
+    await _mouse!.moveTo(tester.getCenter(target));
+  }
+  await tester.pump();
+}
+
+TestGesture? _mouse;
+
 void main() {
-  testWidgets('live fixture: tiles, issues, nodes and events', (tester) async {
+  testWidgets('live fixture: cards, issues, nodes and events', (tester) async {
     await loadRealFonts();
     final (app, source) = await pumpOverview(tester, liveFixture());
     expect(source.calls, [null]);
     expect(find.text('All namespaces'), findsOneWidget);
-    expect(find.text('CrashLoopBackOff'), findsWidgets); // tile + badge
-    expect(find.text('Image pull errors'), findsOneWidget);
+    expect(find.textContaining('CrashLoopBackOff', findRichText: true), findsWidgets); // card row + reason
+    expect(find.textContaining('Image pull errors', findRichText: true), findsOneWidget);
+    expect(find.text('All 7 workloads healthy'), findsOneWidget); // a problem-free area folds into a line
     expect(find.text('crashy'), findsWidgets); // issue row + warning event example
     expect(find.text('bad-image'), findsWidgets);
     expect(find.text('k8sman-dev-control-plane'), findsOneWidget);
@@ -140,14 +162,14 @@ void main() {
     expect(find.text('web-5c-d'), findsOneWidget);
     await saveScreenshot(tester, 'overview-scenario-expanded');
 
-    // Filter by the "Stuck terminating" tile.
-    await tester.tap(find.text('Stuck terminating'));
+    // Filter by the "Stuck terminating" row of the Pods card.
+    await tester.tap(areaRow('Stuck terminating'));
     await tester.pump();
     expect(find.text('legacy-abc'), findsOneWidget);
     expect(find.text('img-1'), findsNothing);
     expect(find.textContaining('Stuck terminating · 1'), findsOneWidget);
     // Tapping again clears the filter.
-    await tester.tap(find.text('Stuck terminating').first);
+    await tester.tap(areaRow('Stuck terminating'));
     await tester.pump();
     expect(find.text('img-1'), findsOneWidget);
   });
@@ -180,7 +202,8 @@ void main() {
     await loadRealFonts();
     await pumpOverview(tester, healthyResponse(), size: const Size(1000, 600));
     expect(find.text('All healthy'), findsOneWidget);
-    expect(find.text('Nothing needs attention.'), findsOneWidget);
+    expect(find.text('All 10 pods healthy · All 3 workloads healthy · 1 node ready'), findsOneWidget);
+    expect(find.text('Issues'), findsNothing); // no empty list under the banner
     expect(find.text('No warning events in the last hour.'), findsOneWidget);
     await saveScreenshot(tester, 'overview-healthy');
   });
@@ -197,6 +220,7 @@ void main() {
     await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 1400), api: api);
     // The Restart button on the "Deployment web · 3 pods" CrashLoopBackOff row.
     final webRow = find.ancestor(of: find.text('3 pods'), matching: find.byType(InkWell)).first;
+    await hover(tester, find.text('3 pods'));
     await tester.tap(find.descendant(of: webRow, matching: find.widgetWithText(OutlinedButton, 'Restart')));
     await settle(tester);
     expect(find.text('Restart Deployment web?'), findsOneWidget);
@@ -220,12 +244,14 @@ void main() {
         'spec': {'suspend': true},
       },
     });
-    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400), api: api);
+    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 3000), api: api);
+    await hover(tester, find.text('legacy-abc'));
     await tester.tap(find.widgetWithText(OutlinedButton, 'Force delete'));
     await settle(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Force delete'));
     await settle(tester);
     final reportsRow = find.ancestor(of: find.text('reports'), matching: find.byType(InkWell)).first;
+    await hover(tester, find.text('reports'));
     await tester.tap(find.descendant(of: reportsRow, matching: find.widgetWithText(OutlinedButton, 'Resume')));
     await settle(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Resume'));
@@ -234,6 +260,33 @@ void main() {
       'delete pods shop/legacy-abc {"gracePeriodSeconds":0}',
       'unsuspend cronjobs batch/reports {}',
     ]);
+  });
+
+  testWidgets('scenario: area cards, capacity and actions on hover', (tester) async {
+    await pumpOverview(tester, scenarioFixture(), size: const Size(1500, 2400));
+    // Problems are grouped into one card per area, with the area's total.
+    for (final area in ['pods', 'workloads', 'jobs', 'nodes', 'storage', 'network']) {
+      expect(find.byKey(ValueKey('area-$area')), findsOneWidget, reason: area);
+    }
+    final pods = find.byKey(const ValueKey('area-pods'));
+    expect(find.descendant(of: pods, matching: find.text('13')), findsOneWidget);
+    expect(find.descendant(of: pods, matching: find.textContaining('CrashLoopBackOff · 4 pods, 2 workloads', findRichText: true)), findsOneWidget);
+    // Paused rollouts sit in the Workloads card as a muted row.
+    expect(find.descendant(of: find.byKey(const ValueKey('area-workloads')), matching: find.textContaining('Paused rollouts', findRichText: true)), findsOneWidget);
+    // Cluster requests vs allocatable: 14 pods of 250m / 256Mi on 3 nodes of 4 CPU / 16Gi.
+    expect(find.textContaining('3.5 / 12 cores requested · 29%', findRichText: true), findsOneWidget);
+    expect(find.textContaining('3.5 GiB / 48 GiB requested · 7%', findRichText: true), findsOneWidget);
+    // Severity sub-headings.
+    expect(find.textContaining(RegExp(r'^Errors  \d+$'), findRichText: true), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^Warnings  \d+$'), findRichText: true), findsOneWidget);
+    // Row actions only show on hover, without moving anything.
+    Opacity actionsOf(String name) => tester.widget<Opacity>(find.descendant(
+        of: find.ancestor(of: find.text(name), matching: find.byType(InkWell)).first, matching: find.byType(Opacity)).first);
+    final before = tester.getTopLeft(find.text('img-1'));
+    expect(actionsOf('img-1').opacity, 0);
+    await hover(tester, find.text('img-1'));
+    expect(actionsOf('img-1').opacity, 1);
+    expect(tester.getTopLeft(find.text('img-1')), before);
   });
 
   testWidgets('read-only hides actions', (tester) async {

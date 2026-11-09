@@ -118,6 +118,26 @@ class OverviewCategory {
       );
 }
 
+/// CPU (millicores) and memory (bytes) allocatable on nodes and requested by
+/// the non-terminated pods scheduled on them. Requests only count the pods
+/// in the overview's namespace scope.
+class ResourceTotals {
+  final double cpuAllocatable;
+  final double cpuRequests;
+  final double memoryAllocatable;
+  final double memoryRequests;
+  const ResourceTotals({this.cpuAllocatable = 0, this.cpuRequests = 0, this.memoryAllocatable = 0, this.memoryRequests = 0});
+
+  static ResourceTotals fromJson(dynamic j) {
+    final m = asMap(j);
+    double v(String k) => (m[k] as num?)?.toDouble() ?? 0;
+    return ResourceTotals(cpuAllocatable: v('cpuAllocatable'), cpuRequests: v('cpuRequests'), memoryAllocatable: v('memoryAllocatable'), memoryRequests: v('memoryRequests'));
+  }
+
+  /// Whether allocatable is known (older backends send none).
+  bool get known => cpuAllocatable > 0 || memoryAllocatable > 0;
+}
+
 class NodeHealth {
   final String name;
   final bool ready;
@@ -126,7 +146,17 @@ class NodeHealth {
   final List<String> roles;
   final String version;
   final int pods;
-  const NodeHealth({required this.name, required this.ready, this.cordoned = false, this.pressure = const [], this.roles = const [], this.version = '', this.pods = 0});
+  final ResourceTotals resources;
+  const NodeHealth({
+    required this.name,
+    required this.ready,
+    this.cordoned = false,
+    this.pressure = const [],
+    this.roles = const [],
+    this.version = '',
+    this.pods = 0,
+    this.resources = const ResourceTotals(),
+  });
 
   factory NodeHealth.fromJson(Json j) => NodeHealth(
         name: '${j['name']}',
@@ -136,6 +166,7 @@ class NodeHealth {
         roles: List<String>.from(j['roles'] ?? const []),
         version: '${j['version'] ?? ''}',
         pods: (j['pods'] as num?)?.toInt() ?? 0,
+        resources: ResourceTotals.fromJson(j),
       );
 }
 
@@ -179,6 +210,9 @@ class OverviewData {
   final List<NodeHealth> nodes;
   final List<WarningReason> topWarnings;
 
+  /// Cluster totals over every node; null when nodes weren't listed.
+  final ResourceTotals? capacity;
+
   /// Lists the backend could not read (e.g. nodes when RBAC forbids it).
   final Map<String, String> errors;
 
@@ -199,6 +233,7 @@ class OverviewData {
     this.issues = const [],
     this.nodes = const [],
     this.topWarnings = const [],
+    this.capacity,
     this.errors = const {},
     this.partialErrors = const {},
     this.pending = const {},
@@ -212,6 +247,7 @@ class OverviewData {
         issues: [for (final i in asMapList(j['issues'])) OverviewIssue.fromJson(i)],
         nodes: [for (final n in asMapList(j['nodes'])) NodeHealth.fromJson(n)],
         topWarnings: [for (final w in asMapList(j['topWarnings'])) WarningReason.fromJson(w)],
+        capacity: j['capacity'] is Map ? ResourceTotals.fromJson(j['capacity']) : null,
         errors: {for (final e in asMap(j['errors']).entries) e.key: '${e.value}'},
         partialErrors: parsePartialErrors(j['partialErrors']),
         pending: {for (final p in (j['pending'] as List?) ?? const []) '$p'},

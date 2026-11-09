@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
+import '../../metrics/cache.dart';
+import '../../metrics/metrics_api.dart';
 import '../../state/poller.dart';
 import '../widgets/common.dart';
 import 'overview_api.dart';
+import 'overview_cards.dart';
 import 'overview_widgets.dart';
 import '../widgets/namespace_picker.dart';
 import '../widgets/partial_banner.dart';
@@ -96,12 +99,30 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
         _loading = false;
         if (_filter != null && !data.categories.any((c) => c.id == _filter)) _filter = null;
       });
+      if (ns.isAll && (data.capacity?.known ?? false)) _loadUsage(seq);
     } catch (e) {
       if (!mounted || seq != _seq) return;
       setState(() {
         _error = e;
         _loading = false;
       });
+    }
+  }
+
+  /// Live usage summed over nodes, from metrics-server (one request shared
+  /// through [MetricsCache]); stays null when metrics aren't available.
+  Usage? _usage;
+
+  Future<void> _loadUsage(int seq) async {
+    Usage? sum;
+    try {
+      final nodes = await MetricsCache.of(context.read<ApiClient>()).nodes();
+      if (nodes.isNotEmpty) sum = nodes.map((n) => n.usage).reduce((a, b) => a + b);
+    } catch (_) {
+      // No metrics-server (or no access): requests alone are shown.
+    }
+    if (mounted && seq == _seq && (sum?.cpuMillis != _usage?.cpuMillis || sum?.memoryBytes != _usage?.memoryBytes)) {
+      setState(() => _usage = sum);
     }
   }
 
@@ -127,6 +148,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
         setState(() {
           _ns = ns;
           _data = null; // don't show another scope's numbers
+          _usage = null;
           _quickStep = 0;
         });
         _refresh();
@@ -178,7 +200,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               children: [
-                InventoryStrip(data: data),
+                StatBlocks(data: data),
                 if (_error != null) ...[
                   const SizedBox(height: 8),
                   InlineMessage('Refresh failed: ${_errorText(_error!)}. Showing the last result.', isError: true),
@@ -187,20 +209,27 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                   const SizedBox(height: 8),
                   InlineMessage('Could not list ${e.key}: ${e.value}', icon: Icons.lock_outline),
                 ],
+                // Requests only cover the pods in scope, so cluster capacity
+                // is shown for all namespaces only.
+                if (_ns.isAll && (data.isPending('nodes') || (data.capacity?.known ?? false))) ...[
+                  const SizedBox(height: 10),
+                  CapacityStrip(capacity: data.isPending('nodes') ? null : data.capacity, usage: _usage, nodes: data.nodes.length),
+                ],
                 const SizedBox(height: 16),
-                SummaryTiles(data: data, namespace: _ns, selected: _filter, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
+                AreaCards(data: data, selected: _filter, checkedAt: _updatedAt, onSelect: (id) => setState(() => _filter = _filter == id ? null : id)),
                 const SizedBox(height: 16),
-                DetailSection(
-                  title: 'Issues',
-                  icon: Icons.report_gmailerrorred,
-                  trailing: _issuesTrailing(context, data, issues.length),
-                  child: IssueList(
-                    issues: issues,
-                    onChanged: _refresh,
-                    emptyText: _filter == null ? 'Nothing needs attention.' : 'No issues in this category.',
-                    loading: data.loadingSections.isNotEmpty,
+                if (issues.isNotEmpty || _filter != null || data.loadingSections.isNotEmpty)
+                  DetailSection(
+                    title: 'Issues',
+                    icon: Icons.report_gmailerrorred,
+                    trailing: _issuesTrailing(context, data, issues.length),
+                    child: IssueList(
+                      issues: issues,
+                      onChanged: _refresh,
+                      emptyText: _filter == null ? 'Nothing needs attention.' : 'No issues in this category.',
+                      loading: data.loadingSections.isNotEmpty,
+                    ),
                   ),
-                ),
                 if (data.isPending('nodes'))
                   const DetailSection(title: 'Nodes', icon: Icons.dns_outlined, child: PendingRows())
                 else if (data.nodes.isNotEmpty)
@@ -211,7 +240,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
                       '${data.count('nodes', 'ready')}/${data.count('nodes', 'total')} ready',
                       style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
                     ),
-                    child: NodesStrip(nodes: data.nodes),
+                    child: NodeCards(nodes: data.nodes, showRequests: _ns.isAll),
                   ),
                 DetailSection(
                   title: 'Top warning events',

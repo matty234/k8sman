@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../api/models.dart';
 import '../../state/app_state.dart';
-import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'overview_actions.dart';
@@ -25,11 +24,6 @@ void openObject(BuildContext context, ObjectRef ref) {
   final t = app.typeFor(ref.group, ref.kind);
   if (t == null) return;
   app.openDetail(DetailTarget(type: t, name: ref.name, namespace: t.namespaced ? ref.namespace : null));
-}
-
-String _kindPlural(String kind) {
-  final k = kind == 'PersistentVolumeClaim' ? 'PVC' : kind;
-  return k.endsWith('s') ? '${k}es' : '${k}s';
 }
 
 // ---------------------------------------------------------------------------
@@ -96,72 +90,6 @@ class OverviewHeader extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Inventory strip: totals per type
-// ---------------------------------------------------------------------------
-
-class InventoryStrip extends StatelessWidget {
-  final OverviewData data;
-  const InventoryStrip({super.key, required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // A null value is a placeholder: the source is still loading.
-    final items = <(String, String?, String?)>[];
-    void add(String type, String label, String good, String source, {String? extra}) {
-      if (data.isPending(source)) {
-        items.add((label, null, null));
-        return;
-      }
-      final total = data.count(type, 'total');
-      if (total == 0) return;
-      items.add((label, '${data.count(type, good)}/$total', extra));
-    }
-
-    final pods = data.count('pods', 'total');
-    if (pods > 0) {
-      final completed = data.count('pods', 'completed');
-      items.add(('pods ready', '${data.count('pods', 'ready')}/${pods - completed}', completed > 0 ? '+$completed completed' : null));
-    }
-    add('deployments', 'deployments', 'healthy', 'deployments');
-    add('statefulSets', 'statefulsets', 'healthy', 'statefulsets');
-    add('daemonSets', 'daemonsets', 'healthy', 'daemonsets');
-    final jobs = data.count('jobs', 'total');
-    if (data.isPending('jobs')) {
-      items.add(('jobs succeeded', null, null));
-    } else if (jobs > 0) {
-      final failed = data.count('jobs', 'failed');
-      items.add(('jobs succeeded', '${data.count('jobs', 'succeeded')}/$jobs', failed > 0 ? '$failed failed' : null));
-    }
-    final cron = data.count('cronJobs', 'total');
-    if (data.isPending('cronjobs')) {
-      items.add(('cronjobs', null, null));
-    } else if (cron > 0) {
-      items.add((cron == 1 ? 'cronjob' : 'cronjobs', '$cron', null));
-    }
-    add('nodes', 'nodes ready', 'ready', 'nodes');
-    add('pvcs', 'PVCs bound', 'bound', 'pvcs');
-
-    final numStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontFeatures: const [FontFeature.tabularFigures()]);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    return Wrap(spacing: 18, runSpacing: 4, children: [
-      for (final (label, value, extra) in items)
-        if (value == null)
-          Row(key: ValueKey('pending-inventory-$label'), mainAxisSize: MainAxisSize.min, children: [
-            const SkeletonBar(width: 28, height: 12),
-            Text(' $label', style: hint),
-          ])
-        else
-          Text.rich(TextSpan(children: [
-            TextSpan(text: value, style: numStyle),
-            TextSpan(text: ' $label', style: hint),
-            if (extra != null) TextSpan(text: ' ($extra)', style: hint),
-          ])),
-    ]);
-  }
-}
-
 /// A quiet grey bar standing in for a value that is still loading.
 class SkeletonBar extends StatelessWidget {
   final double? width;
@@ -174,229 +102,6 @@ class SkeletonBar extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(4)),
-    );
-  }
-}
-
-String _sectionLabel(String section) => switch (section) {
-      'nodes' => 'Nodes',
-      'alerts' => 'Alerts',
-      'workloads' => 'Workloads',
-      'jobs' => 'Jobs',
-      'storage' => 'Storage',
-      'argocd' => 'Argo CD',
-      'network' => 'Network',
-      _ => section.isEmpty ? section : '${section[0].toUpperCase()}${section.substring(1)}',
-    };
-
-/// Stands where a summary tile would be while its section's source loads,
-/// the same size as a loaded tile.
-class _PendingTile extends StatelessWidget {
-  final String section;
-  const _PendingTile({required this.section});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      key: ValueKey('pending-tile-$section'),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      padding: const EdgeInsets.fromLTRB(15, 10, 10, 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Same height as the tile's headlineSmall count.
-        SizedBox(height: (theme.textTheme.headlineSmall?.fontSize ?? 24) * 1.1, child: const Align(alignment: Alignment.centerLeft, child: SkeletonBar(width: 36, height: 18))),
-        const SizedBox(height: 6),
-        Text('${_sectionLabel(section)}…', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: theme.hintColor)),
-        Text('Loading', maxLines: 1, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-      ]),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Summary tiles
-// ---------------------------------------------------------------------------
-
-class SummaryTiles extends StatelessWidget {
-  final OverviewData data;
-  final NamespaceScope namespace;
-  final String? selected;
-  final ValueChanged<String> onSelect;
-  const SummaryTiles({super.key, required this.data, required this.namespace, required this.selected, required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    final problems = data.categories.where((c) => c.severity != IssueSeverity.info).toList();
-    final info = data.categories.where((c) => c.severity == IssueSeverity.info).toList();
-    final loading = data.loadingSections;
-    return LayoutBuilder(builder: (context, box) {
-      // 2 to 6 columns; tiles stretch to fill each row.
-      const gap = 10.0;
-      final cols = (box.maxWidth / 190).floor().clamp(2, 6);
-      final w = ((box.maxWidth - gap * (cols - 1)) / cols).floorToDouble();
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // Never "All healthy" while a source is still loading: its problems
-        // are unknown. Its sections show a placeholder tile instead.
-        if (problems.isEmpty && loading.isEmpty)
-          _HealthyTile(data: data, namespace: namespace)
-        else
-          Wrap(spacing: gap, runSpacing: gap, children: [
-            for (final c in problems)
-              SizedBox(
-                width: w,
-                child: _CategoryTile(category: c, sublabel: _sublabel(c), selected: selected == c.id, onTap: () => onSelect(c.id)),
-              ),
-            for (final s in loading) SizedBox(width: w, child: _PendingTile(section: s)),
-          ]),
-        if (info.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 6, children: [
-            for (final c in info)
-              _InfoChip(category: c, tooltip: _sublabel(c), selected: selected == c.id, onTap: () => onSelect(c.id)),
-          ]),
-        ],
-      ]);
-    });
-  }
-
-  String _sublabel(OverviewCategory c) {
-    final issues = data.issues.where((i) => i.category == c.id).toList();
-    if (issues.isEmpty) return c.section;
-    final first = issues.first;
-    if (first.kind == 'Pod') {
-      final owners = {for (final i in issues) if (i.owner != null) '${i.namespace}/${i.owner!.kind}/${i.owner!.name}'};
-      final bare = issues.where((i) => i.owner == null).length;
-      if (issues.length == 1) return first.owner != null ? 'pod of ${first.owner!.name}' : 'pod ${first.name}';
-      if (owners.length == 1 && bare == 0) return '${plural(issues.length, 'pod')} of ${first.owner!.name}';
-      return '${plural(issues.length, 'pod')} · ${plural(owners.length + bare, 'workload')}';
-    }
-    if (issues.length == 1) return '${first.kind == 'PersistentVolumeClaim' ? 'PVC' : first.kind.toLowerCase()} ${first.name}';
-    return '${issues.length} ${_kindPlural(first.kind).toLowerCase()}';
-  }
-}
-
-class _CategoryTile extends StatelessWidget {
-  final OverviewCategory category;
-  final String sublabel;
-  final bool selected;
-  final VoidCallback onTap;
-  const _CategoryTile({required this.category, required this.sublabel, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final c = issueColor(context, category.severity);
-    final muted = category.severity == IssueSeverity.info;
-    return Material(
-      color: selected ? c.withValues(alpha: 0.16) : theme.colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: selected ? c : theme.colorScheme.outlineVariant.withValues(alpha: 0.5), width: selected ? 1.5 : 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Tooltip(
-          message: selected ? 'Show all issues' : 'Show only ${category.label}',
-          child: Container(
-            decoration: BoxDecoration(border: Border(left: BorderSide(color: c.withValues(alpha: muted ? 0.5 : 1), width: 3))),
-            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Text('${category.count}',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      color: muted ? theme.colorScheme.onSurface : c,
-                      fontWeight: FontWeight.w700,
-                      height: 1.1,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    )),
-                const Spacer(),
-                Icon(issueIcon(category.severity), size: 16, color: c.withValues(alpha: 0.85)),
-              ]),
-              const SizedBox(height: 6),
-              Text(category.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-              Text(sublabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Informational categories (paused, suspended, rolling, cordoned) are not
-/// problems, so they get a quiet chip rather than a tile.
-class _InfoChip extends StatelessWidget {
-  final OverviewCategory category;
-  final String tooltip;
-  final bool selected;
-  final VoidCallback onTap;
-  const _InfoChip({required this.category, required this.tooltip, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final c = issueColor(context, category.severity);
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: selected ? c.withValues(alpha: 0.16) : theme.colorScheme.surfaceContainerLow,
-        shape: StadiumBorder(side: BorderSide(color: selected ? c : theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
-        child: InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(issueIcon(category.severity), size: 13, color: c),
-              const SizedBox(width: 6),
-              Text(category.label, style: theme.textTheme.bodySmall),
-              const SizedBox(width: 6),
-              Text('${category.count}', style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: c)),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HealthyTile extends StatelessWidget {
-  final OverviewData data;
-  final NamespaceScope namespace;
-  const _HealthyTile({required this.data, required this.namespace});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final ok = severityColor(context, Severity.ok);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        color: ok.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: ok.withValues(alpha: 0.35)),
-      ),
-      child: Row(children: [
-        Icon(Icons.check_circle_outline, color: ok, size: 30),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('All healthy', style: theme.textTheme.titleMedium?.copyWith(color: ok, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 2),
-            Text(
-              'Nothing is crashlooping, stuck or failing ${namespace.isAll ? 'in the cluster' : 'in ${namespace.namespaces.join(', ')}'}.',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
-            ),
-          ]),
-        ),
-      ]),
     );
   }
 }
@@ -423,6 +128,12 @@ class _IssueListState extends State<IssueList> {
   final _expanded = <String>{};
   int _limit = _pageSize;
 
+  static String _heading(IssueSeverity s) => switch (s) {
+        IssueSeverity.critical => 'Errors',
+        IssueSeverity.warning => 'Warnings',
+        IssueSeverity.info => 'Info',
+      };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -445,17 +156,29 @@ class _IssueListState extends State<IssueList> {
       );
     }
     final shown = groups.take(_limit).toList();
+    final counts = <IssueSeverity, int>{};
+    for (final i in widget.issues) {
+      counts[i.severity] = (counts[i.severity] ?? 0) + 1;
+    }
+    final children = <Widget>[];
+    IssueSeverity? current;
+    for (final g in shown) {
+      if (g.severity != current) {
+        current = g.severity;
+        children.add(_SeverityHeading(label: _heading(current), count: counts[current] ?? 0, first: children.isEmpty));
+      } else {
+        children.add(Divider(height: 1, indent: 32, color: AppColors.of(context).separator.withValues(alpha: 0.7)));
+      }
+      children.add(IssueGroupTile(
+        key: ValueKey(g.key),
+        group: g,
+        expanded: _expanded.contains(g.key),
+        onToggle: () => setState(() => _expanded.contains(g.key) ? _expanded.remove(g.key) : _expanded.add(g.key)),
+        onChanged: widget.onChanged,
+      ));
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (var i = 0; i < shown.length; i++) ...[
-        if (i > 0) const Divider(height: 1),
-        IssueGroupTile(
-          key: ValueKey(shown[i].key),
-          group: shown[i],
-          expanded: _expanded.contains(shown[i].key),
-          onToggle: () => setState(() => _expanded.contains(shown[i].key) ? _expanded.remove(shown[i].key) : _expanded.add(shown[i].key)),
-          onChanged: widget.onChanged,
-        ),
-      ],
+      ...children,
       if (groups.length > shown.length)
         Padding(
           padding: const EdgeInsets.only(top: 6),
@@ -468,6 +191,28 @@ class _IssueListState extends State<IssueList> {
           ),
         ),
     ]);
+  }
+}
+
+class _SeverityHeading extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool first;
+  const _SeverityHeading({required this.label, required this.count, required this.first});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(2, first ? 2 : 14, 2, 2),
+      child: Text.rich(
+        TextSpan(children: [
+          TextSpan(text: label, style: TextStyle(color: theme.hintColor, fontWeight: FontWeight.w600)),
+          TextSpan(text: '  $count', style: TextStyle(color: AppColors.of(context).faint, fontFeatures: const [FontFeature.tabularFigures()])),
+        ]),
+        style: theme.textTheme.labelMedium,
+      ),
+    );
   }
 }
 
@@ -515,9 +260,9 @@ class IssueGroupTile extends StatelessWidget {
       ),
       if (expanded)
         Padding(
-          padding: const EdgeInsets.only(left: 30, bottom: 6),
+          padding: const EdgeInsets.only(left: 32, bottom: 6),
           child: Container(
-            decoration: BoxDecoration(border: Border(left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.6), width: 2))),
+            decoration: BoxDecoration(border: Border(left: BorderSide(color: AppColors.of(context).separator, width: 2))),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               for (final i in group.issues)
                 _IssueRow(
@@ -535,7 +280,33 @@ class IssueGroupTile extends StatelessWidget {
   }
 }
 
-class _IssueRow extends StatelessWidget {
+/// The reason as a small label on a faint tint of the severity colour.
+class _ReasonChip extends StatelessWidget {
+  final String text;
+  final IssueSeverity severity;
+  const _ReasonChip(this.text, this.severity);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c = issueColor(context, severity);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: theme.brightness == Brightness.dark ? 0.14 : 0.09),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelSmall?.copyWith(fontSize: 11.5, height: 1.4, color: theme.colorScheme.onSurface.withValues(alpha: 0.88)),
+      ),
+    );
+  }
+}
+
+class _IssueRow extends StatefulWidget {
   final OverviewIssue issue;
   final ObjectRef title;
 
@@ -563,75 +334,126 @@ class _IssueRow extends StatelessWidget {
   });
 
   @override
+  State<_IssueRow> createState() => _IssueRowState();
+}
+
+class _IssueRowState extends State<_IssueRow> {
+  bool _hovered = false;
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
+    final w = widget;
     final theme = Theme.of(context);
+    final colors = AppColors.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    final c = issueColor(context, issue.severity);
-    final kindLabel = title.kind == 'PersistentVolumeClaim' ? 'PVC' : title.kind;
+    final c = issueColor(context, w.issue.severity);
+    final kindLabel = w.title.kind == 'PersistentVolumeClaim' ? 'PVC' : w.title.kind;
+    final dense = w.dense;
 
     // Wrap (not Row) so narrow widths — e.g. with the sidebar open — flow
     // onto a second line instead of overflowing.
     final nameLine = Wrap(spacing: 6, runSpacing: 3, crossAxisAlignment: WrapCrossAlignment.center, children: [
       if (!dense) Text(kindLabel, style: hint),
-      _Link(ref: title, strong: !dense),
-      if (countLabel != null) Text(countLabel!, style: hint?.copyWith(fontWeight: FontWeight.w600)),
-      StatusBadge(issue.reason, dense: true, severity: issue.severity.badge),
-      if (context2 != null)
+      _Link(ref: w.title, strong: !dense),
+      if (w.countLabel != null) Text(w.countLabel!, style: hint?.copyWith(fontWeight: FontWeight.w600)),
+      _ReasonChip(w.issue.reason, w.issue.severity),
+      if (w.context2 != null)
         Row(mainAxisSize: MainAxisSize.min, children: [
-          Text('of ${context2!.kind} ', style: hint),
-          Flexible(child: _Link(ref: context2!)),
+          Text('of ${w.context2!.kind} ', style: hint),
+          Flexible(child: _Link(ref: w.context2!)),
         ]),
     ]);
 
     final meta = Row(mainAxisSize: MainAxisSize.min, children: [
-      if (title.namespace != null && !dense)
+      if (w.title.namespace != null && !dense)
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 140),
-          child: Text(title.namespace!, overflow: TextOverflow.ellipsis, style: hint),
+          child: Text(w.title.namespace!, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: colors.faint)),
         ),
-      if (since != null) ...[
+      if (w.since != null) ...[
         const SizedBox(width: 10),
-        SizedBox(width: 48, child: Align(alignment: Alignment.centerRight, child: AgeText(since))),
+        SizedBox(width: 44, child: Align(alignment: Alignment.centerRight, child: AgeText(w.since))),
       ],
     ]);
 
-    return InkWell(
-      onTap: onToggle,
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: dense ? 5 : 8, horizontal: dense ? 10 : 2),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (!dense)
-            SizedBox(
-              width: 24,
-              child: onToggle == null
-                  ? Padding(padding: const EdgeInsets.only(top: 1), child: Icon(issueIcon(issue.severity), size: 17, color: c))
-                  : Icon(expanded == true ? Icons.expand_more : Icons.chevron_right, size: 20, color: theme.hintColor),
-            ),
-          if (!dense && onToggle != null) ...[
-            Padding(padding: const EdgeInsets.only(top: 1), child: Icon(issueIcon(issue.severity), size: 17, color: c)),
-            const SizedBox(width: 4),
-          ],
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              nameLine,
-              if (issue.message.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 3),
-                  child: Text(issue.message, maxLines: dense ? 1 : 2, overflow: TextOverflow.ellipsis, style: hint),
-                ),
-            ]),
+    final icon = Padding(padding: const EdgeInsets.only(top: 1), child: Icon(issueIcon(w.issue.severity), size: 16, color: c));
+    final row = Padding(
+      padding: EdgeInsets.symmetric(vertical: dense ? 5 : 8, horizontal: dense ? 10 : 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (!dense)
+          SizedBox(
+            width: 22,
+            child: w.onToggle == null ? icon : Icon(w.expanded == true ? Icons.expand_more : Icons.chevron_right, size: 18, color: theme.hintColor),
           ),
-          const SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            meta,
-            if (actions.isNotEmpty)
+        if (!dense && w.onToggle != null) ...[icon, const SizedBox(width: 4)],
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            nameLine,
+            if (w.issue.message.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Wrap(spacing: 6, children: [for (final a in actions) QuickActionButton(action: a, onDone: onChanged)]),
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(w.issue.message, maxLines: dense ? 1 : 2, overflow: TextOverflow.ellipsis, style: hint),
               ),
           ]),
-        ]),
+        ),
+        const SizedBox(width: 8),
+        meta,
+      ]),
+    );
+
+    // Actions appear over the right edge on hover or keyboard focus, so rows
+    // keep one height and nothing shifts.
+    final show = _hovered || _focused;
+    final bg = Color.alphaBlend(colors.hover, theme.colorScheme.surface);
+    final actions = w.actions.isEmpty
+        ? null
+        : Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              onFocusChange: (f) => setState(() => _focused = f),
+              child: IgnorePointer(
+                ignoring: !show,
+                child: Opacity(
+                  opacity: show ? 1 : 0,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 24,
+                      decoration: BoxDecoration(gradient: LinearGradient(colors: [bg.withValues(alpha: 0), bg])),
+                    ),
+                    Container(
+                      color: bg,
+                      padding: const EdgeInsets.only(left: 2, right: 6),
+                      alignment: Alignment.center,
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        for (final a in w.actions) ...[
+                          if (a != w.actions.first) const SizedBox(width: 6),
+                          QuickActionButton(action: a, onDone: w.onChanged),
+                        ],
+                      ]),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          );
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: InkWell(
+        onTap: w.onToggle,
+        hoverColor: Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          decoration: BoxDecoration(color: _hovered ? colors.hover : null, borderRadius: BorderRadius.circular(6)),
+          child: Stack(children: [row, ?actions]),
+        ),
       ),
     );
   }
@@ -661,61 +483,6 @@ class _Link extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Nodes
-// ---------------------------------------------------------------------------
-
-class NodesStrip extends StatelessWidget {
-  final List<NodeHealth> nodes;
-  const NodesStrip({super.key, required this.nodes});
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(spacing: 8, runSpacing: 8, children: [for (final n in nodes) _NodeChip(node: n)]);
-  }
-}
-
-class _NodeChip extends StatelessWidget {
-  final NodeHealth node;
-  const _NodeChip({required this.node});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final sev = !node.ready ? Severity.error : (node.pressure.isNotEmpty ? Severity.warn : (node.cordoned ? Severity.warn : Severity.ok));
-    final c = severityColor(context, sev);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    return Material(
-      color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
-        side: BorderSide(color: sev == Severity.ok ? theme.colorScheme.outlineVariant.withValues(alpha: 0.5) : c.withValues(alpha: 0.6)),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: () => openObject(context, ObjectRef(kind: 'Node', name: node.name)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 260),
-              child: Text(node.name, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-            ),
-            if (node.roles.isNotEmpty) ...[const SizedBox(width: 6), Text(node.roles.join(','), style: hint)],
-            const SizedBox(width: 10),
-            Text(plural(node.pods, 'pod'), style: hint),
-            if (!node.ready) ...[const SizedBox(width: 8), const StatusBadge('NotReady', dense: true, severity: Severity.error)],
-            for (final p in node.pressure) ...[const SizedBox(width: 6), StatusBadge(p, dense: true, severity: Severity.warn)],
-            if (node.cordoned) ...[const SizedBox(width: 6), const StatusBadge('Cordoned', dense: true, severity: Severity.warn)],
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Warning events
 // ---------------------------------------------------------------------------
 
@@ -732,51 +499,85 @@ class PendingRows extends StatelessWidget {
   }
 }
 
-class WarningEventList extends StatelessWidget {
+/// One line per reason; click a line for the whole latest message.
+class WarningEventList extends StatefulWidget {
   final List<WarningReason> reasons;
   const WarningEventList({super.key, required this.reasons});
 
   @override
+  State<WarningEventList> createState() => _WarningEventListState();
+}
+
+class _WarningEventListState extends State<WarningEventList> {
+  final _open = <String>{};
+
+  @override
   Widget build(BuildContext context) {
+    final reasons = widget.reasons;
     if (reasons.isEmpty) return const InlineMessage('No warning events in the last hour.', icon: Icons.check_circle_outline);
     final theme = Theme.of(context);
+    final colors = AppColors.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    final warn = severityColor(context, Severity.warn);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (var i = 0; i < reasons.length; i++) ...[
-        if (i > 0) const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(
-              width: 52,
-              child: Text('×${reasons[i].count}', textAlign: TextAlign.right, style: monoStyle(context, size: 12, color: warn).copyWith(fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Text(reasons[i].reason, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                  if (reasons[i].example != null) ...[
-                    const SizedBox(width: 8),
-                    Text(reasons[i].example!.kind == 'PersistentVolumeClaim' ? 'PVC' : reasons[i].example!.kind, style: hint),
-                    const SizedBox(width: 4),
-                    Flexible(child: _Link(ref: reasons[i].example!)),
-                  ],
-                  if (reasons[i].objects > 1) ...[
-                    const SizedBox(width: 6),
-                    Text('+${reasons[i].objects - 1} more', style: hint),
-                  ],
-                ]),
-                const SizedBox(height: 2),
-                Text(reasons[i].latestMessage, maxLines: 2, overflow: TextOverflow.ellipsis, style: hint),
-              ]),
-            ),
-            const SizedBox(width: 8),
-            if (reasons[i].lastSeen != null) AgeText(reasons[i].lastSeen, suffix: ' ago'),
-          ]),
-        ),
+        if (i > 0) Divider(height: 1, color: colors.separator.withValues(alpha: 0.7)),
+        _eventRow(context, reasons[i], hint, colors),
       ],
     ]);
+  }
+
+  Widget _eventRow(BuildContext context, WarningReason r, TextStyle? hint, AppColors colors) {
+    final theme = Theme.of(context);
+    final open = _open.contains(r.reason);
+    final ex = r.example;
+    return Hoverable(
+      onTap: () => setState(() => open ? _open.remove(r.reason) : _open.add(r.reason)),
+      builder: (hovered) => Container(
+        decoration: BoxDecoration(color: hovered ? colors.hover : null, borderRadius: BorderRadius.circular(6)),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            SizedBox(
+              width: 44,
+              child: Text('×${r.count}', textAlign: TextAlign.right, style: monoStyle(context, size: 11.5, color: colors.faint)),
+            ),
+            const SizedBox(width: 12),
+            // Reason and example keep their width (capped); the message
+            // fills what is left and is the first to be cut.
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, box) => Row(children: [
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: box.maxWidth * 0.3),
+                    child: Text(r.reason, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  ),
+                  if (ex != null) ...[
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: box.maxWidth * 0.35),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Flexible(child: Text(ex.kind == 'PersistentVolumeClaim' ? 'PVC' : ex.kind, maxLines: 1, overflow: TextOverflow.ellipsis, style: hint)),
+                        const SizedBox(width: 4),
+                        Flexible(flex: 2, child: _Link(ref: ex)),
+                        if (r.objects > 1) Text(' +${r.objects - 1}', style: hint),
+                      ]),
+                    ),
+                  ],
+                  const SizedBox(width: 12),
+                  Expanded(child: open ? const SizedBox.shrink() : Text(r.latestMessage, maxLines: 1, overflow: TextOverflow.ellipsis, style: hint)),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (r.lastSeen != null) SizedBox(width: 60, child: Align(alignment: Alignment.centerRight, child: AgeText(r.lastSeen, suffix: ' ago'))),
+          ]),
+          if (open)
+            Padding(
+              padding: const EdgeInsets.only(left: 56, top: 4, right: 68),
+              child: Text(r.latestMessage, style: hint),
+            ),
+        ]),
+      ),
+    );
   }
 }
