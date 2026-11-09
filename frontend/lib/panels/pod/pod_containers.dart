@@ -51,29 +51,46 @@ class ContainerCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-          child: Row(children: [
-            KindTag(c.kind),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(c.name, maxLines: 1, style: monoStyle(context, size: 13).copyWith(fontWeight: FontWeight.w700)),
-            ),
-            const Spacer(),
-            if (c.restarts > 0) ...[
-              Tooltip(
-                message: 'Restart count',
-                child: StatusBadge('${c.restarts} restart${c.restarts == 1 ? '' : 's'}', dense: true, severity: c.restarts > 0 ? Severity.warn : Severity.neutral),
-              ),
-              const SizedBox(width: 6),
-            ],
-            StatusBadge(c.stateLabel, dense: true, severity: sev),
-            if (c.hasStatus && c.kind != ContainerKind.init && c.kind != ContainerKind.ephemeral) ...[
-              const SizedBox(width: 6),
-              Tooltip(
-                message: c.ready ? 'Ready' : 'Not ready',
-                child: Icon(c.ready ? Icons.check_circle : Icons.cancel, size: 16, color: severityColor(context, c.ready ? Severity.ok : Severity.error)),
-              ),
-            ],
-          ]),
+          child: LayoutBuilder(builder: (context, box) {
+            final badges = <Widget>[
+              if (c.restarts > 0) ...[
+                Tooltip(
+                  message: 'Restart count',
+                  child: StatusBadge('${c.restarts} restart${c.restarts == 1 ? '' : 's'}', dense: true, severity: c.restarts > 0 ? Severity.warn : Severity.neutral),
+                ),
+                const SizedBox(width: 6),
+              ],
+              StatusBadge(c.stateLabel, dense: true, severity: sev),
+              if (c.hasStatus && c.kind != ContainerKind.init && c.kind != ContainerKind.ephemeral) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: c.ready ? 'Ready' : 'Not ready',
+                  child: Icon(c.ready ? Icons.check_circle : Icons.cancel, size: 16, color: severityColor(context, c.ready ? Severity.ok : Severity.error)),
+                ),
+              ],
+            ];
+            final name = Tooltip(
+              message: c.name,
+              waitDuration: const Duration(milliseconds: 600),
+              child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 13).copyWith(fontWeight: FontWeight.w700)),
+            );
+            // Narrow: the status goes under the name rather than squeezing
+            // the name down to a few letters.
+            if (box.maxWidth < 360) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [KindTag(c.kind), const SizedBox(width: 8), Expanded(child: name)]),
+                const SizedBox(height: 4),
+                Wrap(crossAxisAlignment: WrapCrossAlignment.center, runSpacing: 4, children: badges),
+              ]);
+            }
+            return Row(children: [
+              KindTag(c.kind),
+              const SizedBox(width: 8),
+              Expanded(child: name),
+              const SizedBox(width: 8),
+              ...badges,
+            ]);
+          }),
         ),
         Divider(height: 1, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
         Padding(
@@ -408,7 +425,7 @@ class _LogLink extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 13, color: accent),
           const SizedBox(width: 4),
-          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: accent)),
+          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: accent))),
         ]),
       ),
     );

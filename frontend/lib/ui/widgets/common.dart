@@ -315,7 +315,24 @@ class KeyValueTable extends StatelessWidget {
     if (visible.isEmpty) return Text('—', style: TextStyle(color: theme.hintColor));
     final keyStyle = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
     final valueStyle = theme.textTheme.bodySmall;
-    return Column(
+    Widget value(Object? v) => v is Widget ? DefaultTextStyle.merge(style: valueStyle, child: v) : Text('$v', style: valueStyle);
+    return LayoutBuilder(builder: (context, box) {
+      // Too narrow for a key column beside the values: stack each key above
+      // its value instead of squeezing the value into a sliver.
+      if (box.maxWidth < keyWidth + 170) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final (k, v) in visible)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text(k, style: keyStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                value(v),
+              ]),
+            ),
+        ]);
+      }
+      return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final (k, v) in visible)
@@ -329,13 +346,12 @@ class KeyValueTable extends StatelessWidget {
                   child: Text(k, style: keyStyle, maxLines: 2, overflow: TextOverflow.ellipsis),
                 ),
               ),
-              Expanded(
-                child: v is Widget ? DefaultTextStyle.merge(style: valueStyle, child: v) : Text('$v', style: valueStyle),
-              ),
+              Expanded(child: value(v)),
             ]),
           ),
       ],
     );
+    });
   }
 }
 

@@ -72,6 +72,13 @@ void main() {
     expect(find.textContaining('heartbeat'), findsOneWidget); // command CodeBlock
   });
 
+  testWidgets('a slim inspector (320px) lays the pod out without overflow', (tester) async {
+    for (final f in ['pod-web', 'pod-crashy']) {
+      await pumpPanel(tester, fixture(f), size: const Size(320, 3000));
+      expect(tester.takeException(), isNull, reason: f);
+    }
+  });
+
   testWidgets('pod-crashy shows CrashLoop insight and last state', (tester) async {
     await loadRealFonts();
     await pumpPanel(tester, fixture('pod-crashy'));

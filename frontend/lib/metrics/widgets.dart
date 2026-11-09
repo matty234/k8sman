@@ -78,59 +78,61 @@ class ResourceMeter extends StatelessWidget {
       if (scale != null) '${percentOf[0].toUpperCase()}${percentOf.substring(1)} ${format(scale!)}',
       if (frac != null) '${formatPercent(frac)} of $percentOf',
     ].join('\n');
+    final labelText = Text(
+      label,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontSize: compact ? 11 : null),
+    );
+    final bar = Tooltip(
+      message: tip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: SizedBox(
+        height: compact ? 10 : 12,
+        child: CustomPaint(
+          painter: _MeterPainter(
+            used: used == null ? null : used! / _scale,
+            requested: requested == null || requested! <= 0 ? null : requested! / _scale,
+            limit: limit == null || limit! <= 0 ? null : limit! / _scale,
+            fill: meterColor(context, frac),
+            track: theme.colorScheme.surfaceContainerHighest,
+            outline: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+            tick: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+            barHeight: compact ? 6 : 8,
+          ),
+        ),
+      ),
+    );
+    final valueLabel = Text(valueText, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: small));
+    final pct = Text(
+      frac == null ? '' : formatPercent(frac),
+      textAlign: TextAlign.right,
+      style: monoStyle(context, size: small, color: percentColor(context, frac) ?? theme.hintColor).copyWith(fontWeight: FontWeight.w600),
+    );
     return Padding(
       padding: EdgeInsets.symmetric(vertical: compact ? 2 : 3),
-      child: Row(
-        children: [
-          SizedBox(
-            width: labelWidth,
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontSize: compact ? 11 : null),
-            ),
-          ),
-          Expanded(
-            child: Tooltip(
-              message: tip,
-              waitDuration: const Duration(milliseconds: 400),
-              child: SizedBox(
-                height: compact ? 10 : 12,
-                child: CustomPaint(
-                  painter: _MeterPainter(
-                    used: used == null ? null : used! / _scale,
-                    requested: requested == null || requested! <= 0 ? null : requested! / _scale,
-                    limit: limit == null || limit! <= 0 ? null : limit! / _scale,
-                    fill: meterColor(context, frac),
-                    track: theme.colorScheme.surfaceContainerHighest,
-                    outline: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                    tick: theme.colorScheme.onSurface.withValues(alpha: 0.75),
-                    barHeight: compact ? 6 : 8,
-                  ),
-                ),
-              ),
-            ),
-          ),
+      child: LayoutBuilder(builder: (context, box) {
+        // Narrow (a slim inspector): label, value and percent on one line,
+        // the bar full width beneath, rather than overflowing the row.
+        if (box.maxWidth < labelWidth + valueWidth + 40 + 8 + 60) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              labelText,
+              const SizedBox(width: 8),
+              Expanded(child: valueLabel),
+              SizedBox(width: 40, child: pct),
+            ]),
+            const SizedBox(height: 2),
+            bar,
+          ]);
+        }
+        return Row(children: [
+          SizedBox(width: labelWidth, child: labelText),
+          Expanded(child: bar),
           const SizedBox(width: 8),
-          SizedBox(
-            width: valueWidth,
-            child: Text(
-              valueText,
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-              style: monoStyle(context, size: small),
-            ),
-          ),
-          SizedBox(
-            width: 40,
-            child: Text(
-              frac == null ? '' : formatPercent(frac),
-              textAlign: TextAlign.right,
-              style: monoStyle(context, size: small, color: percentColor(context, frac) ?? theme.hintColor).copyWith(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
+          SizedBox(width: valueWidth, child: valueLabel),
+          SizedBox(width: 40, child: pct),
+        ]);
+      }),
     );
   }
 }
