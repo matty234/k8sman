@@ -69,6 +69,9 @@ type Settings struct {
 	Namespaces map[string][]string `json:"namespaces,omitempty"`
 	// FavouriteNamespaces maps kube context → starred namespaces.
 	FavouriteNamespaces map[string][]string `json:"favouriteNamespaces,omitempty"`
+	// AppLinks makes "Copy link" copy the k8sman:// form instead of the
+	// https://k8sman.dev/o/ one.
+	AppLinks bool `json:"appLinks,omitempty"`
 }
 
 // ViewVersion is the view record version this build writes.

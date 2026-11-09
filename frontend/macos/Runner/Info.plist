@@ -32,6 +32,20 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- k8sman://open?ctx=…&kind=…&name=… links (see lib/app/links.dart). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.k8sman.link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>k8sman</string>
+			</array>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
+	</array>
 	<!-- Sparkle updates (see docs/UPDATES.md). The feed and public key come
 	     from Configs/AppInfo.xcconfig; updates are off when the key is empty. -->
 	<key>SUFeedURL</key>

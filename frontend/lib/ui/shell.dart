@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../app/links.dart';
 import '../app/window_chrome.dart';
 import '../modules/modules.dart';
 import '../state/app_state.dart';
@@ -24,6 +25,7 @@ import 'keyboard_help.dart';
 import 'settings/settings_page.dart';
 import 'views/saved_views_ui.dart' show showSaveViewDialog;
 import 'keys.dart';
+import 'links_ui.dart';
 
 const _navWidth = 232.0;
 
@@ -105,6 +107,12 @@ class _ShellState extends State<Shell> {
       // Pages that are a kind's home (the Nodes page for Node).
       ..kindHomes ??= kindHomes;
     HardwareKeyboard.instance.addHandler(_strayKey);
+    // k8sman:// links (queued until now if they launched the app).
+    LinkInbox.handler = _openLink;
+  }
+
+  void _openLink(String url) {
+    if (mounted) openIncomingLink(context, _app, url);
   }
 
   final _focus = FocusNode(debugLabel: 'shell');
@@ -128,6 +136,7 @@ class _ShellState extends State<Shell> {
     if (WindowChrome.onCommandPalette == _palette) WindowChrome.onCommandPalette = null;
     if (WindowChrome.onSettings == _settings) WindowChrome.onSettings = null;
     if (_app.showInDock == _showInDock) _app.showInDock = null;
+    if (LinkInbox.handler == _openLink) LinkInbox.handler = null;
     StartupGate.release();
     super.dispose();
   }

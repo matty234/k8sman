@@ -25,6 +25,16 @@ class AppDelegate: FlutterAppDelegate {
     AppMover.offerIfNeeded()
   }
 
+  /// k8sman:// links, both while running and the one that launched the
+  /// app (AppKit delivers that here too, after willFinishLaunching).
+  /// Dart may not be listening yet: LinkRouter queues until it asks.
+  override func application(_ application: NSApplication, open urls: [URL]) {
+    super.application(application, open: urls)
+    LinkRouter.shared.receive(urls)
+    NSApp.activate(ignoringOtherApps: true)
+    mainFlutterWindow?.makeKeyAndOrderFront(nil)
+  }
+
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     return true
   }
@@ -38,5 +48,34 @@ class AppDelegate: FlutterAppDelegate {
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
     return true
+  }
+}
+
+/// Hands k8sman:// URLs to Dart over the `k8sman/window` channel. URLs that
+/// arrive before Dart has asked for them (`linksReady`) wait in a queue.
+/// Dart parses and validates them; nothing here interprets a URL.
+final class LinkRouter {
+  static let shared = LinkRouter()
+  var channel: FlutterMethodChannel?
+  private var pending: [String] = []
+  private var ready = false
+
+  func receive(_ urls: [URL]) {
+    for url in urls where url.scheme?.lowercased() == "k8sman" {
+      let s = url.absoluteString
+      if ready, let channel = channel {
+        channel.invokeMethod("openLink", arguments: s)
+      } else {
+        pending.append(s)
+      }
+    }
+  }
+
+  /// Dart is listening: returns the queued URLs and sends later ones directly.
+  func drain() -> [String] {
+    ready = true
+    let out = pending
+    pending = []
+    return out
   }
 }

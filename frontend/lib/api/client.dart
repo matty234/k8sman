@@ -351,6 +351,11 @@ class ApiClient {
 
   Future<void> putLogNewestFirst(bool v) => _send('PUT', 'settings/logs', const {}, {'newestFirst': v});
 
+  /// Whether Copy link copies the `k8sman://` form (else the https one).
+  Future<bool> getAppLinks() async => (await _get('settings/links') as Json)['appLinks'] == true;
+
+  Future<void> putAppLinks(bool v) => _send('PUT', 'settings/links', const {}, {'appLinks': v});
+
   Future<Set<String>> getDisabledModules() async {
     final j = await _get('settings/modules') as Json;
     return {for (final id in (j['disabled'] as List? ?? const [])) '$id'};

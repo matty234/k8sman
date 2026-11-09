@@ -1162,14 +1162,47 @@ class AppState extends ChangeNotifier {
 
   bool _connectedOnce = false;
 
+  /// Copy link copies the `k8sman://` form instead of the https one
+  /// (Settings ▸ General; an app setting in settings.json).
+  bool appLinks = false;
+  Future<void> _linkSaves = Future.value();
+
+  Future<void> loadLinkPrefs() async {
+    try {
+      appLinks = await api.getAppLinks();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('link preferences: $e');
+    }
+  }
+
+  void setAppLinks(bool v) {
+    appLinks = v;
+    notifyListeners();
+    _linkSaves = _linkSaves.then((_) => api.putAppLinks(v)).catchError((Object e) => debugPrint('save link preferences: $e'));
+  }
+
   /// Called when the backend becomes reachable (first launch, or a new port
   /// after the embedded backend restarted). Reloads everything and makes
   /// open tables re-subscribe.
   Future<void> backendConnected() async {
+    try {
+      await _backendConnected();
+    } finally {
+      if (!launched.isCompleted) launched.complete();
+    }
+  }
+
+  /// Completes once the first [backendConnected] is done (the launch has
+  /// picked its page), so a link that opened the app navigates after it.
+  final Completer<void> launched = Completer<void>();
+
+  Future<void> _backendConnected() async {
     final again = _connectedOnce;
     _connectedOnce = true;
     // Views load without a connection (the error screen lists them).
     await loadViews();
+    await loadLinkPrefs();
     final launch = again ? null : savedViews.where((v) => v.id == launchViewId).firstOrNull;
     if (launch?.context != null) await _preselectContext(launch!.context!);
     await init();

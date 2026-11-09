@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../ui/theme.dart';
+import 'links.dart';
 
 /// Native window state pushed from `MainFlutterWindow.swift` over the
 /// `k8sman/window` channel.
@@ -32,9 +33,14 @@ class WindowChrome {
           onCommandPalette?.call();
         case 'settings':
           onSettings?.call();
+        case 'openLink':
+          if (call.arguments is String) LinkInbox.receive(call.arguments as String);
       }
       return null;
     });
+    // k8sman:// URLs the app delegate queued before Dart was listening
+    // (including the one that launched the app).
+    _channel.invokeListMethod<String>('linksReady').then((urls) => urls?.forEach(LinkInbox.receive), onError: (Object _) {});
     _channel.invokeMethod<bool>('isFullScreen').then((v) => isFullScreen.value = v == true, onError: (Object _) {});
   }
 }

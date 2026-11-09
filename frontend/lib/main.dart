@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'api/client.dart';
 import 'app/backend.dart';
+import 'app/links.dart';
 import 'app/updates/github_releases.dart';
 import 'app/updates/update_controller.dart';
 import 'app/updates/update_ui.dart';
@@ -16,9 +17,12 @@ import 'prometheus/metric_history_chart.dart' show ChartHoverScope;
 import 'ui/shell.dart';
 import 'ui/theme.dart';
 
-void main() {
+void main(List<String> args) {
   WidgetsFlutterBinding.ensureInitialized();
   WindowChrome.init();
+  // Windows and Linux open k8sman:// links by launching the app with the
+  // URL as an argument (macOS sends them over the window channel).
+  LinkInbox.receiveArgs(args);
   final api = ApiClient();
   final app = AppState(api)..kindHomes = kindHomes;
   // Spawns the embedded backend (macOS/Windows app) or uses K8SMAN_BACKEND, then

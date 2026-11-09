@@ -78,11 +78,15 @@ class MainFlutterWindow: NSWindow {
         result(nil)
       case "isFullScreen":
         result(self.styleMask.contains(.fullScreen))
+      case "linksReady":
+        // Links queued before Dart listened (e.g. the one that launched us).
+        result(LinkRouter.shared.drain())
       default:
         result(FlutterMethodNotImplemented)
       }
     }
     windowChannel = window
+    LinkRouter.shared.channel = window
 
     // Embedded backend: status pushes and start/restart requests.
     let backend = FlutterMethodChannel(name: "k8sman/backend", binaryMessenger: messenger)
