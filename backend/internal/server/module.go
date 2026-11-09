@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"k8s.io/client-go/dynamic"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/overview"
 	"github.com/matty234/k8sman/backend/internal/settings"
 )
@@ -49,6 +51,9 @@ type Deps struct {
 	// is read-only (the flag, or the user's per-context lock): call it
 	// first in handlers that change the cluster.
 	RefuseReadOnly func(w http.ResponseWriter) bool
+	// ParseScope reads a request's namespace scope, narrowing "all" to the
+	// context's namespace allowlist when it has one.
+	ParseScope func(q url.Values) (kube.Namespaces, error)
 }
 
 // OverviewSource is implemented by modules that feed the health overview
@@ -124,13 +129,14 @@ func builtinModules() []Module {
 		&gatewayModule{},
 		&hubbleModule{},
 		&externalSecretsModule{},
+		&upgradeModule{},
 	}
 }
 
 // mountModules registers every module's routes, behind a check that
 // answers 404 while the user has the module turned off.
 func (s *Server) mountModules() {
-	d := Deps{Mgr: s.mgr, Settings: s.settings, ReadOnlyFlag: s.readOnly, RefuseReadOnly: s.refuseReadOnly}
+	d := Deps{Mgr: s.mgr, Settings: s.settings, ReadOnlyFlag: s.readOnly, RefuseReadOnly: s.refuseReadOnly, ParseScope: s.parseScope}
 	for _, m := range s.modules {
 		m.Routes(moduleRouter{s: s, name: m.Name()}, d)
 	}

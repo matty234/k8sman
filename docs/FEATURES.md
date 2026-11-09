@@ -343,6 +343,22 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   namespace, or this check everywhere, with an optional reason): they leave
   the list, score and Copy for AI, and stay one click away under "N ignored".
   Rules are per context and listed in Settings.
+- **Upgrade readiness** (a module, under More): what an upgrade from the
+  server's version to one of the next three minors would break or slow
+  down, with a status line ("Not ready for 1.33 · 2 blockers · 5
+  warnings"). Checks: removed APIs (served versions from discovery, live
+  objects' managedFields and last-applied annotations, the latest revision
+  of each Helm release, and the API server's
+  `apiserver_requested_deprecated_apis` metric where allowed) against the
+  deprecated API migration guide; kubelet version skew and mixed
+  control-plane versions; drain blockers (PDBs that allow no evictions,
+  single replicas, bare pods, emptyDir and node-local volumes); webhooks with
+  `failurePolicy: Fail` and no ready endpoints, or matching everything
+  including kube-system; CRDs storing objects in unserved or deprecated
+  versions; unhealthy nodes; and well-known add-ons with a compatibility
+  link. Each finding says why it matters and what to do, links its objects,
+  and offers Copy kubectl and docs; findings can be ignored like Security's.
+  Read-only; a check the user may not run says so instead of failing.
 - **Add-ons**: one-click Helm installs of metrics-server, the Prometheus
   stack, Trivy Operator, Argo CD, Envoy Gateway and cert-manager.
 - **Hubble** (on clusters running Cilium with Hubble Relay): a **Map** of

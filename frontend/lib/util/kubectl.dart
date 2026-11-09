@@ -52,6 +52,9 @@ class KubectlEnv {
     ].join('\n');
   }
 
+  /// `kubectl <args>` (each argument quoted) with the env flags.
+  String args(List<String> args) => _cmd([for (final a in args) shellQuote(a)]);
+
   String get(ResourceType t, List<KubectlRef> refs) => _perNamespace(t, refs, ['get'], ['-o yaml']);
   String describe(ResourceType t, List<KubectlRef> refs) => _perNamespace(t, refs, ['describe']);
   String rolloutRestart(ResourceType t, List<KubectlRef> refs) => _perNamespace(t, refs, ['rollout', 'restart']);
