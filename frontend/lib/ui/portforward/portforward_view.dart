@@ -28,6 +28,10 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
   List<PortForward>? _forwards;
   String? _error;
 
+  /// Forwards the user started that open the browser once they are active.
+  final _openWhenActive = <String>{};
+  bool _goneDismissed = false;
+
   ApiClient get _api => context.read<ApiClient>();
 
   @override
@@ -43,6 +47,9 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
   Future<void> _refresh() async {
     try {
       final f = await _api.portForwards();
+      for (final pf in f) {
+        if (pf.state == 'active' && _openWhenActive.remove(pf.id)) openUrl(pf.url ?? 'http://localhost:${pf.localPort}');
+      }
       if (mounted) setState(() => (_forwards = f, _error = null));
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -100,6 +107,28 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
           actions: [stopAll, help],
         ),
       if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: InlineMessage(_error!, isError: true)),
+      if (_api.removedForwards > 0 && !_goneDismissed)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+          child: Row(children: [
+            Expanded(
+              child: Text(
+                _api.removedForwards == 1
+                    ? '1 saved forward was removed (its target is gone)'
+                    : '${_api.removedForwards} saved forwards were removed (their targets are gone)',
+                key: const ValueKey('forwards-removed-gone'),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Dismiss',
+              iconSize: 14,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.close),
+              onPressed: () => setState(() => _goneDismissed = true),
+            ),
+          ]),
+        ),
       docked ? Divider(height: 1, color: AppColors.of(context).separator) : const Divider(),
       Expanded(
         child: fs == null
@@ -121,7 +150,10 @@ class _PortForwardViewState extends State<PortForwardView> with PollingState {
                       pf: fs[i],
                       readOnly: app.readOnly,
                       otherContext: fs[i].context != app.currentContext,
-                      onStart: () => _do(() => _api.startPortForward(fs[i].id)),
+                      onStart: () => _do(() async {
+                        if (fs[i].openInBrowser) _openWhenActive.add(fs[i].id);
+                        await _api.startPortForward(fs[i].id);
+                      }),
                       onStop: () => _do(() => _api.stopPortForward(fs[i].id)),
                       onDelete: () => _do(() => _api.deletePortForward(fs[i].id)),
                       onAutoStart: (v) => _do(() => _api.updatePortForward(fs[i].id, autoStart: v)),
@@ -245,6 +277,7 @@ class _ForwardCard extends StatelessWidget {
                 ),
               ),
               if (pf.label != null) ...[const SizedBox(width: 8), Chipish(text: pf.label!)],
+              if (pf.ephemeral) ...[const SizedBox(width: 8), const Chipish(text: 'not saved')],
             ]),
             const SizedBox(height: 4),
             Wrap(spacing: 12, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [

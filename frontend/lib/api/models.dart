@@ -404,6 +404,12 @@ class PortForward {
   final bool autoStart;
   final String? label;
 
+  /// Remembered with the forward: open the browser when it starts, and use
+  /// https in the URL. [ephemeral] forwards are not saved for restarts.
+  final bool openInBrowser;
+  final bool https;
+  final bool ephemeral;
+
   /// stopped | starting | active | reconnecting | error
   final String state;
   final String? pod;
@@ -425,6 +431,9 @@ class PortForward {
     this.address = '127.0.0.1',
     this.autoStart = false,
     this.label,
+    this.openInBrowser = false,
+    this.https = false,
+    this.ephemeral = false,
     required this.state,
     this.pod,
     this.remotePort,
@@ -446,6 +455,9 @@ class PortForward {
         address: j['address'] ?? '127.0.0.1',
         autoStart: j['autoStart'] ?? false,
         label: j['label'],
+        openInBrowser: j['openInBrowser'] ?? false,
+        https: j['https'] ?? false,
+        ephemeral: j['ephemeral'] ?? false,
         state: j['state'] ?? 'stopped',
         pod: j['pod'],
         remotePort: j['remotePort'],

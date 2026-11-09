@@ -425,8 +425,19 @@ class ApiClient {
   Future<ActionResult> runAction(ResourceRef r, {String? namespace, required String name, required String action, Json body = const {}}) async =>
       ActionResult.fromJson(await _send('POST', 'actions/$action', {...r.toQuery(), 'namespace': namespace, 'name': name}, body));
 
-  Future<List<PortForward>> portForwards() async =>
-      [for (final f in (((await _get('portforwards')) as Json)['forwards'] as List? ?? const [])) PortForward.fromJson(f)];
+  /// How many saved forwards the backend dropped at startup because their
+  /// target is gone (from the last [portForwards] call).
+  int removedForwards = 0;
+
+  Future<List<PortForward>> portForwards() async {
+    final j = (await _get('portforwards')) as Json;
+    removedForwards = (j['removedGone'] as num?)?.toInt() ?? 0;
+    return [for (final f in (j['forwards'] as List? ?? const [])) PortForward.fromJson(f)];
+  }
+
+  /// The local port to default to for remote port [remote]: the same number
+  /// when it is free and >= 1024, else the next free one.
+  Future<int> freeForwardPort(int remote) async => ((await _get('portforwards/free', {'port': '$remote'})) as Json)['port'] as int;
 
   /// [kind]: pod | service | deployment | statefulset | daemonset | replicaset.
   /// [port]: remote port number or name (service port for services).
@@ -440,6 +451,9 @@ class ApiClient {
     bool autoStart = false,
     String? label,
     bool replace = false,
+    bool openInBrowser = false,
+    bool https = false,
+    bool ephemeral = false,
   }) async =>
       PortForward.fromJson(await _send('POST', 'portforwards', const {}, {
         'replace': replace,
@@ -450,6 +464,9 @@ class ApiClient {
         'localPort': localPort,
         'autoStart': autoStart,
         'label': ?label,
+        if (openInBrowser) 'openInBrowser': true,
+        if (https) 'https': true,
+        if (ephemeral) 'ephemeral': true,
       }));
 
   Future<PortForward> updatePortForward(String id, {bool? autoStart, String? label, int? localPort}) async =>

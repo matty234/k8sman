@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +27,7 @@ func (s *Server) mutationRoutes() {
 	s.mux.HandleFunc("GET /api/portforwards", s.handleListForwards)
 	s.mux.HandleFunc("POST /api/portforwards", s.handleCreateForward)
 	s.mux.HandleFunc("POST /api/portforwards/stop", s.handleStopForwards)
+	s.mux.HandleFunc("GET /api/portforwards/free", s.handleFreeForwardPort)
 	s.mux.HandleFunc("PATCH /api/portforwards/{id}", s.handleUpdateForward)
 	s.mux.HandleFunc("POST /api/portforwards/{id}/start", s.handleForwardAction)
 	s.mux.HandleFunc("POST /api/portforwards/{id}/stop", s.handleForwardAction)
@@ -117,7 +119,19 @@ func subresourceParam(r *http.Request, t cluster.ResourceType) ([]string, error)
 // ---- port-forwards ---------------------------------------------------------
 
 func (s *Server) handleListForwards(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"forwards": s.pf.List()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"forwards": s.pf.List(), "removedGone": s.pf.RemovedGone()})
+}
+
+// handleFreeForwardPort suggests the local port for a forward to remote port
+// ?port=: the same number when free and >= 1024, else the next free one.
+func (s *Server) handleFreeForwardPort(w http.ResponseWriter, r *http.Request) {
+	want, _ := strconv.Atoi(r.URL.Query().Get("port"))
+	p, exact, err := s.pf.FreeLocalPort(r.URL.Query().Get("address"), want)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"port": p, "same": exact})
 }
 
 func (s *Server) handleCreateForward(w http.ResponseWriter, r *http.Request) {
@@ -153,15 +167,19 @@ func (s *Server) handleCreateForward(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateForward(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		AutoStart *bool   `json:"autoStart"`
-		Label     *string `json:"label"`
-		LocalPort *int    `json:"localPort"`
+		AutoStart     *bool   `json:"autoStart"`
+		Label         *string `json:"label"`
+		LocalPort     *int    `json:"localPort"`
+		OpenInBrowser *bool   `json:"openInBrowser"`
+		HTTPS         *bool   `json:"https"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, httpx.BadRequest("invalid body: %v", err))
 		return
 	}
-	st, err := s.pf.Update(r.PathValue("id"), body.AutoStart, body.Label, body.LocalPort)
+	st, err := s.pf.Update(r.PathValue("id"), portforward.Changes{
+		AutoStart: body.AutoStart, Label: body.Label, LocalPort: body.LocalPort, OpenInBrowser: body.OpenInBrowser, HTTPS: body.HTTPS,
+	})
 	if err != nil {
 		s.forwardErr(w, err)
 		return

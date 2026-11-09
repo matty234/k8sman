@@ -26,6 +26,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -54,6 +55,22 @@ type Spec struct {
 	Address   string `json:"address"`
 	AutoStart bool   `json:"autoStart"`
 	Label     string `json:"label,omitempty"`
+	// OpenInBrowser and HTTPS are the UI's remembered choices for this
+	// forward: whether "Open" launches the browser straight away, and the
+	// URL scheme.
+	OpenInBrowser bool `json:"openInBrowser,omitempty"`
+	HTTPS         bool `json:"https,omitempty"`
+	// Ephemeral forwards run but are never written to disk, so they are gone
+	// after a restart.
+	Ephemeral bool `json:"ephemeral,omitempty"`
+}
+
+func (s Spec) url() string {
+	scheme := "http"
+	if s.HTTPS {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s:%d", scheme, hostFor(s.Address), s.LocalPort)
 }
 
 // State values.
@@ -92,6 +109,9 @@ type Manager struct {
 
 	mu       sync.Mutex
 	forwards map[string]*forward
+	// removedGone counts saved forwards dropped at startup because their
+	// target no longer exists.
+	removedGone int
 }
 
 // DefaultPath is ~/.config/k8sman/portforwards.json.
@@ -119,13 +139,82 @@ func NewManager(clusters *cluster.Manager, path string) (*Manager, error) {
 			// created against whatever this backend was started with.
 			s.Kubeconfig = clusters.Kubeconfig()
 		}
+		s.Ephemeral = false
 		f := &forward{status: Status{Spec: s, State: Stopped}}
 		m.forwards[s.ID] = f
 		if s.AutoStart {
 			m.start(f)
 		}
 	}
+	// Saved forwards whose pod or service has been deleted are dropped
+	// quietly (checked in the background; other errors leave them alone and
+	// show up as the forward's own warning).
+	if len(specs) > 0 {
+		go m.dropGone()
+	}
 	return m, nil
+}
+
+// RemovedGone is how many saved forwards were dropped at startup because
+// their target no longer exists.
+func (m *Manager) RemovedGone() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.removedGone
+}
+
+func (m *Manager) dropGone() {
+	m.mu.Lock()
+	fs := make([]*forward, 0, len(m.forwards))
+	for _, f := range m.forwards {
+		fs = append(fs, f)
+	}
+	m.mu.Unlock()
+	for _, f := range fs {
+		f.mu.Lock()
+		spec := f.status.Spec
+		f.mu.Unlock()
+		if !m.targetGone(spec) {
+			continue
+		}
+		m.mu.Lock()
+		_, still := m.forwards[spec.ID]
+		delete(m.forwards, spec.ID)
+		if still {
+			m.removedGone++
+		}
+		m.mu.Unlock()
+		m.stop(f)
+	}
+	_ = m.save()
+}
+
+// targetGone reports whether the forward's target definitely doesn't exist
+// (a 404). Any other failure, such as an unreachable cluster, is not "gone".
+func (m *Manager) targetGone(spec Spec) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	c, err := m.clusters.ClientsIn(spec.Kubeconfig, spec.Context)
+	if err != nil {
+		return false
+	}
+	return isGone(getTarget(ctx, c, spec))
+}
+
+func isGone(err error) bool { return apierrors.IsNotFound(err) }
+
+// getTarget fetches the forward's pod, service or workload.
+func getTarget(ctx context.Context, c *cluster.Clients, spec Spec) error {
+	var err error
+	switch spec.Kind {
+	case "pod":
+		_, err = c.Typed.CoreV1().Pods(spec.Namespace).Get(ctx, spec.Name, metav1.GetOptions{})
+	case "service":
+		_, err = c.Typed.CoreV1().Services(spec.Namespace).Get(ctx, spec.Name, metav1.GetOptions{})
+	default:
+		_, err = c.Dynamic.Resource(workloadGVR[spec.Kind]).Namespace(spec.Namespace).Get(ctx, spec.Name, metav1.GetOptions{})
+	}
+	return err
 }
 
 // List returns all forwards, sorted for stable display.
@@ -191,6 +280,42 @@ func nextFreePort(addr string, port int, taken map[int]bool) int {
 	return p
 }
 
+// FreeLocalPort picks a local port for a forward to remote port want (0 when
+// the port is a name): want itself when it is >= 1024 and free (not held by
+// another process or a running forward of ours), else the next free port.
+// Privileged ports map to want+8000 (80 -> 8080). exact says want was used.
+func (m *Manager) FreeLocalPort(addr string, want int) (port int, exact bool, err error) {
+	if addr == "" {
+		addr = "127.0.0.1"
+	}
+	taken := map[int]bool{}
+	m.mu.Lock()
+	for _, f := range m.forwards {
+		f.mu.Lock()
+		if f.status.State != Stopped && f.status.Address == addr {
+			taken[f.status.LocalPort] = true
+		}
+		f.mu.Unlock()
+	}
+	m.mu.Unlock()
+	if want >= 1024 && want < 65536 && !taken[want] && portFree(addr, want) {
+		return want, true, nil
+	}
+	if want > 0 && want < 1024 {
+		want += 8000
+	}
+	if want >= 1024 && want < 65536 {
+		if !taken[want] && portFree(addr, want) {
+			return want, false, nil
+		}
+		if p := nextFreePort(addr, want, taken); p != 0 {
+			return p, false, nil
+		}
+	}
+	p, err := freePort(addr)
+	return p, false, err
+}
+
 var validKinds = map[string]bool{"pod": true, "service": true, "deployment": true, "statefulset": true, "daemonset": true, "replicaset": true}
 
 // Create validates, persists and starts a new forward. LocalPort 0 picks a
@@ -219,15 +344,12 @@ func (m *Manager) Create(s Spec, replace bool) (Status, error) {
 	autoPort := s.LocalPort == 0
 	if autoPort {
 		// Prefer the same port number locally when it's free (nicer URLs).
-		if n, err := strconv.Atoi(s.Port); err == nil && n >= 1024 && portFree(s.Address, n) {
-			s.LocalPort = n
-		} else {
-			p, err := freePort(s.Address)
-			if err != nil {
-				return Status{}, err
-			}
-			s.LocalPort = p
+		n, _ := strconv.Atoi(s.Port)
+		p, _, err := m.FreeLocalPort(s.Address, n)
+		if err != nil {
+			return Status{}, err
 		}
+		s.LocalPort = p
 	}
 	explicit := s.LocalPort != 0 && !autoPort
 	m.mu.Lock()
@@ -281,9 +403,19 @@ func (m *Manager) Create(s Spec, replace bool) (Status, error) {
 	return st, nil
 }
 
-// Update changes mutable settings (autoStart, label, localPort). Changing the
-// local port restarts a running forward.
-func (m *Manager) Update(id string, autoStart *bool, label *string, localPort *int) (Status, error) {
+// Changes are the mutable settings of a forward; nil fields are left alone.
+type Changes struct {
+	AutoStart     *bool
+	Label         *string
+	LocalPort     *int
+	OpenInBrowser *bool
+	HTTPS         *bool
+}
+
+// Update changes mutable settings. Changing the local port restarts a running
+// forward.
+func (m *Manager) Update(id string, ch Changes) (Status, error) {
+	autoStart, label, localPort := ch.AutoStart, ch.Label, ch.LocalPort
 	m.mu.Lock()
 	f := m.forwards[id]
 	m.mu.Unlock()
@@ -301,6 +433,15 @@ func (m *Manager) Update(id string, autoStart *bool, label *string, localPort *i
 	if localPort != nil && *localPort != f.status.LocalPort && *localPort > 0 {
 		f.status.LocalPort = *localPort
 		restart = f.status.State != Stopped
+	}
+	if ch.OpenInBrowser != nil {
+		f.status.OpenInBrowser = *ch.OpenInBrowser
+	}
+	if ch.HTTPS != nil {
+		f.status.HTTPS = *ch.HTTPS
+		if f.status.State != Stopped {
+			f.status.URL = f.status.Spec.url()
+		}
 	}
 	f.mu.Unlock()
 	if err := m.save(); err != nil {
@@ -394,7 +535,9 @@ func (m *Manager) save() error {
 	specs := make([]Spec, 0, len(m.forwards))
 	for _, f := range m.forwards {
 		f.mu.Lock()
-		specs = append(specs, f.status.Spec)
+		if !f.status.Ephemeral {
+			specs = append(specs, f.status.Spec)
+		}
 		f.mu.Unlock()
 	}
 	m.mu.Unlock()
@@ -430,7 +573,7 @@ func (m *Manager) start(f *forward) {
 	f.mu.Lock()
 	f.cancel, f.done = cancel, done
 	f.status.State, f.status.Error, f.status.Reconnects = Starting, "", 0
-	f.status.URL = fmt.Sprintf("http://%s:%d", hostFor(f.status.Address), f.status.LocalPort)
+	f.status.URL = f.status.Spec.url()
 	f.mu.Unlock()
 	go func() {
 		defer close(done)

@@ -255,6 +255,8 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   Open in browser and Copy URL. Its badge counts running forwards (amber
   while one reconnects, red if one fails), and it flashes when you start one.
 - **Stop all** in the Forwards tab (or the palette's **Stop All Port Forwards**) stops every running forward after a confirmation, offering this cluster or all clusters when forwards span several. Starting a forward on a local port another forward of ours holds offers **Replace it** or the next free port; a port held by another process only suggests a free one.
+- The start dialog defaults the local port to the remote port when it is free and 1024 or above, else the next free port (`80` suggests `8080`); one-click forwards pick the same way. **Open in browser when it starts** and **Use https** are remembered with the forward (Start on a saved forward honours them). **Don't remember this forward** keeps it out of the saved set, so it is gone after a restart.
+- A saved forward whose pod, service or workload no longer exists (a 404) is dropped quietly when k8sman starts, with a dismissable "2 saved forwards were removed (their targets are gone)" note in the Forwards list. Other errors keep the forward and show as its own warning.
 
 ## Pages
 

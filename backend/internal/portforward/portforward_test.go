@@ -1,14 +1,57 @@
 package portforward
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"k8s.io/client-go/kubernetes/fake"
+
 	"github.com/matty234/k8sman/backend/internal/cluster"
 )
+
+// A forward defaults its local port to the remote one when free (or the next
+// free port), remembers its browser choices, and an ephemeral forward is not
+// saved. Only a 404 from the target counts as "gone".
+func TestDefaultsEphemeralAndGoneTargets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "pf.json")
+	m, err := NewManager(cluster.NewDisconnected("", errors.New("no cluster")), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.StopAll)
+	if p, same, _ := m.FreeLocalPort("127.0.0.1", 18090); p != 18090 || !same {
+		t.Fatalf("free remote port should be reused, got %d %v", p, same)
+	}
+	if p, same, _ := m.FreeLocalPort("127.0.0.1", 80); p != 8080 || same {
+		t.Fatalf("privileged port should map to 8080, got %d %v", p, same)
+	}
+	st, err := m.Create(Spec{Context: "a", Kubeconfig: "k", Namespace: "ns", Kind: "pod", Name: "p", Port: "18090", OpenInBrowser: true, HTTPS: true}, false)
+	if err != nil || st.LocalPort != 18090 || st.URL != "https://localhost:18090" {
+		t.Fatalf("create: %+v %v", st, err)
+	}
+	if p, same, _ := m.FreeLocalPort("127.0.0.1", 18090); p == 18090 || same {
+		t.Fatalf("a port held by our forward must be skipped, got %d", p)
+	}
+	if _, err := m.Create(Spec{Context: "a", Kubeconfig: "k", Namespace: "ns", Kind: "pod", Name: "tmp", Port: "80", Ephemeral: true}, false); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), `"openInBrowser": true`) || strings.Contains(string(b), `"tmp"`) {
+		t.Fatalf("saved set wrong: %s", b)
+	}
+
+	c := &cluster.Clients{Typed: fake.NewSimpleClientset()}
+	if err := getTarget(context.Background(), c, Spec{Kind: "service", Namespace: "ns", Name: "gone"}); !isGone(err) {
+		t.Fatalf("missing service should be gone: %v", err)
+	}
+	if isGone(errors.New("connection refused")) {
+		t.Fatal("other errors are not gone")
+	}
+}
 
 // Bulk stop keeps forwards saved, and replacing a forward on a used local
 // port frees the port for the new one and updates the saved set.

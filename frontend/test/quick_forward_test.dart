@@ -23,6 +23,9 @@ class _PfApi extends FakeApiClient {
     bool autoStart = false,
     String? label,
     bool replace = false,
+    bool openInBrowser = false,
+    bool https = false,
+    bool ephemeral = false,
   }) async {
     created.add('$namespace/$kind/$name:$port');
     return PortForward(id: 'x', context: 'kind', namespace: namespace, kind: kind, name: name, port: port, localPort: int.parse(port), state: 'active');

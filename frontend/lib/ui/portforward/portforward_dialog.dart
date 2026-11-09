@@ -68,6 +68,7 @@ Future<PortForward?> showPortForwardDialog(BuildContext context, PanelContext ct
   );
   if (pf != null && context.mounted) {
     context.read<LogDock?>()?.notifyForwardStarted();
+    if (pf.openInBrowser && pf.url != null) openUrl(pf.url!);
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
       content: Text('Forwarding ${pf.url ?? 'localhost:${pf.localPort}'} → ${pf.target}'),
       action: pf.url == null ? null : SnackBarAction(label: 'Open', onPressed: () => openUrl(pf.url!)),
@@ -92,6 +93,14 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
   late final _local = TextEditingController(text: _suggestLocal(_ports.isNotEmpty ? _ports.first.number : null));
   final _label = TextEditingController();
   bool _autoStart = true;
+  bool _openInBrowser = false;
+  bool _https = false;
+
+  /// Not saved for restarts.
+  bool _ephemeral = false;
+
+  /// The user typed a local port, so suggestions leave it alone.
+  bool _localEdited = false;
   bool _busy = false;
   String? _error;
 
@@ -100,6 +109,23 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
   ApiException? _conflict;
 
   static String _suggestLocal(int? remote) => remote != null && remote >= 1024 ? '$remote' : '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (_ports.isNotEmpty) _prefill(_ports.first.number);
+  }
+
+  /// Asks the backend for the local port to default to (the remote port when
+  /// free, else the next free one) unless the user has chosen one.
+  Future<void> _prefill(int remote) async {
+    try {
+      final p = await widget.ctx.api.freeForwardPort(remote);
+      if (mounted && !_localEdited) setState(() => _local.text = '$p');
+    } catch (_) {
+      // Keep the local guess; the backend still picks a free port.
+    }
+  }
 
   @override
   void dispose() {
@@ -118,9 +144,12 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
         name: widget.ctx.name,
         port: _remote.text.trim(),
         localPort: int.tryParse(_local.text.trim()) ?? 0,
-        autoStart: _autoStart,
+        autoStart: _autoStart && !_ephemeral,
         label: _label.text.trim().isEmpty ? null : _label.text.trim(),
         replace: replace,
+        openInBrowser: _openInBrowser,
+        https: _https,
+        ephemeral: _ephemeral,
       );
       if (mounted) Navigator.pop(context, pf);
     } on ApiException catch (e) {
@@ -146,10 +175,13 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
                 ChoiceChip(
                   label: Text(p.description),
                   selected: _remote.text == p.value,
-                  onSelected: (_) => setState(() {
-                    _remote.text = p.value;
-                    _local.text = _suggestLocal(p.number);
-                  }),
+                  onSelected: (_) {
+                    setState(() {
+                      _remote.text = p.value;
+                      if (!_localEdited) _local.text = _suggestLocal(p.number);
+                    });
+                    _prefill(p.number);
+                  },
                 ),
             ]),
             const SizedBox(height: 12),
@@ -170,6 +202,7 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
                 decoration: const InputDecoration(labelText: 'Local port', hintText: 'auto'),
                 style: monoStyle(context),
                 keyboardType: TextInputType.number,
+                onChanged: (_) => _localEdited = true,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
             ),
@@ -180,14 +213,40 @@ class _PortForwardDialogState extends State<_PortForwardDialog> {
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             dense: true,
-            value: _autoStart,
-            onChanged: (v) => setState(() => _autoStart = v ?? false),
+            value: _autoStart && !_ephemeral,
+            onChanged: _ephemeral ? null : (v) => setState(() => _autoStart = v ?? false),
             title: const Text('Start automatically with k8sman'),
             subtitle: Text(
                 widget.kind == 'pod'
                     ? 'Reconnects if the connection drops.'
                     : 'Follows a ready pod: reconnects to a new one if the pod is replaced.',
                 style: theme.textTheme.bodySmall),
+          ),
+          CheckboxListTile(
+            key: const ValueKey('pf-open-browser'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: _openInBrowser,
+            onChanged: (v) => setState(() => _openInBrowser = v ?? false),
+            title: const Text('Open in browser when it starts'),
+            subtitle: Text('Remembered for this forward.', style: theme.textTheme.bodySmall),
+          ),
+          CheckboxListTile(
+            key: const ValueKey('pf-https'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: _https,
+            onChanged: (v) => setState(() => _https = v ?? false),
+            title: const Text('Use https'),
+          ),
+          CheckboxListTile(
+            key: const ValueKey('pf-ephemeral'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: _ephemeral,
+            onChanged: (v) => setState(() => _ephemeral = v ?? false),
+            title: const Text("Don't remember this forward"),
+            subtitle: Text('It is gone after k8sman restarts.', style: theme.textTheme.bodySmall),
           ),
           if (_conflict case final c?) _PortConflict(
             port: _local.text.trim(),

@@ -15,6 +15,11 @@ import 'support/harness.dart';
 
 class _PfApi extends FakeApiClient {
   final calls = <(int, bool)>[];
+  final flags = <(bool, bool, bool)>[];
+
+  /// The backend suggests 8080 for a privileged port, else the port itself.
+  @override
+  Future<int> freeForwardPort(int remote) async => remote < 1024 ? remote + 8000 : remote;
   @override
   Future<PortForward> createPortForward({
     required String namespace,
@@ -25,7 +30,11 @@ class _PfApi extends FakeApiClient {
     bool autoStart = false,
     String? label,
     bool replace = false,
+    bool openInBrowser = false,
+    bool https = false,
+    bool ephemeral = false,
   }) async {
+    flags.add((openInBrowser, https, ephemeral));
     calls.add((localPort, replace));
     if (!replace && localPort == 8080) {
       throw ApiException(409, 'in use', reason: 'LocalPortInUse', usedBy: 'demo/pod/old:80', suggestedPort: 8081);
@@ -35,6 +44,50 @@ class _PfApi extends FakeApiClient {
 }
 
 void main() {
+  testWidgets('start dialog prefills the local port from the backend and sends the remembered options', (tester) async {
+    final api = _PfApi();
+    final pod = <String, dynamic>{
+      'metadata': {'name': 'web', 'namespace': 'demo'},
+      'spec': {
+        'containers': [
+          {
+            'name': 'c',
+            'ports': [
+              {'containerPort': 80},
+            ],
+          },
+        ],
+      },
+    };
+    final app = AppState(api)..types = testTypes;
+    await tester.pumpWidget(MultiProvider(
+      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+      child: MaterialApp(
+        theme: buildTheme(Brightness.dark),
+        home: Scaffold(body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showPortForwardDialog(context, PanelContext(object: pod, type: testType('', 'Pod'), api: api, app: app)),
+            child: const Text('open'),
+          ),
+        )),
+      ),
+    ));
+    tester.view.physicalSize = const Size(900, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, '8080'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('pf-https')));
+    await tester.tap(find.byKey(const ValueKey('pf-ephemeral')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Start forwarding'));
+    await tester.pumpAndSettle();
+    expect(api.calls, [(8080, false)]);
+    expect(api.flags, [(false, true, true)]);
+  });
+
   testWidgets('start dialog offers to replace the forward holding the local port', (tester) async {
     final api = _PfApi();
     final pod = Map<String, dynamic>.from(jsonDecode(File('../dev/fixtures/pod-web.json').readAsStringSync()));

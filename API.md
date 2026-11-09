@@ -289,10 +289,11 @@ Forwards with `autoStart` start when the backend launches.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/portforwards` | `{forwards:[{id, context, kubeconfig, namespace, kind, name, port, localPort, address, autoStart, label, state, pod, remotePort, error, since, reconnects, connections, url}]}`. `state` is `stopped`, `starting`, `active`, `reconnecting` or `error` |
-| POST | `/api/portforwards` | create: `{namespace, kind: pod/service/deployment/statefulset/daemonset/replicaset, name, port (number or name), localPort (0 = auto), autoStart, label, replace}`. If `localPort` is held by another forward of ours, or by another process, it answers 409 `{reason: "LocalPortInUse", usedBy, suggestedPort}` (`usedBy` is `namespace/kind/name:port`, empty when another process holds it). With `replace: true` the forward holding the port is stopped and forgotten, and the new one starts in its place (not possible when another process holds the port) |
+| GET | `/api/portforwards` | `{removedGone, forwards:[{id, context, kubeconfig, namespace, kind, name, port, localPort, address, autoStart, label, openInBrowser, https, ephemeral, state, pod, remotePort, error, since, reconnects, connections, url}]}`. `state` is `stopped`, `starting`, `active`, `reconnecting` or `error`. `removedGone` counts saved forwards dropped at startup because their pod, service or workload no longer exists (a 404; any other error keeps the forward and shows as its own error). `https` makes `url` an https URL |
+| GET | `/api/portforwards/free?port=[&address=]` | the local port to default to for remote port `port`: `{port, same}`. The same number when it is >= 1024 and free (not held by another process or a running forward), else the next free port (`80` suggests `8080`) |
+| POST | `/api/portforwards` | create: `{namespace, kind: pod/service/deployment/statefulset/daemonset/replicaset, name, port (number or name), localPort (0 = auto), autoStart, label, openInBrowser, https, ephemeral, replace}`. `ephemeral` forwards run but are not saved for restarts. `localPort` 0 picks as `/free` does. If `localPort` is held by another forward of ours, or by another process, it answers 409 `{reason: "LocalPortInUse", usedBy, suggestedPort}` (`usedBy` is `namespace/kind/name:port`, empty when another process holds it). With `replace: true` the forward holding the port is stopped and forgotten, and the new one starts in its place (not possible when another process holds the port) |
 | POST | `/api/portforwards/stop` | stop every running forward in one request, or only those of `?context=`; they stay saved. `{stopped: n}` |
-| PATCH | `/api/portforwards/{id}` | `{autoStart?, label?, localPort?}` |
+| PATCH | `/api/portforwards/{id}` | `{autoStart?, label?, localPort?, openInBrowser?, https?}` |
 | POST | `/api/portforwards/{id}/start`, `/api/portforwards/{id}/stop` | start or stop a forward |
 | DELETE | `/api/portforwards/{id}` | stop and forget a forward |
 
