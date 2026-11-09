@@ -206,7 +206,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
               controller: _scroll,
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                StatBlocks(data: data),
+                StatBlocks(data: data, scope: _ns),
                 if (_error != null) ...[
                   const SizedBox(height: 8),
                   InlineMessage('Refresh failed: ${_errorText(_error!)}. Showing the last result.', isError: true),

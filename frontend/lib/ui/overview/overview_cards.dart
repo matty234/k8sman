@@ -91,42 +91,53 @@ class _Stat {
 
   /// Whether the shortfall is a problem (colours the number and bar).
   final bool bad;
-  const _Stat(this.label, this.good, this.total, {this.note, this.bad = false});
+
+  /// Where clicking the block goes: the kind's table (filtered to the
+  /// shortfall where a column can say so) or page.
+  final OverviewTarget? target;
+  const _Stat(this.label, this.good, this.total, {this.note, this.bad = false, this.target});
   bool get pending => total == null;
 }
 
 class StatBlocks extends StatelessWidget {
   final OverviewData data;
-  const StatBlocks({super.key, required this.data});
+  final NamespaceScope scope;
+  const StatBlocks({super.key, required this.data, this.scope = NamespaceScope.all});
 
   List<_Stat> _stats() {
     final out = <_Stat>[];
-    void add(String type, String label, String good, String source) {
+    void add(String type, String label, String good, String source, OverviewTarget target, {String? badFilter}) {
       if (data.isPending(source)) return out.add(_Stat(label, null, null));
       final total = data.count(type, 'total');
       if (total == 0) return;
       final g = data.count(type, good);
-      out.add(_Stat(label, g, total, bad: g < total));
+      final bad = g < total;
+      final t = bad && badFilter != null ? OverviewTarget.table(target.group, target.kind, badFilter) : target;
+      out.add(_Stat(label, g, total, bad: bad, target: t));
     }
 
     final pods = data.count('pods', 'total');
     if (pods > 0) {
       final completed = data.count('pods', 'completed');
       final ready = data.count('pods', 'ready');
-      out.add(_Stat('pods ready', ready, pods - completed, note: completed > 0 ? '+$completed completed' : null, bad: ready < pods - completed));
+      out.add(_Stat('pods ready', ready, pods - completed,
+          note: completed > 0 ? '+$completed completed' : null, bad: ready < pods - completed, target: const OverviewTarget.table('', 'Pod')));
     }
-    add('deployments', 'deployments', 'healthy', 'deployments');
-    add('statefulSets', 'statefulsets', 'healthy', 'statefulsets');
-    add('daemonSets', 'daemonsets', 'healthy', 'daemonsets');
+    add('deployments', 'deployments', 'healthy', 'deployments', const OverviewTarget.table('apps', 'Deployment'));
+    add('statefulSets', 'statefulsets', 'healthy', 'statefulsets', const OverviewTarget.table('apps', 'StatefulSet'));
+    add('daemonSets', 'daemonsets', 'healthy', 'daemonsets', const OverviewTarget.table('apps', 'DaemonSet'));
     final jobs = data.count('jobs', 'total');
     if (data.isPending('jobs')) {
       out.add(const _Stat('jobs succeeded', null, null));
     } else if (jobs > 0) {
       final failed = data.count('jobs', 'failed');
-      out.add(_Stat('jobs succeeded', data.count('jobs', 'succeeded'), jobs, note: failed > 0 ? '$failed failed' : null, bad: failed > 0));
+      out.add(_Stat('jobs succeeded', data.count('jobs', 'succeeded'), jobs,
+          note: failed > 0 ? '$failed failed' : null,
+          bad: failed > 0,
+          target: OverviewTarget.table('batch', 'Job', failed > 0 ? 'status=Failed' : null)));
     }
-    add('nodes', 'nodes ready', 'ready', 'nodes');
-    add('pvcs', 'PVCs bound', 'bound', 'pvcs');
+    add('nodes', 'nodes ready', 'ready', 'nodes', const OverviewTarget.page(MainView.nodes));
+    add('pvcs', 'PVCs bound', 'bound', 'pvcs', const OverviewTarget.table('', 'PersistentVolumeClaim'), badFilter: 'status!=Bound');
     return out;
   }
 
@@ -140,29 +151,43 @@ class StatBlocks extends StatelessWidget {
       // A few blocks stay small and left-aligned rather than stretching;
       // more than fit spread evenly over the rows.
       final cols = n <= fit ? (n >= fit - 2 ? n : fit) : (n / (n / fit).ceil()).ceil();
-      return _grid([for (final s in stats) _StatBlock(stat: s)], cols);
+      return _grid([for (final s in stats) _StatBlock(stat: s, scope: scope)], cols);
     });
   }
 }
 
 class _StatBlock extends StatelessWidget {
   final _Stat stat;
-  const _StatBlock({required this.stat});
+  final NamespaceScope scope;
+  const _StatBlock({required this.stat, required this.scope});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    final faint = AppColors.of(context).faint;
     final good = stat.good ?? 0;
     final total = stat.total ?? 0;
     final frac = total == 0 ? 1.0 : good / total;
     // Red only when none are ready/bound/succeeded (an outage); partly
     // ready is amber, so a busy cluster isn't a wall of red.
     final color = !stat.bad ? theme.colorScheme.onSurface.withValues(alpha: 0.28) : issueColor(context, good == 0 && total > 0 ? IssueSeverity.critical : IssueSeverity.warning);
+    final target = stat.target;
+    if (stat.pending || target == null) return _block(context, color, frac, hovered: false);
+    return Hoverable(
+      key: ValueKey('stat-${stat.label}'),
+      onTap: () => openOverviewTarget(context, target, scope),
+      builder: (hovered) => _block(context, color, frac, hovered: hovered),
+    );
+  }
+
+  Widget _block(BuildContext context, Color color, double frac, {required bool hovered}) {
+    final theme = Theme.of(context);
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    final faint = AppColors.of(context).faint;
+    final good = stat.good ?? 0;
+    final total = stat.total ?? 0;
     return Container(
       key: stat.pending ? ValueKey('pending-inventory-${stat.label}') : null,
-      decoration: _panel(context),
+      decoration: hovered ? _panel(context).copyWith(color: AppColors.of(context).hover) : _panel(context),
       padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         SizedBox(

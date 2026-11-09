@@ -381,12 +381,17 @@ class _IssueRowState extends State<_IssueRow> {
     final row = Padding(
       padding: EdgeInsets.symmetric(vertical: dense ? 5 : 8, horizontal: dense ? 10 : 4),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (!dense)
+        // A fixed slot for the expander (empty when there's nothing to
+        // expand) and one for the severity icon, so icons and text line up
+        // whether or not a row groups others.
+        if (!dense) ...[
           SizedBox(
-            width: 22,
-            child: w.onToggle == null ? icon : Icon(w.expanded == true ? Icons.expand_more : Icons.chevron_right, size: 18, color: theme.hintColor),
+            width: 18,
+            child: w.onToggle == null ? null : Icon(w.expanded == true ? Icons.expand_more : Icons.chevron_right, size: 16, color: theme.hintColor),
           ),
-        if (!dense && w.onToggle != null) ...[icon, const SizedBox(width: 4)],
+          const SizedBox(width: 2),
+          SizedBox(width: 20, child: icon),
+        ],
         const SizedBox(width: 6),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
