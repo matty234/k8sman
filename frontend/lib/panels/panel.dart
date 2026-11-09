@@ -53,7 +53,7 @@ abstract class ResourcePanel {
   bool get showsOwned => false;
 
   /// True when the panel's status header shows the object's owner (with
-  /// `OwnerLine` / `ownerFact` from `ui/detail/owner_line.dart`), so the
+  /// `OwnerLine` / `ownerFact` from `ui/inspector/`), so the
   /// shell skips its quiet "Owned by" line at the top of the Overview.
   bool get ownerInHeader => false;
 

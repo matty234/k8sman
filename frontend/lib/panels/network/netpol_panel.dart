@@ -4,7 +4,7 @@ import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
-import 'inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import 'netpol_explain.dart';
 import 'widgets.dart';
 
@@ -60,7 +60,7 @@ class _NetpolView extends StatelessWidget {
           _header(context, ex, pods, sel, snap.error),
           _direction(context, ex.ingress),
           _direction(context, ex.egress),
-          PodSection(
+          InspectorSection(
             id: 'netpol-pods',
             title: 'Selected pods',
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -86,26 +86,26 @@ class _NetpolView extends StatelessWidget {
           PolicyMode.allowAll => 'all',
           PolicyMode.restricted => '${[for (final r in d.rules) ...ruleLines(d, r)].length}',
         };
-    final insights = <PodInsight>[
+    final insights = <Insight>[
       if (pods != null && pods.isEmpty)
-        PodInsight(
+        Insight(
           Severity.warn,
           'Selects no pods',
           sel.isEmpty ? 'No pods in ${ctx.namespace} yet; the policy will apply to every pod created here.' : 'No pods match $sel; the policy currently has no effect.',
         ),
-      if (error != null) PodInsight(Severity.warn, 'Could not list pods', '$error'),
+      if (error != null) Insight(Severity.warn, 'Could not list pods', '$error'),
     ];
     return InspectorHeader(
       mark: worstOf(insights) ?? (pods == null ? Severity.neutral : Severity.ok),
       headline: netpolHeadline(ex),
       detail: ex.appliesTo,
       figures: [
-        HeaderFigure(pods == null ? '–' : '${pods.length}', pods?.length == 1 ? 'pod' : 'pods', severity: pods != null && pods.isEmpty ? Severity.warn : Severity.neutral),
-        HeaderFigure(figure(ex.ingress), 'ingress', tooltip: ex.ingress.text),
-        HeaderFigure(figure(ex.egress), 'egress', tooltip: ex.egress.text),
+        InspectorFigure(pods == null ? '–' : '${pods.length}', pods?.length == 1 ? 'pod' : 'pods', severity: pods != null && pods.isEmpty ? Severity.warn : Severity.neutral),
+        InspectorFigure(figure(ex.ingress), 'ingress', tooltip: ex.ingress.text),
+        InspectorFigure(figure(ex.egress), 'egress', tooltip: ex.egress.text),
       ],
       insights: insights,
-      facts: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      footer: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Muted('policyTypes: ${ex.policyTypes.join(', ')}${ex.policyTypesDefaulted ? ' (defaulted)' : ''}  ·  '
               'policies are additive: traffic is allowed if any policy selecting the pod allows it'),
@@ -125,27 +125,27 @@ class _NetpolView extends StatelessWidget {
     final multiRule = d.rules.length > 1;
     final Widget body = switch (d.mode) {
       PolicyMode.unrestricted => Padding(padding: const EdgeInsets.only(left: 4), child: Muted('This policy does not restrict ${d.direction.toLowerCase()} traffic.')),
-      PolicyMode.denyAll => CompactRow(
-          severity: Severity.neutral,
+      PolicyMode.denyAll => InspectorRow(
+          dot: Severity.neutral,
           title: Text('All ${d.direction.toLowerCase()} traffic denied', maxLines: 2),
           subtitle: const Text('No rule allows anything, so only other policies can open it.'),
         ),
-      PolicyMode.allowAll => CompactRow(
-          severity: Severity.ok,
+      PolicyMode.allowAll => InspectorRow(
+          dot: Severity.ok,
           title: Text('All ${d.direction.toLowerCase()} traffic allowed', maxLines: 2),
           subtitle: const Text('A rule with no peers and no ports allows everything.'),
         ),
-      PolicyMode.restricted => TrimmedRows([
+      PolicyMode.restricted => TrimmedList([
           for (final (i, l) in lines)
-            CompactRow(
+            InspectorRow(
               key: ValueKey('netpol-${d.direction}-$l'),
-              severity: Severity.ok,
+              dot: Severity.ok,
               title: Text(l, maxLines: 3),
               subtitle: multiRule ? Text('rule ${i + 1}') : null,
             ),
-        ], limit: 8),
+        ], trimAbove: 8),
     };
-    return PodSection(
+    return InspectorSection(
       id: 'netpol-${d.direction.toLowerCase()}',
       title: d.direction,
       initiallyExpanded: d.mode != PolicyMode.unrestricted,

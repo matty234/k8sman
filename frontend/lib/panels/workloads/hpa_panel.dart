@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../api/models.dart';
 import '../../metrics/hpa_live.dart';
 import '../../metrics/metrics_api.dart' show HpaLiveMetric;
-import '../../ui/detail/owner_line.dart';
+import '../../ui/inspector/inspector.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -164,21 +164,21 @@ class HpaPanel extends ResourcePanel {
     final behavior = asMap(spec['behavior']);
     final insights = conditionInsights(asMapList(st['conditions']), errors: sev == Severity.error ? const {'AbleToScale', 'ScalingActive'} : const {});
     return [
-      WorkloadStatusHeader(
+      InspectorHeader(
         headline: headline,
-        severity: sev,
+        mark: sev,
         // The reason is the insight's title when a condition explains it.
         detail: insights.isEmpty ? reason : null,
         figures: [
-          WorkloadFigure('$current', 'current', severity: max > 0 && current >= max ? Severity.warn : Severity.neutral, tooltip: 'replicas now'),
-          WorkloadFigure(
+          InspectorFigure('$current', 'current', severity: max > 0 && current >= max ? Severity.warn : Severity.neutral, tooltip: 'replicas now'),
+          InspectorFigure(
             desiredComputed ? '$desired' : '—',
             'desired',
             severity: desiredComputed && desired != current ? Severity.warn : Severity.neutral,
             tooltip: desiredComputed ? 'replicas the HPA wants' : 'Not computed: ScalingActive is False',
           ),
-          WorkloadFigure('$min', 'min'),
-          WorkloadFigure('$max', 'max'),
+          InspectorFigure('$min', 'min'),
+          InspectorFigure('$max', 'max'),
         ],
         insights: insights,
         facts: [

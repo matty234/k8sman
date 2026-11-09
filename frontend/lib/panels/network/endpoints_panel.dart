@@ -5,19 +5,19 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../panel.dart';
-import 'inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import 'widgets.dart';
 
 /// The status header of an endpoint list: "N of M ready" with ready /
 /// not-ready / terminating figures and an insight when none are ready.
-InspectorHeader endpointsHeader(List<EndpointAddr> addrs, {required String what, Widget? facts, List<PodInsight> extra = const []}) {
+InspectorHeader endpointsHeader(List<EndpointAddr> addrs, {required String what, List<(String, Object?)> facts = const [], Widget? footer, List<Insight> extra = const []}) {
   final ready = addrs.where((a) => a.ready).length;
   final notReady = addrs.length - ready;
   final terminating = addrs.where((a) => a.terminating).length;
-  final insights = <PodInsight>[
-    if (addrs.isEmpty) PodInsight(Severity.error, 'No endpoints', 'Traffic to this $what goes nowhere.'),
-    if (addrs.isNotEmpty && ready == 0) PodInsight(Severity.error, 'None of the ${addrs.length} endpoints are ready', 'Endpoints become ready once their pods pass their readiness probes.'),
-    if (ready > 0 && notReady > 0) PodInsight(Severity.warn, '$notReady of ${addrs.length} endpoints not ready', 'Traffic only goes to the $ready ready endpoint${ready == 1 ? '' : 's'}.'),
+  final insights = <Insight>[
+    if (addrs.isEmpty) Insight(Severity.error, 'No endpoints', 'Traffic to this $what goes nowhere.'),
+    if (addrs.isNotEmpty && ready == 0) Insight(Severity.error, 'None of the ${addrs.length} endpoints are ready', 'Endpoints become ready once their pods pass their readiness probes.'),
+    if (ready > 0 && notReady > 0) Insight(Severity.warn, '$notReady of ${addrs.length} endpoints not ready', 'Traffic only goes to the $ready ready endpoint${ready == 1 ? '' : 's'}.'),
     ...extra,
   ];
   return InspectorHeader(
@@ -25,12 +25,14 @@ InspectorHeader endpointsHeader(List<EndpointAddr> addrs, {required String what,
     headline: addrs.isEmpty ? 'No endpoints' : (ready == addrs.length ? 'All ready' : '$ready of ${addrs.length} ready'),
     detail: addrs.isEmpty ? null : plural(addrs.length, 'address'),
     figures: [
-      HeaderFigure('$ready', 'ready', of: '/${addrs.length}', severity: addrs.isEmpty || ready == 0 ? Severity.error : (ready < addrs.length ? Severity.warn : Severity.neutral)),
-      HeaderFigure('$notReady', 'not ready', severity: notReady > 0 ? Severity.error : Severity.neutral),
-      if (terminating > 0) HeaderFigure('$terminating', 'terminating', severity: Severity.warn),
+      InspectorFigure('$ready', 'ready', of: '/${addrs.length}', severity: addrs.isEmpty || ready == 0 ? Severity.error : (ready < addrs.length ? Severity.warn : Severity.neutral)),
+      InspectorFigure('$notReady', 'not ready', severity: notReady > 0 ? Severity.error : Severity.neutral),
+      if (terminating > 0) InspectorFigure('$terminating', 'terminating', severity: Severity.warn),
     ],
     insights: insights,
+    factsKeyWidth: 80,
     facts: facts,
+    footer: footer,
   );
 }
 
@@ -52,7 +54,7 @@ class EndpointSlicePanel extends ResourcePanel {
       endpointsHeader(
         addrs,
         what: 'slice',
-        facts: KeyValueTable([
+        facts: [
           (
             'Service',
             svcName != null
@@ -62,9 +64,9 @@ class EndpointSlicePanel extends ResourcePanel {
           ('Type', '${o['addressType'] ?? '?'}'),
           ('Managed by', managedBy),
           ('Ports', PortChips(asMapList(o['ports']))),
-        ], keyWidth: 80),
+        ],
       ),
-      PodSection(
+      InspectorSection(
         id: 'slice-endpoints',
         title: 'Endpoints',
         trailing: SectionSummary(addrs.isEmpty ? 'none' : '$ready of ${addrs.length} ready'),
@@ -92,18 +94,15 @@ class EndpointsPanel extends ResourcePanel {
       endpointsHeader(
         all,
         what: 'service',
-        extra: [if (subsets.isEmpty) const PodInsight(Severity.error, 'No subsets', 'This service has no endpoints.')],
-        facts: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          KeyValueTable([
-            ('Service', ResourceLink(ObjectRef(kind: 'Service', name: ctx.name, namespace: ctx.namespace), label: ctx.name)),
-            ('Subsets', '${subsets.length}'),
-          ], keyWidth: 80),
-          const SizedBox(height: 4),
-          const Muted('Legacy core/v1 Endpoints (mirrors EndpointSlices; capped at 1000 addresses).'),
-        ]),
+        extra: [if (subsets.isEmpty) const Insight(Severity.error, 'No subsets', 'This service has no endpoints.')],
+        facts: [
+          ('Service', ResourceLink(ObjectRef(kind: 'Service', name: ctx.name, namespace: ctx.namespace), label: ctx.name)),
+          ('Subsets', '${subsets.length}'),
+        ],
+        footer: const Muted('Legacy core/v1 Endpoints (mirrors EndpointSlices; capped at 1000 addresses).'),
       ),
       for (var i = 0; i < subsets.length; i++)
-        PodSection(
+        InspectorSection(
           id: 'endpoints-subset-$i',
           title: subsets.length == 1 ? 'Subset' : 'Subset ${i + 1}',
           trailing: SectionSummary(() {

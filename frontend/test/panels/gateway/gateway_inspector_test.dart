@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 
 import 'gw_support.dart';
 
 void main() {
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('Gateway: status header, problem listener first and open, collapsed summaries at 320px', (tester) async {
     await pumpGwPanel(tester, gwFixture('gateway-legacy-gw'), size: const Size(320, 2000));

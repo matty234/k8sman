@@ -8,7 +8,7 @@ import '../../ui/access/grant_dialog.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../inspector_parts.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'rbac.dart';
 import 'usage.dart';
@@ -63,7 +63,7 @@ class ServiceAccountPanel extends ResourcePanel {
         ),
       ),
       UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.serviceAccount, existingKeys: const {}),
-      PodSection(
+      InspectorSection(
         id: 'sa-secrets',
         title: 'Secrets',
         initiallyExpanded: nSecrets > 0,
@@ -75,7 +75,7 @@ class ServiceAccountPanel extends ResourcePanel {
             : TrimmedList([
                 for (final s in pullSecrets) secretRow(s, pull: true),
                 for (final s in secrets) secretRow(s, pull: false),
-              ]),
+              ], keep: 6, trimAbove: 8),
       ),
       _Permissions(key: ValueKey('${ctx.uid}/rbac'), ctx: ctx),
     ];
@@ -143,7 +143,7 @@ class _PermissionsState extends State<_Permissions> {
         List<EffectivePermission> perms(List<_ResolvedBinding> bs) =>
             effectivePermissions([for (final b in bs) if (b.role != null) (b.match, b.role!)]);
         final ownPerms = perms(own);
-        return PodSection(
+        return InspectorSection(
           id: 'sa-permissions',
           title: 'Permissions',
           initiallyExpanded: false,

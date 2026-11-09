@@ -1,13 +1,13 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
 import 'samples.dart';
 
 void main() {
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('ConfigMap: header counts and usage, compact key rows, binary data collapsed, clean at 320', (tester) async {
     await loadRealFonts();

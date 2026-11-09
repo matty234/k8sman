@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../ui/detail/owner_line.dart';
+import '../../ui/inspector/inspector.dart';
 import '../../util/k8s.dart';
 import '../../actions/actions.dart';
 import '../../ui/logs/open_logs.dart';
@@ -50,19 +50,19 @@ class ReplicaSetPanel extends ResourcePanel {
         ? WorkloadHeadline('Ready $ready/$desired', Severity.ok, detail: rev == null ? null : 'Revision $rev')
         : WorkloadHeadline('Ready $ready/$desired', ready == 0 ? Severity.error : Severity.warn, detail: '${desired - ready} not ready');
     return [
-      WorkloadStatusHeader(
+      InspectorHeader(
         headline: head.text,
-        severity: head.severity,
+        mark: head.severity,
         detail: head.detail,
         figures: [
-          WorkloadFigure.count(ready, desired, 'ready', zeroIsError: desired > 0),
-          WorkloadFigure.count(available, desired, 'available', zeroIsError: desired > 0),
-          WorkloadFigure('$current', 'pods', tooltip: 'pods that exist (status.replicas)'),
+          InspectorFigure.count(ready, desired, 'ready', zeroIsError: desired > 0),
+          InspectorFigure.count(available, desired, 'available', zeroIsError: desired > 0),
+          InspectorFigure('$current', 'pods', tooltip: 'pods that exist (status.replicas)'),
         ],
         insights: [
           ...conditionInsights(asMapList(st['conditions'])),
           if (byDeployment && !ctx.app.readOnly && !oldRevision)
-            const WorkloadInsight(Severity.neutral, 'Scaled by its Deployment', detail: 'The Deployment resets manual scaling of this ReplicaSet.'),
+            const Insight(Severity.neutral, 'Scaled by its Deployment', 'The Deployment resets manual scaling of this ReplicaSet.'),
         ],
         extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}'))],
         facts: [

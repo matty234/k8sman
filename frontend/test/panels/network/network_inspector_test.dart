@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/harness.dart';
 import 'net_support.dart';
 
 void main() {
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('Service: status header, collapsed summaries, clean at 320px', (tester) async {
     final svc = devFixture('svc-web')

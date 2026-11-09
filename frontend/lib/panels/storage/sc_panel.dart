@@ -6,7 +6,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../inspector_parts.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'common.dart';
 
@@ -30,14 +30,14 @@ class StorageClassPanel extends ResourcePanel {
     return [
       // What provisions it, how it binds, and how much uses it.
       usage((context, u) => _ClassHeader(object: o, usage: u)),
-      usage((context, u) => PodSection(
+      usage((context, u) => InspectorSection(
             id: 'sc-usage',
             title: 'Used by',
             trailing: SectionSummary(u == null ? '' : '${plural(u.pvcs.length, 'claim')} · ${plural(u.pvs.length, 'volume')}'),
             child: StorageClassUsage(key: ValueKey('usage-${ctx.uid}'), api: ctx.api, className: ctx.name),
           )),
       // Reference detail, collapsed behind a one-line summary.
-      PodSection(
+      InspectorSection(
         id: 'sc-parameters',
         title: 'Parameters',
         initiallyExpanded: false,
@@ -45,7 +45,7 @@ class StorageClassPanel extends ResourcePanel {
         child: ParamsTable(params, emptyText: 'No parameters (provisioner defaults apply)'),
       ),
       if (topo.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'sc-topologies',
           title: 'Allowed topologies',
           initiallyExpanded: false,
@@ -109,7 +109,7 @@ class _ClassHeader extends StatelessWidget {
         if (released > 0) InspectorFigure('$released', 'released PVs', severity: Severity.warn),
       ],
       insights: [
-        if (provisioner == 'kubernetes.io/no-provisioner') const PodInsight(Severity.info, 'No dynamic provisioning: PVs for this class must be created manually.'),
+        if (provisioner == 'kubernetes.io/no-provisioner') const Insight(Severity.info, 'No dynamic provisioning: PVs for this class must be created manually.'),
       ],
       facts: [
         (
@@ -176,11 +176,11 @@ class StorageClassUsage extends StatelessWidget {
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (u.pvcs.isNotEmpty) ...[
             const _GroupLabel('Claims'),
-            TrimmedList([for (final c in u.pvcs) _ClaimRow(c)]),
+            TrimmedList([for (final c in u.pvcs) _ClaimRow(c)], keep: 6, trimAbove: 8),
           ],
           if (u.pvs.isNotEmpty) ...[
             const _GroupLabel('Volumes'),
-            TrimmedList([for (final p in u.pvs) _VolumeRow(p)]),
+            TrimmedList([for (final p in u.pvs) _VolumeRow(p)], keep: 6, trimAbove: 8),
           ],
         ]);
       },
@@ -230,7 +230,7 @@ class _ClaimRow extends StatelessWidget {
         TextSpan(text: phase, style: bad ? TextStyle(color: severityColor(context, sev), fontWeight: FontWeight.w600) : null),
         if (modes.isNotEmpty) TextSpan(text: '  ·  ${modes.join(',')}'),
       ])),
-      meta: [if (cap != null) Text('$cap', style: monoStyle(context, size: 11.5))],
+      trailing: [if (cap != null) Text('$cap', style: monoStyle(context, size: 11.5))],
     );
   }
 }
@@ -255,7 +255,7 @@ class _VolumeRow extends StatelessWidget {
         TextSpan(text: phase, style: bad ? TextStyle(color: severityColor(context, sev), fontWeight: FontWeight.w600) : null),
         if (claim['name'] != null) TextSpan(text: '  ·  bound to ${claim['namespace'] ?? ''}/${claim['name']}'),
       ])),
-      meta: [if (cap != null) Text('$cap', style: monoStyle(context, size: 11.5))],
+      trailing: [if (cap != null) Text('$cap', style: monoStyle(context, size: 11.5))],
     );
   }
 }

@@ -5,9 +5,9 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../network/inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
-import '../pod/pod_widgets.dart' show InlineWrap, InsightList;
+import '../pod/pod_widgets.dart' show InlineWrap;
 import 'gw_model.dart';
 import 'gw_widgets.dart';
 
@@ -121,13 +121,13 @@ class _GatewayView extends StatelessWidget {
         final badConds = [for (final c in conds) if (c['status'] != 'True') '${c['type']}'];
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _header(context, data, snap.error),
-          PodSection(
+          InspectorSection(
             id: 'gw-listeners',
             title: 'Listeners',
             trailing: SectionSummary(_listenerSummary()),
             child: _listeners(context, data),
           ),
-          PodSection(
+          InspectorSection(
             id: 'gw-routes',
             title: 'Attached routes',
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -142,7 +142,7 @@ class _GatewayView extends StatelessWidget {
                     : _routes(context, grouped),
           ),
           if (grouped != null && data!.attachments.isNotEmpty)
-            PodSection(
+            InspectorSection(
               key: const ValueKey('topology'),
               id: 'gw-topology',
               title: 'Topology',
@@ -151,7 +151,7 @@ class _GatewayView extends StatelessWidget {
               child: _topology(context, grouped, data),
             ),
           if (asMap(infra['labels']).isNotEmpty || asMap(infra['annotations']).isNotEmpty || infra['parametersRef'] != null)
-            PodSection(
+            InspectorSection(
               key: const ValueKey('infra'),
               id: 'gw-infra',
               title: 'Infrastructure',
@@ -163,7 +163,7 @@ class _GatewayView extends StatelessWidget {
               ].join(' · ')),
               child: _infra(context, infra),
             ),
-          PodSection(
+          InspectorSection(
             key: const ValueKey('conditions'),
             id: 'gw-conditions',
             title: 'Conditions',
@@ -198,18 +198,18 @@ class _GatewayView extends StatelessWidget {
     final diags = explainGateway(ctx.object, gatewayClass: data?.gatewayClass);
     final badListeners = [for (final l in listeners) if (listenerProblems(listenerStatus('${l['name']}')).isNotEmpty) '${l['name']}'];
     final classAccepted = data?.gatewayClass == null ? null : condOf(dig(data!.gatewayClass, ['status', 'conditions']), 'Accepted');
-    final insights = <PodInsight>[
-      for (final d in diags) PodInsight(diagSeverity(d.level), d.title, d.detail),
+    final insights = <Insight>[
+      for (final d in diags) Insight(diagSeverity(d.level), d.title, d.detail),
       if (badListeners.isNotEmpty)
-        PodInsight(
+        Insight(
           Severity.warn,
           '${badListeners.length} of ${listeners.length} listener${listeners.length == 1 ? '' : 's'} ${badListeners.length == 1 ? 'has' : 'have'} problems',
           'See ${badListeners.map((n) => "'$n'").join(', ')} below. Routes attached only to ${badListeners.length == 1 ? 'it' : 'them'} get no traffic.',
         ),
-      if (data?.classMissing == true) PodInsight(Severity.error, 'GatewayClass $className not found', 'No controller will reconcile this Gateway until the class exists.'),
+      if (data?.classMissing == true) Insight(Severity.error, 'GatewayClass $className not found', 'No controller will reconcile this Gateway until the class exists.'),
       if (classAccepted != null && !condTrue(classAccepted))
-        PodInsight(Severity.warn, 'GatewayClass $className is not accepted', [classAccepted['reason'], classAccepted['message']].whereType<String>().join(': ')),
-      if (error != null) PodInsight(Severity.warn, 'Lookup failed', '$error'),
+        Insight(Severity.warn, 'GatewayClass $className is not accepted', [classAccepted['reason'], classAccepted['message']].whereType<String>().join(': ')),
+      if (error != null) Insight(Severity.warn, 'Lookup failed', '$error'),
     ];
     final String headline;
     if (accepted == null || accepted['status'] == 'Unknown' || accepted['reason'] == 'Pending') {
@@ -229,13 +229,13 @@ class _GatewayView extends StatelessWidget {
       headline: headline,
       detail: headline == 'Programmed' ? 'Accepted · Programmed' : 'accepted: ${reason(accepted)} · programmed: ${reason(programmed)}',
       figures: [
-        HeaderFigure('$okListeners', 'listeners ok',
+        InspectorFigure('$okListeners', 'listeners ok',
             of: '/${listeners.length}', severity: listeners.isEmpty ? Severity.error : (badListeners.isEmpty ? Severity.neutral : Severity.warn), tooltip: '$okListeners of ${listeners.length} listeners without problems'),
-        HeaderFigure(routes == null ? '–' : '$routes', routes == 1 ? 'route' : 'routes'),
-        HeaderFigure('${addresses.length}', addresses.length == 1 ? 'address' : 'addresses', severity: addresses.isEmpty && headline != 'Pending' ? Severity.warn : Severity.neutral),
+        InspectorFigure(routes == null ? '–' : '$routes', routes == 1 ? 'route' : 'routes'),
+        InspectorFigure('${addresses.length}', addresses.length == 1 ? 'address' : 'addresses', severity: addresses.isEmpty && headline != 'Pending' ? Severity.warn : Severity.neutral),
       ],
       insights: insights,
-      facts: KeyValueTable(keyWidth: 80, [
+      factsKeyWidth: 80, facts: [
         (
           'Class',
           Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -259,7 +259,7 @@ class _GatewayView extends StatelessWidget {
           'Requested',
           asMapList(ctx.spec['addresses']).isEmpty ? null : asMapList(ctx.spec['addresses']).map((a) => '${a['value']}').join(', '),
         ),
-      ]),
+      ],
     );
   }
 
@@ -286,11 +286,11 @@ class _GatewayView extends StatelessWidget {
           final bad = sev == Severity.error || sev == Severity.warn;
           return (
             bad,
-            CompactRow(
+            InspectorRow(
               key: ValueKey('listener-$name'),
               memoryId: 'gw-listener:${ctx.uid}/$name',
-              severity: sev,
-              initiallyOpen: bad,
+              dot: sev,
+              initiallyExpanded: bad,
               title: Text.rich(TextSpan(children: [
                 TextSpan(text: name, style: const TextStyle(fontWeight: FontWeight.w600)),
                 TextSpan(text: '  ${l['protocol']} :${l['port']}', style: monoStyle(context, size: 11.5, color: theme.hintColor)),
@@ -304,8 +304,8 @@ class _GatewayView extends StatelessWidget {
                 ],
               ]),
               trailing: [if (attached != null) Text('$attached route${attached == 1 ? '' : 's'}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))],
-              details: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                if (problems.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 10), child: InsightList([for (final p in problems) PodInsight(diagSeverity(p.level), p.title, p.detail)])),
+              details: (_) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 10, children: [
+                if (problems.isNotEmpty) InsightList([for (final p in problems) Insight(diagSeverity(p.level), p.title, p.detail)]),
                 if (tls.isNotEmpty || certs.isNotEmpty)
                   QuietGroup('TLS ${tls['mode'] ?? 'Terminate'}', [
                     if (certs.isEmpty) const Muted('no certificates'),
@@ -334,9 +334,9 @@ class _GatewayView extends StatelessWidget {
     final hosts = a.route.hostnames;
     final theme = Theme.of(context);
     final bad = sev != Severity.ok;
-    return CompactRow(
+    return InspectorRow(
       key: ValueKey('gw-route-$group/${a.route.namespace}/${a.route.name}'),
-      severity: sev,
+      dot: sev,
       dotTooltip: text,
       title: routeLink(a.route, showKind: true),
       subtitle: hosts.isEmpty ? null : Text(hosts.join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: theme.hintColor)),

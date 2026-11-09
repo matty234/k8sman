@@ -6,7 +6,7 @@ import '../../ui/detail/detail_sidebar.dart' show EventList;
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../network/inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 
 /// Normalised view of a core/v1 or events.k8s.io/v1 Event.
@@ -93,7 +93,7 @@ class EventPanel extends ResourcePanel {
     return [
       _EventHeader(ev, namespace: ns),
       if (ev.regarding.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'event-others',
           title: 'Other events for ${ev.regarding['kind'] ?? 'object'}/${ev.regarding['name'] ?? ''}',
           initiallyExpanded: ev.type == 'Warning',
@@ -132,14 +132,14 @@ class _EventHeader extends StatelessWidget {
         headline: ev.reason.isEmpty ? '(no reason)' : ev.reason,
         detail: [ev.type, if (ev.count > 1) '×${ev.count}'].join(' · '),
         figures: [
-          HeaderFigure('${ev.count}', ev.count == 1 ? 'time' : 'times', severity: warn && ev.count > 1 ? Severity.warn : Severity.neutral),
-          if (parseTime(ev.lastSeen) != null) HeaderFigure.age(ev.lastSeen, 'last seen'),
-          if (parseTime(ev.firstSeen) != null) HeaderFigure.age(ev.firstSeen, 'first seen'),
+          InspectorFigure('${ev.count}', ev.count == 1 ? 'time' : 'times', severity: warn && ev.count > 1 ? Severity.warn : Severity.neutral),
+          if (parseTime(ev.lastSeen) != null) InspectorFigure.age(ev.lastSeen, 'last seen'),
+          if (parseTime(ev.firstSeen) != null) InspectorFigure.age(ev.firstSeen, 'first seen'),
         ],
-        facts: KeyValueTable(keyWidth: 72, [
+        factsKeyWidth: 72, facts: [
           ('Object', ev.regarding.isEmpty ? null : Align(alignment: Alignment.centerLeft, child: ResourceLink(ref(ev.regarding)))),
           ('Field', ev.fieldPath),
-        ]),
+        ],
       ),
       // The message, marked like an insight: amber for warnings.
       Container(

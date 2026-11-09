@@ -7,7 +7,7 @@ import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/panel.dart';
 import 'package:k8sman/panels/pod/pod_logic.dart';
 import 'package:k8sman/panels/pod/pod_panel.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/state/log_dock.dart';
 import 'package:provider/provider.dart';
@@ -20,7 +20,7 @@ import 'package:k8sman/util/text.dart';
 Json fixture(String name) => jsonDecode(File('../dev/fixtures/$name.json').readAsStringSync()) as Json;
 
 void main() {
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   group('logic', () {
     test('effective status matches table semantics', () {

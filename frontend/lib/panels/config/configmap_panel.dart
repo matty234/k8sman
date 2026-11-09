@@ -4,7 +4,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../inspector_parts.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'usage.dart';
 import 'values.dart';
@@ -43,13 +43,13 @@ class ConfigMapPanel extends ResourcePanel {
           extraInsights: missingKeyInsights(snap, existing, 'ConfigMap'),
         ),
       ),
-      PodSection(
+      InspectorSection(
         id: 'cm-data',
         title: 'Data',
         trailing: SectionSummary(keys.isEmpty ? 'empty' : '${plural(keys.length, 'key')} · ${formatSize(dataBytes)}'),
         child: keys.isEmpty
             ? InlineMessage(binKeys.isEmpty ? 'This ConfigMap has no data.' : 'No text data; see Binary data.')
-            : TrimmedList(over: 12, shown: 10, [
+            : TrimmedList(trimAbove: 12, keep: 10, [
                 for (final k in keys)
                   DataEntry(
                     key: ValueKey('${ctx.uid}/$k'),
@@ -62,7 +62,7 @@ class ConfigMapPanel extends ResourcePanel {
       ),
       UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.configMap, existingKeys: existing),
       if (binKeys.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'cm-binary',
           title: 'Binary data',
           initiallyExpanded: false,
@@ -102,7 +102,7 @@ class DataEntry extends StatelessWidget {
           : singleLine
               ? Text(v.trim(), style: monoStyle(context, size: 11, color: theme.hintColor))
               : Text(plural(lines, 'line')),
-      meta: [
+      trailing: [
         Text([if (format != ValueFormat.plain) format.name, formatSize(utf8Size(v))].join(' · ')),
       ],
       actions: [RowAction(icon: Icons.copy, tooltip: 'Copy value', onTap: () => copyToClipboard(context, v))],
@@ -124,7 +124,7 @@ class _BinaryEntry extends StatelessWidget {
       leading: const Icon(Icons.memory),
       title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
       subtitle: bytes == null || bytes.isEmpty ? null : Text(hexPreview(bytes, max: 24), style: monoStyle(context, size: 11, color: theme.hintColor)),
-      meta: [
+      trailing: [
         Text(bytes == null ? 'invalid base64' : formatSize(bytes.length),
             style: bytes == null ? TextStyle(color: severityColor(context, Severity.error)) : null),
       ],

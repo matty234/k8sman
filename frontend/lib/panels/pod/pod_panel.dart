@@ -16,7 +16,7 @@ import '../dra/dra_sections.dart';
 import '../panel.dart';
 import 'pod_containers.dart';
 import 'pod_logic.dart';
-import 'pod_section.dart';
+import '../../ui/inspector/inspector.dart';
 import 'pod_status.dart';
 import 'pod_widgets.dart';
 import '../../util/text.dart';
@@ -72,7 +72,7 @@ class PodPanel extends ResourcePanel {
     return [
       // Is this pod OK, and if not, why?
       PodStatusHeader(ctx),
-      PodSection(
+      InspectorSection(
         id: 'containers',
         title: 'Containers',
         trailing: SectionSummary(_containerCounts(containers)),
@@ -96,7 +96,7 @@ class PodPanel extends ResourcePanel {
       // Reference detail: collapsed by default, a one-line summary in the
       // header; opening one keeps it open for the next pod.
       if (volumes.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'volumes',
           title: 'Volumes',
           initiallyExpanded: false,
@@ -104,21 +104,21 @@ class PodPanel extends ResourcePanel {
           child: _Volumes(volumes, containers, ctx.namespace, ctx.name),
         ),
       if (scheduling.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'scheduling',
           title: 'Scheduling',
           initiallyExpanded: false,
           trailing: SectionSummary(_schedulingSummary(ctx.spec)),
           child: KeyValueTable(scheduling, keyWidth: 110),
         ),
-      PodSection(
+      InspectorSection(
         id: 'configuration',
         title: 'Configuration',
         initiallyExpanded: false,
         trailing: SectionSummary(_configSummary(ctx)),
         child: _Configuration(ctx),
       ),
-      PodSection(
+      InspectorSection(
         id: 'conditions',
         title: 'Conditions',
         initiallyExpanded: false,

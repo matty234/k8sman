@@ -7,7 +7,7 @@ import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/batch/batch_common.dart';
 import 'package:k8sman/panels/batch/cron.dart';
 import 'package:k8sman/panels/batch/cronjob_panel.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/util/k8s.dart';
 
 import '../../support/harness.dart';
@@ -154,7 +154,7 @@ Future<void> openSection(WidgetTester tester, String id) async {
 void main() {
   setUp(() {
     batchNow = () => DateTime.utc(2026, 11, 3, 11, 33);
-    PodSectionMemory.reset();
+    SectionMemory.reset();
   });
   tearDown(() => batchNow = DateTime.now);
 

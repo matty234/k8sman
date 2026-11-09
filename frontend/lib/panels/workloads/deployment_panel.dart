@@ -4,15 +4,13 @@ import '../../actions/actions.dart';
 import '../../api/models.dart';
 import '../../metrics/workload_usage.dart';
 import '../../prometheus/metric_history_chart.dart';
-import '../../ui/detail/inspector_parts.dart';
-import '../../ui/detail/owner_line.dart';
+import '../../ui/inspector/inspector.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/terminal/open_terminal.dart';
 import '../panel.dart';
-import '../pod/pod_section.dart';
 import 'rollout.dart';
 import 'widgets/pods_list.dart';
 import 'widgets/scaling.dart';
@@ -54,22 +52,22 @@ class DeploymentPanel extends ResourcePanel {
 
     return [
       // Is it rolled out and available, and if not, why?
-      WorkloadStatusHeader(
+      InspectorHeader(
         headline: head.text,
-        severity: head.severity,
+        mark: head.severity,
         detail: head.detail,
         progress: head.progress == null
             ? null
-            : WorkloadProgress(head.progress!, tooltip: '$updated of $desired replicas on the new template'),
+            : InspectorProgress(head.progress!, tooltip: '$updated of $desired replicas on the new template'),
         figures: [
-          WorkloadFigure.count(ready, desired, 'ready', zeroIsError: true),
-          WorkloadFigure('$updated', 'updated', of: '/$desired', tooltip: 'on the latest pod template'),
-          WorkloadFigure.count(available, desired, 'available', zeroIsError: true),
-          WorkloadFigure('$unavailable', 'unavailable', severity: unavailable > 0 ? Severity.warn : Severity.neutral),
+          InspectorFigure.count(ready, desired, 'ready', zeroIsError: true),
+          InspectorFigure('$updated', 'updated', of: '/$desired', tooltip: 'on the latest pod template'),
+          InspectorFigure.count(available, desired, 'available', zeroIsError: true),
+          InspectorFigure('$unavailable', 'unavailable', severity: unavailable > 0 ? Severity.warn : Severity.neutral),
         ],
         insights: [
           if (paused)
-            WorkloadInsight(
+            Insight.rich(
               Severity.warn,
               'Rollout paused',
               detail: 'Template changes will not roll out until resumed.',
@@ -103,7 +101,7 @@ class DeploymentPanel extends ResourcePanel {
       workloadUsageSection(ctx),
       workloadHistory(ctx),
       // Reference detail, collapsed behind a one-line summary.
-      PodSection(
+      InspectorSection(
         key: const ValueKey('workload-section-history'),
         id: 'workload-history',
         title: 'Rollout history',
@@ -204,7 +202,7 @@ class RolloutHistory extends StatelessWidget {
             current: i == 0,
             action: i == 0 || ctx.app.readOnly ? null : _rollbackButton(history.first, history[i]),
           ),
-      ], gap: 2);
+      ], gap: 2, indent: 0);
     },
   );
 }

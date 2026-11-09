@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/gateway/gw_widgets.dart' show CopyLine;
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/screenshot.dart';
 import 'gw_support.dart';
@@ -12,19 +12,19 @@ import 'gw_support.dart';
 Json opened(Json o) {
   final uid = o['metadata']['uid'];
   for (var i = 0; i < 10; i++) {
-    PodSectionMemory.set('route-rule:$uid/$i', true);
+    SectionMemory.set('route-rule:$uid/$i', true);
   }
   for (final l in (o['spec']['listeners'] as List? ?? const [])) {
-    PodSectionMemory.set('gw-listener:$uid/${l['name']}', true);
+    SectionMemory.set('gw-listener:$uid/${l['name']}', true);
   }
   for (final s in ['gw-topology', 'gw-infra']) {
-    PodSectionMemory.set(s, true);
+    SectionMemory.set(s, true);
   }
   return o;
 }
 
 void main() {
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('Gateway demo-gw: healthy, listeners, attached routes, topology', (tester) async {
     await loadRealFonts();

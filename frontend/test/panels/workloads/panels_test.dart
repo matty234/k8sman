@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/panels/workloads/widgets/pods_list.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/theme.dart';
@@ -16,7 +16,7 @@ void main() {
   late List<Json> pods;
   late List<Json> pvcs;
 
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
   setUpAll(() async {
     pods = loadLocal('pods-demo.json');
     pvcs = loadLocal('pvcs-demo.json');
@@ -69,7 +69,7 @@ void main() {
     await pumpPanel(tester, rolling, api: api);
     expect(find.text('Rolling out'), findsOneWidget);
     expect(find.text('1/3 updated'), findsOneWidget);
-    expect(find.descendant(of: find.byKey(const ValueKey('workload-figure-unavailable')), matching: find.text('1')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('figure-unavailable')), matching: find.text('1')), findsOneWidget);
     expect(find.text('revision 1 · 3 kept'), findsOneWidget);
     expect(find.text('RollingUpdate · 1 surge · 0 unavailable'), findsOneWidget);
     expect(find.text('2 containers · 1 init · nginx:1.27-alpine'), findsOneWidget);

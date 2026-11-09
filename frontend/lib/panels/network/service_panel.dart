@@ -12,7 +12,7 @@ import '../gateway/routed_by.dart';
 import '../panel.dart';
 import '../../util/text.dart';
 import '../pod/pod_widgets.dart' show InlineWrap;
-import 'inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import 'widgets.dart';
 import '../../util/pod.dart';
 
@@ -193,7 +193,7 @@ class _ServiceView extends StatelessWidget {
         final targets = [for (final p in ports) resolveTargetPort(p, pods: data?.pods, slices: data?.slices ?? const [])];
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _header(context, data, addrs, ready, targets, snap.error),
-          PodSection(
+          InspectorSection(
             id: 'svc-ports',
             title: 'Ports',
             trailing: SectionSummary(ports.isEmpty ? 'none' : plural(ports.length, 'port')),
@@ -202,7 +202,7 @@ class _ServiceView extends StatelessWidget {
             ]),
           ),
           if (!external)
-            PodSection(
+            InspectorSection(
               id: 'svc-endpoints',
               title: 'Endpoints',
               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -233,16 +233,16 @@ class _ServiceView extends StatelessWidget {
     final lbPending = type == 'LoadBalancer' && asMapList(dig(ctx.status, ['loadBalancer', 'ingress'])).isEmpty;
     final sel = selectorToString(selector);
     final unresolved = [for (final (i, t) in targets.indexed) if (t.unresolved) (ports[i], t)];
-    final insights = <PodInsight>[
+    final insights = <Insight>[
       if (diag != null && diag.severity != Severity.info)
-        PodInsight(
+        Insight(
           diag.severity,
           diag.title,
           [?diag.detail, if (sel.isNotEmpty && ready == 0) 'Selector: $sel'].join('\n'),
         ),
-      for (final (p, t) in unresolved) PodInsight(Severity.warn, 'Port ${p['name'] ?? p['port']}: target port "${p['targetPort']}" not found', t.note),
-      if (lbPending) const PodInsight(Severity.warn, 'Load balancer pending', 'No external address has been assigned yet. Is a load-balancer controller installed?'),
-      if (error != null) PodInsight(Severity.warn, 'Could not load endpoints', '$error'),
+      for (final (p, t) in unresolved) Insight(Severity.warn, 'Port ${p['name'] ?? p['port']}: target port "${p['targetPort']}" not found', t.note),
+      if (lbPending) const Insight(Severity.warn, 'Load balancer pending', 'No external address has been assigned yet. Is a load-balancer controller installed?'),
+      if (error != null) Insight(Severity.warn, 'Could not load endpoints', '$error'),
     ];
     final worst = worstOf(insights);
     final mark = worst ?? (external || data != null ? Severity.ok : Severity.neutral);
@@ -260,19 +260,18 @@ class _ServiceView extends StatelessWidget {
       detail: detail,
       figures: [
         if (!external)
-          HeaderFigure(
+          InspectorFigure(
             data == null ? '–' : '$ready',
             'ready',
-            key: const ValueKey('svc-ready-figure'),
             of: data == null ? null : '/${addrs.length}',
             severity: noneReady ? Severity.error : (data != null && ready < addrs.length ? Severity.warn : Severity.neutral),
             tooltip: data == null ? null : '$ready of ${addrs.length} endpoints ready',
           ),
-        HeaderFigure('${ports.length}', ports.length == 1 ? 'port' : 'ports'),
-        if (data?.pods != null) HeaderFigure('${data!.pods!.length}', data.pods!.length == 1 ? 'pod matches' : 'pods match'),
+        InspectorFigure('${ports.length}', ports.length == 1 ? 'port' : 'ports'),
+        if (data?.pods != null) InspectorFigure('${data!.pods!.length}', data.pods!.length == 1 ? 'pod matches' : 'pods match'),
       ],
       insights: insights,
-      facts: KeyValueTable(keyWidth: 72, [
+      factsKeyWidth: 72, facts: [
         (
           'Cluster IP',
           external
@@ -289,7 +288,7 @@ class _ServiceView extends StatelessWidget {
         ),
         ('Node ports', nodePorts.isEmpty ? null : Text(nodePorts.map((p) => ':$p').join('  '), style: monoStyle(context, size: 11.5))),
         ('DNS', MonoCopy(dns)),
-      ]),
+      ],
     );
   }
 
@@ -300,9 +299,9 @@ class _ServiceView extends StatelessWidget {
     // One-click forward needs pods behind a selector (not ExternalName / manual endpoints).
     final canForward = !ctx.app.readOnly && selector.isNotEmpty && !external;
     final name = p['name'] as String?;
-    return CompactRow(
+    return InspectorRow(
       key: ValueKey('svc-port-${p['port']}'),
-      severity: t.unresolved ? Severity.warn : Severity.ok,
+      dot: t.unresolved ? Severity.warn : Severity.ok,
       title: Text.rich(
         TextSpan(style: mono, children: [
           if (name != null) TextSpan(text: '$name  ', style: mono.copyWith(fontWeight: FontWeight.w600)),
@@ -367,7 +366,7 @@ class _ServiceView extends StatelessWidget {
     final hinted = addrs.where((a) => a.hints.isNotEmpty).length;
     final tcpPorts = [for (final p in ports.take(4)) if ((p['protocol'] ?? 'TCP') == 'TCP') p];
     return [
-      PodSection(
+      InspectorSection(
         id: 'svc-access',
         title: 'Access',
         initiallyExpanded: false,
@@ -391,7 +390,7 @@ class _ServiceView extends StatelessWidget {
             ),
         ]),
       ),
-      PodSection(
+      InspectorSection(
         id: 'svc-selector',
         title: 'Selector',
         initiallyExpanded: false,
@@ -399,7 +398,7 @@ class _ServiceView extends StatelessWidget {
         child: selector.isEmpty ? const InlineMessage('No selector: endpoints are managed manually (or by another controller).') : LabelChips(selector),
       ),
       if (!external)
-        PodSection(
+        InspectorSection(
           id: 'svc-traffic',
           title: 'Session affinity & traffic',
           initiallyExpanded: false,
@@ -419,7 +418,7 @@ class _ServiceView extends StatelessWidget {
           ], keyWidth: 120),
         ),
       if (!external && (families.isNotEmpty || ips.isNotEmpty))
-        PodSection(
+        InspectorSection(
           id: 'svc-families',
           title: 'IP families',
           initiallyExpanded: false,
@@ -431,7 +430,7 @@ class _ServiceView extends StatelessWidget {
           ], keyWidth: 120),
         ),
       if (topologyMode != null || distribution != null || zones.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'svc-topology',
           title: 'Topology',
           initiallyExpanded: false,

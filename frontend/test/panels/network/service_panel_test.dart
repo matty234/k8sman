@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/network/service_panel.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/util/k8s.dart';
 
 import '../../support/harness.dart';
@@ -18,7 +18,7 @@ FakeApiClient api({List<Json>? slices, List<Json>? pods}) => FakeApiClient(
     );
 
 void main() {
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('web: ports resolve named targetPort, endpoints, access hints', (tester) async {
     await loadRealFonts();

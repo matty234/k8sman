@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../ui/theme.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../network/inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'gw_model.dart';
 import 'gw_widgets.dart';
@@ -53,7 +53,7 @@ class RoutedBySection extends StatelessWidget {
       builder: (context, snap, reload) {
         final uses = snap.data ?? const <ServiceRouteUse>[];
         if (snap.hasError || uses.isEmpty) return const SizedBox.shrink();
-        return PodSection(
+        return InspectorSection(
           id: 'svc-routed-by',
           title: 'Routed by',
           trailing: SectionSummary(plural(uses.length, 'route')),
@@ -62,8 +62,8 @@ class RoutedBySection extends StatelessWidget {
               () {
                 final h = RouteHealth.of(u.route);
                 final sev = h.healthy ? Severity.ok : diagSeverity(h.level);
-                return CompactRow(
-                  severity: sev,
+                return InspectorRow(
+                  dot: sev,
                   dotTooltip: h.label,
                   title: routeLink(u.route, showKind: true),
                   subtitle: dotLine([

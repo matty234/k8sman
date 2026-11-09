@@ -4,7 +4,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../metrics/workload_usage.dart';
 import '../../prometheus/metric_history_chart.dart';
-import '../../ui/detail/owner_line.dart';
+import '../../ui/inspector/inspector.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -105,15 +105,15 @@ class StatefulSetPanel extends ResourcePanel {
     final parallel = spec['podManagementPolicy'] == 'Parallel';
 
     return [
-      WorkloadStatusHeader(
+      InspectorHeader(
         headline: head.text,
-        severity: head.severity,
+        mark: head.severity,
         detail: head.detail,
-        progress: head.progress == null ? null : WorkloadProgress(head.progress!, tooltip: '$updated of $desired replicas on the update revision'),
+        progress: head.progress == null ? null : InspectorProgress(head.progress!, tooltip: '$updated of $desired replicas on the update revision'),
         figures: [
-          WorkloadFigure.count(ready, desired, 'ready', zeroIsError: true),
-          WorkloadFigure('$updated', 'updated', of: '/$desired', tooltip: 'on the update revision'),
-          WorkloadFigure.count(available, desired, 'available', zeroIsError: true),
+          InspectorFigure.count(ready, desired, 'ready', zeroIsError: true),
+          InspectorFigure('$updated', 'updated', of: '/$desired', tooltip: 'on the update revision'),
+          InspectorFigure.count(available, desired, 'available', zeroIsError: true),
         ],
         insights: conditionInsights(asMapList(st['conditions'])),
         extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}'))],

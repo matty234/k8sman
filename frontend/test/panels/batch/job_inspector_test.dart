@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/panels/batch/batch_common.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
@@ -10,7 +10,7 @@ import 'batch_panels_test.dart' show failedJob, failedPods;
 void main() {
   setUp(() {
     batchNow = () => DateTime.utc(2026, 11, 3, 11, 33);
-    PodSectionMemory.reset();
+    SectionMemory.reset();
   });
   tearDown(() => batchNow = DateTime.now);
 

@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
@@ -22,7 +22,7 @@ Future<void> openSection(WidgetTester tester, String id) async {
 
 void main() {
   setUpAll(loadRealFonts);
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('ConfigMap: data entries and used-by from the web pod', (tester) async {
     final app = await pumpPanel(tester, fixture('cm-web-config'), api: podsApi([fixture('pod-web')]));

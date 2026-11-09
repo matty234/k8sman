@@ -7,7 +7,7 @@ import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/storage/pv_panel.dart';
 import 'package:k8sman/panels/storage/pvc_panel.dart';
 import 'package:k8sman/panels/storage/sc_panel.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/panels/registry.dart';
 
 import '../../support/harness.dart';
@@ -28,7 +28,7 @@ void main() {
   late Json pvc, pv, sc, sts, pod;
 
   setUp(() {
-    PodSectionMemory.reset();
+    SectionMemory.reset();
     pvc = fixture('pvc-data-redis-0');
     pv = fixture('pv-redis');
     sc = fixture('sc-standard');

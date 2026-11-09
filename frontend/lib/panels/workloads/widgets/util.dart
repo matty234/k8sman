@@ -174,26 +174,3 @@ String workloadRefreshKey(PanelContext ctx) {
     dig(ctx.object, ['metadata', 'annotations', 'deployment.kubernetes.io/revision']),
   ].join('|');
 }
-
-/// Shrinks outlined/filled buttons (e.g. ActionButton) to fit a dense row.
-class CompactButtons extends StatelessWidget {
-  final Widget child;
-  const CompactButtons({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final style = ButtonStyle(
-      minimumSize: const WidgetStatePropertyAll(Size(0, 24)),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      textStyle: WidgetStatePropertyAll(Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
-      iconSize: const WidgetStatePropertyAll(14),
-    );
-    return Theme(
-      data: Theme.of(context).copyWith(
-        outlinedButtonTheme: OutlinedButtonThemeData(style: style),
-        filledButtonTheme: FilledButtonThemeData(style: style),
-      ),
-      child: child,
-    );
-  }
-}

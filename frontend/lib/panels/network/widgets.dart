@@ -9,7 +9,7 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import 'inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 
 /// Runs [load] once (in initState) and re-runs it only when [fetchKey]
 /// changes or the user asks for a reload. Build it with a stable key
@@ -320,7 +320,7 @@ class EndpointList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (addrs.isEmpty) return const Padding(padding: EdgeInsets.only(left: 4), child: Muted('No addresses'));
-    return TrimmedRows([for (final a in ordered(addrs)) _row(context, a)], limit: 10);
+    return TrimmedList([for (final a in ordered(addrs)) _row(context, a)], trimAbove: 10);
   }
 
   Widget _row(BuildContext context, EndpointAddr a) {
@@ -333,9 +333,9 @@ class EndpointList extends StatelessWidget {
       if (a.terminating) 'terminating',
     ].join(' · ');
     final dns = a.hostname != null && headlessDnsSuffix != null ? '${a.hostname}.$headlessDnsSuffix' : null;
-    return CompactRow(
+    return InspectorRow(
       key: ValueKey('endpoint-${a.ip}'),
-      severity: sev,
+      dot: sev,
       dotTooltip: state.isEmpty ? 'ready' : state,
       title: Row(children: [
         Text(a.ip, style: monoStyle(context, size: 12)),

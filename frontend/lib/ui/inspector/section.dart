@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../ui/widgets/editorial.dart' show SectionHeader;
-import '../../ui/widgets/common.dart';
+import '../widgets/common.dart';
+import '../widgets/editorial.dart' show SectionHeader;
 
-/// Expanded/collapsed state per pod inspector section, kept for the session
-/// so a section the user opened stays open on the next pod.
-class PodSectionMemory {
-  PodSectionMemory._();
+/// Open/closed state of inspector sections and rows, kept for the session
+/// so something the user opened stays open on the next object.
+class SectionMemory {
+  SectionMemory._();
   static final Map<String, bool> _open = {};
 
   static bool isOpen(String id, {required bool fallback}) => _open[id] ?? fallback;
@@ -16,28 +16,29 @@ class PodSectionMemory {
   static void reset() => _open.clear();
 }
 
-/// A pod inspector section in the Overview's style: a small semibold
-/// label with a hairline running to [trailing] (a count or one-line
-/// summary), collapsible from the header. Its open state is remembered
-/// per [id] for the session; [initiallyExpanded] is the default.
-class PodSection extends StatefulWidget {
+/// An inspector section in the Overview's style: a small semibold label
+/// with a hairline running to [trailing] (a count or one-line summary),
+/// collapsible from the header. Its open state is remembered per [id] for
+/// the session; [initiallyExpanded] is the default. The header is keyed
+/// `pod-section-<id>` (the pod inspector's, where it started).
+class InspectorSection extends StatefulWidget {
   final String id;
   final String title;
   final Widget? trailing;
   final Widget child;
   final bool initiallyExpanded;
-  const PodSection({super.key, required this.id, required this.title, required this.child, this.trailing, this.initiallyExpanded = true});
+  const InspectorSection({super.key, required this.id, required this.title, required this.child, this.trailing, this.initiallyExpanded = true});
 
   @override
-  State<PodSection> createState() => _PodSectionState();
+  State<InspectorSection> createState() => _InspectorSectionState();
 }
 
-class _PodSectionState extends State<PodSection> {
-  late bool _open = PodSectionMemory.isOpen(widget.id, fallback: widget.initiallyExpanded);
+class _InspectorSectionState extends State<InspectorSection> {
+  late bool _open = SectionMemory.isOpen(widget.id, fallback: widget.initiallyExpanded);
 
   void _toggle() {
     setState(() => _open = !_open);
-    PodSectionMemory.set(widget.id, _open);
+    SectionMemory.set(widget.id, _open);
   }
 
   @override

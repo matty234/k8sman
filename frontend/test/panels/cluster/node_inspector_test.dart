@@ -4,14 +4,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/harness.dart';
 
 dynamic _load(String path) => jsonDecode(File(path).readAsStringSync());
 
 void main() {
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('Node: status header, pods first by problem, collapsed summaries, clean at 320px', (tester) async {
     final node = Json.from(_load('../dev/fixtures/node-k8sman-dev-control-plane.json'));

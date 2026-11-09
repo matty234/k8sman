@@ -8,7 +8,7 @@ import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../panel.dart';
 import '../pod/pod_widgets.dart' show InlineWrap;
-import 'inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import 'widgets.dart';
 
 /// Annotation prefixes that configure ingress controllers / related tooling.
@@ -186,7 +186,7 @@ class _IngressView extends StatelessWidget {
         final hosts = {for (final p in paths) p.host ?? '*'}.length;
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _header(context, data, paths, missingSecrets, defState, snap.error),
-          PodSection(
+          InspectorSection(
             id: 'ing-rules',
             title: 'Rules',
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -197,7 +197,7 @@ class _IngressView extends StatelessWidget {
             child: _rules(context, data, paths),
           ),
           if (tls.isNotEmpty)
-            PodSection(
+            InspectorSection(
               id: 'ing-tls',
               title: 'TLS',
               initiallyExpanded: false,
@@ -208,7 +208,7 @@ class _IngressView extends StatelessWidget {
               child: _tls(context, data),
             ),
           if (def.isNotEmpty)
-            PodSection(
+            InspectorSection(
               id: 'ing-default-backend',
               title: 'Default backend',
               initiallyExpanded: false,
@@ -219,7 +219,7 @@ class _IngressView extends StatelessWidget {
               child: Padding(padding: const EdgeInsets.only(left: 4), child: _backend(context, def, data)),
             ),
           if (annotations.isNotEmpty)
-            PodSection(
+            InspectorSection(
               id: 'ing-annotations',
               title: 'Controller annotations',
               initiallyExpanded: false,
@@ -244,14 +244,14 @@ class _IngressView extends StatelessWidget {
     final missing = {for (final (_, s) in states) if (s.missing) s.service!, if (defState.missing) defState.service!};
     final badPorts = [for (final (p, s) in states) if (s.portBad && !s.missing) (p, s)];
     final routesNothing = paths.isEmpty && asMap(spec['defaultBackend']).isEmpty;
-    final insights = <PodInsight>[
-      if (routesNothing) const PodInsight(Severity.error, 'No rules and no default backend', 'This Ingress routes nothing.'),
-      for (final m in missing) PodInsight(Severity.error, 'Service $m not found', 'Requests routed to it get an error from the controller.'),
-      for (final (p, s) in badPorts) PodInsight(Severity.error, 'Service ${s.service} has no port ${s.portText}', 'Used by ${p.host ?? '*'}${p.path}.'),
-      for (final s in missingSecrets) PodInsight(Severity.error, 'TLS Secret $s not found', 'The controller serves its default certificate instead.'),
-      if (lb.isEmpty) PodInsight(Severity.warn, 'No address assigned', 'No ingress controller${className != null ? ' for class $className' : ''} has published an address yet.'),
-      if (tlsHosts.isNotEmpty && uncovered.isNotEmpty) PodInsight(Severity.warn, '${uncovered.join(', ')} ${uncovered.length == 1 ? 'is' : 'are'} not covered by TLS', 'Served over plain HTTP only.'),
-      if (error != null) PodInsight(Severity.warn, 'Lookup failed', '$error'),
+    final insights = <Insight>[
+      if (routesNothing) const Insight(Severity.error, 'No rules and no default backend', 'This Ingress routes nothing.'),
+      for (final m in missing) Insight(Severity.error, 'Service $m not found', 'Requests routed to it get an error from the controller.'),
+      for (final (p, s) in badPorts) Insight(Severity.error, 'Service ${s.service} has no port ${s.portText}', 'Used by ${p.host ?? '*'}${p.path}.'),
+      for (final s in missingSecrets) Insight(Severity.error, 'TLS Secret $s not found', 'The controller serves its default certificate instead.'),
+      if (lb.isEmpty) Insight(Severity.warn, 'No address assigned', 'No ingress controller${className != null ? ' for class $className' : ''} has published an address yet.'),
+      if (tlsHosts.isNotEmpty && uncovered.isNotEmpty) Insight(Severity.warn, '${uncovered.join(', ')} ${uncovered.length == 1 ? 'is' : 'are'} not covered by TLS', 'Served over plain HTTP only.'),
+      if (error != null) Insight(Severity.warn, 'Lookup failed', '$error'),
     ];
     final worst = worstOf(insights);
     final headline = routesNothing
@@ -270,15 +270,15 @@ class _IngressView extends StatelessWidget {
         if (ruleHosts.isNotEmpty) tlsHosts.isEmpty ? 'no TLS' : 'TLS on ${covered.length} of ${ruleHosts.length} hosts',
       ].join(' · '),
       figures: [
-        HeaderFigure('${{for (final p in paths) p.host ?? '*'}.length}', 'hosts'),
-        HeaderFigure('${paths.length}', paths.length == 1 ? 'path' : 'paths'),
+        InspectorFigure('${{for (final p in paths) p.host ?? '*'}.length}', 'hosts'),
+        InspectorFigure('${paths.length}', paths.length == 1 ? 'path' : 'paths'),
         if (ruleHosts.isNotEmpty)
-          HeaderFigure('${covered.length}', 'on TLS',
+          InspectorFigure('${covered.length}', 'on TLS',
               of: '/${ruleHosts.length}', severity: tlsHosts.isNotEmpty && uncovered.isNotEmpty ? Severity.warn : Severity.neutral, tooltip: '${covered.length} of ${ruleHosts.length} hosts covered by TLS'),
-        if (missing.isNotEmpty) HeaderFigure('${missing.length}', 'not found', severity: Severity.error, tooltip: 'Services that do not exist'),
+        if (missing.isNotEmpty) InspectorFigure('${missing.length}', 'not found', severity: Severity.error, tooltip: 'Services that do not exist'),
       ],
       insights: insights,
-      facts: KeyValueTable(keyWidth: 64, [
+      factsKeyWidth: 64, facts: [
         (
           'Class',
           className != null
@@ -293,7 +293,7 @@ class _IngressView extends StatelessWidget {
               ? Text('pending', style: TextStyle(color: severityColor(context, Severity.warn)))
               : InlineWrap([for (final i in lb) Chipish(text: '${i['ip'] ?? i['hostname'] ?? ''}', copyValue: '${i['ip'] ?? i['hostname'] ?? ''}')]),
         ),
-      ]),
+      ],
     );
   }
 
@@ -334,9 +334,9 @@ class _IngressView extends StatelessWidget {
         for (final p in [...e.value]..sort((a, b) => (_resolveBackend(b.backend, data).broken ? 1 : 0).compareTo(_resolveBackend(a.backend, data).broken ? 1 : 0)))
           () {
             final s = _resolveBackend(p.backend, data);
-            return CompactRow(
+            return InspectorRow(
               key: ValueKey('ing-rule-${p.host}${p.path}'),
-              severity: s.broken ? Severity.error : (data == null ? Severity.neutral : Severity.ok),
+              dot: s.broken ? Severity.error : (data == null ? Severity.neutral : Severity.ok),
               title: Text.rich(TextSpan(children: [
                 TextSpan(text: p.path, style: monoStyle(context, size: 12)),
                 TextSpan(text: '  ${p.pathType}', style: TextStyle(color: Theme.of(context).hintColor, fontSize: 11)),
@@ -361,8 +361,8 @@ class _IngressView extends StatelessWidget {
           final missing = name != null && data?.secrets[name] == false;
           final hosts = [for (final h in (t['hosts'] as List? ?? const ['(all hosts)'])) '$h'];
           final unused = [for (final h in hosts) if (ruleHosts.isNotEmpty && !ruleHosts.contains(h) && !h.startsWith('*') && !h.startsWith('(')) h];
-          return CompactRow(
-            severity: missing ? Severity.error : (unused.isNotEmpty ? Severity.warn : Severity.ok),
+          return InspectorRow(
+            dot: missing ? Severity.error : (unused.isNotEmpty ? Severity.warn : Severity.ok),
             title: name == null
                 ? const Muted('no secret (controller default cert)')
                 : Row(children: [

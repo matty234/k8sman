@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
 import '../../panels/panel.dart';
-import '../../panels/pod/pod_section.dart';
+import '../inspector/inspector.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import 'inspector_parts.dart';
-import 'owner_line.dart';
 
 /// The shared Metadata section, last on every inspector's Overview:
 /// collapsed to a one-line summary ("7 labels · 2 annotations · created 5d
@@ -37,7 +35,7 @@ class MetadataSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final m = ctx.metadata;
-    return PodSection(
+    return InspectorSection(
       key: const ValueKey('metadata-section'),
       id: 'metadata',
       title: 'Metadata',
@@ -87,12 +85,12 @@ class _MetadataBody extends StatelessWidget {
                   child: keyValueText(context, e.key, '${e.value}'),
                 ),
               ),
-          ]),
+          ], gap: 4, indent: 0),
       ]),
       if (annotations.isNotEmpty) ...[
         const SizedBox(height: 12),
         QuietGroup(key: const ValueKey('metadata-annotations'), 'Annotations', [
-          TrimmedList([for (final e in annotations.entries) _Annotation(e.key, '${e.value}')], gap: 6),
+          TrimmedList([for (final e in annotations.entries) _Annotation(e.key, '${e.value}')], gap: 6, indent: 0),
         ]),
       ],
       const SizedBox(height: 12),

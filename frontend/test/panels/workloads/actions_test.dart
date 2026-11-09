@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/actions/actions.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/panels/registry.dart';
 import 'package:k8sman/panels/workloads/rollout.dart';
 import 'package:k8sman/state/app_state.dart';
@@ -46,7 +46,7 @@ Future<AppState> pumpWorkload(WidgetTester tester, Json object, ApiClient api, {
 void main() {
   late List<Json> pods;
   setUpAll(() => pods = loadLocal('pods-demo.json'));
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   FakeApiClient api() => fakeApi({
         'pods': pods,

@@ -8,7 +8,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../inspector_parts.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'common.dart';
 
@@ -36,7 +36,7 @@ class PvcPanel extends ResourcePanel {
               if (m.node != null && dig<String>(m.pod, ['status', 'phase']) == 'Running') m.node!,
           }),
       pvcHistory(ctx),
-      PodSection(
+      InspectorSection(
         id: 'pvc-mounts',
         title: 'Mounted by',
         trailing: FutureBuilder<List<PvcMount>>(
@@ -53,7 +53,7 @@ class PvcPanel extends ResourcePanel {
         ),
       ),
       // Reference detail, collapsed behind a one-line summary.
-      PodSection(
+      InspectorSection(
         id: 'pvc-volume',
         title: 'Volume',
         initiallyExpanded: false,
@@ -64,7 +64,7 @@ class PvcPanel extends ResourcePanel {
         child: _VolumeDetails(ctx: ctx, modes: modes),
       ),
       if (ds.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'pvc-datasource',
           title: 'Data source',
           initiallyExpanded: false,
@@ -72,7 +72,7 @@ class PvcPanel extends ResourcePanel {
           child: _dataSource(ctx, ds),
         ),
       if (conditions.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'pvc-conditions',
           title: 'Conditions',
           initiallyExpanded: false,
@@ -283,8 +283,8 @@ class _VolumeDetails extends StatelessWidget {
   }
 }
 
-/// A [Callout]-shaped insight line (title, text, optional child) for the
-/// pending explanation.
+/// An insight line (title, text, optional action) for the pending
+/// explanation.
 class _Insight extends StatelessWidget {
   final Severity severity;
   final String? title;
@@ -293,7 +293,7 @@ class _Insight extends StatelessWidget {
   const _Insight({required this.severity, required this.text, this.title, this.child});
 
   @override
-  Widget build(BuildContext context) => InsightLine(severity, title ?? text, detail: title == null ? null : text, child: child);
+  Widget build(BuildContext context) => InsightLine(severity, title ?? text, detail: title == null ? null : text, action: child);
 }
 
 /// Derived reason for a Pending claim, using the StorageClass binding mode.
@@ -431,7 +431,7 @@ class _CreatedByStatefulSet extends StatelessWidget {
 
   Widget _section(BuildContext context, ObjectRef ref, String? note, String summary, {bool warn = false}) {
     final theme = Theme.of(context);
-    return PodSection(
+    return InspectorSection(
       id: 'pvc-created-by',
       title: 'Created by StatefulSet',
       initiallyExpanded: false,
@@ -544,7 +544,7 @@ class PvcMountedBy extends StatelessWidget {
           for (final w in warnings) Padding(padding: const EdgeInsets.only(bottom: 10), child: w),
           TrimmedList([
             for (final m in [...mounts.where(bad), ...mounts.where((m) => !bad(m))]) _PodMountRow(m: m, namespace: namespace),
-          ]),
+          ], keep: 6, trimAbove: 8),
         ]);
       },
     );

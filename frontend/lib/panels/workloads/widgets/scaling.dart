@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../actions/actions.dart';
 import '../../../api/models.dart';
+import '../../../ui/inspector/inspector.dart';
 import '../../../ui/widgets/common.dart';
 import '../../../util/k8s.dart';
 import '../../panel.dart';
@@ -65,20 +66,15 @@ class _HpaOverrideNoteState extends State<HpaOverrideNote> {
         final h = hpas.first;
         final name = '${dig(h, ['metadata', 'name'])}';
         final range = '${dig(h, ['spec', 'minReplicas']) ?? 1}–${dig(h, ['spec', 'maxReplicas']) ?? '?'} replicas';
-        return Padding(
+        return InsightLine(
           key: const ValueKey('hpa-note'),
-          padding: const EdgeInsets.only(top: 10),
-          child: InsightRow(
-            WorkloadInsight(
-              Severity.info,
-              'Scaled by HPA $name',
-              title: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
-                const Text('Scaled by HPA '),
-                ResourceLink(ObjectRef(group: 'autoscaling', kind: 'HorizontalPodAutoscaler', name: name, namespace: widget.ctx.namespace), label: name),
-              ]),
-              detail: widget.ctx.app.readOnly ? range : '$range: manual scaling will be overridden.',
-            ),
-          ),
+          Severity.info,
+          'Scaled by HPA $name',
+          title: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+            const Text('Scaled by HPA '),
+            ResourceLink(ObjectRef(group: 'autoscaling', kind: 'HorizontalPodAutoscaler', name: name, namespace: widget.ctx.namespace), label: name),
+          ]),
+          detail: widget.ctx.app.readOnly ? range : '$range: manual scaling will be overridden.',
         );
       },
     );

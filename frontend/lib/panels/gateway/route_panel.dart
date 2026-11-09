@@ -5,7 +5,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../network/inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import '../pod/pod_widgets.dart' show InlineWrap;
 import 'gw_model.dart';
@@ -88,7 +88,7 @@ class _RouteView extends StatelessWidget {
         final diags = _diags(r, data);
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _header(context, r, data, health, diags, snap.error),
-          PodSection(
+          InspectorSection(
             id: 'route-parents',
             title: 'Parents',
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -103,7 +103,7 @@ class _RouteView extends StatelessWidget {
             ]),
             child: _parents(context, r, data, diags),
           ),
-          PodSection(
+          InspectorSection(
             id: 'route-rules',
             title: 'Rules',
             trailing: SectionSummary(plural(r.rules.length, 'rule')),
@@ -137,11 +137,11 @@ class _RouteView extends StatelessWidget {
     final backends = {for (final b in r.backendRefs) b.key: b}.values.toList();
     final missing = data?.missingBackends ?? const <String>{};
     final many = r.parentRefs.length > 1;
-    final insights = <PodInsight>[
-      if (r.parentRefs.isEmpty) const PodInsight(Severity.error, 'No parentRefs', 'The route is not attached to any Gateway, so it serves no traffic.'),
+    final insights = <Insight>[
+      if (r.parentRefs.isEmpty) const Insight(Severity.error, 'No parentRefs', 'The route is not attached to any Gateway, so it serves no traffic.'),
       for (final e in diags.entries)
-        for (final d in e.value) PodInsight(diagSeverity(d.level), many ? '${e.key.qualified}: ${d.title}' : d.title, d.detail),
-      if (error != null) PodInsight(Severity.warn, 'Lookup failed', '$error'),
+        for (final d in e.value) Insight(diagSeverity(d.level), many ? '${e.key.qualified}: ${d.title}' : d.title, d.detail),
+      if (error != null) Insight(Severity.warn, 'Lookup failed', '$error'),
     ];
     final sev = health.healthy ? Severity.ok : diagSeverity(health.level);
     return InspectorHeader(
@@ -149,14 +149,14 @@ class _RouteView extends StatelessWidget {
       headline: health.label,
       detail: [r.kind.kind, if (r.kind.hasHostnames) hosts.isEmpty ? 'any hostname' : hosts.join(', ')].join(' · '),
       figures: [
-        HeaderFigure('${health.accepted}', 'accepted',
+        InspectorFigure('${health.accepted}', 'accepted',
             of: '/${health.parents}', severity: health.accepted == health.parents && health.parents > 0 ? Severity.neutral : Severity.error, tooltip: '${health.accepted} of ${health.parents} parents accepted'),
-        HeaderFigure('${r.rules.length}', r.rules.length == 1 ? 'rule' : 'rules'),
-        HeaderFigure('${backends.length}', backends.length == 1 ? 'backend' : 'backends'),
-        if (missing.isNotEmpty) HeaderFigure('${missing.length}', 'not found', severity: Severity.error),
+        InspectorFigure('${r.rules.length}', r.rules.length == 1 ? 'rule' : 'rules'),
+        InspectorFigure('${backends.length}', backends.length == 1 ? 'backend' : 'backends'),
+        if (missing.isNotEmpty) InspectorFigure('${missing.length}', 'not found', severity: Severity.error),
       ],
       insights: insights,
-      facts: KeyValueTable(keyWidth: 80, [
+      factsKeyWidth: 80, facts: [
         if (r.kind.hasHostnames)
           (
             'Hostnames',
@@ -166,7 +166,7 @@ class _RouteView extends StatelessWidget {
           'Backends',
           backends.isEmpty ? null : Wrap(spacing: 10, runSpacing: 2, children: [for (final b in backends.take(8)) BackendLine(b, fromNamespace: r.namespace)]),
         ),
-      ]),
+      ],
     );
   }
 
@@ -187,17 +187,17 @@ class _RouteView extends StatelessWidget {
           final bad = sev != Severity.ok;
           return (
             bad,
-            CompactRow(
+            InspectorRow(
               key: ValueKey('route-parent-${p.qualified}/${p.sectionText}'),
               memoryId: 'route-parent:${ctx.uid}/${p.qualified}/${p.sectionText}',
-              severity: sev,
+              dot: sev,
               dotTooltip: label,
               title: p.isGateway
                   ? gwLink('Gateway', p.name, namespace: p.namespace)
                   : ResourceLink(ObjectRef(group: p.group, kind: p.kind, name: p.name, namespace: p.namespace), label: '${p.kind} ${p.qualified}'),
               subtitle: dotLine([p.sectionText, if (status?['controllerName'] != null) 'controller ${status!['controllerName']}']),
               trailing: [if (bad) Text(label, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, sev), fontWeight: FontWeight.w600))],
-              details: status == null
+              details: (_) => status == null
                   ? const Muted('The controller has not reported on this parent yet.')
                   : Wrap(spacing: 8, runSpacing: 4, children: [
                       CondBadge(condOf(conds, 'Accepted'), label: 'Accepted', negative: 'Not accepted'),
@@ -268,11 +268,11 @@ class _RouteView extends StatelessWidget {
     final title = rule['name'] != null ? '${rule['name']}' : 'Rule ${i + 1}';
     return (
       sev != Severity.ok,
-      CompactRow(
+      InspectorRow(
         key: ValueKey('route-rule-$i'),
         memoryId: 'route-rule:${ctx.uid}/$i',
-        severity: sev,
-        initiallyOpen: sev != Severity.ok,
+        dot: sev,
+        initiallyExpanded: sev != Severity.ok,
         title: Text.rich(TextSpan(children: [
           TextSpan(text: '$title  ', style: const TextStyle(fontWeight: FontWeight.w600)),
           TextSpan(text: matchText, style: monoStyle(context, size: 11.5, color: theme.hintColor)),
@@ -283,7 +283,7 @@ class _RouteView extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: sev == Severity.error ? TextStyle(color: severityColor(context, Severity.error)) : null,
         ),
-        details: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        details: (_) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 10, children: [
           if (isHttpish)
             QuietGroup('Match', [
               if (matches.isEmpty) const Muted('everything'),

@@ -8,7 +8,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../network/inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'logic.dart';
 import 'quota_panel.dart';
@@ -23,7 +23,7 @@ class NamespacePanel extends ResourcePanel {
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
         _NamespaceView(key: ValueKey(ctx.uid), ctx: ctx),
         _QuotaSection(key: ValueKey('${ctx.uid}/quotas'), api: ctx.api, namespace: ctx.name),
-        PodSection(
+        InspectorSection(
           id: 'ns-warnings',
           title: 'Recent warnings',
           child: _Warnings(key: ValueKey('${ctx.uid}/warnings'), api: ctx.api, namespace: ctx.name),
@@ -52,7 +52,7 @@ class _QuotaSectionState extends State<_QuotaSection> {
   }();
 
   @override
-  Widget build(BuildContext context) => PodSection(
+  Widget build(BuildContext context) => InspectorSection(
         id: 'ns-quotas',
         title: 'Quotas & limits',
         initiallyExpanded: false,
@@ -96,7 +96,7 @@ class _NamespaceViewState extends State<_NamespaceView> {
           final results = snap.data;
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _header(context, results),
-            PodSection(
+            InspectorSection(
               id: 'ns-inventory',
               title: 'Inventory',
               trailing: SectionSummary(results == null ? '' : '${[for (final r in results) if (r is List<Json>) r.length].fold<int>(0, (a, b) => a + b)} objects'),
@@ -135,18 +135,18 @@ class _NamespaceViewState extends State<_NamespaceView> {
         .where((h) => h.$2 == Severity.warn)
         .fold<int>(0, (a, h) => a + h.$3);
     final services = items('services');
-    final insights = <PodInsight>[
+    final insights = <Insight>[
       if (terminating)
-        PodInsight(
+        Insight(
           Severity.error,
           'Terminating',
           specFin.isNotEmpty || metaFin.isNotEmpty ? 'Waiting on finalizers (below).' : 'Deletion is in progress.',
         ),
       if (terminating)
-        for (final c in blocking) PodInsight(Severity.error, '${c['type']}${c['reason'] != null ? ' · ${c['reason']}' : ''}', c['message'] as String?),
-      if (failing > 0) PodInsight(Severity.error, failing == 1 ? '1 pod failing' : '$failing pods failing'),
-      if (pending > 0) PodInsight(Severity.warn, pending == 1 ? '1 pod pending' : '$pending pods pending'),
-      if (degraded > 0) PodInsight(Severity.warn, degraded == 1 ? '1 workload degraded' : '$degraded workloads degraded'),
+        for (final c in blocking) Insight(Severity.error, '${c['type']}${c['reason'] != null ? ' · ${c['reason']}' : ''}', c['message'] as String?),
+      if (failing > 0) Insight(Severity.error, failing == 1 ? '1 pod failing' : '$failing pods failing'),
+      if (pending > 0) Insight(Severity.warn, pending == 1 ? '1 pod pending' : '$pending pods pending'),
+      if (degraded > 0) Insight(Severity.warn, degraded == 1 ? '1 workload degraded' : '$degraded workloads degraded'),
     ];
     final counts = [
       if (pods != null) plural(pods.length, 'pod'),
@@ -158,12 +158,12 @@ class _NamespaceViewState extends State<_NamespaceView> {
       headline: terminating ? 'Terminating' : phase,
       detail: counts,
       figures: [
-        HeaderFigure(pods == null ? '–' : '${pods.length}', 'pods', severity: failing > 0 ? Severity.error : (pending > 0 ? Severity.warn : Severity.neutral)),
-        HeaderFigure(results == null ? '–' : '${workloads.length}', 'workloads', severity: degraded > 0 ? Severity.warn : Severity.neutral),
-        HeaderFigure(services == null ? '–' : '${services.length}', 'services'),
+        InspectorFigure(pods == null ? '–' : '${pods.length}', 'pods', severity: failing > 0 ? Severity.error : (pending > 0 ? Severity.warn : Severity.neutral)),
+        InspectorFigure(results == null ? '–' : '${workloads.length}', 'workloads', severity: degraded > 0 ? Severity.warn : Severity.neutral),
+        InspectorFigure(services == null ? '–' : '${services.length}', 'services'),
       ],
       insights: insights,
-      facts: KeyValueTable(keyWidth: 82, [
+      factsKeyWidth: 82, facts: [
         if (deleting != null)
           ('Deleting', Row(children: [Text('requested ', style: theme.textTheme.bodySmall), AgeText(deleting, suffix: ' ago', style: theme.textTheme.bodySmall)])),
         (
@@ -182,7 +182,7 @@ class _NamespaceViewState extends State<_NamespaceView> {
               for (final c in conds) StatusBadge('${c['type']}=${c['status']}', dense: true, severity: c['status'] == 'True' ? Severity.error : Severity.ok),
             ]),
           ),
-      ]),
+      ],
     );
   }
 }
@@ -307,7 +307,7 @@ class _Inventory extends StatelessWidget {
           decoration: BoxDecoration(color: h ? AppColors.of(context).hover : null, borderRadius: BorderRadius.circular(5)),
           padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
           child: Row(children: [
-            StateDot(sev),
+            RowDot(sev),
             const SizedBox(width: 8),
             SizedBox(width: 96, child: Text(bucket.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontSize: 12.5))),
             Expanded(

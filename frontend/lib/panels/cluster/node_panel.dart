@@ -14,7 +14,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../dra/dra_sections.dart';
-import '../network/inspector_kit.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'logic.dart';
 import 'widgets.dart';
@@ -45,7 +45,7 @@ class NodePanel extends ResourcePanel {
       gpuNodeSection(ctx),
       draNodeSection(ctx),
       // Reference detail, collapsed behind a one-line summary.
-      PodSection(
+      InspectorSection(
         id: 'node-capacity',
         title: 'Capacity & allocatable',
         initiallyExpanded: false,
@@ -57,7 +57,7 @@ class NodePanel extends ResourcePanel {
         ].join(' · ')),
         child: _CapacityTable(status),
       ),
-      PodSection(
+      InspectorSection(
         id: 'node-taints',
         title: 'Taints',
         initiallyExpanded: false,
@@ -66,7 +66,7 @@ class NodePanel extends ResourcePanel {
             ? const Padding(padding: EdgeInsets.only(left: 4), child: Text('No taints: any pod can be scheduled here'))
             : Wrap(spacing: 4, runSpacing: 4, children: [for (final t in taints) _TaintChip(t)]),
       ),
-      PodSection(
+      InspectorSection(
         id: 'node-conditions',
         title: 'Conditions',
         initiallyExpanded: false,
@@ -76,7 +76,7 @@ class NodePanel extends ResourcePanel {
         ),
         child: ConditionsTable(status['conditions'] as List?),
       ),
-      PodSection(
+      InspectorSection(
         id: 'node-system',
         title: 'System info',
         initiallyExpanded: false,
@@ -92,14 +92,14 @@ class NodePanel extends ResourcePanel {
         ]),
         child: _SystemInfo(ctx, labels),
       ),
-      PodSection(
+      InspectorSection(
         id: 'node-addresses',
         title: 'Addresses',
         initiallyExpanded: false,
         trailing: SectionSummary(addrs.isEmpty ? 'none' : addrs.map((a) => '${a['address']}').join(' · ')),
         child: _Addresses(ctx),
       ),
-      PodSection(
+      InspectorSection(
         id: 'node-images',
         title: 'Images',
         initiallyExpanded: false,
@@ -154,7 +154,7 @@ class _NodeViewState extends State<_NodeView> {
             api: ctx.api,
             builder: (context, usage, error) => _NodeHeader(ctx, usage: usage?[ctx.name]?.usage, pods: pods, allocation: allocation),
           ),
-          PodSection(
+          InspectorSection(
             id: 'node-pods',
             title: 'Pods',
             trailing: SectionSummary(pods == null ? '' : _podSummary(pods)),
@@ -186,7 +186,7 @@ class _NodeViewState extends State<_NodeView> {
           // from the kubelet when there is no Prometheus.
           nodeHistory(ctx),
           liveNetworkSection(ctx),
-          PodSection(
+          InspectorSection(
             id: 'node-allocation',
             title: 'Usage & allocation',
             initiallyExpanded: false,
@@ -242,36 +242,36 @@ class _NodeHeader extends StatelessWidget {
     final troubled = active?.where(podHasProblem).length ?? 0;
     final version = dig<String>(ctx.status, ['nodeInfo', 'kubeletVersion']);
 
-    final insights = <PodInsight>[
-      if (readyStatus != 'True') PodInsight(readyStatus == 'Unknown' ? Severity.warn : Severity.error, 'Node is $readyText', [ready?['reason'], ready?['message']].whereType<String>().join(': ')),
+    final insights = <Insight>[
+      if (readyStatus != 'True') Insight(readyStatus == 'Unknown' ? Severity.warn : Severity.error, 'Node is $readyText', [ready?['reason'], ready?['message']].whereType<String>().join(': ')),
       for (final p in _pressureTypes)
         if (cond(p) != null && cond(p)!['status'] != 'False')
-          PodInsight(
+          Insight(
             cond(p)!['status'] == 'True' ? Severity.error : Severity.warn,
             cond(p)!['status'] == 'True' ? p : '$p: ${cond(p)!['status'] ?? 'unknown'}',
             [cond(p)!['reason'], cond(p)!['message']].whereType<String>().join(': '),
           ),
       if (cordoned)
-        PodInsight(
+        Insight(
           Severity.warn,
           'Cordoned: SchedulingDisabled',
           'spec.unschedulable is true; no new pods will be scheduled here${unschedTaint ? ' (node.kubernetes.io/unschedulable taint set).' : '.'}',
         ),
-      if (overcommitted) const PodInsight(Severity.warn, 'Overcommitted', 'The pods\' limits exceed what the node can allocate.'),
-      if (troubled > 0) PodInsight(Severity.warn, troubled == 1 ? '1 pod has problems' : '$troubled pods have problems', 'See Pods below.'),
+      if (overcommitted) const Insight(Severity.warn, 'Overcommitted', 'The pods\' limits exceed what the node can allocate.'),
+      if (troubled > 0) Insight(Severity.warn, troubled == 1 ? '1 pod has problems' : '$troubled pods have problems', 'See Pods below.'),
     ];
 
     Severity load(double f) => f >= 0.95 ? Severity.error : (f >= 0.8 ? Severity.warn : Severity.neutral);
-    HeaderFigure resource(String name, double? used, double? requested, double? of, String Function(double?) f) {
-      if (of == null || of <= 0) return HeaderFigure('–', name);
+    InspectorFigure resource(String name, double? used, double? requested, double? of, String Function(double?) f) {
+      if (of == null || of <= 0) return InspectorFigure('–', name);
       if (used != null) {
-        return HeaderFigure(formatPercent(used / of), '$name used',
+        return InspectorFigure(formatPercent(used / of), '$name used',
             severity: load(used / of), tooltip: '${f(used)} of ${f(of)} allocatable${requested != null ? ' · ${f(requested)} requested' : ''}');
       }
       if (requested != null) {
-        return HeaderFigure(formatPercent(requested / of), '$name req', severity: load(requested / of), tooltip: '${f(requested)} of ${f(of)} allocatable requested (no live metrics)');
+        return InspectorFigure(formatPercent(requested / of), '$name req', severity: load(requested / of), tooltip: '${f(requested)} of ${f(of)} allocatable requested (no live metrics)');
       }
-      return HeaderFigure('–', name);
+      return InspectorFigure('–', name);
     }
 
     final small = Theme.of(context).textTheme.bodySmall;
@@ -285,17 +285,17 @@ class _NodeHeader extends StatelessWidget {
       figures: [
         resource('cpu', usage?.cpuMillis, t?.cpuRequest, cpu, formatCpu),
         resource('mem', usage?.memoryBytes, t?.memRequest, mem, formatBytes),
-        HeaderFigure(active == null ? '–' : '${active.length}', 'pods',
+        InspectorFigure(active == null ? '–' : '${active.length}', 'pods',
             of: maxPods == null ? null : '/${maxPods.toStringAsFixed(0)}',
             severity: active != null && maxPods != null && active.length >= maxPods ? Severity.warn : Severity.neutral),
       ],
       insights: insights,
-      facts: KeyValueTable(keyWidth: 82, [
+      factsKeyWidth: 82, facts: [
         ('Ready since', ready == null ? null : AgeText(ready['lastTransitionTime'], suffix: ' ago', style: small)),
         ('Heartbeat', ready == null ? null : AgeText(ready['lastHeartbeatTime'], suffix: ' ago', style: small)),
         ('Internal IP', internalIp == null ? null : Align(alignment: Alignment.centerLeft, child: Chipish(text: internalIp, copyValue: internalIp))),
         ('Pod CIDR', cidrs),
-      ]),
+      ],
     );
   }
 }

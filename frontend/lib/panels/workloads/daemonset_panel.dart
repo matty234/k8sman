@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../api/models.dart';
 import '../../metrics/workload_usage.dart';
 import '../../prometheus/metric_history_chart.dart';
-import '../../ui/detail/owner_line.dart';
+import '../../ui/inspector/inspector.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../actions/actions.dart';
@@ -82,19 +82,19 @@ class DaemonSetPanel extends ResourcePanel {
     final unavailable = asInt(st['numberUnavailable']) ?? (desired - available).clamp(0, desired);
     final mis = asInt(st['numberMisscheduled']) ?? 0;
     return [
-      WorkloadStatusHeader(
+      InspectorHeader(
         headline: head.text,
-        severity: head.severity,
+        mark: head.severity,
         detail: head.detail,
-        progress: head.progress == null ? null : WorkloadProgress(head.progress!, tooltip: '$updated of $desired nodes run the latest pod template'),
+        progress: head.progress == null ? null : InspectorProgress(head.progress!, tooltip: '$updated of $desired nodes run the latest pod template'),
         figures: [
-          WorkloadFigure.count(ready, desired, 'ready', zeroIsError: true),
-          WorkloadFigure('$updated', 'updated', of: '/$desired', tooltip: 'on the latest pod template'),
-          WorkloadFigure.count(available, desired, 'available', zeroIsError: true),
-          WorkloadFigure('$unavailable', 'unavailable', severity: unavailable > 0 ? Severity.warn : Severity.neutral),
+          InspectorFigure.count(ready, desired, 'ready', zeroIsError: true),
+          InspectorFigure('$updated', 'updated', of: '/$desired', tooltip: 'on the latest pod template'),
+          InspectorFigure.count(available, desired, 'available', zeroIsError: true),
+          InspectorFigure('$unavailable', 'unavailable', severity: unavailable > 0 ? Severity.warn : Severity.neutral),
         ],
         insights: [
-          if (mis > 0) WorkloadInsight(Severity.warn, '$mis misscheduled', detail: 'Running on nodes the DaemonSet should not run on (taints or node selector changed).'),
+          if (mis > 0) Insight(Severity.warn, '$mis misscheduled', 'Running on nodes the DaemonSet should not run on (taints or node selector changed).'),
           ...conditionInsights(asMapList(st['conditions'])),
         ],
         facts: [?ownerFact(ctx.object)],

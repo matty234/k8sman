@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import '../../../actions/actions.dart';
 import '../../../api/client.dart';
 import '../../../api/models.dart';
-import '../../../ui/detail/inspector_parts.dart';
+import '../../../ui/inspector/inspector.dart';
 import '../../../ui/theme.dart';
 import '../../../ui/widgets/common.dart';
 import '../../../util/text.dart';
-import '../../pod/pod_section.dart';
 import '../../../util/k8s.dart';
 import '../../panel.dart';
 import 'util.dart';
@@ -124,7 +123,7 @@ class _PodsListState extends State<PodsList> {
       final title = widget.sectionTitle;
       if (title == null) return body;
       final problems = pods == null ? 0 : pods.where(podHasProblem).length;
-      return PodSection(
+      return InspectorSection(
         key: const ValueKey('workload-pods'),
         id: 'workload-pods',
         title: title,

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 
 import '../../api/models.dart';
 import '../../metrics/pod_usage.dart';
@@ -8,7 +7,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import 'pod_logic.dart';
-import 'pod_section.dart';
+import '../../ui/inspector/inspector.dart';
 import 'pod_widgets.dart';
 import '../../util/text.dart';
 
@@ -27,7 +26,10 @@ String shortImage(String image) {
 /// restarts, usage mini-bars and its actions (logs, previous logs,
 /// terminal; on hover, or always while it has a problem). Click to expand
 /// the details. Containers with problems start expanded.
-class ContainerRow extends StatefulWidget {
+///
+/// With [template] (a workload's pod template) the container has no live
+/// state: no status, restarts, usage or actions, just what its spec says.
+class ContainerRow extends StatelessWidget {
   final PodContainer c;
   final String? namespace;
 
@@ -53,6 +55,9 @@ class ContainerRow extends StatefulWidget {
 
   /// Optional per-port trailing action (e.g. one-click port-forward).
   final Widget Function(Json port)? portAction;
+
+  /// A pod template's container: the spec only.
+  final bool template;
   const ContainerRow(
     this.c, {
     super.key,
@@ -64,203 +69,113 @@ class ContainerRow extends StatefulWidget {
     this.miniUsage,
     this.volumes = const [],
     this.portAction,
+    this.template = false,
   });
 
-  @override
-  State<ContainerRow> createState() => _ContainerRowState();
-}
-
-class _ContainerRowState extends State<ContainerRow> {
-  String get _memoryId => 'container:${widget.podUid}/${widget.c.name}';
-  late bool _open = PodSectionMemory.isOpen(_memoryId, fallback: widget.c.hasProblem);
-
-  PodContainer get c => widget.c;
-  bool get _canTerminal => widget.onOpenTerminal != null && c.isRunning && c.kind != ContainerKind.init;
-
-  void _toggle() {
-    setState(() => _open = !_open);
-    PodSectionMemory.set(_memoryId, _open);
-  }
+  bool get _canTerminal => onOpenTerminal != null && c.isRunning && c.kind != ContainerKind.init;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = AppColors.of(context);
-    return Hoverable(
-      key: ValueKey('container-row-${c.name}'),
-      onTap: _toggle,
-      builder: (hovered) => Container(
-        decoration: BoxDecoration(
-          color: hovered && !_open ? colors.hover : null,
-          borderRadius: BorderRadius.circular(5),
-        ),
-        padding: const EdgeInsets.fromLTRB(4, 7, 2, 7),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _header(context, theme, hovered),
-          if (_open)
-            // Taps inside the details (links, copy, selection) must not
-            // collapse the row.
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {},
-              child: MouseRegion(
-                cursor: SystemMouseCursors.basic,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(15, 10, 6, 4),
-                  child: ContainerDetails(c, namespace: widget.namespace, volumes: widget.volumes, portAction: widget.portAction),
-                ),
-              ),
-            ),
-        ]),
-      ),
-    );
-  }
-
-  Widget _header(BuildContext context, ThemeData theme, bool hovered) {
-    final sev = c.severity;
-    final problem = c.hasProblem;
+    final live = !template;
+    final sev = live ? c.severity : Severity.neutral;
+    final problem = live && c.hasProblem;
     final onSurface = theme.colorScheme.onSurface;
     final name = Text(
       c.name,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: monoStyle(context, size: 12.5, color: widget.quiet ? onSurface.withValues(alpha: 0.7) : onSurface).copyWith(fontWeight: FontWeight.w600),
+      style: monoStyle(context, size: 12.5, color: quiet ? onSurface.withValues(alpha: onSurface.a * 0.7) : onSurface).copyWith(fontWeight: FontWeight.w600),
     );
     final image = '${c.spec['image'] ?? ''}';
     final small = theme.textTheme.bodySmall;
     final hint = small?.copyWith(color: theme.hintColor);
     final stateColor = sev == Severity.error || sev == Severity.warn ? severityColor(context, sev) : theme.hintColor;
-    final state = c.isRunning && c.kind != ContainerKind.init
+    final state = !live || (c.isRunning && c.kind != ContainerKind.init)
         ? null
         : Text(c.stateLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: small?.copyWith(color: stateColor, fontWeight: problem ? FontWeight.w600 : null));
-    final showActions = hovered || problem || _open;
+    final showKind = c.kind == ContainerKind.sidecar || ((problem || template) && c.kind != ContainerKind.regular);
+    // Done (an init container that exited 0) shows hollow, like no status.
+    final done = sev == Severity.ok && c.isTerminated;
+    final tip = [c.stateLabel, if (c.hasStatus && c.kind != ContainerKind.init && c.kind != ContainerKind.ephemeral) c.ready ? 'ready' : 'not ready'].join(' · ');
     final actions = <Widget>[
-      if (widget.onViewLogs != null)
-        _IconAction(key: ValueKey('view-logs-${c.name}'), icon: Icons.notes, tooltip: 'View logs', onTap: () => widget.onViewLogs!(context, false)),
-      if (widget.onViewLogs != null && (c.restarts > 0 || c.lastTerminated.isNotEmpty))
-        _IconAction(
+      if (live && onViewLogs != null)
+        RowAction(key: ValueKey('view-logs-${c.name}'), icon: Icons.notes, tooltip: 'View logs', onTap: () => onViewLogs!(context, false)),
+      if (live && onViewLogs != null && (c.restarts > 0 || c.lastTerminated.isNotEmpty))
+        RowAction(
           key: ValueKey('view-previous-logs-${c.name}'),
           icon: Icons.history,
           tooltip: 'Logs of the previous (terminated) instance',
-          onTap: () => widget.onViewLogs!(context, true),
+          onTap: () => onViewLogs!(context, true),
         ),
-      if (_canTerminal)
-        _IconAction(key: ValueKey('open-terminal-${c.name}'), icon: Icons.terminal, tooltip: 'Open a shell in ${c.name} (bottom panel)', onTap: () => widget.onOpenTerminal!(context)),
+      if (live && _canTerminal)
+        RowAction(key: ValueKey('open-terminal-${c.name}'), icon: Icons.terminal, tooltip: 'Open a shell in ${c.name} (bottom panel)', onTap: () => onOpenTerminal!(context)),
     ];
 
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(padding: const EdgeInsets.only(top: 5), child: _StateDot(c)),
-      const SizedBox(width: 8),
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Flexible(child: Tooltip(message: c.name, waitDuration: const Duration(milliseconds: 600), child: name)),
-            if (c.kind == ContainerKind.sidecar || (problem && c.kind != ContainerKind.regular)) ...[
-              const SizedBox(width: 6),
-              Text(c.kind.label.toLowerCase(), style: hint?.copyWith(fontSize: 11)),
-            ],
-          ]),
-          const SizedBox(height: 2),
-          // The state (when not plainly running) leads, so a narrow row
-          // shortens the image rather than the reason.
-          LayoutBuilder(
-            builder: (context, box) => Row(children: [
-              if (state != null) ...[ConstrainedBox(constraints: BoxConstraints(maxWidth: box.maxWidth * 0.7), child: state), Text('  ·  ', style: hint)],
-              Flexible(
-                child: Tooltip(
-                  message: image,
-                  waitDuration: const Duration(milliseconds: 400),
-                  child: Text(shortImage(image), maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: theme.hintColor)),
-                ),
-              ),
-            ]),
+    return InspectorRow(
+      key: ValueKey('container-row-${c.name}'),
+      memoryId: 'container:$podUid/${c.name}',
+      dot: done ? Severity.neutral : sev,
+      dotTooltip: live ? tip : null,
+      problem: problem,
+      title: Row(children: [
+        Flexible(child: Tooltip(message: c.name, waitDuration: const Duration(milliseconds: 600), child: name)),
+        if (showKind) ...[
+          const SizedBox(width: 6),
+          Text(c.kind.label.toLowerCase(), style: hint?.copyWith(fontSize: 11)),
+        ],
+      ]),
+      // The state (when not plainly running) leads, so a narrow row
+      // shortens the image rather than the reason.
+      subtitle: LayoutBuilder(
+        builder: (context, box) => Row(children: [
+          if (state != null) ...[ConstrainedBox(constraints: BoxConstraints(maxWidth: box.maxWidth * 0.7), child: state), Text('  ·  ', style: hint)],
+          Flexible(
+            child: Tooltip(
+              message: image,
+              waitDuration: const Duration(milliseconds: 400),
+              child: Text(shortImage(image), maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: theme.hintColor)),
+            ),
           ),
         ]),
       ),
-      if (c.restarts > 0) ...[
-        const SizedBox(width: 8),
-        Tooltip(
-          message: plural(c.restarts, 'restart'),
-          child: Padding(
-            padding: const EdgeInsets.only(top: 1),
+      trailing: [
+        if (live && c.restarts > 0)
+          Tooltip(
+            message: plural(c.restarts, 'restart'),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.replay, size: 12, color: severityColor(context, Severity.warn)),
               const SizedBox(width: 2),
               Text('${c.restarts}', style: small?.copyWith(color: severityColor(context, Severity.warn), fontWeight: FontWeight.w600)),
             ]),
           ),
-        ),
+        if (live && miniUsage != null) Padding(padding: const EdgeInsets.only(left: 2, top: 3), child: miniUsage!),
       ],
-      if (widget.miniUsage != null) ...[const SizedBox(width: 10), Padding(padding: const EdgeInsets.only(top: 4), child: widget.miniUsage!)],
-      if (actions.isNotEmpty) ...[
-        const SizedBox(width: 6),
-        IgnorePointer(
-          ignoring: !showActions,
-          child: AnimatedOpacity(
-            opacity: showActions ? 1 : 0,
-            duration: const Duration(milliseconds: 100),
-            child: Row(mainAxisSize: MainAxisSize.min, children: actions),
-          ),
-        ),
-      ],
-      Padding(
-        padding: const EdgeInsets.only(top: 1, left: 2),
-        child: AnimatedRotation(
-          turns: _open ? 0.25 : 0,
-          duration: const Duration(milliseconds: 120),
-          child: Icon(Icons.chevron_right, size: 16, color: hovered || _open ? theme.hintColor : theme.hintColor.withValues(alpha: 0.5)),
-        ),
-      ),
+      actions: actions,
+      details: (_) => ContainerDetails(c, namespace: namespace, volumes: volumes, portAction: live ? portAction : null, template: template),
+    );
+  }
+}
+
+/// A pod template's containers (init and sidecars, then the rest) as
+/// [ContainerRow]s without live state.
+class TemplateContainers extends StatelessWidget {
+  /// `spec.template` (with `metadata` and `spec`).
+  final Json template;
+  final String? namespace;
+
+  /// Keys which rows are open for the session, e.g. the workload's uid.
+  final String memoryKey;
+  const TemplateContainers({super.key, required this.template, required this.namespace, required this.memoryKey});
+
+  @override
+  Widget build(BuildContext context) {
+    final spec = asMap(template['spec']);
+    final volumes = asMapList(spec['volumes']);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final c in podContainers({'spec': spec}))
+        ContainerRow(c, podUid: 'template:$memoryKey', namespace: namespace, volumes: volumes, quiet: c.kind == ContainerKind.init, template: true),
     ]);
-  }
-}
-
-/// A small dot in the container's state colour: green running and ready,
-/// amber/red for problems, hollow grey for completed or no status.
-class _StateDot extends StatelessWidget {
-  final PodContainer c;
-  const _StateDot(this.c);
-
-  @override
-  Widget build(BuildContext context) {
-    final sev = c.severity;
-    final done = sev == Severity.ok && c.isTerminated;
-    final hollow = sev == Severity.neutral || done;
-    final color = severityColor(context, done ? Severity.neutral : sev);
-    final tip = [c.stateLabel, if (c.hasStatus && c.kind != ContainerKind.init && c.kind != ContainerKind.ephemeral) c.ready ? 'ready' : 'not ready'].join(' · ');
-    return Tooltip(
-      message: tip,
-      child: Container(
-        width: 7,
-        height: 7,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: hollow ? null : color, border: hollow ? Border.all(color: color, width: 1.2) : null),
-      ),
-    );
-  }
-}
-
-class _IconAction extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-  const _IconAction({super.key, required this.icon, required this.tooltip, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = theme.colorScheme.primary;
-    return Tooltip(
-      message: tooltip,
-      child: Hoverable(
-        onTap: onTap,
-        builder: (h) => Container(
-          width: 22,
-          height: 20,
-          decoration: BoxDecoration(color: h ? accent.withValues(alpha: 0.12) : null, borderRadius: BorderRadius.circular(4)),
-          child: Icon(icon, size: 14, color: h ? accent : theme.hintColor),
-        ),
-      ),
-    );
   }
 }
 
@@ -395,7 +310,10 @@ class ContainerDetails extends StatelessWidget {
   /// The pod's volumes, so a mount can link to what backs it.
   final List<Json> volumes;
   final Widget Function(Json port)? portAction;
-  const ContainerDetails(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction});
+
+  /// A pod template's container: no state, just the spec.
+  final bool template;
+  const ContainerDetails(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, this.template = false});
 
   @override
   Widget build(BuildContext context) {
@@ -429,20 +347,20 @@ class ContainerDetails extends StatelessWidget {
     ];
 
     final groups = <Widget>[
-      _Group(key: const ValueKey('container-group-runtime'), 'Runtime', [
-        if (plainRunning)
+      QuietGroup(key: const ValueKey('container-group-runtime'), 'Runtime', [
+        if (!template && plainRunning)
           _Field('Started', AgeText(c.running['startedAt'], suffix: ' ago', style: small))
-        else
+        else if (!template)
           _Field('State', _stateWidget(context)),
-        if (c.lastTerminated.isNotEmpty) _Field('Last state', _lastStateWidget(context)),
+        if (!template && c.lastTerminated.isNotEmpty) _Field('Last state', _lastStateWidget(context)),
         if (c.kind == ContainerKind.ephemeral && spec['targetContainerName'] != null) _Field('Target', Text('${spec['targetContainerName']}', style: small)),
         _Field('Image', _imageWidget(context)),
         if (cmd.isNotEmpty) _Field('Command', _Copyable(shellJoin(cmd))),
         if (spec['workingDir'] != null) _Field('Workdir', _Copyable('${spec['workingDir']}')),
       ]),
-      if (ports.isNotEmpty) _Group(key: const ValueKey('container-group-network'), 'Network', [_portsWidget(context, ports)]),
+      if (ports.isNotEmpty) QuietGroup(key: const ValueKey('container-group-network'), 'Network', [_portsWidget(context, ports)]),
       if (probes.isNotEmpty || hooks.isNotEmpty)
-        _Group(key: const ValueKey('container-group-health'), 'Health', [
+        QuietGroup(key: const ValueKey('container-group-health'), 'Health', [
           for (final (label, p) in probes)
             _Field(
               label,
@@ -454,8 +372,8 @@ class ContainerDetails extends StatelessWidget {
             ),
           for (final e in hooks.entries) _Field(e.key, Text(_hookText(asMap(e.value)), style: small)),
         ]),
-      if (config.isNotEmpty) _Group(key: const ValueKey('container-group-config'), 'Config', config, gap: 10),
-      if (sc.isNotEmpty) _Group(key: const ValueKey('container-group-security'), 'Security', [securityLine(context, sc)]),
+      if (config.isNotEmpty) QuietGroup(key: const ValueKey('container-group-config'), 'Config', config, gap: 10),
+      if (sc.isNotEmpty) QuietGroup(key: const ValueKey('container-group-security'), 'Security', [securityLine(context, sc)]),
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final (i, g) in groups.indexed) Padding(padding: EdgeInsets.only(top: i == 0 ? 0 : 14), child: g),
@@ -616,7 +534,7 @@ class ContainerDetails extends StatelessWidget {
       return Text(vf.keys.join(', '), style: hint);
     }
 
-    return _Trimmed(
+    return TrimmedList.builder(
       key: ValueKey('container-env-${c.name}'),
       total: env.length,
       builder: (shown) => Table(
@@ -693,7 +611,7 @@ class ContainerDetails extends StatelessWidget {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (shown.isNotEmpty)
-        _Trimmed(
+        TrimmedList.builder(
           key: ValueKey('container-mounts-${c.name}'),
           total: shown.length,
           builder: (n) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final m in shown.take(n)) mount(m)]),
@@ -707,26 +625,6 @@ class ContainerDetails extends StatelessWidget {
             child: Hint(shown.isEmpty ? 'service account token' : '+ service account token'),
           ),
         ),
-    ]);
-  }
-}
-
-/// A quiet group in the container details: a small semibold label in the
-/// hint colour over its rows.
-class _Group extends StatelessWidget {
-  final String label;
-  final List<Widget> children;
-
-  /// Space between the rows.
-  final double gap;
-  const _Group(this.label, this.children, {super.key, this.gap = 4});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(label.toUpperCase(), style: theme.textTheme.bodySmall?.copyWith(fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.7, color: theme.hintColor)),
-      for (final (i, w) in children.indexed) Padding(padding: EdgeInsets.only(top: i == 0 ? 5 : gap), child: w),
     ]);
   }
 }
@@ -795,30 +693,14 @@ class _HoverIcon extends StatelessWidget {
 /// "postgresql 5432/TCP" in mono; its port-forward icon shows on hover.
 /// A live forward (the action draws a wider `localhost:N` link instead
 /// of the icon) stays visible.
-class _Port extends StatefulWidget {
+class _Port extends StatelessWidget {
   final Json p;
   final Widget Function(Json port)? action;
   const _Port(this.p, {super.key, this.action});
 
   @override
-  State<_Port> createState() => _PortState();
-}
-
-class _PortState extends State<_Port> {
-  bool _wide = false;
-
-  void _measured(Size size) {
-    final wide = size.width > 28;
-    if (wide == _wide) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _wide = wide);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final p = widget.p;
-    final action = widget.action;
+    final action = this.action;
     final theme = Theme.of(context);
     final mono = monoStyle(context, size: 11);
     final text = Text.rich(TextSpan(style: mono, children: [
@@ -829,74 +711,9 @@ class _PortState extends State<_Port> {
     return Hoverable(
       builder: (h) => Row(mainAxisSize: MainAxisSize.min, children: [
         text,
-        // Always laid out (no jump on hover); visible only on hover.
-        if (action != null)
-          Padding(
-            padding: const EdgeInsets.only(left: 3),
-            child: Opacity(opacity: h || _wide ? 1 : 0, child: _SizeObserver(onSize: _measured, child: action(p))),
-          ),
+        if (action != null) Padding(padding: const EdgeInsets.only(left: 3), child: RevealOnHover(visible: h, blockWhenHidden: false, child: action(p))),
       ]),
     );
-  }
-}
-
-/// Reports its child's size after each layout.
-class _SizeObserver extends SingleChildRenderObjectWidget {
-  final ValueChanged<Size> onSize;
-  const _SizeObserver({required this.onSize, super.child});
-
-  @override
-  RenderObject createRenderObject(BuildContext context) => _RenderSizeObserver(onSize);
-
-  @override
-  void updateRenderObject(BuildContext context, _RenderSizeObserver renderObject) => renderObject.onSize = onSize;
-}
-
-class _RenderSizeObserver extends RenderProxyBox {
-  ValueChanged<Size> onSize;
-  _RenderSizeObserver(this.onSize);
-
-  @override
-  void performLayout() {
-    super.performLayout();
-    onSize(size);
-  }
-}
-
-/// A list that shows its first 4 items with "Show N more" when it has
-/// more than 6.
-class _Trimmed extends StatefulWidget {
-  final int total;
-  final Widget Function(int shown) builder;
-  const _Trimmed({super.key, required this.total, required this.builder});
-
-  @override
-  State<_Trimmed> createState() => _TrimmedState();
-}
-
-class _TrimmedState extends State<_Trimmed> {
-  bool _all = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final trims = widget.total > 6;
-    final shown = trims && !_all ? 4 : widget.total;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      widget.builder(shown),
-      if (trims)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Hoverable(
-            key: const ValueKey('show-more'),
-            onTap: () => setState(() => _all = !_all),
-            builder: (h) => Text(
-              _all ? 'Show fewer' : 'Show ${widget.total - shown} more',
-              style: theme.textTheme.bodySmall?.copyWith(color: h ? theme.colorScheme.onSurface : theme.hintColor, decoration: h ? TextDecoration.underline : null),
-            ),
-          ),
-        ),
-    ]);
   }
 }
 

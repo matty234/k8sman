@@ -6,7 +6,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../inspector_parts.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'usage.dart';
 import 'values.dart';
@@ -190,7 +190,7 @@ class UsedBySection extends StatelessWidget {
                 plural(report.pods.length, 'pod'),
                 if (missing.isNotEmpty) plural(missing.length, 'missing key'),
               ].join(' · ');
-        return PodSection(
+        return InspectorSection(
           id: 'usedby-${kind.name}',
           title: 'Used by',
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -287,7 +287,7 @@ class _UsageList extends StatelessWidget {
           ]),
         ),
     ];
-    return TrimmedList(rows);
+    return TrimmedList(rows, keep: 6, trimAbove: 8);
   }
 
   /// "volume, env" — how a row uses the object, for its subtitle.

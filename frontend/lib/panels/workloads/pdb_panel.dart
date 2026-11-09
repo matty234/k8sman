@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
-import '../../ui/detail/owner_line.dart';
+import '../../ui/inspector/inspector.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'widgets/pods_list.dart';
 import 'widgets/sections.dart';
-import 'widgets/status_header.dart';
 import 'widgets/util.dart';
 
 class PdbPanel extends ResourcePanel {
@@ -40,21 +39,21 @@ class PdbPanel extends ResourcePanel {
         : 'none (minAvailable 1 implied)';
 
     return [
-      WorkloadStatusHeader(
+      InspectorHeader(
         headline: headline,
-        severity: sev,
+        mark: sev,
         detail: budget,
         figures: [
-          WorkloadFigure(allowed == null ? '—' : '$allowed', 'allowed', severity: allowed == 0 ? Severity.warn : Severity.neutral, tooltip: 'disruptions allowed now'),
-          WorkloadFigure('$currentHealthy', 'healthy', of: '/$desiredHealthy', severity: currentHealthy < desiredHealthy ? Severity.error : Severity.neutral, tooltip: 'current / desired healthy'),
-          WorkloadFigure('$expected', 'expected', tooltip: 'expected pods'),
+          InspectorFigure(allowed == null ? '—' : '$allowed', 'allowed', severity: allowed == 0 ? Severity.warn : Severity.neutral, tooltip: 'disruptions allowed now'),
+          InspectorFigure('$currentHealthy', 'healthy', of: '/$desiredHealthy', severity: currentHealthy < desiredHealthy ? Severity.error : Severity.neutral, tooltip: 'current / desired healthy'),
+          InspectorFigure('$expected', 'expected', tooltip: 'expected pods'),
         ],
         insights: [
           if (allowed == 0)
-            const WorkloadInsight(
+            const Insight(
               Severity.warn,
               '0 disruptions allowed',
-              detail: 'kubectl drain and node upgrades will hang on these pods until more are healthy.',
+              'kubectl drain and node upgrades will hang on these pods until more are healthy.',
             ),
         ],
         facts: [

@@ -5,6 +5,9 @@ library;
 import '../../api/models.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
+import '../../ui/inspector/insight.dart';
+
+export '../../ui/inspector/insight.dart';
 
 enum ContainerKind { init, sidecar, regular, ephemeral }
 
@@ -90,15 +93,6 @@ List<PodContainer> podContainers(Json pod) {
   ];
 }
 
-/// A derived, human explanation line for the status summary.
-class PodInsight {
-  final Severity severity;
-  final String text;
-  final String? detail;
-  const PodInsight(this.severity, this.text, [this.detail]);
-  @override
-  String toString() => detail == null ? text : '$text — $detail';
-}
 
 String? exitCodeHint(int code) => switch (code) {
       0 => null,
@@ -134,8 +128,8 @@ String describeTerminated(Json t, {bool withAge = true}) {
 
 /// Builds the "why isn't this ready?" explanation from conditions and
 /// container states. Empty list = nothing noteworthy.
-List<PodInsight> podInsights(Json pod) {
-  final out = <PodInsight>[];
+List<Insight> podInsights(Json pod) {
+  final out = <Insight>[];
   final spec = asMap(pod['spec']);
   final status = asMap(pod['status']);
   final phase = '${status['phase'] ?? ''}';
@@ -145,7 +139,7 @@ List<PodInsight> podInsights(Json pod) {
   if (del != null) {
     final grace = dig<num>(pod, ['metadata', 'deletionGracePeriodSeconds']);
     final finalizers = dig<List>(pod, ['metadata', 'finalizers']) ?? const [];
-    out.add(PodInsight(Severity.warn, 'Pod is terminating', [
+    out.add(Insight(Severity.warn, 'Pod is terminating', [
       'deletion requested ${_ago(del)}',
       if (grace != null) 'grace period ${grace}s',
       if (finalizers.isNotEmpty) 'finalizers: ${finalizers.join(', ')}',
@@ -154,14 +148,14 @@ List<PodInsight> podInsights(Json pod) {
 
   if (phase == 'Failed' || status['reason'] != null) {
     final reason = status['reason'] ?? 'Failed';
-    out.add(PodInsight(Severity.error, 'Pod $reason', status['message'] as String?));
+    out.add(Insight(Severity.error, 'Pod $reason', status['message'] as String?));
   }
 
   final sched = conds['PodScheduled'];
   if (sched != null && sched['status'] == 'False') {
-    out.add(PodInsight(Severity.error, 'Not scheduled: ${sched['reason'] ?? 'Unschedulable'}', sched['message'] as String?));
+    out.add(Insight(Severity.error, 'Not scheduled: ${sched['reason'] ?? 'Unschedulable'}', sched['message'] as String?));
   } else if (spec['nodeName'] == null && phase == 'Pending') {
-    out.add(const PodInsight(Severity.warn, 'Waiting to be scheduled onto a node'));
+    out.add(const Insight(Severity.warn, 'Waiting to be scheduled onto a node'));
   }
 
   for (final c in podContainers(pod)) {
@@ -176,7 +170,7 @@ List<PodInsight> podInsights(Json pod) {
           final code = (lt['exitCode'] as num?)?.toInt();
           final hint = code == null ? null : exitCodeHint(code);
           final oom = lt['reason'] == 'OOMKilled';
-          out.add(PodInsight(
+          out.add(Insight(
             Severity.error,
             '$who is in CrashLoopBackOff: restarted ${c.restarts} time${c.restarts == 1 ? '' : 's'}'
             '${lt.isEmpty ? '' : ', last exit code ${code ?? '?'} (${lt['reason'] ?? 'Error'}) ${_ago(lt['finishedAt'])}'}',
@@ -188,44 +182,44 @@ List<PodInsight> podInsights(Json pod) {
             ].join(' · '),
           ));
         case 'ImagePullBackOff' || 'ErrImagePull' || 'InvalidImageName' || 'ErrImageNeverPull':
-          out.add(PodInsight(Severity.error, '$who can\'t pull image ${c.spec['image'] ?? ''} ($reason)',
+          out.add(Insight(Severity.error, '$who can\'t pull image ${c.spec['image'] ?? ''} ($reason)',
               [?msg, 'check the image name/tag, registry reachability and imagePullSecrets'].join(' · ')));
         case 'CreateContainerConfigError':
-          out.add(PodInsight(Severity.error, '$who has a config error', [?msg, 'a referenced ConfigMap/Secret or key is likely missing'].join(' · ')));
+          out.add(Insight(Severity.error, '$who has a config error', [?msg, 'a referenced ConfigMap/Secret or key is likely missing'].join(' · ')));
         case 'ContainerCreating' || 'PodInitializing':
-          out.add(PodInsight(Severity.warn, '$who is $reason', msg));
+          out.add(Insight(Severity.warn, '$who is $reason', msg));
         default:
-          out.add(PodInsight(Severity.error, '$who is waiting: $reason', msg));
+          out.add(Insight(Severity.error, '$who is waiting: $reason', msg));
       }
     } else if (c.isTerminated) {
       final code = (c.terminated['exitCode'] as num?)?.toInt() ?? 0;
       if (code != 0) {
         final hint = exitCodeHint(code);
-        out.add(PodInsight(Severity.error, '$who terminated: ${describeTerminated(c.terminated)}',
+        out.add(Insight(Severity.error, '$who terminated: ${describeTerminated(c.terminated)}',
             [?hint, if (c.terminated['message'] != null) '${c.terminated['message']}'.trim()].join(' · ').ifEmpty()));
       } else if (c.kind == ContainerKind.sidecar || (c.kind == ContainerKind.regular && phase == 'Running')) {
-        out.add(PodInsight(Severity.warn, '$who exited (${describeTerminated(c.terminated)})'));
+        out.add(Insight(Severity.warn, '$who exited (${describeTerminated(c.terminated)})'));
       }
     } else if (c.isRunning) {
       if (c.kind == ContainerKind.init) {
-        out.add(PodInsight(Severity.warn, '$who is still running', 'started ${_ago(c.running['startedAt'])}; regular containers start after it completes'));
+        out.add(Insight(Severity.warn, '$who is still running', 'started ${_ago(c.running['startedAt'])}; regular containers start after it completes'));
       } else if (c.kind != ContainerKind.ephemeral && !c.ready) {
         final started = c.status['started'];
         final startup = asMap(c.spec['startupProbe']);
         final readiness = asMap(c.spec['readinessProbe']);
         if (started == false && startup.isNotEmpty) {
-          out.add(PodInsight(Severity.warn, '$who hasn\'t passed its startup probe yet', probeSentence(startup)));
+          out.add(Insight(Severity.warn, '$who hasn\'t passed its startup probe yet', probeSentence(startup)));
         } else if (readiness.isNotEmpty) {
-          out.add(PodInsight(Severity.warn, '$who is running but its readiness probe is failing', probeSentence(readiness)));
+          out.add(Insight(Severity.warn, '$who is running but its readiness probe is failing', probeSentence(readiness)));
         } else {
-          out.add(PodInsight(Severity.warn, '$who is running but not ready'));
+          out.add(Insight(Severity.warn, '$who is running but not ready'));
         }
       }
     }
     // Restarts on an otherwise-healthy container are still worth flagging.
     if (c.restarts > 0 && !(c.isWaiting && c.waiting['reason'] == 'CrashLoopBackOff')) {
       final lt = c.lastTerminated;
-      out.add(PodInsight(
+      out.add(Insight(
         lt['reason'] == 'OOMKilled' ? Severity.error : Severity.warn,
         '$who has restarted ${c.restarts} time${c.restarts == 1 ? '' : 's'}',
         lt.isEmpty ? null : 'last termination: ${describeTerminated(lt)}${lt['reason'] == 'OOMKilled' ? ' — memory limit${_memLimit(c)}' : ''}',
@@ -236,12 +230,12 @@ List<PodInsight> podInsights(Json pod) {
   // Fall back to the Ready condition when containers didn't explain it.
   final ready = conds['Ready'];
   if (out.isEmpty && ready != null && ready['status'] != 'True' && phase != 'Succeeded') {
-    out.add(PodInsight(Severity.warn, 'Not ready: ${ready['reason'] ?? 'unknown reason'}', ready['message'] as String?));
+    out.add(Insight(Severity.warn, 'Not ready: ${ready['reason'] ?? 'unknown reason'}', ready['message'] as String?));
   }
   final gates = asMapList(spec['readinessGates']);
   for (final g in gates) {
     final t = '${g['conditionType']}';
-    if (conds[t]?['status'] != 'True') out.add(PodInsight(Severity.warn, 'Readiness gate $t is not True', conds[t]?['message'] as String?));
+    if (conds[t]?['status'] != 'True') out.add(Insight(Severity.warn, 'Readiness gate $t is not True', conds[t]?['message'] as String?));
   }
   return out;
 }

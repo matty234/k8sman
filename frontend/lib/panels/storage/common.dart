@@ -55,43 +55,6 @@ String prettyQuantity(dynamic q) {
   return RegExp(r'^\d+(Ki|Mi|Gi|Ti|Pi)$').hasMatch(raw) || raw == pretty ? raw : '$raw ($pretty)';
 }
 
-/// Coloured callout box for derived insights / warnings.
-class Callout extends StatelessWidget {
-  final Severity severity;
-  final String? title;
-  final String text;
-  final Widget? child;
-  const Callout({super.key, required this.severity, required this.text, this.title, this.child});
-
-  IconData get _icon => severityIcon(severity);
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final c = severityColor(context, severity);
-    return Container(
-      margin: const EdgeInsets.only(top: 6, bottom: 4),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(6),
-        border: Border(left: BorderSide(color: c, width: 3)),
-      ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(padding: const EdgeInsets.only(top: 1), child: Icon(_icon, size: 15, color: c)),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (title != null) Text(title!, style: theme.textTheme.bodySmall?.copyWith(color: c, fontWeight: FontWeight.w600)),
-            Text(text, style: theme.textTheme.bodySmall),
-            ?child,
-          ]),
-        ),
-      ]),
-    );
-  }
-}
-
 /// Access modes as `RWO` chips with their meaning.
 class AccessModesView extends StatelessWidget {
   final List<String> modes;

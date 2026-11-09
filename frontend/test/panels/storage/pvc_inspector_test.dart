@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
@@ -12,7 +12,7 @@ import '../../support/screenshot.dart';
 Json _json(String path) => jsonDecode(File(path).readAsStringSync()) as Json;
 
 void main() {
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('PVC: status header, mounted-by rows, volume and creator collapsed behind summaries, clean at 320', (tester) async {
     await loadRealFonts();

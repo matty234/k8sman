@@ -8,7 +8,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../../ui/logs/open_logs.dart';
-import '../inspector_parts.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'batch_common.dart';
 
@@ -41,7 +41,7 @@ class JobPanel extends ResourcePanel {
     return [
       // Did it work, and if not, why?
       JobStatusHeader(ctx),
-      PodSection(
+      InspectorSection(
         id: 'job-pods',
         title: 'Pods',
         trailing: SectionSummary(
@@ -63,21 +63,21 @@ class JobPanel extends ResourcePanel {
         ),
       ),
       // Reference detail, collapsed behind a one-line summary.
-      PodSection(
+      InspectorSection(
         id: 'job-spec',
         title: 'Spec',
         initiallyExpanded: false,
         trailing: SectionSummary(jobSpecSummary(spec)),
         child: JobSpecTable(ctx.object),
       ),
-      PodSection(
+      InspectorSection(
         id: 'job-template',
         title: 'Pod template',
         initiallyExpanded: false,
         trailing: SectionSummary(podTemplateSummaryLine(template)),
         child: PodTemplateSummary(template, namespace: ctx.namespace),
       ),
-      PodSection(
+      InspectorSection(
         id: 'job-conditions',
         title: 'Conditions',
         initiallyExpanded: false,
@@ -156,23 +156,23 @@ class JobStatusHeader extends StatelessWidget {
     ].join(' · ');
 
     // A live job running out of time.
-    PodInsight? deadlineInsight;
+    Insight? deadlineInsight;
     if (deadline != null && !st.finished && start != null && st.reason != 'DeadlineExceeded') {
       final left = start.add(Duration(seconds: deadline)).difference(now);
       if (left.inSeconds < deadline * 0.1) {
-        deadlineInsight = PodInsight(Severity.warn, left.isNegative ? 'Past its active deadline' : 'Active deadline in ${formatDuration(left)}',
+        deadlineInsight = Insight(Severity.warn, left.isNegative ? 'Past its active deadline' : 'Active deadline in ${formatDuration(left)}',
             'activeDeadlineSeconds is ${shortSeconds(deadline)}; the job fails with DeadlineExceeded when it runs out.');
       }
     }
     final failedIdx = status['failedIndexes'] as String?;
 
-    final insights = <PodInsight>[
-      if (failing) PodInsight(Severity.error, _failureTitle(st.reason), st.message),
-      if (st.label == 'Suspended') PodInsight(Severity.warn, 'Suspended: no new pods will be created', st.message ?? 'spec.suspend is true; active pods were terminated.'),
+    final insights = <Insight>[
+      if (failing) Insight(Severity.error, _failureTitle(st.reason), st.message),
+      if (st.label == 'Suspended') Insight(Severity.warn, 'Suspended: no new pods will be created', st.message ?? 'spec.suspend is true; active pods were terminated.'),
       if (st.label == 'Running' && failed > 0)
-        PodInsight(Severity.warn, 'Retrying after ${plural(failed, 'failed attempt')}',
+        Insight(Severity.warn, 'Retrying after ${plural(failed, 'failed attempt')}',
             'The job fails once failures exceed backoffLimit ($backoff). Failed pods are listed first under Pods.'),
-      if (spec['completionMode'] == 'Indexed' && (failedIdx ?? '').isNotEmpty) PodInsight(Severity.error, 'Failed indexes: $failedIdx'),
+      if (spec['completionMode'] == 'Indexed' && (failedIdx ?? '').isNotEmpty) Insight(Severity.error, 'Failed indexes: $failedIdx'),
       ?deadlineInsight,
     ];
 
@@ -383,7 +383,7 @@ class _JobPodsState extends State<JobPods> {
                 // Open the first few failures; a long run of them stays tidy.
                 initiallyExpanded: sev == Severity.error && opened++ < 3,
               ),
-          ]);
+          ], keep: 6, trimAbove: 8);
         },
       );
 }
@@ -461,7 +461,7 @@ class JobPodRow extends StatelessWidget {
         if (idx != null) TextSpan(text: '  ·  index $idx'),
         if (ran != null) TextSpan(text: '  ·  ran ${formatDuration(ran)}'),
       ])),
-      meta: [AgeText(dig(pod, ['metadata', 'creationTimestamp']))],
+      trailing: [AgeText(dig(pod, ['metadata', 'creationTimestamp']))],
       actions: [
         RowAction(key: ValueKey('job-pod-logs-$name'), icon: Icons.notes, tooltip: 'View logs', onTap: () => openPodLogs(context, pod)),
       ],
@@ -481,7 +481,7 @@ class JobPodRow extends StatelessWidget {
           Padding(padding: const EdgeInsets.only(top: 4), child: Text(podMsg, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, sev)))),
         if (statuses.isNotEmpty) ...[
           const SizedBox(height: 8),
-          DetailGroup('Containers', [for (final (s, init) in statuses) _ContainerStateLine(s, init: init)], gap: 3),
+          QuietGroup('Containers', [for (final (s, init) in statuses) _ContainerStateLine(s, init: init)], gap: 3),
         ],
       ]),
     );

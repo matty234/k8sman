@@ -9,14 +9,14 @@ import '../../../ui/theme.dart';
 import '../../../ui/widgets/common.dart';
 import '../../../util/k8s.dart';
 import '../../../util/text.dart';
-import '../../pod/pod_section.dart';
+import '../../../ui/inspector/inspector.dart';
 import 'pod_template.dart';
 import 'status_header.dart';
 import 'util.dart';
 
 /// A workload section, collapsed by default; [id] is remembered per session
 /// (prefixed, so it doesn't share state with the pod inspector's).
-Widget workloadSection(String id, String title, String summary, Widget child, {Color? summaryColor, bool expanded = false}) => PodSection(
+Widget workloadSection(String id, String title, String summary, Widget child, {Color? summaryColor, bool expanded = false}) => InspectorSection(
       key: ValueKey('workload-section-$id'),
       id: 'workload-$id',
       title: title,

@@ -23,7 +23,7 @@ import '../widgets/group_icon.dart';
 import '../portforward/portforward_dialog.dart';
 import '../resource_nav.dart' show kindIconWidget;
 import 'metadata_section.dart';
-import 'owner_line.dart';
+import '../inspector/inspector.dart';
 import 'owned_section.dart';
 import 'yaml_editor.dart';
 import '../keys.dart';

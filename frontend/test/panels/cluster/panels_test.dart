@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/ui/widgets/common.dart';
 
 import '../../support/harness.dart';
@@ -18,7 +18,7 @@ const _rbac = 'rbac.authorization.k8s.io';
 
 void main() {
   setUpAll(loadRealFonts);
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('Node: status, allocation, pods, system info', (tester) async {
     final node = _dev('node-k8sman-dev-control-plane');
@@ -32,7 +32,7 @@ void main() {
       ],
     };
     for (final id in ['node-conditions', 'node-taints', 'node-allocation', 'node-system', 'node-images']) {
-      PodSectionMemory.set(id, true);
+      SectionMemory.set(id, true);
     }
     final app = await pumpPanel(tester, node, api: FakeApiClient(itemsByResource: {'pods': _local('pods-on-node')}));
     await saveScreenshot(tester, 'cluster-node');
@@ -72,7 +72,7 @@ void main() {
       },
       eventItems: [for (final e in _load('../dev/fixtures/events-demo.json')) Json.from(e)],
     );
-    PodSectionMemory.set('ns-quotas', true);
+    SectionMemory.set('ns-quotas', true);
     final app = await pumpPanel(tester, ns, api: api);
     await saveScreenshot(tester, 'cluster-namespace');
 

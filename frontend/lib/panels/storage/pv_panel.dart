@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../api/models.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../inspector_parts.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'common.dart';
 
@@ -30,7 +30,7 @@ class PvPanel extends ResourcePanel {
       // Is it bound, to what, and what happens to the data?
       _PvHeader(ctx: ctx),
       // Where the data lives, collapsed behind a one-line summary.
-      PodSection(
+      InspectorSection(
         id: 'pv-source',
         title: source == null ? 'Source' : 'Source · ${pvSourceLabel(source.$1)}',
         initiallyExpanded: false,
@@ -40,7 +40,7 @@ class PvPanel extends ResourcePanel {
             : PvSourceView(type: source.$1, src: source.$2, namespace: null),
       ),
       if (terms.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'pv-affinity',
           title: 'Node affinity',
           initiallyExpanded: false,
@@ -57,7 +57,7 @@ class PvPanel extends ResourcePanel {
           ]),
         ),
       if (mountOptions.isNotEmpty)
-        PodSection(
+        InspectorSection(
           id: 'pv-mount-options',
           title: 'Mount options',
           initiallyExpanded: false,
@@ -123,25 +123,25 @@ class _PvHeader extends StatelessWidget {
       _ => Severity.warn,
     };
     final insight = switch (phase) {
-      'Released' => PodInsight(
+      'Released' => Insight(
           Severity.warn,
           'Released',
           'The claim ${claimNs ?? ''}/${claimName ?? ''} was deleted, but the volume still holds its data and '
               'still points at the old claim, so no new claim can bind to it. '
               '${policy == 'Retain' ? 'Reclaim policy is Retain: back up or reuse the data, then delete the PV (and the backing storage) or clear spec.claimRef to make it Available again.' : 'The reclaim policy ($policy) should clean it up shortly; if it stays Released, check the Events tab.'}',
         ),
-      'Failed' => PodInsight(
+      'Failed' => Insight(
           Severity.error,
           'Failed${reason != null ? ': $reason' : ''}',
           'Automatic reclamation (policy $policy) failed, so the volume is stuck. '
               '${message ?? 'See the Events tab for the provisioner / recycler error.'} Clean up the backing storage manually and delete the PV.',
         ),
-      'Available' => const PodInsight(
+      'Available' => const Insight(
           Severity.info,
           'Available',
           'Not bound to any claim yet. A PVC with a matching class, size, access modes and selector will bind to it.',
         ),
-      'Pending' => const PodInsight(Severity.warn, 'Pending', 'The volume is not yet available for binding.'),
+      'Pending' => const Insight(Severity.warn, 'Pending', 'The volume is not yet available for binding.'),
       _ => null,
     };
     final m = RegExp(r'^([\d.]+)\s*([A-Za-z]+)$').firstMatch('${capacity ?? ''}');
@@ -161,8 +161,8 @@ class _PvHeader extends StatelessWidget {
       insights: [
         ?insight,
         if (policy == 'Delete' && phase != 'Released')
-          const PodInsight(Severity.warn, 'Reclaim policy: Delete', 'Deleting the bound claim also deletes this volume and the data on its backing storage.'),
-        if (deleting) const PodInsight(Severity.warn, 'Terminating', 'Deletion waits for kubernetes.io/pv-protection: the volume is removed once no claim is bound to it.'),
+          const Insight(Severity.warn, 'Reclaim policy: Delete', 'Deleting the bound claim also deletes this volume and the data on its backing storage.'),
+        if (deleting) const Insight(Severity.warn, 'Terminating', 'Deletion waits for kubernetes.io/pv-protection: the volume is removed once no claim is bound to it.'),
       ],
       facts: [
         (

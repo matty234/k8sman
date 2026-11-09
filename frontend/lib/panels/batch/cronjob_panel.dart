@@ -9,7 +9,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../inspector_parts.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'batch_common.dart';
 import 'cron.dart';
@@ -97,7 +97,7 @@ class CronJobPanel extends ResourcePanel {
     return [
       // Is it running on time, and did the last run work?
       CronStatusHeader(ctx, signature: signature),
-      PodSection(
+      InspectorSection(
         id: 'cron-jobs',
         title: 'Recent jobs',
         trailing: SharedFetchBuilder<List<Json>>(
@@ -125,14 +125,14 @@ class CronJobPanel extends ResourcePanel {
         ),
       ),
       // Reference detail, collapsed behind a one-line summary.
-      PodSection(
+      InspectorSection(
         id: 'cron-runs',
         title: suspended ? 'Next runs (if resumed)' : 'Next runs',
         initiallyExpanded: false,
         trailing: SectionSummary(runs.isEmpty ? (s.sched == null ? 'unknown' : 'never') : s.wall(runs.first)),
         child: CronScheduleView(ctx.object),
       ),
-      PodSection(
+      InspectorSection(
         id: 'cron-spec',
         title: 'Spec',
         initiallyExpanded: false,
@@ -143,7 +143,7 @@ class CronJobPanel extends ResourcePanel {
         ].join(' · ')),
         child: _CronSpec(ctx.object),
       ),
-      PodSection(
+      InspectorSection(
         id: 'cron-template',
         title: 'Job template',
         initiallyExpanded: false,
@@ -240,9 +240,9 @@ class CronStatusHeader extends StatelessWidget {
         InspectorFigure('${active.length}', 'active'),
       ],
       insights: [
-        if (suspended) const PodInsight(Severity.warn, 'Suspended: no new jobs will be scheduled', 'spec.suspend is true. Jobs already running are not affected.'),
+        if (suspended) const Insight(Severity.warn, 'Suspended: no new jobs will be scheduled', 'spec.suspend is true. Jobs already running are not affected.'),
         if (overdue != null)
-          PodInsight(
+          Insight(
             Severity.warn,
             'Missed schedule: a run was due ${formatRelative(overdue, now: now)}',
             'Expected at ${s.wall(overdue)}, but lastScheduleTime is '
@@ -250,7 +250,7 @@ class CronStatusHeader extends StatelessWidget {
                 'Check the controller, startingDeadlineSeconds and concurrencyPolicy.',
           ),
         if (lastFailed)
-          PodInsight(
+          Insight(
             Severity.error,
             'Last run failed${newestState!.reason != null ? ': ${newestState.reason}' : ''}',
             '${dig(newest!, ['metadata', 'name'])}${newestState.message != null ? ': ${newestState.message}' : ''}',
@@ -440,7 +440,7 @@ class CronJobHistory extends StatelessWidget {
           return TrimmedList([
             for (final (j, st) in [...rows.where(failed), ...rows.where((r) => !failed(r))])
               _HistoryRow(j, st, active: active.contains(dig(j, ['metadata', 'uid'])) || active.contains(dig(j, ['metadata', 'name']))),
-          ]);
+          ], keep: 6, trimAbove: 8);
         },
       );
 }
@@ -474,7 +474,7 @@ class _HistoryRow extends StatelessWidget {
         TextSpan(text: '  ·  ${jobCompletions(job)}'),
         if (dur != null) TextSpan(text: '  ·  ${formatDuration(dur)}'),
       ])),
-      meta: [AgeText(dig(job, ['metadata', 'creationTimestamp']), suffix: ' ago')],
+      trailing: [AgeText(dig(job, ['metadata', 'creationTimestamp']), suffix: ' ago')],
       actions: [
         if (selector.isNotEmpty && ns != null)
           RowAction(

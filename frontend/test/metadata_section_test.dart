@@ -6,17 +6,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/panel.dart';
-import 'package:k8sman/panels/pod/pod_section.dart';
+import 'package:k8sman/ui/inspector/inspector.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/detail/metadata_section.dart';
-import 'package:k8sman/ui/detail/owner_line.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:provider/provider.dart';
 
 import 'support/harness.dart';
 
 void main() {
-  setUp(PodSectionMemory.reset);
+  setUp(SectionMemory.reset);
 
   testWidgets('Metadata comes collapsed behind a summary; the owner shows on its own line at the top', (tester) async {
     final pod = jsonDecode(File('../dev/fixtures/pod-web.json').readAsStringSync()) as Json;

@@ -7,7 +7,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../externalsecrets/managed_by.dart';
-import '../inspector_parts.dart';
+import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'usage.dart';
 import 'values.dart';
@@ -69,25 +69,25 @@ class _SecretHeader extends StatelessWidget {
     );
   }
 
-  static List<PodInsight> _typeInsights(String type, Map<String, DecodedValue?> decoded) {
+  static List<Insight> _typeInsights(String type, Map<String, DecodedValue?> decoded) {
     switch (type) {
       case 'kubernetes.io/tls':
         return [
           for (final k in ['tls.crt', 'tls.key'])
             if (!decoded.containsKey(k))
-              PodInsight(Severity.error, '$k is missing', 'A TLS secret needs both tls.crt and tls.key.')
+              Insight(Severity.error, '$k is missing', 'A TLS secret needs both tls.crt and tls.key.')
             else if (pemBlocks(decoded[k]?.text).isEmpty)
-              PodInsight(Severity.error, '$k is not PEM', 'Expected a PEM block (-----BEGIN …-----).'),
+              Insight(Severity.error, '$k is not PEM', 'Expected a PEM block (-----BEGIN …-----).'),
         ];
       case 'kubernetes.io/dockerconfigjson':
       case 'kubernetes.io/dockercfg':
         final key = type == 'kubernetes.io/dockercfg' ? '.dockercfg' : '.dockerconfigjson';
-        return parseDockerConfig(decoded[key]?.text) == null ? [PodInsight(Severity.error, '$key is missing or not valid JSON.')] : const [];
+        return parseDockerConfig(decoded[key]?.text) == null ? [Insight(Severity.error, '$key is missing or not valid JSON.')] : const [];
       case 'kubernetes.io/basic-auth':
       case 'kubernetes.io/ssh-auth':
         final expected = type == 'kubernetes.io/basic-auth' ? ['username', 'password'] : ['ssh-privatekey'];
         final missing = expected.where((k) => !decoded.containsKey(k)).toList();
-        return missing.isEmpty ? const [] : [PodInsight(Severity.error, 'Expected key${missing.length == 1 ? '' : 's'} missing: ${missing.join(', ')}')];
+        return missing.isEmpty ? const [] : [Insight(Severity.error, 'Expected key${missing.length == 1 ? '' : 's'} missing: ${missing.join(', ')}')];
     }
     return const [];
   }
@@ -142,7 +142,7 @@ class _SecretBodyState extends State<SecretBody> {
     final theme = Theme.of(context);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      PodSection(
+      InspectorSection(
         id: 'secret-data',
         title: 'Data',
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -162,7 +162,7 @@ class _SecretBodyState extends State<SecretBody> {
         ]),
         child: keys.isEmpty
             ? const InlineMessage('This Secret has no data.')
-            : TrimmedList(over: 12, shown: 10, [for (final k in keys) _keyRow(context, k, data[k], decoded[k])]),
+            : TrimmedList(trimAbove: 12, keep: 10, [for (final k in keys) _keyRow(context, k, data[k], decoded[k])]),
       ),
       ..._typeSection(context, type, decoded),
     ]);
@@ -199,7 +199,7 @@ class _SecretBodyState extends State<SecretBody> {
           : inline
               ? Text(d.text!, style: monoStyle(context, size: 11.5, color: theme.colorScheme.onSurface))
               : null,
-      meta: [Text(meta, style: d == null ? TextStyle(color: severityColor(context, Severity.error)) : null)],
+      trailing: [Text(meta, style: d == null ? TextStyle(color: severityColor(context, Severity.error)) : null)],
       actions: [
         RowAction(icon: revealed ? Icons.visibility_off_outlined : Icons.visibility_outlined, tooltip: revealed ? 'Hide' : 'Reveal', onTap: () => _toggle(key)),
         RowAction(
@@ -244,7 +244,7 @@ class _SecretBodyState extends State<SecretBody> {
         }
         final rows = [row('tls.crt'), row('tls.key'), row('ca.crt', required: false)];
         return [
-          PodSection(
+          InspectorSection(
             id: 'secret-tls',
             title: 'Certificate',
             trailing: SectionSummary(complete ? 'certificate and key' : 'incomplete', color: complete ? null : severityColor(context, Severity.error)),
@@ -259,7 +259,7 @@ class _SecretBodyState extends State<SecretBody> {
         if (regs == null) return const [];
         final revealed = _isRevealed(key);
         return [
-          PodSection(
+          InspectorSection(
             id: 'secret-registries',
             title: 'Registries',
             trailing: SectionSummary(plural(regs.length, 'registry', 'registries')),
@@ -289,7 +289,7 @@ class _SecretBodyState extends State<SecretBody> {
         final saUid = dig<String>(ctx.object, ['metadata', 'annotations', 'kubernetes.io/service-account.uid']);
         final populated = decoded.containsKey('token');
         return [
-          PodSection(
+          InspectorSection(
             id: 'secret-token',
             title: 'Token',
             trailing: SectionSummary(populated ? (sa == null ? 'populated' : 'for $sa') : 'not yet populated',
@@ -307,7 +307,7 @@ class _SecretBodyState extends State<SecretBody> {
         final exp = decoded['expiration']?.text;
         final usages = decoded.keys.where((k) => k.startsWith('usage-bootstrap-') && decoded[k]?.text == 'true').map((k) => k.substring(16)).toList();
         return [
-          PodSection(
+          InspectorSection(
             id: 'secret-bootstrap',
             title: 'Bootstrap token',
             trailing: SectionSummary(exp == null ? 'no expiration' : 'expires $exp'),
