@@ -84,7 +84,7 @@ func (s *Server) putNamespaceList(w http.ResponseWriter, r *http.Request, save f
 // saveNamespaceSetting checks names and the context, then saves.
 func (s *Server) saveNamespaceSetting(w http.ResponseWriter, r *http.Request, context string, names []string, save func(ctx string) error) {
 	bad := func(msg string) {
-		httpx.WriteJSON(w, http.StatusBadRequest, apiError{Error: msg, Code: http.StatusBadRequest})
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: msg, Code: http.StatusBadRequest})
 	}
 	if len(names) > maxRememberedNamespaces {
 		bad("too many namespaces")
@@ -105,7 +105,7 @@ func (s *Server) saveNamespaceSetting(w http.ResponseWriter, r *http.Request, co
 		return
 	}
 	if s.settings == nil {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{Error: "settings are not available", Code: http.StatusServiceUnavailable})
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: "settings are not available", Code: http.StatusServiceUnavailable})
 		return
 	}
 	if err := save(ctx); err != nil {

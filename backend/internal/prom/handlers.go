@@ -60,14 +60,6 @@ func (h *Handler) register(mux httpx.Router) {
 
 // ---- helpers -----------------------------------------------------------------
 
-type apiError struct {
-	Error string `json:"error"`
-	Code  int    `json:"code"`
-	// Reason is NotFound when no instance of the needed kind exists, so the
-	// UI can offer to install the stack.
-	Reason string `json:"reason,omitempty"`
-}
-
 func writeErr(w http.ResponseWriter, err error) {
 	status, reason := http.StatusBadGateway, ""
 	var ue *UpstreamError
@@ -92,12 +84,12 @@ func writeErr(w http.ResponseWriter, err error) {
 			status = http.StatusBadRequest
 		}
 	}
-	httpx.WriteJSON(w, status, apiError{Error: err.Error(), Code: status, Reason: reason})
+	httpx.WriteError(w, status, reason, err.Error())
 }
 
 func (h *Handler) refuseReadOnly(w http.ResponseWriter) bool {
 	if h.readOnly {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: "the server is running read-only", Code: http.StatusForbidden})
+		httpx.WriteError(w, http.StatusForbidden, "", "the server is running read-only")
 		return true
 	}
 	return false

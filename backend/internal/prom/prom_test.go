@@ -25,6 +25,8 @@ import (
 	kfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/matty234/k8sman/backend/internal/httpx"
 )
 
 // ---- fake API server proxy ---------------------------------------------------
@@ -605,7 +607,7 @@ func TestQueryErrorsAndMissingPrometheus(t *testing.T) {
 		t.Errorf("bad query: %d %s", rec.Code, rec.Body)
 	}
 	rec = serve(t, h, "GET", "/api/prom/query?query=up&instance=other/prom", "")
-	if rec.Code != 404 || decode[apiError](t, rec).Reason != "NotFound" {
+	if rec.Code != 404 || decode[httpx.ErrorBody](t, rec).Reason != "NotFound" {
 		t.Errorf("unknown instance: %d %s", rec.Code, rec.Body)
 	}
 }

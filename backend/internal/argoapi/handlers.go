@@ -394,12 +394,6 @@ func (h *Handler) handleDiff(w http.ResponseWriter, r *http.Request) {
 
 // ---- helpers -----------------------------------------------------------------
 
-type apiError struct {
-	Error  string `json:"error"`
-	Code   int    `json:"code"`
-	Reason string `json:"reason,omitempty"`
-}
-
 func writeErr(w http.ResponseWriter, err error) {
 	status, reason := http.StatusBadGateway, ""
 	var ae *Error
@@ -411,7 +405,7 @@ func writeErr(w http.ResponseWriter, err error) {
 	} else {
 		status, reason, _ = httpx.KubeStatus(err, status)
 	}
-	httpx.WriteJSON(w, status, apiError{Error: err.Error(), Code: status, Reason: reason})
+	httpx.WriteError(w, status, reason, err.Error())
 }
 
 // handleUseCLI switches a context to the argocd CLI's login. It requires a

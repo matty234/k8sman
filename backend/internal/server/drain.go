@@ -148,7 +148,7 @@ func (s *Server) handleDrainPlan(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDrain(w http.ResponseWriter, r *http.Request) {
 	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
 	node := r.URL.Query().Get("name")

@@ -98,7 +98,7 @@ func (m *hubbleModule) observer(w http.ResponseWriter, r *http.Request) (observe
 	c := m.d.Mgr.Clients()
 	obs, _, err := m.hub.Observer(r.Context(), c, m.settings(c))
 	if err != nil {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{Error: hubble.ErrorMessage(err), Code: http.StatusServiceUnavailable, Reason: "HubbleUnavailable"})
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: hubble.ErrorMessage(err), Code: http.StatusServiceUnavailable, Reason: "HubbleUnavailable"})
 		return nil, false
 	}
 	return obs, true
@@ -327,7 +327,7 @@ func (m *hubbleModule) traffic(c *cluster.Clients, s hubble.Settings) *hubble.Tr
 }
 
 func writeHubbleErr(w http.ResponseWriter, err error) {
-	httpx.WriteJSON(w, http.StatusBadGateway, apiError{Error: "Hubble Relay: " + hubble.ErrorMessage(err), Code: http.StatusBadGateway, Reason: "HubbleError"})
+	httpx.WriteJSON(w, http.StatusBadGateway, httpx.ErrorBody{Error: "Hubble Relay: " + hubble.ErrorMessage(err), Code: http.StatusBadGateway, Reason: "HubbleError"})
 }
 
 // OverviewInputs adds "Hubble Relay unreachable" and namespaces with

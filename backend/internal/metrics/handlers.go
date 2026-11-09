@@ -63,17 +63,9 @@ func (h *handlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/metrics/volumes", h.volumes)
 }
 
-type apiError struct {
-	Error string `json:"error"`
-	Code  int    `json:"code"`
-	// State is set when a metrics API is unusable: notInstalled or notReady.
-	State string `json:"state,omitempty"`
-	Group string `json:"group,omitempty"`
-}
-
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
-	body := apiError{Error: err.Error()}
+	body := httpx.ErrorBody{Error: err.Error()}
 	var ue *UnavailableError
 	switch {
 	case errors.As(err, &ue):

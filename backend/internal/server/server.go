@@ -137,7 +137,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	start := time.Now()
 	if s.mgr.Clients() == nil && !worksDisconnected(r.URL.Path) {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{
 			Error:  fmt.Sprintf("no cluster connection: %v", s.mgr.Err()),
 			Code:   http.StatusServiceUnavailable,
 			Reason: "NoKubeconfig",
@@ -170,7 +170,7 @@ func contextMismatch(w http.ResponseWriter, r *http.Request, c *cluster.Clients)
 			return false
 		}
 	}
-	httpx.WriteJSON(w, http.StatusConflict, apiError{
+	httpx.WriteJSON(w, http.StatusConflict, httpx.ErrorBody{
 		Error:  fmt.Sprintf("k8sman is now on context %q, not %q, so nothing was changed. Check the cluster and try again.", c.Context, want),
 		Code:   http.StatusConflict,
 		Reason: "ContextMismatch",
@@ -179,18 +179,6 @@ func contextMismatch(w http.ResponseWriter, r *http.Request, c *cluster.Clients)
 }
 
 // ---- helpers ---------------------------------------------------------------
-
-type apiError struct {
-	Error string `json:"error"`
-	Code  int    `json:"code"`
-	// Reason is the Kubernetes StatusReason (e.g. Conflict, Invalid).
-	Reason string              `json:"reason,omitempty"`
-	Causes []map[string]string `json:"causes,omitempty"`
-	// LocalPortInUse (creating a port-forward): the forward holding the port
-	// (empty when another process has it) and a free port to use instead.
-	UsedBy        string `json:"usedBy,omitempty"`
-	SuggestedPort int    `json:"suggestedPort,omitempty"`
-}
 
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
@@ -202,7 +190,7 @@ func writeErr(w http.ResponseWriter, err error) {
 	} else if errors.Is(err, httpx.ErrBadRequest) {
 		status = http.StatusBadRequest
 	}
-	httpx.WriteJSON(w, status, apiError{Error: err.Error(), Code: status, Reason: reason, Causes: statusCauses(err)})
+	httpx.WriteJSON(w, status, httpx.ErrorBody{Error: err.Error(), Code: status, Reason: reason, Causes: statusCauses(err)})
 }
 
 // resourceQuery is the common ?group=&version=&resource=&namespace= target.

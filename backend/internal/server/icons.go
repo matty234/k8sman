@@ -40,11 +40,11 @@ func (s *Server) handlePutIconSettings(w http.ResponseWriter, r *http.Request, d
 		RemoteIcons *bool `json:"remoteIcons"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&body); err != nil {
-		httpx.WriteJSON(w, http.StatusBadRequest, apiError{Error: "body must be {remoteIcons}", Code: http.StatusBadRequest})
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: "body must be {remoteIcons}", Code: http.StatusBadRequest})
 		return
 	}
 	if s.settings == nil {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{Error: "settings are not available", Code: http.StatusServiceUnavailable})
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: "settings are not available", Code: http.StatusServiceUnavailable})
 		return
 	}
 	if err := s.settings.Update(func(st *settings.Settings) { st.RemoteIcons = body.RemoteIcons }); err != nil {

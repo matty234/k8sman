@@ -319,9 +319,9 @@ func handleScan(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
 	case errors.Is(err, security.ErrBadImage):
 		writeErr(w, httpx.BadRequest("%v: %q", err, body.Image))
 	case errors.Is(err, security.ErrNoTrivy):
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{Error: err.Error(), Code: http.StatusServiceUnavailable, Reason: "ScannerUnavailable"})
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: err.Error(), Code: http.StatusServiceUnavailable, Reason: "ScannerUnavailable"})
 	case err != nil:
-		httpx.WriteJSON(w, http.StatusBadGateway, apiError{Error: err.Error(), Code: http.StatusBadGateway, Reason: "ScanFailed"})
+		httpx.WriteJSON(w, http.StatusBadGateway, httpx.ErrorBody{Error: err.Error(), Code: http.StatusBadGateway, Reason: "ScanFailed"})
 	default:
 		httpx.WriteJSON(w, 200, res)
 	}

@@ -65,7 +65,7 @@ func (s *Server) handlePutAppearance(w http.ResponseWriter, r *http.Request) {
 		Color   string `json:"color"`
 	}
 	bad := func(msg string) {
-		httpx.WriteJSON(w, http.StatusBadRequest, apiError{Error: msg, Code: http.StatusBadRequest})
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.ErrorBody{Error: msg, Code: http.StatusBadRequest})
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&body); err != nil {
 		bad("body must be {context?, icon, color}")
@@ -85,7 +85,7 @@ func (s *Server) handlePutAppearance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.settings == nil {
-		httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{Error: "settings are not available", Code: http.StatusServiceUnavailable})
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: "settings are not available", Code: http.StatusServiceUnavailable})
 		return
 	}
 	if saved := s.settings.Get().ContextAppearance; len(saved) >= maxAppearances {

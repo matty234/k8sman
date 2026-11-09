@@ -148,7 +148,7 @@ func hasScaleSubresource(c *cluster.Clients, rt cluster.ResourceType) bool {
 
 func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
 	action := r.PathValue("action")

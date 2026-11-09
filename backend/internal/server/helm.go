@@ -74,14 +74,14 @@ func writeHelmErr(w http.ResponseWriter, err error) {
 			"error": stuck.Error(), "code": http.StatusConflict, "reason": "ReleasePending", "stuck": stuck,
 		})
 	case errors.Is(err, helm.ErrNotFound):
-		httpx.WriteJSON(w, http.StatusNotFound, apiError{Error: err.Error(), Code: http.StatusNotFound, Reason: "NotFound"})
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{Error: err.Error(), Code: http.StatusNotFound, Reason: "NotFound"})
 	case errors.Is(err, helm.ErrInvalid):
 		msg := strings.TrimPrefix(err.Error(), helm.ErrInvalid.Error()+": ")
-		httpx.WriteJSON(w, http.StatusUnprocessableEntity, apiError{Error: msg, Code: http.StatusUnprocessableEntity, Reason: "Invalid"})
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, httpx.ErrorBody{Error: msg, Code: http.StatusUnprocessableEntity, Reason: "Invalid"})
 	case strings.Contains(err.Error(), "cannot re-use a name that is still in use"):
-		httpx.WriteJSON(w, http.StatusConflict, apiError{Error: err.Error(), Code: http.StatusConflict, Reason: "AlreadyExists"})
+		httpx.WriteJSON(w, http.StatusConflict, httpx.ErrorBody{Error: err.Error(), Code: http.StatusConflict, Reason: "AlreadyExists"})
 	case strings.Contains(err.Error(), "another operation (install/upgrade/rollback) is in progress"):
-		httpx.WriteJSON(w, http.StatusConflict, apiError{Error: err.Error(), Code: http.StatusConflict, Reason: "ReleasePending"})
+		httpx.WriteJSON(w, http.StatusConflict, httpx.ErrorBody{Error: err.Error(), Code: http.StatusConflict, Reason: "ReleasePending"})
 	default:
 		writeErr(w, err)
 	}

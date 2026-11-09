@@ -55,7 +55,7 @@ func (s *Server) securityIgnoreRoutes() {
 			return
 		}
 		if s.settings == nil {
-			httpx.WriteJSON(w, http.StatusServiceUnavailable, apiError{Error: "settings are not available", Code: http.StatusServiceUnavailable})
+			httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.ErrorBody{Error: "settings are not available", Code: http.StatusServiceUnavailable})
 			return
 		}
 		if err := s.settings.SetSecurityIgnores(ctx, body.Ignores); err != nil {

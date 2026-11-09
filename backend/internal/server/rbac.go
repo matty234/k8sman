@@ -501,7 +501,7 @@ var rbacKinds = map[string]string{"Role": "roles", "ClusterRole": "clusterroles"
 // what they don't hold, and gets a 403 that says so.
 func (s *Server) handleRBACApply(w http.ResponseWriter, r *http.Request) {
 	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))

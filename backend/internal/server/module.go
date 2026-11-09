@@ -167,7 +167,7 @@ func (s *Server) settingsContext(r *http.Request) string {
 func (s *Server) handleGetModuleSettings(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if _, ok := s.configurable(id); !ok {
-		httpx.WriteJSON(w, http.StatusNotFound, apiError{Error: fmt.Sprintf("module %q has no settings", id), Code: http.StatusNotFound})
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{Error: fmt.Sprintf("module %q has no settings", id), Code: http.StatusNotFound})
 		return
 	}
 	ctx := s.settingsContext(r)
@@ -190,7 +190,7 @@ func (s *Server) handlePutModuleSettings(w http.ResponseWriter, r *http.Request)
 	id := r.PathValue("id")
 	m, ok := s.configurable(id)
 	if !ok {
-		httpx.WriteJSON(w, http.StatusNotFound, apiError{Error: fmt.Sprintf("module %q has no settings", id), Code: http.StatusNotFound})
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{Error: fmt.Sprintf("module %q has no settings", id), Code: http.StatusNotFound})
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
@@ -224,7 +224,7 @@ type moduleRouter struct {
 func (mr moduleRouter) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
 	mr.s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		if mr.s.settings.ModuleDisabled(mr.name) {
-			httpx.WriteJSON(w, http.StatusNotFound, apiError{
+			httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{
 				Error:  fmt.Sprintf("the %s integration is turned off in k8sman's settings", mr.name),
 				Code:   http.StatusNotFound,
 				Reason: "ModuleDisabled",
@@ -265,7 +265,7 @@ func (s *Server) handlePutModules(w http.ResponseWriter, r *http.Request) {
 // readOnlyRefused writes 403 when the current context is read-only.
 func (s *Server) readOnlyRefused(w http.ResponseWriter) bool {
 	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return true
 	}
 	return false

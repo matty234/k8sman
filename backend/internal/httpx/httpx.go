@@ -25,6 +25,46 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// ErrorBody is the JSON error shape every handler package answers with.
+// Optional fields are omitted when empty; each package fills only the
+// ones it uses.
+type ErrorBody struct {
+	Error string `json:"error"`
+	Code  int    `json:"code"`
+	// Reason is a machine-readable cause (a Kubernetes StatusReason such as
+	// Conflict or Invalid, or a package-specific one such as NotFound).
+	Reason string              `json:"reason,omitempty"`
+	Causes []map[string]string `json:"causes,omitempty"`
+	// LocalPortInUse (creating a port-forward): the forward holding the port
+	// (empty when another process has it) and a free port to use instead.
+	UsedBy        string `json:"usedBy,omitempty"`
+	SuggestedPort int    `json:"suggestedPort,omitempty"`
+	// State and Group are set when a metrics API is unusable.
+	State string `json:"state,omitempty"`
+	Group string `json:"group,omitempty"`
+}
+
+// WriteError writes an ErrorBody with the given status, reason (may be
+// empty) and message.
+func WriteError(w http.ResponseWriter, status int, reason, msg string) {
+	WriteJSON(w, status, ErrorBody{Error: msg, Code: status, Reason: reason})
+}
+
+// DecodeJSON decodes the request body into a T, limited to maxBytes (0 for
+// no limit). On failure it writes the 400 itself and returns false.
+func DecodeJSON[T any](w http.ResponseWriter, r *http.Request, maxBytes int64) (T, bool) {
+	var v T
+	body := r.Body
+	if maxBytes > 0 {
+		body = http.MaxBytesReader(w, r.Body, maxBytes)
+	}
+	if err := json.NewDecoder(body).Decode(&v); err != nil {
+		WriteError(w, http.StatusBadRequest, "", BadRequest("invalid body: %v", err).Error())
+		return v, false
+	}
+	return v, true
+}
+
 // ErrBadRequest marks errors that should be answered with 400.
 var ErrBadRequest = errors.New("bad request")
 

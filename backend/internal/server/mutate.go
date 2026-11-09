@@ -40,7 +40,7 @@ func (s *Server) mutationRoutes() {
 // ?dryRun=true runs server-side validation/admission without persisting.
 func (s *Server) handleUpdateObject(w http.ResponseWriter, r *http.Request) {
 	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
 	c, rq, err := s.parseResource(r.Context(), r)
@@ -136,7 +136,7 @@ func (s *Server) handleFreeForwardPort(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateForward(w http.ResponseWriter, r *http.Request) {
 	if s.isReadOnly() {
-		httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 		return
 	}
 	var body struct {
@@ -151,7 +151,7 @@ func (s *Server) handleCreateForward(w http.ResponseWriter, r *http.Request) {
 	st, err := s.pf.Create(body.Spec, body.Replace)
 	var inUse *portforward.PortInUseError
 	if errors.As(err, &inUse) {
-		e := apiError{Error: err.Error(), Code: http.StatusConflict, Reason: "LocalPortInUse", SuggestedPort: inUse.Suggested}
+		e := httpx.ErrorBody{Error: err.Error(), Code: http.StatusConflict, Reason: "LocalPortInUse", SuggestedPort: inUse.Suggested}
 		if inUse.By != nil {
 			e.UsedBy = fmt.Sprintf("%s/%s/%s:%s", inUse.By.Namespace, inUse.By.Kind, inUse.By.Name, inUse.By.Port)
 		}
@@ -192,7 +192,7 @@ func (s *Server) handleForwardAction(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if r.URL.Path[len(r.URL.Path)-5:] == "start" {
 		if s.isReadOnly() {
-			httpx.WriteJSON(w, http.StatusForbidden, apiError{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
+			httpx.WriteJSON(w, http.StatusForbidden, httpx.ErrorBody{Error: s.readOnlyMessage(), Code: http.StatusForbidden})
 			return
 		}
 		err = s.pf.Start(id)
@@ -224,7 +224,7 @@ func (s *Server) handleDeleteForward(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) forwardErr(w http.ResponseWriter, err error) {
 	if portforward.IsNotFound(err) {
-		httpx.WriteJSON(w, http.StatusNotFound, apiError{Error: err.Error(), Code: http.StatusNotFound})
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.ErrorBody{Error: err.Error(), Code: http.StatusNotFound})
 		return
 	}
 	writeErr(w, err)
