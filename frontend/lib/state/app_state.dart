@@ -256,6 +256,26 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Re-lists the namespaces (they're otherwise listed once per connect),
+  /// so ones created since (a Helm install, kubectl) show up. Quiet on
+  /// failure; overlapping calls share one request.
+  Future<void> refreshNamespaces() => _nsRefresh ??= () async {
+        final ctx = currentContext;
+        try {
+          final ns = await api.namespaces();
+          if (ctx != currentContext) return;
+          if (!listEquals(ns.namespaces, namespaces) || ns.listed != namespacesListed) {
+            namespaces = ns.namespaces;
+            namespacesListed = ns.listed;
+            notifyListeners();
+          }
+        } catch (_) {
+        } finally {
+          _nsRefresh = null;
+        }
+      }();
+  Future<void>? _nsRefresh;
+
   /// Saves the current context's allowlist (empty removes it), then
   /// reloads its namespaces and reopens the tables in the new scope.
   Future<void> setAllowedNamespaces(List<String> allowed) async {

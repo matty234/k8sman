@@ -16,6 +16,7 @@ import '../../addons/addons.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/namespace_picker.dart';
 import '../../util/diff.dart';
 import '../../util/k8s.dart';
 import '../helm/helm_actions.dart' show HelmDiffPane;
@@ -234,6 +235,8 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
     try {
       final res = await _call(dryRun: false);
       if (mounted) setState(() => (_result = res, _phase = _Phase.done));
+      // The install may have created its namespace: list it in the picker.
+      if (mounted) context.read<AppState>().refreshNamespaces();
     } on ApiException catch (e) {
       await _failed(e.message);
     } catch (e) {
@@ -403,8 +406,24 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
       ),
       const SizedBox(height: 12),
       Wrap(spacing: 12, runSpacing: 8, children: [
-        field('Release name', TextField(key: const ValueKey('addon-release'), controller: _name, enabled: r == null, style: monoStyle(context), onChanged: (_) => setState(() {}))),
-        field('Namespace', TextField(key: const ValueKey('addon-namespace'), controller: _namespace, enabled: r == null, style: monoStyle(context), onChanged: (_) => setState(() {}))),
+        // Fills the row's height, like the pickers beside it.
+        field('Release name', TextField(key: const ValueKey('addon-release'), controller: _name, enabled: r == null, style: monoStyle(context), expands: true, maxLines: null, textAlignVertical: TextAlignVertical.center, onChanged: (_) => setState(() {}))),
+        // Pick one, or type a new name (created if missing).
+        field(
+          'Namespace',
+          r != null
+              ? TextField(key: const ValueKey('addon-namespace'), controller: _namespace, enabled: false, style: monoStyle(context), expands: true, maxLines: null, textAlignVertical: TextAlignVertical.center)
+              : NamespacePicker.scope(
+                  key: const ValueKey('addon-namespace'),
+                  height: 28,
+                  single: true,
+                  value: NamespaceScope.single(_namespace.text.trim().isEmpty ? null : _namespace.text.trim()),
+                  onChanged: (s) {
+                    final n = s.namespaces.firstOrNull;
+                    if (n != null) setState(() => _namespace.text = n);
+                  },
+                ),
+        ),
         field('Chart version', _versionPicker(context), width: 220),
       ]),
       const SizedBox(height: 12),

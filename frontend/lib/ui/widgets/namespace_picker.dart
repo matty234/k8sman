@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -30,10 +31,13 @@ class NamespacePicker extends StatelessWidget {
   /// The selected scope when [onChanged] is set.
   final NamespaceScope? value;
   final ValueChanged<NamespaceScope>? onChanged;
-  const NamespacePicker({super.key, this.height = 26}) : value = null, onChanged = null;
+
+  /// Picks one namespace (a form field): no All namespaces or multi-select.
+  final bool single;
+  const NamespacePicker({super.key, this.height = 26}) : value = null, onChanged = null, single = false;
 
   /// A page-scope picker (independent of [AppState.namespaceScope]).
-  const NamespacePicker.scope({super.key, required NamespaceScope this.value, required ValueChanged<NamespaceScope> this.onChanged, this.height = 26});
+  const NamespacePicker.scope({super.key, required NamespaceScope this.value, required ValueChanged<NamespaceScope> this.onChanged, this.height = 26, this.single = false});
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +49,7 @@ class NamespacePicker extends StatelessWidget {
     final button = Builder(
       builder: (ctx) => Hoverable(
         cursor: SystemMouseCursors.basic,
-        onTap: () => showNamespacePopover(ctx, app: app, value: scope, onChanged: set),
+        onTap: () => showNamespacePopover(ctx, app: app, value: scope, onChanged: set, single: single),
         builder: (h) => Container(
           height: height,
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -84,6 +88,7 @@ Future<void> showNamespacePopover(
   required NamespaceScope value,
   required ValueChanged<NamespaceScope> onChanged,
   double width = 280,
+  bool single = false,
 }) {
   final box = anchorContext.findRenderObject() as RenderBox?;
   final nav = Navigator.of(anchorContext);
@@ -91,13 +96,15 @@ Future<void> showNamespacePopover(
   if (box == null || overlay == null) return Future.value();
   final restricted = app.allowedNamespaces.isNotEmpty;
   final anchor = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
+  // Pick up namespaces created since connecting; the open list updates.
+  app.refreshNamespaces();
   return showGeneralDialog<void>(
     context: anchorContext,
     barrierDismissible: true,
     barrierLabel: 'Dismiss',
     barrierColor: Colors.transparent,
     transitionDuration: Duration.zero,
-    pageBuilder: (context, _, _) => _NamespacePopover(
+    pageBuilder: (context, _, _) => ListenableBuilder(listenable: app, builder: (context, _) => _NamespacePopover(
       anchor: anchor,
       overlaySize: overlay.size,
       width: math.max(width, anchor.width),
@@ -115,7 +122,8 @@ Future<void> showNamespacePopover(
       recents: [for (final r in app.recentNamespaces) if (r != value) r],
       value: value,
       onChanged: onChanged,
-    ),
+      single: single,
+    )),
   );
 }
 
@@ -171,7 +179,11 @@ class _NamespacePopover extends StatefulWidget {
   final List<NamespaceScope> recents;
   final NamespaceScope value;
   final ValueChanged<NamespaceScope> onChanged;
+
+  /// One namespace only: no All row, recents or multi-select (⌘/⇧ picks).
+  final bool single;
   const _NamespacePopover({
+    this.single = false,
     required this.anchor,
     required this.overlaySize,
     required this.width,
@@ -214,6 +226,17 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
 
   String get _q => _query.text.trim().toLowerCase();
 
+  @override
+  void didUpdateWidget(_NamespacePopover old) {
+    super.didUpdateWidget(old);
+    // The list was re-fetched while open (a namespace was created).
+    if (!listEquals(old.namespaces, widget.namespaces) || old.listed != widget.listed) {
+      _allNamespaces = _buildAll();
+      _matches = _filter();
+      _header = _buildHeader();
+    }
+  }
+
   /// Selected namespaces the cluster doesn't list come first, then the
   /// listed, remembered and kubeconfig namespaces merged.
   List<_NsRow> _buildAll() {
@@ -253,6 +276,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
   List<_Row> _buildHeader() {
     final favs = _favRows;
     _favCount = favs.length;
+    if (widget.single) return [...favs];
     return [_AllRow(widget.allLabel), ...favs, if (_q.isEmpty) ...[for (final r in widget.recents) _RecentRow(r)]];
   }
 
@@ -314,6 +338,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
 
   /// Adds row [i]'s namespace to the set or removes it; stays open.
   void _toggle([int? i]) {
+    if (widget.single) return _pick(i);
     final idx = i ?? _active;
     if (idx < 0 || idx >= _count) return;
     final row = _at(idx);
