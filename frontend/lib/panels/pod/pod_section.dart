@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../ui/overview/overview_widgets.dart' show OverviewSectionHeader;
+import '../../ui/widgets/editorial.dart' show SectionHeader;
 import '../../ui/widgets/common.dart';
 
 /// Expanded/collapsed state per pod inspector section, kept for the session
@@ -62,7 +62,7 @@ class _PodSectionState extends State<PodSection> {
             onTap: _toggle,
             builder: (h) => room < 0
                 ? Text(widget.title, maxLines: 1, overflow: TextOverflow.clip, softWrap: false)
-                : OverviewSectionHeader(
+                : SectionHeader(
                     title: widget.title,
                     trailing: widget.trailing == null ? null : ConstrainedBox(constraints: BoxConstraints(maxWidth: room), child: widget.trailing!),
                     expanded: _open,
