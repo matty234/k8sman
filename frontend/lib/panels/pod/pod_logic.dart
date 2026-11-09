@@ -184,7 +184,7 @@ List<PodInsight> podInsights(Json pod) {
               if (oom) 'killed for exceeding its memory limit${_memLimit(c)}',
               if (!oom && hint != null) 'exit $code: $hint',
               if (lt['message'] != null) 'termination message: ${'${lt['message']}'.trim()}',
-              'check the Logs tab with "previous" enabled',
+              'see the previous instance\'s logs',
             ].join(' · '),
           ));
         case 'ImagePullBackOff' || 'ErrImagePull' || 'InvalidImageName' || 'ErrImageNeverPull':
