@@ -112,7 +112,7 @@ void main() {
       await saveScreenshot(tester, 'service-web-routed-by');
       expect(find.text('Routed by'), findsOneWidget);
       expect(find.text('HTTPRoute demo/web-route'), findsOneWidget);
-      expect(find.text('90% of its rule'), findsOneWidget);
+      expect(find.textContaining('90% of its rule'), findsOneWidget);
       expect(find.text('GRPCRoute gateway-demo/greeter'), findsOneWidget);
       await tester.tap(find.text('HTTPRoute gateway-demo/shop'));
       expect(app.detail?.type.kind, 'HTTPRoute');

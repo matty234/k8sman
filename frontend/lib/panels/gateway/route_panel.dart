@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
+import '../network/inspector_kit.dart';
 import '../panel.dart';
+import '../pod/pod_widgets.dart' show InlineWrap;
 import 'gw_model.dart';
 import 'gw_widgets.dart';
 
@@ -81,27 +85,28 @@ class _RouteView extends StatelessWidget {
       builder: (context, snap, reload) {
         final data = snap.data;
         final health = RouteHealth.of(r);
+        final diags = _diags(r, data);
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          DetailSection(
-            title: r.kind.kind,
-            icon: Icons.alt_route,
-            trailing: StatusBadge(health.label, dense: true, severity: health.healthy ? Severity.ok : diagSeverity(health.level)),
-            child: _summary(context, r),
-          ),
-          DetailSection(
+          _header(context, r, data, health, diags, snap.error),
+          PodSection(
+            id: 'route-parents',
             title: 'Parents',
-            icon: Icons.account_tree_outlined,
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              StatusBadge('${health.accepted}/${health.parents} accepted', dense: true, severity: health.accepted == health.parents && health.parents > 0 ? Severity.ok : Severity.error),
+              Flexible(
+                child: SectionSummary(
+                  '${health.accepted} of ${health.parents} accepted',
+                  color: health.accepted == health.parents && health.parents > 0 ? null : severityColor(context, Severity.error),
+                ),
+              ),
               const SizedBox(width: 4),
-              RefreshButton(reload),
+              SizedBox(height: 20, child: RefreshButton(reload)),
             ]),
-            child: _parents(context, r, data, snap.error),
+            child: _parents(context, r, data, diags),
           ),
-          DetailSection(
+          PodSection(
+            id: 'route-rules',
             title: 'Rules',
-            icon: Icons.rule,
-            trailing: Text('${r.rules.length}'),
+            trailing: SectionSummary(plural(r.rules.length, 'rule')),
             child: _rules(context, r, data),
           ),
         ]);
@@ -109,41 +114,13 @@ class _RouteView extends StatelessWidget {
     );
   }
 
-  Widget _summary(BuildContext context, RouteObj r) {
-    final hosts = r.hostnames;
-    final backends = {for (final b in r.backendRefs) b.key: b}.values.toList();
-    return KeyValueTable([
-      if (r.kind.hasHostnames)
-        (
-          'Hostnames',
-          hosts.isEmpty
-              ? const Muted('any (inherits the listener hostname)')
-              : Wrap(spacing: 4, runSpacing: 4, children: [for (final h in hosts) Chipish(text: h, copyValue: h)]),
-        ),
-      ('Parents', r.parentRefs.isEmpty ? const Muted('none: this route is not attached to anything') : '${r.parentRefs.length}'),
-      (
-        'Backends',
-        backends.isEmpty
-            ? null
-            : Wrap(spacing: 10, runSpacing: 2, children: [for (final b in backends.take(8)) BackendLine(b, fromNamespace: r.namespace)]),
-      ),
-    ], keyWidth: 90);
-  }
-
-  Widget _parents(BuildContext context, RouteObj r, RouteLookups? data, Object? error) {
-    final refs = r.parentRefs;
-    if (refs.isEmpty) return const InlineMessage('No parentRefs: the route is not attached to any Gateway, so it serves no traffic.', isError: true);
-    final theme = Theme.of(context);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (error != null) Padding(padding: const EdgeInsets.only(bottom: 6), child: InlineMessage('Lookup failed: $error', isError: true)),
-      HairlineList([
-        for (final p in refs)
-          () {
-            final status = r.statusFor(p);
-            final conds = status?['conditions'];
+  /// Diagnoses per parentRef (by its qualified name and section).
+  Map<ParentRef, List<Diag>> _diags(RouteObj r, RouteLookups? data) => {
+        for (final p in r.parentRefs)
+          p: () {
             final gw = data?.gateways[p.qualified];
             final gwKnown = data != null && data.gateways.containsKey(p.qualified);
-            final diags = explainRouteParent(
+            return explainRouteParent(
               r,
               p,
               gateway: gw,
@@ -152,32 +129,87 @@ class _RouteView extends StatelessWidget {
               missingBackends: data?.missingBackends ?? const {},
               nsLabels: data?.nsLabels,
             );
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.router_outlined, size: 13, color: theme.hintColor),
-                  const SizedBox(width: 5),
-                  Flexible(
-                    child: p.isGateway
-                        ? gwLink('Gateway', p.name, namespace: p.namespace)
-                        : ResourceLink(ObjectRef(group: p.group, kind: p.kind, name: p.name, namespace: p.namespace), label: '${p.kind} ${p.qualified}'),
-                  ),
-                ]),
-                if (p.sectionText.isNotEmpty) Muted(p.sectionText),
-                if (status != null) ...[
-                  CondBadge(condOf(conds, 'Accepted'), label: 'Accepted', negative: 'Not accepted'),
-                  CondBadge(condOf(conds, 'ResolvedRefs'), label: 'Refs resolved', negative: 'Unresolved refs'),
-                ],
-              ]),
-              if (diags.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                for (final d in diags) DiagCallout(d),
-              ],
-              if (status?['controllerName'] != null)
-                Padding(padding: const EdgeInsets.only(top: 2), child: Muted('controller ${status!['controllerName']}')),
-            ]);
           }(),
+      };
+
+  Widget _header(BuildContext context, RouteObj r, RouteLookups? data, RouteHealth health, Map<ParentRef, List<Diag>> diags, Object? error) {
+    final hosts = r.hostnames;
+    final backends = {for (final b in r.backendRefs) b.key: b}.values.toList();
+    final missing = data?.missingBackends ?? const <String>{};
+    final many = r.parentRefs.length > 1;
+    final insights = <PodInsight>[
+      if (r.parentRefs.isEmpty) const PodInsight(Severity.error, 'No parentRefs', 'The route is not attached to any Gateway, so it serves no traffic.'),
+      for (final e in diags.entries)
+        for (final d in e.value) PodInsight(diagSeverity(d.level), many ? '${e.key.qualified}: ${d.title}' : d.title, d.detail),
+      if (error != null) PodInsight(Severity.warn, 'Lookup failed', '$error'),
+    ];
+    final sev = health.healthy ? Severity.ok : diagSeverity(health.level);
+    return InspectorHeader(
+      mark: worstOf(insights) ?? (sev == Severity.info ? Severity.neutral : sev),
+      headline: health.label,
+      detail: [r.kind.kind, if (r.kind.hasHostnames) hosts.isEmpty ? 'any hostname' : hosts.join(', ')].join(' · '),
+      figures: [
+        HeaderFigure('${health.accepted}', 'accepted',
+            of: '/${health.parents}', severity: health.accepted == health.parents && health.parents > 0 ? Severity.neutral : Severity.error, tooltip: '${health.accepted} of ${health.parents} parents accepted'),
+        HeaderFigure('${r.rules.length}', r.rules.length == 1 ? 'rule' : 'rules'),
+        HeaderFigure('${backends.length}', backends.length == 1 ? 'backend' : 'backends'),
+        if (missing.isNotEmpty) HeaderFigure('${missing.length}', 'not found', severity: Severity.error),
+      ],
+      insights: insights,
+      facts: KeyValueTable(keyWidth: 80, [
+        if (r.kind.hasHostnames)
+          (
+            'Hostnames',
+            hosts.isEmpty ? const Muted('any (inherits the listener hostname)') : InlineWrap([for (final h in hosts) Chipish(text: h, copyValue: h)]),
+          ),
+        (
+          'Backends',
+          backends.isEmpty ? null : Wrap(spacing: 10, runSpacing: 2, children: [for (final b in backends.take(8)) BackendLine(b, fromNamespace: r.namespace)]),
+        ),
       ]),
+    );
+  }
+
+  Widget _parents(BuildContext context, RouteObj r, RouteLookups? data, Map<ParentRef, List<Diag>> diags) {
+    final refs = r.parentRefs;
+    if (refs.isEmpty) return const InlineMessage('No parentRefs: the route is not attached to any Gateway, so it serves no traffic.', isError: true);
+    final theme = Theme.of(context);
+    final rows = [
+      for (final p in refs)
+        () {
+          final status = r.statusFor(p);
+          final conds = status?['conditions'];
+          final accepted = condTrue(condOf(conds, 'Accepted'));
+          final unresolved = condFalse(condOf(conds, 'ResolvedRefs'));
+          final ds = diags[p] ?? const [];
+          final sev = !accepted ? Severity.error : (unresolved || ds.isNotEmpty ? Severity.warn : Severity.ok);
+          final label = status == null ? 'No status' : (!accepted ? 'Not accepted' : (unresolved ? 'Unresolved refs' : 'Accepted'));
+          final bad = sev != Severity.ok;
+          return (
+            bad,
+            CompactRow(
+              key: ValueKey('route-parent-${p.qualified}/${p.sectionText}'),
+              memoryId: 'route-parent:${ctx.uid}/${p.qualified}/${p.sectionText}',
+              severity: sev,
+              dotTooltip: label,
+              title: p.isGateway
+                  ? gwLink('Gateway', p.name, namespace: p.namespace)
+                  : ResourceLink(ObjectRef(group: p.group, kind: p.kind, name: p.name, namespace: p.namespace), label: '${p.kind} ${p.qualified}'),
+              subtitle: dotLine([p.sectionText, if (status?['controllerName'] != null) 'controller ${status!['controllerName']}']),
+              trailing: [if (bad) Text(label, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, sev), fontWeight: FontWeight.w600))],
+              details: status == null
+                  ? const Muted('The controller has not reported on this parent yet.')
+                  : Wrap(spacing: 8, runSpacing: 4, children: [
+                      CondBadge(condOf(conds, 'Accepted'), label: 'Accepted', negative: 'Not accepted'),
+                      CondBadge(condOf(conds, 'ResolvedRefs'), label: 'Refs resolved', negative: 'Unresolved refs'),
+                    ]),
+            ),
+          );
+        }(),
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final r in rows) if (r.$1) r.$2,
+      for (final r in rows) if (!r.$1) r.$2,
     ]);
   }
 
@@ -203,12 +235,15 @@ class _RouteView extends StatelessWidget {
     if (rules.isEmpty) return const InlineMessage('No rules');
     final (address, listener) = _target(r, data);
     final grpc = r.kind.kind == 'GRPCRoute';
-    return HairlineList(padding: const EdgeInsets.symmetric(vertical: 8), [
-      for (var i = 0; i < rules.length; i++) _rule(context, r, i, rules[i], data, grpc: grpc, address: address, listener: listener),
+    final rows = [for (var i = 0; i < rules.length; i++) _rule(context, r, i, rules[i], data, grpc: grpc, address: address, listener: listener)];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final x in rows) if (x.$1) x.$2,
+      for (final x in rows) if (!x.$1) x.$2,
     ]);
   }
 
-  Widget _rule(BuildContext context, RouteObj r, int i, Json rule, RouteLookups? data, {required bool grpc, String? address, Json? listener}) {
+  (bool, Widget) _rule(BuildContext context, RouteObj r, int i, Json rule, RouteLookups? data, {required bool grpc, String? address, Json? listener}) {
+    final theme = Theme.of(context);
     final matches = asMapList(rule['matches']);
     final filters = asMapList(rule['filters']);
     final backends = [for (final b in asMapList(rule['backendRefs'])) BackendRef.fromJson(b, r.namespace)];
@@ -218,61 +253,61 @@ class _RouteView extends StatelessWidget {
     final isHttpish = r.kind.kind == 'HTTPRoute' || grpc;
     bool notPermitted(BackendRef b) =>
         data != null && b.namespace != r.namespace && !anyGrantPermits(data.grants, fromKind: r.kind.kind, fromNamespace: r.namespace, to: b);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SubHeader('RULE ${i + 1}${rule['name'] != null ? ' · ${rule['name']}' : ''}'),
-      KeyValueTable([
-        if (isHttpish)
-          (
-            'Match',
-            matches.isEmpty
-                ? const Muted('everything')
-                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    for (var j = 0; j < matches.length; j++)
-                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        if (j > 0) const Padding(padding: EdgeInsets.only(right: 6), child: Muted('or')),
-                        Expanded(child: Mono(describeMatch(matches[j], grpc: grpc).join('  ·  ').ifEmpty(grpc ? 'any method' : 'any path'))),
-                      ]),
-                  ]),
-          ),
-        (
-          'Filters',
-          filters.isEmpty
-              ? null
-              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  for (final f in filters) Text(describeFilter(f, routeNamespace: r.namespace)),
-                ]),
+    final broken = [...backends, ...mirrors].where((b) => data?.backends[b.key] == false || notPermitted(b)).toList();
+    final redirect = filters.any((f) => f['type'] == 'RequestRedirect');
+    final noBackends = backends.isEmpty && !redirect;
+    final sev = broken.isNotEmpty || noBackends ? Severity.error : Severity.ok;
+    final matchText = !isHttpish
+        ? 'all traffic'
+        : matches.isEmpty
+            ? 'everything'
+            : matches.map((m) => describeMatch(m, grpc: grpc).join(' · ').ifEmpty(grpc ? 'any method' : 'any path')).join('  or  ');
+    final to = backends.isEmpty
+        ? (redirect ? 'redirect' : 'no backends: requests get a 500')
+        : backends.map((b) => '${b.label(r.namespace)}${b.port != null ? ':${b.port}' : ''}${backends.length > 1 ? ' ${weightPercent(backends, b)}%' : ''}').join(', ');
+    final title = rule['name'] != null ? '${rule['name']}' : 'Rule ${i + 1}';
+    return (
+      sev != Severity.ok,
+      CompactRow(
+        key: ValueKey('route-rule-$i'),
+        memoryId: 'route-rule:${ctx.uid}/$i',
+        severity: sev,
+        initiallyOpen: sev != Severity.ok,
+        title: Text.rich(TextSpan(children: [
+          TextSpan(text: '$title  ', style: const TextStyle(fontWeight: FontWeight.w600)),
+          TextSpan(text: matchText, style: monoStyle(context, size: 11.5, color: theme.hintColor)),
+        ])),
+        subtitle: Text(
+          '→ $to${filters.isEmpty ? '' : ' · ${plural(filters.length, 'filter')}'}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: sev == Severity.error ? TextStyle(color: severityColor(context, Severity.error)) : null,
         ),
-        (
-          'Backends',
-          backends.isEmpty
-              ? (filters.any((f) => f['type'] == 'RequestRedirect') ? const Muted('none (redirect)') : const Muted('none: requests get a 500'))
-              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  for (final b in backends)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: BackendLine(b,
-                          fromNamespace: r.namespace,
-                          percent: weightPercent(backends, b),
-                          exists: data?.backends[b.key],
-                          notPermitted: notPermitted(b)),
-                    ),
+        details: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (isHttpish)
+            QuietGroup('Match', [
+              if (matches.isEmpty) const Muted('everything'),
+              for (var j = 0; j < matches.length; j++)
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (j > 0) const Padding(padding: EdgeInsets.only(right: 6), child: Muted('or')),
+                  Expanded(child: Mono(describeMatch(matches[j], grpc: grpc).join('  ·  ').ifEmpty(grpc ? 'any method' : 'any path'))),
                 ]),
-        ),
-        (
-          'Mirror',
-          mirrors.isEmpty
-              ? null
-              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  for (final b in mirrors) BackendLine(b, fromNamespace: r.namespace, exists: data?.backends[b.key], notPermitted: notPermitted(b)),
-                ]),
-        ),
-        ('Timeouts', timeouts),
-      ], keyWidth: 72),
-      if (cmd != null) ...[
-        const SizedBox(height: 4),
-        CopyLine(cmd, label: 'Try'),
-      ],
-    ]);
+            ]),
+          if (filters.isNotEmpty) QuietGroup('Filters', [for (final f in filters) Text(describeFilter(f, routeNamespace: r.namespace))]),
+          QuietGroup('Backends', [
+            if (backends.isEmpty) redirect ? const Muted('none (redirect)') : const Muted('none: requests get a 500'),
+            for (final b in backends)
+              BackendLine(b, fromNamespace: r.namespace, percent: weightPercent(backends, b), exists: data?.backends[b.key], notPermitted: notPermitted(b)),
+          ]),
+          if (mirrors.isNotEmpty)
+            QuietGroup('Mirror', [
+              for (final b in mirrors) BackendLine(b, fromNamespace: r.namespace, exists: data?.backends[b.key], notPermitted: notPermitted(b)),
+            ]),
+          if (timeouts != null) QuietGroup('Timeouts', [Text(timeouts)]),
+          if (cmd != null) QuietGroup('Try', [CopyLine(cmd)]),
+        ]),
+      ),
+    );
   }
 }
 

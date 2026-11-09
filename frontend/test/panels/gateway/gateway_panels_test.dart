@@ -1,19 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/gateway/gw_widgets.dart' show CopyLine;
+import 'package:k8sman/panels/pod/pod_section.dart';
 
 import '../../support/screenshot.dart';
 import 'gw_support.dart';
 
+/// [o] with every listener, rule and secondary section opened (healthy
+/// rows start collapsed).
+Json opened(Json o) {
+  final uid = o['metadata']['uid'];
+  for (var i = 0; i < 10; i++) {
+    PodSectionMemory.set('route-rule:$uid/$i', true);
+  }
+  for (final l in (o['spec']['listeners'] as List? ?? const [])) {
+    PodSectionMemory.set('gw-listener:$uid/${l['name']}', true);
+  }
+  for (final s in ['gw-topology', 'gw-infra']) {
+    PodSectionMemory.set(s, true);
+  }
+  return o;
+}
+
 void main() {
+  setUp(PodSectionMemory.reset);
+
   testWidgets('Gateway demo-gw: healthy, listeners, attached routes, topology', (tester) async {
     await loadRealFonts();
-    final app = await pumpGwPanel(tester, gwFixture('gateway-demo-gw'), size: const Size(560, 3000));
+    final app = await pumpGwPanel(tester, opened(gwFixture('gateway-demo-gw')), size: const Size(560, 3000));
     await saveScreenshot(tester, 'gateway-demo-gw');
     expect(find.text('Programmed'), findsWidgets);
     expect(find.text('10.96.230.213'), findsWidgets);
     // Listener rows.
-    expect(find.text('HTTPS :443'), findsOneWidget);
+    expect(find.textContaining('HTTPS :443', findRichText: true), findsWidgets); // the row, its routes' group and the topology
     expect(find.text('*.example.com'), findsOneWidget);
     expect(find.text('Secret demo-tls'), findsWidgets);
     expect(find.textContaining('Routes from namespaces with gateway-access=true'), findsOneWidget);
@@ -22,7 +42,7 @@ void main() {
     expect(find.text('HTTPRoute demo/web-route'), findsWidgets);
     expect(find.text('Not accepted'), findsNWidgets(2));
     expect(find.byTooltip('NoMatchingParent: No listeners match this parent ref'), findsOneWidget);
-    expect(find.text('NO MATCHING LISTENER'), findsOneWidget);
+    expect(find.text('No matching listener'), findsOneWidget);
     // Topology reaches backends.
     expect(find.text('demo/web'), findsWidgets);
     expect(find.text('ghost'), findsWidgets);
@@ -39,7 +59,7 @@ void main() {
     await pumpGwPanel(tester, gwFixture('gateway-legacy-gw'));
     await saveScreenshot(tester, 'gateway-legacy-gw');
     expect(find.text('1 of 2 listeners has problems'), findsOneWidget);
-    expect(find.text('Certificate Secret missing or invalid'), findsOneWidget);
+    expect(find.text('Certificate Secret missing or invalid'), findsWidgets);
     expect(find.text('Secret not found'), findsOneWidget);
   });
 
@@ -53,7 +73,7 @@ void main() {
 
   testWidgets('HTTPRoute web-route: rules, weights, filters, curl', (tester) async {
     await loadRealFonts();
-    final app = await pumpGwPanel(tester, gwFixture('httproute-web-route'), size: const Size(560, 2600));
+    final app = await pumpGwPanel(tester, opened(gwFixture('httproute-web-route')), size: const Size(560, 2600));
     await saveScreenshot(tester, 'httproute-web-route');
     expect(find.text('Accepted'), findsWidgets);
     expect(find.text('path /api*  ·  header x-canary = true'), findsOneWidget);
@@ -88,7 +108,7 @@ void main() {
 
   testWidgets('HTTPRoute cache-admin: RefNotPermitted needs a ReferenceGrant', (tester) async {
     await loadRealFonts();
-    await pumpGwPanel(tester, gwFixture('httproute-cache-admin'));
+    await pumpGwPanel(tester, opened(gwFixture('httproute-cache-admin')));
     await saveScreenshot(tester, 'httproute-cache-admin');
     expect(find.text('Unresolved refs'), findsWidgets);
     expect(find.text('backendRef to Service demo/redis requires a ReferenceGrant in demo'), findsOneWidget);
@@ -98,20 +118,20 @@ void main() {
   });
 
   testWidgets('HTTPRoute shop: cross-namespace backend permitted, HTTPS example', (tester) async {
-    await pumpGwPanel(tester, gwFixture('httproute-shop'));
+    await pumpGwPanel(tester, opened(gwFixture('httproute-shop')));
     expect(find.text('needs ReferenceGrant'), findsNothing);
     expect(find.text("curl -k --resolve shop.example.com:443:10.96.230.213 'https://shop.example.com/'"), findsOneWidget);
   });
 
   testWidgets('HTTPRoute ghost: missing Service', (tester) async {
-    await pumpGwPanel(tester, gwFixture('httproute-ghost'));
+    await pumpGwPanel(tester, opened(gwFixture('httproute-ghost')));
     expect(find.text('Service demo/ghost does not exist'), findsOneWidget);
     expect(find.text('Service not found'), findsWidgets);
   });
 
   testWidgets('GRPCRoute greeter: method match and grpcurl', (tester) async {
     await loadRealFonts();
-    await pumpGwPanel(tester, gwFixture('grpcroute-greeter'));
+    await pumpGwPanel(tester, opened(gwFixture('grpcroute-greeter')));
     await saveScreenshot(tester, 'grpcroute-greeter');
     expect(find.text('helloworld.Greeter/SayHello  ·  header x-tenant = acme'), findsOneWidget);
     expect(find.text("grpcurl -plaintext -authority grpc.example.com -H 'x-tenant: acme' 10.96.230.213:80 helloworld.Greeter/SayHello"), findsOneWidget);

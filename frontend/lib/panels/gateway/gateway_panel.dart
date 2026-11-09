@@ -4,7 +4,10 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
+import '../network/inspector_kit.dart';
 import '../panel.dart';
+import '../pod/pod_widgets.dart' show InlineWrap, InsightList;
 import 'gw_model.dart';
 import 'gw_widgets.dart';
 
@@ -111,31 +114,26 @@ class _GatewayView extends StatelessWidget {
       load: _load,
       builder: (context, snap, reload) {
         final data = snap.data;
-        final conds = ctx.status['conditions'];
+        final conds = asMapList(ctx.status['conditions']);
         final grouped = data == null ? null : groupByListener(ctx.object, data.attachments, nsLabels: data.nsLabels);
         final infra = asMap(ctx.spec['infrastructure']);
+        final routeCount = data == null ? null : {for (final a in data.attachments) a.route}.length;
+        final badConds = [for (final c in conds) if (c['status'] != 'True') '${c['type']}'];
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          DetailSection(
-            title: 'Gateway',
-            icon: Icons.router_outlined,
-            trailing: condTrue(condOf(conds, 'Accepted'))
-                ? CondBadge(condOf(conds, 'Programmed'), label: 'Programmed', negative: 'Not programmed')
-                : CondBadge(condOf(conds, 'Accepted'), label: 'Accepted', negative: 'Not accepted'),
-            child: _summary(context, data),
-          ),
-          DetailSection(
+          _header(context, data, snap.error),
+          PodSection(
+            id: 'gw-listeners',
             title: 'Listeners',
-            icon: Icons.sensors,
-            trailing: Text('${listeners.length}'),
+            trailing: SectionSummary(_listenerSummary()),
             child: _listeners(context, data),
           ),
-          DetailSection(
+          PodSection(
+            id: 'gw-routes',
             title: 'Attached routes',
-            icon: Icons.alt_route,
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (data != null) Text('${{for (final a in data.attachments) a.route}.length}'),
+              if (data != null) Flexible(child: SectionSummary(_routesSummary(data.attachments, routeCount!))),
               const SizedBox(width: 4),
-              RefreshButton(reload),
+              SizedBox(height: 20, child: RefreshButton(reload)),
             ]),
             child: snap.hasError
                 ? InlineMessage('${snap.error}', isError: true)
@@ -144,53 +142,115 @@ class _GatewayView extends StatelessWidget {
                     : _routes(context, grouped),
           ),
           if (grouped != null && data!.attachments.isNotEmpty)
-            DetailSection(key: const ValueKey('topology'), title: 'Topology', icon: Icons.account_tree_outlined, child: _topology(context, grouped, data)),
+            PodSection(
+              key: const ValueKey('topology'),
+              id: 'gw-topology',
+              title: 'Topology',
+              initiallyExpanded: false,
+              trailing: SectionSummary('${plural(listeners.length, 'listener')} · ${plural(routeCount!, 'route')}'),
+              child: _topology(context, grouped, data),
+            ),
           if (asMap(infra['labels']).isNotEmpty || asMap(infra['annotations']).isNotEmpty || infra['parametersRef'] != null)
-            DetailSection(key: const ValueKey('infra'), title: 'Infrastructure', icon: Icons.dns_outlined, child: _infra(context, infra)),
-          DetailSection(key: const ValueKey('conditions'), title: 'Conditions', icon: Icons.checklist, initiallyExpanded: false, child: ConditionsTable(conds as List?)),
+            PodSection(
+              key: const ValueKey('infra'),
+              id: 'gw-infra',
+              title: 'Infrastructure',
+              initiallyExpanded: false,
+              trailing: SectionSummary([
+                if (asMap(infra['labels']).isNotEmpty) plural(asMap(infra['labels']).length, 'label'),
+                if (asMap(infra['annotations']).isNotEmpty) plural(asMap(infra['annotations']).length, 'annotation'),
+                if (infra['parametersRef'] != null) 'parameters',
+              ].join(' · ')),
+              child: _infra(context, infra),
+            ),
+          PodSection(
+            key: const ValueKey('conditions'),
+            id: 'gw-conditions',
+            title: 'Conditions',
+            initiallyExpanded: false,
+            trailing: SectionSummary(
+              conds.isEmpty ? 'none' : (badConds.isEmpty ? 'all ${conds.length} true' : '${badConds.join(', ')} not true'),
+              color: badConds.isEmpty ? null : severityColor(context, Severity.warn),
+            ),
+            child: ConditionsTable(ctx.status['conditions'] as List?),
+          ),
         ]);
       },
     );
   }
 
-  Widget _summary(BuildContext context, GatewayLookups? data) {
+  String _listenerSummary() {
+    final bad = [for (final l in listeners) if (listenerProblems(listenerStatus('${l['name']}')).isNotEmpty) l].length;
+    return [plural(listeners.length, 'listener'), if (bad > 0) '$bad with problems'].join(' · ');
+  }
+
+  static String _routesSummary(List<Attachment> attachments, int routes) {
+    final bad = {for (final a in attachments) if (!a.isAccepted) a.route}.length;
+    return [plural(routes, 'route'), if (bad > 0) '$bad not accepted'].join(' · ');
+  }
+
+  Widget _header(BuildContext context, GatewayLookups? data, Object? error) {
+    final conds = ctx.status['conditions'];
+    final accepted = condOf(conds, 'Accepted');
+    final programmed = condOf(conds, 'Programmed');
     final addresses = asMapList(ctx.status['addresses']);
     final className = '${ctx.spec['gatewayClassName'] ?? ''}';
     final diags = explainGateway(ctx.object, gatewayClass: data?.gatewayClass);
     final badListeners = [for (final l in listeners) if (listenerProblems(listenerStatus('${l['name']}')).isNotEmpty) '${l['name']}'];
     final classAccepted = data?.gatewayClass == null ? null : condOf(dig(data!.gatewayClass, ['status', 'conditions']), 'Accepted');
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (final d in diags) DiagCallout(d),
+    final insights = <PodInsight>[
+      for (final d in diags) PodInsight(diagSeverity(d.level), d.title, d.detail),
       if (badListeners.isNotEmpty)
-        Callout(
-          severity: Severity.warn,
-          title: '${badListeners.length} of ${listeners.length} listener${listeners.length == 1 ? '' : 's'} ${badListeners.length == 1 ? 'has' : 'have'} problems',
-          detail: 'See ${badListeners.map((n) => "'$n'").join(', ')} below. Routes attached only to ${badListeners.length == 1 ? 'it' : 'them'} get no traffic.',
+        PodInsight(
+          Severity.warn,
+          '${badListeners.length} of ${listeners.length} listener${listeners.length == 1 ? '' : 's'} ${badListeners.length == 1 ? 'has' : 'have'} problems',
+          'See ${badListeners.map((n) => "'$n'").join(', ')} below. Routes attached only to ${badListeners.length == 1 ? 'it' : 'them'} get no traffic.',
         ),
-      KeyValueTable([
-        (
-          'Status',
-          Wrap(spacing: 10, runSpacing: 2, children: [
-            CondBadge(condOf(ctx.status['conditions'], 'Accepted'), label: 'Accepted', negative: 'Not accepted'),
-            CondBadge(condOf(ctx.status['conditions'], 'Programmed'), label: 'Programmed', negative: 'Not programmed'),
-          ]),
-        ),
+      if (data?.classMissing == true) PodInsight(Severity.error, 'GatewayClass $className not found', 'No controller will reconcile this Gateway until the class exists.'),
+      if (classAccepted != null && !condTrue(classAccepted))
+        PodInsight(Severity.warn, 'GatewayClass $className is not accepted', [classAccepted['reason'], classAccepted['message']].whereType<String>().join(': ')),
+      if (error != null) PodInsight(Severity.warn, 'Lookup failed', '$error'),
+    ];
+    final String headline;
+    if (accepted == null || accepted['status'] == 'Unknown' || accepted['reason'] == 'Pending') {
+      headline = 'Pending';
+    } else if (!condTrue(accepted)) {
+      headline = 'Not accepted';
+    } else if (programmed != null && !condTrue(programmed)) {
+      headline = 'Not programmed';
+    } else {
+      headline = 'Programmed';
+    }
+    String reason(Json? c) => c == null ? 'no status' : '${c['reason'] ?? c['status']}';
+    final okListeners = listeners.length - badListeners.length;
+    final routes = data == null ? null : {for (final a in data.attachments) a.route}.length;
+    return InspectorHeader(
+      mark: worstOf(insights) ?? (headline == 'Programmed' ? Severity.ok : Severity.warn),
+      headline: headline,
+      detail: headline == 'Programmed' ? 'Accepted · Programmed' : 'accepted: ${reason(accepted)} · programmed: ${reason(programmed)}',
+      figures: [
+        HeaderFigure('$okListeners', 'listeners ok',
+            of: '/${listeners.length}', severity: listeners.isEmpty ? Severity.error : (badListeners.isEmpty ? Severity.neutral : Severity.warn), tooltip: '$okListeners of ${listeners.length} listeners without problems'),
+        HeaderFigure(routes == null ? '–' : '$routes', routes == 1 ? 'route' : 'routes'),
+        HeaderFigure('${addresses.length}', addresses.length == 1 ? 'address' : 'addresses', severity: addresses.isEmpty && headline != 'Pending' ? Severity.warn : Severity.neutral),
+      ],
+      insights: insights,
+      facts: KeyValueTable(keyWidth: 80, [
         (
           'Class',
           Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             gwLink('GatewayClass', className, label: className),
-            if (data?.classMissing == true) const StatusBadge('not found', dense: true, severity: Severity.error),
-            if (classAccepted != null && !condTrue(classAccepted)) CondBadge(classAccepted, label: 'Accepted', negative: 'Class not accepted'),
+            if (data?.classMissing == true) Text('not found', style: TextStyle(color: severityColor(context, Severity.error))),
           ]),
         ),
         (
           'Addresses',
           addresses.isEmpty
               ? const Muted('none assigned')
-              : Wrap(spacing: 12, runSpacing: 2, children: [
+              : InlineWrap([
                   for (final a in addresses)
                     Row(mainAxisSize: MainAxisSize.min, children: [
-                      Flexible(child: CopyText('${a['value']}')),
+                      Flexible(child: Chipish(text: '${a['value']}', copyValue: '${a['value']}')),
                       if (a['type'] != null && a['type'] != 'IPAddress') Muted(' ${a['type']}'),
                     ]),
                 ]),
@@ -199,14 +259,14 @@ class _GatewayView extends StatelessWidget {
           'Requested',
           asMapList(ctx.spec['addresses']).isEmpty ? null : asMapList(ctx.spec['addresses']).map((a) => '${a['value']}').join(', '),
         ),
-      ], keyWidth: 90),
-    ]);
+      ]),
+    );
   }
 
   Widget _listeners(BuildContext context, GatewayLookups? data) {
     if (listeners.isEmpty) return const InlineMessage('No listeners', isError: true);
     final theme = Theme.of(context);
-    return HairlineList([
+    final rows = [
       for (final l in listeners)
         () {
           final name = '${l['name']}';
@@ -223,55 +283,70 @@ class _GatewayView extends StatelessWidget {
           final kinds = listenerKinds(l);
           final explicitKinds = asMapList(dig(l, ['allowedRoutes', 'kinds'])).isNotEmpty;
           final attached = st?['attachedRoutes'];
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              Container(width: 7, height: 7, decoration: BoxDecoration(color: severityColor(context, sev), shape: BoxShape.circle)),
-              const SizedBox(width: 8),
-              Flexible(child: Text(name, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600))),
-              const SizedBox(width: 8),
-              Mono('${l['protocol']} :${l['port']}'),
-              const SizedBox(width: 8),
-              Expanded(child: Text('${l['hostname'] ?? '*'}', overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11.5, color: theme.hintColor))),
-              if (attached != null) Muted('$attached route${attached == 1 ? '' : 's'}'),
-            ]),
-            Padding(
-              padding: const EdgeInsets.only(left: 15, top: 3),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          final bad = sev == Severity.error || sev == Severity.warn;
+          return (
+            bad,
+            CompactRow(
+              key: ValueKey('listener-$name'),
+              memoryId: 'gw-listener:${ctx.uid}/$name',
+              severity: sev,
+              initiallyOpen: bad,
+              title: Text.rich(TextSpan(children: [
+                TextSpan(text: name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                TextSpan(text: '  ${l['protocol']} :${l['port']}', style: monoStyle(context, size: 11.5, color: theme.hintColor)),
+              ])),
+              subtitle: Row(children: [
+                if (tls.isNotEmpty || certs.isNotEmpty) ...[Icon(Icons.lock_outline, size: 11, color: theme.hintColor), const SizedBox(width: 3)],
+                Flexible(child: Text('${l['hostname'] ?? '*'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: theme.hintColor))),
+                if (bad) ...[
+                  const SizedBox(width: 6),
+                  Flexible(child: Text(problems.isEmpty ? 'not programmed' : problems.first.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: severityColor(context, sev), fontWeight: FontWeight.w600))),
+                ],
+              ]),
+              trailing: [if (attached != null) Text('$attached route${attached == 1 ? '' : 's'}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))],
+              details: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (problems.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 10), child: InsightList([for (final p in problems) PodInsight(diagSeverity(p.level), p.title, p.detail)])),
                 if (tls.isNotEmpty || certs.isNotEmpty)
-                  Wrap(spacing: 6, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                    Icon(Icons.lock_outline, size: 12, color: theme.hintColor),
-                    Muted('TLS ${tls['mode'] ?? 'Terminate'}'),
+                  QuietGroup('TLS ${tls['mode'] ?? 'Terminate'}', [
+                    if (certs.isEmpty) const Muted('no certificates'),
                     for (final c in certs) BackendLine(c, fromNamespace: ns, exists: data?.exists[c.key]),
                   ]),
-                Muted('Routes from ${describeAllowedNamespaces(l, ns)} · ${explicitKinds ? '' : 'default '}kinds ${kinds.join(', ')}'),
-                for (final p in problems)
-                  Padding(padding: const EdgeInsets.only(top: 4), child: DiagCallout(p)),
+                QuietGroup('Allowed routes', [
+                  Text('Routes from ${describeAllowedNamespaces(l, ns)} · ${explicitKinds ? '' : 'default '}kinds ${kinds.join(', ')}'),
+                ]),
               ]),
             ),
-          ]);
+          );
         }(),
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final r in rows) if (r.$1) r.$2,
+      for (final r in rows) if (!r.$1) r.$2,
     ]);
   }
 
-  Widget _routeRow(BuildContext context, Attachment a) {
+  Widget _routeRow(BuildContext context, Attachment a, String group) {
     final acc = a.accepted;
     final sev = !a.isAccepted ? Severity.error : (a.unresolved ? Severity.warn : Severity.ok);
     final text = !a.isAccepted ? (acc == null ? 'No status' : 'Not accepted') : (a.unresolved ? 'Unresolved refs' : 'Accepted');
     final why = !a.isAccepted ? acc : (a.unresolved ? condOf(a.status?['conditions'], 'ResolvedRefs') : null);
     final tip = why == null ? null : [why['reason'], why['message']].whereType<String>().join(': ');
     final hosts = a.route.hostnames;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(
-          child: Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            routeLink(a.route, showKind: true),
-            if (hosts.isNotEmpty) Muted(hosts.join(', '), mono: true),
-          ]),
-        ),
-        const SizedBox(width: 8),
-        Tooltip(message: tip ?? '', child: StatusBadge(text, dense: true, severity: sev)),
-      ]),
+    final theme = Theme.of(context);
+    final bad = sev != Severity.ok;
+    return CompactRow(
+      key: ValueKey('gw-route-$group/${a.route.namespace}/${a.route.name}'),
+      severity: sev,
+      dotTooltip: text,
+      title: routeLink(a.route, showKind: true),
+      subtitle: hosts.isEmpty ? null : Text(hosts.join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: theme.hintColor)),
+      trailing: [
+        if (bad)
+          Tooltip(
+            message: tip ?? '',
+            child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, sev), fontWeight: FontWeight.w600)),
+          ),
+      ],
     );
   }
 
@@ -280,11 +355,15 @@ class _GatewayView extends StatelessWidget {
       return const InlineMessage('No routes reference this Gateway in their parentRefs.');
     }
     final protocolOf = {for (final l in listeners) '${l['name']}': '${l['protocol']} :${l['port']}'};
+    bool ok(Attachment a) => a.isAccepted && !a.unresolved;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final e in grouped.entries)
         if (e.value.isNotEmpty || e.key.isNotEmpty) ...[
-          SubHeader(e.key.isEmpty ? 'NO MATCHING LISTENER' : '${e.key.toUpperCase()} · ${protocolOf[e.key] ?? ''}'),
-          if (e.value.isEmpty) const Muted('no routes') else for (final a in e.value) _routeRow(context, a),
+          RowGroupLabel(e.key.isEmpty ? 'No matching listener' : '${e.key} · ${protocolOf[e.key] ?? ''}'),
+          if (e.value.isEmpty)
+            const Padding(padding: EdgeInsets.only(left: 4), child: Muted('no routes'))
+          else
+            for (final a in [...e.value.where((a) => !ok(a)), ...e.value.where(ok)]) _routeRow(context, a, e.key),
         ],
     ]);
   }
