@@ -71,6 +71,7 @@ flutter:
   # Icons for well-known CRD API groups (see assets/icons/ATTRIBUTION.md).
   assets:
     - assets/icons/
+    - assets/icons/os/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

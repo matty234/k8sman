@@ -16,11 +16,13 @@ import '../../panels/panel.dart';
 import '../../state/app_state.dart';
 import '../../state/poller.dart';
 import '../../util/k8s.dart';
+import '../../util/node_os.dart';
 import '../../util/pod.dart';
 import '../theme.dart';
 import 'drain_dialog.dart';
 import '../widgets/common.dart';
 import '../widgets/editorial.dart';
+import '../widgets/node_os_icon.dart';
 import '../widgets/page_mode_switch.dart';
 
 /// The Nodes page's Overview: the cluster at a glance, then a table of
@@ -124,6 +126,9 @@ class NodeSummary {
   late final String? kubeletVersion = dig<String>(node, ['status', 'nodeInfo', 'kubeletVersion']);
   late final String? zone = labels['topology.kubernetes.io/zone'] as String?;
   late final String? instanceType = labels['node.kubernetes.io/instance-type'] as String?;
+
+  /// Base OS and platform, e.g. Bottlerocket · EKS.
+  late final NodeOs? os = nodeOsOf(node);
 }
 
 /// Group active pods by node and compute allocations (pure, for tests).
@@ -336,7 +341,7 @@ class _NodesViewState extends State<NodesView> with PollingState {
     final nodes = _nodes;
     final q = _filter.toLowerCase();
     final visible = nodes
-        ?.where((n) => q.isEmpty || n.name.toLowerCase().contains(q) || n.roles.any((r) => r.contains(q)) || (n.pool?.toLowerCase().contains(q) ?? false))
+        ?.where((n) => q.isEmpty || n.name.toLowerCase().contains(q) || n.roles.any((r) => r.contains(q)) || (n.pool?.toLowerCase().contains(q) ?? false) || (n.os?.label.toLowerCase().contains(q) ?? false))
         .toList();
     final pools = nodes != null && nodes.any((n) => n.pool != null);
 
@@ -719,6 +724,7 @@ class _NodeRow extends StatelessWidget {
       n.zone,
       n.instanceType,
     ].whereType<String>().join(' · ');
+    final hasMeta = meta.isNotEmpty || n.os != null;
     // The IP line's height, to line the chevron up with the name above it.
     final metaLineHeight = (TextPainter(text: TextSpan(text: 'x', style: info), textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout()).height;
     final taints = n.taints.map((t) => '${t['key']}${t['value'] == null ? '' : '=${t['value']}'}:${t['effect']}').join('\n');
@@ -751,7 +757,7 @@ class _NodeRow extends StatelessWidget {
                 ? null
                 : Padding(
                     // Line up with the name, not the middle of name + IP.
-                    padding: EdgeInsets.only(bottom: meta.isNotEmpty ? metaLineHeight : 0),
+                    padding: EdgeInsets.only(bottom: hasMeta ? metaLineHeight : 0),
                     child: InkResponse(
                       key: ValueKey('expand:${n.name}'),
                       onTap: onToggle,
@@ -787,7 +793,16 @@ class _NodeRow extends StatelessWidget {
                   ),
                 ),
               ]),
-              if (meta.isNotEmpty) Padding(padding: const EdgeInsets.only(left: 15), child: Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: info)),
+              if (hasMeta)
+                Row(children: [
+                  // The OS glyph sits centred under the status dot, so the
+                  // meta text keeps lining up with the name.
+                  SizedBox(
+                    width: 15,
+                    child: n.os == null ? null : Transform.translate(offset: const Offset(-3.5, 0), child: Align(alignment: Alignment.centerLeft, child: NodeOsIcon(n.node))),
+                  ),
+                  Flexible(child: Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: info)),
+                ]),
             ]),
           ),
           if (layout.showRoles) _col(NodeLayout.rolesW, Text(n.roles.join(', '), maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
