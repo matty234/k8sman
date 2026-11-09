@@ -265,7 +265,8 @@ class _ForwardCard extends StatelessWidget {
     final reason = (pf.error ?? '').split('\n').first.trim();
     final Widget status = switch (pf.state) {
       'active' => pf.since == null ? const SizedBox.shrink() : AgeText(pf.since!.toIso8601String(), style: hint),
-      'error' => Text(reason.isEmpty ? 'failed' : 'failed: $reason', style: hint, maxLines: 1, overflow: TextOverflow.ellipsis),
+      // The reason is in the notice under the row (when there's one).
+      'error' => Text((pf.error ?? '').isNotEmpty || reason.isEmpty ? 'failed' : 'failed: $reason', style: hint, maxLines: 1, overflow: TextOverflow.ellipsis),
       _ => Text(_stateLabel.toLowerCase(), style: hint, maxLines: 1, overflow: TextOverflow.ellipsis),
     };
     final tip = [
