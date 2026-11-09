@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -353,14 +354,14 @@ func (m *hubbleModule) OverviewInputs(l *OverviewLists) {
 					Label: "Hubble Relay unreachable", Section: hubbleID,
 				})
 			}
-			return func(in *overview.Input) { in.Findings = append(in.Findings, fs...) }, nil
+			return func(in *overview.Input) { in.Findings = append(slices.Clip(in.Findings), fs...) }, nil
 		}
 		e := m.recentDrops(l.Clients, s, l.Namespace)
 		if e.err != nil {
 			return nil, fmt.Errorf("hubble drops: %s", hubble.ErrorMessage(e.err))
 		}
 		fs = dropFindings(e.flows, l.Namespace, e.at)
-		return func(in *overview.Input) { in.Findings = append(in.Findings, fs...) }, nil
+		return func(in *overview.Input) { in.Findings = append(slices.Clip(in.Findings), fs...) }, nil
 	})
 }
 

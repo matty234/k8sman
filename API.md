@@ -328,7 +328,7 @@ as usage changes. The `quantity` column type renders values such as `250m`,
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/overview[?namespace=]` | cluster health summary for one namespace, or all if omitted. Lists pods, deployments, statefulsets, daemonsets, replicasets, jobs, cronjobs, nodes, PVCs and Warning events once each, in parallel, and analyses them (`backend/internal/overview`) |
+| GET | `/api/overview[?namespace=][&wait=1s]` | cluster health summary for one namespace, or all if omitted. Answers after a soft deadline (`wait`, default `1.2s`, at most `10s`) with what has loaded; see `pending`. Lists pods, deployments, statefulsets, daemonsets, replicasets, jobs, cronjobs, nodes, PVCs and Warning events once each, in parallel, and analyses them (`backend/internal/overview`) |
 
 Response:
 
@@ -348,9 +348,11 @@ Response:
  issues: [{severity, category, kind, group, namespace?, name, reason, message, since?, count?, owner?: {group, kind, name}}],
  nodes: [{name, ready, cordoned, pressure?, roles?, version, pods}],
  topWarnings: [{reason, count, objects, latestMessage, lastSeen, example: {kind, group, namespace?, name}}],
- errors?: {"<resource>": "<message>"}}                  // lists that failed (e.g. RBAC); pods failing is a hard error
+ errors?: {"<resource>": "<message>"},                // lists that failed (e.g. RBAC); pods failing is a hard error
+ pending?: ["alerts", "argocd", "deployments", ...]}    // sources not finished at the soft deadline
 ```
 
+- `pending` names the sources still loading: `deployments`, `statefulsets`, `daemonsets`, `replicasets`, `jobs`, `cronjobs`, `nodes`, `pvcs`, `events`, `alerts`, `argocd`, `workflows`, `gateway`, `hubble`. Pods are never pending: they are always waited for, up to the 20s limit. What a pending source feeds (its `counts`, `categories`, `issues`, `nodes`) is unknown, not zero or healthy, and clients show a placeholder for it. Pending sources keep running after the response (up to 20s) and warm the watch cache, so asking again shortly after (the app does after 0.7s, 1.5s, then 3s) returns more. Absent when everything finished.
 - `severity` is `critical`, `warning` or `info`. Issues are sorted by severity, then by most recent `since` (RFC3339).
 - `owner` is the pod's top-level controller: Pod → ReplicaSet → Deployment, Pod → Job → CronJob, or a StatefulSet/DaemonSet. Group issues by `(namespace, owner, category)` to show "3 pods of Deployment web are CrashLoopBackOff".
 - Pod `reason` is the pod table's Status column (`Terminating`, `Init:<reason>`, the first container waiting/terminated reason, else the phase). `count` is the pod's restart count.

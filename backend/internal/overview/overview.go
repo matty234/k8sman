@@ -73,6 +73,11 @@ type Input struct {
 	// Findings are issues a module worked out itself (e.g. Hubble: relay
 	// unreachable, dropped flows), added as they are.
 	Findings []Finding
+	// Pending names the sources that had not finished when the input was
+	// taken (e.g. "deployments", "alerts", "argocd"). Their fields are empty
+	// because they are unknown, not because nothing was found: the result
+	// lists them in Pending so that no section reads as healthy or zero.
+	Pending []string
 }
 
 // Finding is a module's ready-made issue. Its Category gets a summary tile
@@ -249,6 +254,9 @@ type Result struct {
 	Nodes       []NodeHealth      `json:"nodes"`
 	TopWarnings []EventReason     `json:"topWarnings"`
 	Errors      map[string]string `json:"errors,omitempty"`
+	// Pending lists the sources still loading: their counts, issues and
+	// tiles are unknown (not zero) and must not be shown as healthy.
+	Pending []string `json:"pending,omitempty"`
 }
 
 type categoryDef struct {
@@ -334,6 +342,7 @@ func Analyze(in Input) *Result {
 		f.Issue.since = f.Since
 		a.add(f.Issue)
 	}
+	a.res.Pending = in.Pending
 	a.finish()
 	return a.res
 }

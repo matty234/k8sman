@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"slices"
 	"sort"
 	"time"
 
@@ -125,7 +126,7 @@ func (m *gatewayModule) OverviewInputs(l *OverviewLists) {
 			if err != nil {
 				return nil, err
 			}
-			return func(in *overview.Input) { in.Routes = append(in.Routes, items...) }, nil
+			return func(in *overview.Input) { in.Routes = append(slices.Clip(in.Routes), items...) }, nil
 		})
 	}
 }

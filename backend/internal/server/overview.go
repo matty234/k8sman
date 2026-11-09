@@ -8,6 +8,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
@@ -20,26 +21,49 @@ func (s *Server) overviewRoutes() {
 	s.mux.HandleFunc("GET /api/overview", s.handleOverview)
 }
 
+// Soft deadline of /api/overview: the response goes out with whatever has
+// completed by then (pods excepted), the rest is reported in `pending`.
+const (
+	overviewSoftWait = 1200 * time.Millisecond
+	overviewMaxWait  = 10 * time.Second
+	overviewHardWait = 20 * time.Second
+)
+
 // handleOverview lists every relevant type once, in parallel, and returns the
 // health analysis. Lists that fail (e.g. RBAC forbids nodes) are reported in
 // `errors` instead of failing the whole request, unless pods cannot be listed.
+//
+// It answers after the soft deadline (`wait`, default 1.2s, at most 10s)
+// with what has completed, listing the sources still running in `pending`;
+// those keep running (detached from the request, under the 20s limit) so
+// that they fill the watch cache for the next poll. Pods are the exception:
+// nothing renders without them, so they are waited for up to the limit.
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	scope, err := kube.ParseNamespaces(r.URL.Query())
 	if err != nil {
 		writeErr(w, httpx.BadRequest("%v", err))
 		return
 	}
+	wait := overviewSoftWait
+	if v := r.URL.Query().Get("wait"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < 0 {
+			writeErr(w, httpx.BadRequest("wait: want a duration such as 1s"))
+			return
+		}
+		wait = min(d, overviewMaxWait)
+	}
 	ns := scope.String() // "" = all, "a" or a set "a,b" (see listScope)
-	c := s.mgr.Clients()
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-	defer cancel()
 
-	in, errs := s.listForOverview(ctx, c, ns)
-	if err, ok := errs["pods"]; ok {
+	l := s.startOverview(s.mgr.Clients(), ns)
+	res, errs, ok := l.respond(r.Context(), wait)
+	if !ok {
+		return
+	}
+	if err, bad := errs["pods"]; bad {
 		writeErr(w, err)
 		return
 	}
-	res := overview.Analyze(in)
 	res.Namespace = ns
 	if len(errs) > 0 {
 		res.Errors = map[string]string{}
@@ -50,74 +74,71 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, 200, res)
 }
 
-// listForOverview lists the core types, then whatever the enabled modules
-// add (Argo CD Applications, Gateway API objects, alerts, …).
-func (s *Server) listForOverview(ctx context.Context, c *cluster.Clients, ns string) (overview.Input, map[string]error) {
-	l := &OverviewLists{Ctx: ctx, Clients: c, Namespace: ns, in: overview.Input{Now: time.Now()}, errs: map[string]error{}}
-	in := &l.in
+// respond waits for every source up to wait, then (always) for pods, and
+// analyses what has completed. ok is false when reqCtx ended first.
+func (l *OverviewLists) respond(reqCtx context.Context, wait time.Duration) (*overview.Result, map[string]error, bool) {
+	all := make(chan struct{})
+	go func() {
+		l.wg.Wait()
+		close(all)
+	}()
+	soft := time.NewTimer(wait)
+	defer soft.Stop()
+	select {
+	case <-all:
+	case <-soft.C:
+	case <-reqCtx.Done():
+		return nil, nil, false
+	}
+	select {
+	case <-l.podsDone:
+	case <-reqCtx.Done():
+		return nil, nil, false
+	}
+	in, errs := l.snapshot()
+	return overview.Analyze(in), errs, true
+}
+
+// startOverview starts listing the core types, then whatever the enabled
+// modules add (Argo CD Applications, Gateway API objects, alerts, …). The
+// sources run under their own context (20s), not the request's, so they
+// survive a request that answered early.
+func (s *Server) startOverview(c *cluster.Clients, ns string) *OverviewLists {
+	ctx, cancel := context.WithTimeout(context.Background(), overviewHardWait)
+	l := newOverviewLists(ctx, c, ns)
 	// Lists go through the shared watch cache: the first poll costs one
 	// LIST per type, later polls (every 10s while the page is open) none.
 	kc := kcache.For(c)
 
-	// Each core list writes its own field of the input.
-	run := func(name string, f func() error) {
-		l.Go(name, func() (func(*overview.Input), error) { return nil, f() })
-	}
-	run("pods", func() error {
-		var err error
-		in.Pods, err = listTyped[corev1.Pod](ctx, kc, gvrPods, ns, "")
-		return err
-	})
-	run("deployments", func() error {
-		var err error
-		in.Deployments, err = listTyped[appsv1.Deployment](ctx, kc, gvrDeployments, ns, "")
-		return err
-	})
-	run("statefulsets", func() error {
-		var err error
-		in.StatefulSets, err = listTyped[appsv1.StatefulSet](ctx, kc, gvrStatefulSets, ns, "")
-		return err
-	})
-	run("daemonsets", func() error {
-		var err error
-		in.DaemonSets, err = listTyped[appsv1.DaemonSet](ctx, kc, gvrDaemonSets, ns, "")
-		return err
-	})
-	run("replicasets", func() error {
-		var err error
-		in.ReplicaSets, err = listTyped[appsv1.ReplicaSet](ctx, kc, gvrReplicaSets, ns, "")
-		return err
-	})
-	run("jobs", func() error {
-		var err error
-		in.Jobs, err = listTyped[batchv1.Job](ctx, kc, gvrJobs, ns, "")
-		return err
-	})
-	run("cronjobs", func() error {
-		var err error
-		in.CronJobs, err = listTyped[batchv1.CronJob](ctx, kc, gvrCronJobs, ns, "")
-		return err
-	})
-	run("nodes", func() error {
-		var err error
-		in.Nodes, err = listTyped[corev1.Node](ctx, kc, gvrNodes, "", "")
-		return err
-	})
-	run("persistentvolumeclaims", func() error {
-		var err error
-		in.PVCs, err = listTyped[corev1.PersistentVolumeClaim](ctx, kc, gvrPVCs, ns, "")
-		return err
-	})
-	run("events", func() error {
-		var err error
-		in.Events, err = listTyped[corev1.Event](ctx, kc, gvrEvents, ns, "type=Warning")
-		return err
-	})
+	listInto(l, kc, "pods", gvrPods, ns, "", func(in *overview.Input, v []corev1.Pod) { in.Pods = v })
+	listInto(l, kc, "deployments", gvrDeployments, ns, "", func(in *overview.Input, v []appsv1.Deployment) { in.Deployments = v })
+	listInto(l, kc, "statefulsets", gvrStatefulSets, ns, "", func(in *overview.Input, v []appsv1.StatefulSet) { in.StatefulSets = v })
+	listInto(l, kc, "daemonsets", gvrDaemonSets, ns, "", func(in *overview.Input, v []appsv1.DaemonSet) { in.DaemonSets = v })
+	listInto(l, kc, "replicasets", gvrReplicaSets, ns, "", func(in *overview.Input, v []appsv1.ReplicaSet) { in.ReplicaSets = v })
+	listInto(l, kc, "jobs", gvrJobs, ns, "", func(in *overview.Input, v []batchv1.Job) { in.Jobs = v })
+	listInto(l, kc, "cronjobs", gvrCronJobs, ns, "", func(in *overview.Input, v []batchv1.CronJob) { in.CronJobs = v })
+	listInto(l, kc, "nodes", gvrNodes, "", "", func(in *overview.Input, v []corev1.Node) { in.Nodes = v })
+	listInto(l, kc, "persistentvolumeclaims", gvrPVCs, ns, "", func(in *overview.Input, v []corev1.PersistentVolumeClaim) { in.PVCs = v })
+	listInto(l, kc, "events", gvrEvents, ns, "type=Warning", func(in *overview.Input, v []corev1.Event) { in.Events = v })
 	for _, m := range s.enabledModules() {
 		if src, ok := m.(OverviewSource); ok {
 			src.OverviewInputs(l)
 		}
 	}
-	l.wg.Wait()
-	return l.in, l.errs
+	go func() {
+		l.wg.Wait()
+		cancel()
+	}()
+	return l
+}
+
+// listInto lists one core type and stores it with set, under the lock.
+func listInto[T any](l *OverviewLists, kc *kcache.Cache, name string, gvr schema.GroupVersionResource, ns, fieldSelector string, set func(in *overview.Input, v []T)) {
+	l.Go(name, func() (func(*overview.Input), error) {
+		items, err := listTyped[T](l.Ctx, kc, gvr, ns, fieldSelector)
+		if err != nil {
+			return nil, err
+		}
+		return func(in *overview.Input) { set(in, items) }, nil
+	})
 }

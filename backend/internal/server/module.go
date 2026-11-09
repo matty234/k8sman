@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"sync"
+	"time"
 
 	"k8s.io/client-go/dynamic"
 
@@ -284,7 +286,11 @@ func (s *Server) enabledModules() []Module {
 }
 
 // OverviewLists runs the health overview's lists in parallel and collects
-// the input for overview.Analyze.
+// the input for overview.Analyze. Sources keep running after a request has
+// answered (see handleOverview): each one stores its result under mu, and
+// snapshot copies the input under the same lock, so a late source never
+// writes into an Input that is being analysed or serialised (apply funcs
+// replace a field, they never modify a slice that was already stored).
 type OverviewLists struct {
 	Ctx     context.Context
 	Clients *cluster.Clients
@@ -292,16 +298,48 @@ type OverviewLists struct {
 	// "a,b": listCached and listTyped accept either.
 	Namespace string
 
-	in   overview.Input
-	mu   sync.Mutex
-	wg   sync.WaitGroup
-	errs map[string]error
+	in      overview.Input
+	mu      sync.Mutex
+	wg      sync.WaitGroup
+	errs    map[string]error
+	pending map[string]int // source label -> goroutines still running
+	// podsDone is closed when the "pods" source has finished.
+	podsDone chan struct{}
+}
+
+func newOverviewLists(ctx context.Context, c *cluster.Clients, ns string) *OverviewLists {
+	return &OverviewLists{Ctx: ctx, Clients: c, Namespace: ns, errs: map[string]error{}, pending: map[string]int{}, podsDone: make(chan struct{})}
+}
+
+// overviewSourceLabels maps source names onto the labels reported in the
+// response's `pending` (the frontend maps those onto its sections).
+var overviewSourceLabels = map[string]string{
+	"persistentvolumeclaims":   "pvcs",
+	"applications.argoproj.io": "argocd",
+	"workflows.argoproj.io":    "workflows",
+	"gateways":                 "gateway",
+	"httproutes":               "gateway",
+	"grpcroutes":               "gateway",
+	"tcproutes":                "gateway",
+	"tlsroutes":                "gateway",
+	"udproutes":                "gateway",
+}
+
+func overviewLabel(name string) string {
+	if l, ok := overviewSourceLabels[name]; ok {
+		return l
+	}
+	return name
 }
 
 // Go runs list in the background. When it returns an apply func, that is
 // called (under a lock, so it may write to the shared Input) to store the
 // result; an error is reported in the overview's `errors` under name.
 func (l *OverviewLists) Go(name string, list func() (apply func(in *overview.Input), err error)) {
+	label := overviewLabel(name)
+	l.mu.Lock()
+	l.pending[label]++
+	l.mu.Unlock()
 	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
@@ -314,6 +352,12 @@ func (l *OverviewLists) Go(name string, list func() (apply func(in *overview.Inp
 		if err != nil {
 			l.errs[name] = fmt.Errorf("list %s: %w", name, err)
 		}
+		if l.pending[label]--; l.pending[label] == 0 {
+			delete(l.pending, label)
+		}
+		if name == "pods" {
+			close(l.podsDone)
+		}
 	}()
 }
 
@@ -322,4 +366,23 @@ func (l *OverviewLists) Set(f func(in *overview.Input)) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	f(&l.in)
+}
+
+// snapshot copies what has completed so far: the input (with the labels of
+// the sources still running in Pending) and the errors.
+func (l *OverviewLists) snapshot() (overview.Input, map[string]error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	in := l.in
+	in.Now = time.Now()
+	in.Pending = make([]string, 0, len(l.pending))
+	for k := range l.pending {
+		in.Pending = append(in.Pending, k)
+	}
+	sort.Strings(in.Pending)
+	errs := make(map[string]error, len(l.errs))
+	for k, v := range l.errs {
+		errs[k] = v
+	}
+	return in, errs
 }
