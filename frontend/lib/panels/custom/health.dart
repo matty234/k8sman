@@ -25,9 +25,6 @@ Severity conditionSeverity(Json c) {
 /// Headline condition types, in display order.
 const _keyConditions = ['Ready', 'Available', 'Synced', 'Healthy', 'Established', 'Succeeded', 'Complete', 'Reconciled', 'Progressing'];
 
-/// Status fields surfaced in the summary (so callers may de-emphasise them).
-const summaryStatusKeys = {'phase', 'state', 'health', 'ready', 'message', 'reason', 'observedGeneration'};
-
 class _Summary {
   final List<Widget> badges = [];
   final List<Widget> lines = [];

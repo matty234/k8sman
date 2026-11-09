@@ -1100,12 +1100,6 @@ class AppState extends ChangeNotifier {
     viewRevision++;
   }
 
-  /// Closes the open view: the kind's own table state applies again.
-  void closeView() {
-    _endViewSession();
-    notifyListeners();
-  }
-
   /// Opens [v]: switches to its context first when it is bound to another
   /// one (through [switchContext], the normal path), then shows its kind
   /// in its namespaces with its filter, sort and columns as a view session.

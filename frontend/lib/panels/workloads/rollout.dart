@@ -7,58 +7,6 @@ import 'widgets/util.dart';
 
 const revisionAnnotation = 'deployment.kubernetes.io/revision';
 
-class RolloutStatus {
-  final String text;
-  final Severity severity;
-  final String? detail;
-  const RolloutStatus(this.text, this.severity, [this.detail]);
-  @override
-  String toString() => text;
-}
-
-/// Mirrors `kubectl rollout status`: paused, controller lag, deadline
-/// exceeded, replica failure, then updated/old/available counts.
-RolloutStatus deriveRolloutStatus(Json d) {
-  final spec = asMap(d['spec']);
-  final status = asMap(d['status']);
-  final conds = asMapList(status['conditions']);
-  Json? cond(String type) => conds.where((c) => c['type'] == type).firstOrNull;
-
-  final generation = asIntOrNull(dig(d, ['metadata', 'generation'])) ?? 0;
-  final observed = asIntOrNull(status['observedGeneration']) ?? 0;
-  final desired = asIntOrNull(spec['replicas']) ?? 1;
-  final updated = asIntOrNull(status['updatedReplicas']) ?? 0;
-  final replicas = asIntOrNull(status['replicas']) ?? 0;
-  final available = asIntOrNull(status['availableReplicas']) ?? 0;
-
-  if (spec['paused'] == true) {
-    return RolloutStatus('Paused', Severity.warn, 'Rollout is paused; template changes will not roll out. $updated of $desired updated.');
-  }
-  if (generation > observed) {
-    return RolloutStatus('Progressing: waiting for controller', Severity.warn, 'Generation $generation not yet observed (observed $observed).');
-  }
-  final progressing = cond('Progressing');
-  if (progressing?['reason'] == 'ProgressDeadlineExceeded') {
-    return RolloutStatus('ProgressDeadlineExceeded', Severity.error, progressing?['message'] as String?);
-  }
-  final failure = cond('ReplicaFailure');
-  if (failure?['status'] == 'True') {
-    return RolloutStatus('ReplicaFailure: ${failure?['reason'] ?? ''}', Severity.error, failure?['message'] as String?);
-  }
-  if (updated < desired) {
-    return RolloutStatus('Progressing: $updated of $desired updated', Severity.warn);
-  }
-  if (replicas > updated) {
-    final old = replicas - updated;
-    return RolloutStatus('Progressing: $old old replica${old == 1 ? '' : 's'} pending termination', Severity.warn);
-  }
-  if (available < updated) {
-    return RolloutStatus('Progressing: $available of $updated updated available', Severity.warn);
-  }
-  if (desired == 0) return const RolloutStatus('Rollout complete', Severity.ok, 'Scaled to 0 replicas.');
-  return const RolloutStatus('Rollout complete', Severity.ok);
-}
-
 /// The status header's headline for a workload: what it is, how bad, a
 /// quieter line under it and, while rolling out, how far along (0..1).
 class WorkloadHeadline {

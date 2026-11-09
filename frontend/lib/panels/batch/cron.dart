@@ -129,8 +129,6 @@ class CronSchedule {
 
   const CronSchedule._(this.expression, this.fields, this.timeZone, this.minute, this.hour, this.dayOfMonth, this.month, this.dayOfWeek);
 
-  bool get isDescriptor => expression.startsWith('@');
-
   static CronSchedule? tryParse(String input) {
     var s = input.trim().replaceAll(RegExp(r'\s+'), ' ');
     String? tz;

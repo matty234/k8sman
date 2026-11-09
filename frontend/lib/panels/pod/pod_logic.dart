@@ -7,8 +7,6 @@ import '../../util/k8s.dart';
 import '../../util/text.dart';
 import '../../ui/inspector/insight.dart';
 
-export '../../ui/inspector/insight.dart';
-
 enum ContainerKind { init, sidecar, regular, ephemeral }
 
 extension ContainerKindLabel on ContainerKind {

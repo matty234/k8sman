@@ -25,8 +25,6 @@ class SemVer implements Comparable<SemVer> {
     );
   }
 
-  bool get isPreRelease => pre.isNotEmpty;
-
   @override
   int compareTo(SemVer o) {
     for (final d in [major - o.major, minor - o.minor, patch - o.patch]) {

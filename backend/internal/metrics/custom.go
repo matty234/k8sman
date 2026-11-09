@@ -10,13 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-type apiResourceList struct {
-	Resources []struct {
-		Name       string `json:"name"`
-		Namespaced bool   `json:"namespaced"`
-	} `json:"resources"`
-}
-
 func (s *Service) groupVersion(ctx context.Context, group string) (string, error) {
 	st := s.Status(ctx, false).Of(group)
 	if st.State == StateNotInstalled {

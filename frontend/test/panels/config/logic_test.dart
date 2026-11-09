@@ -138,34 +138,6 @@ void main() {
     });
   });
 
-  test('summarizeRules', () {
-    final s = summarizeRules([
-      ...(fixture('role-pod-reader')['rules'] as List).cast<Json>(),
-      {
-        'apiGroups': ['apps'],
-        'resources': ['deployments'],
-        'resourceNames': ['web'],
-        'verbs': ['get', 'list', 'watch'],
-      },
-      {
-        'nonResourceURLs': ['/healthz'],
-        'verbs': ['get'],
-      },
-      {
-        'apiGroups': ['*'],
-        'resources': ['*'],
-        'verbs': ['*'],
-      },
-    ]);
-    expect(s.map((r) => r.toString()), [
-      'get, list, watch → pods, pods/log, deployments.apps[web]',
-      'get → /healthz',
-      '* → *.*',
-    ]);
-    expect(s.last.wildcard, isTrue);
-    expect(s.first.wildcard, isFalse);
-  });
-
   test('buildUsageReport groups by Deployment and counts 0-replica templates', () {
     Json pod(Json spec) => {
           'metadata': {'name': 'web-abc-1', 'namespace': 'ns', 'ownerReferences': [{'kind': 'ReplicaSet', 'name': 'web-abc', 'apiVersion': 'apps/v1', 'controller': true}]},

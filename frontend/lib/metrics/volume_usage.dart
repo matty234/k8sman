@@ -34,9 +34,6 @@ class PvcUsage {
 
   double? get frac => fraction(used, capacity);
   double? get inodeFrac => fraction(inodesUsed, inodes);
-
-  PvcUsage withDaysToFull(double? d) =>
-      PvcUsage(used: used, capacity: capacity, available: available, inodes: inodes, inodesUsed: inodesUsed, source: source, daysToFull: d);
 }
 
 /// PVC thresholds: amber from 80% full, red from 90%.

@@ -134,11 +134,9 @@ void main() {
       ctx = c;
       return const SizedBox();
     })));
-    expect(topChromeInset(ctx), titlebarHeight);
     WindowChrome.isFullScreen.value = true;
     addTearDown(() => WindowChrome.isFullScreen.value = false);
     await tester.pump();
-    expect(topChromeInset(ctx), 0);
     expect(toolbarRowHeight(ctx), lessThan(titlebarHeight));
   });
 }

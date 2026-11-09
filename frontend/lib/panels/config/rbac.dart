@@ -94,46 +94,6 @@ List<BindingMatch> matchBindings({
   return [...direct..sort(byName), ...inherited..sort(byName)];
 }
 
-/// One compact rule line: `verbs` × `targets`.
-class RuleSummary {
-  final String verbs;
-  final String targets;
-  final bool wildcard;
-  const RuleSummary(this.verbs, this.targets, {this.wildcard = false});
-  @override
-  String toString() => '$verbs → $targets';
-}
-
-
-/// Summarises role rules. Rules with identical verbs are merged.
-List<RuleSummary> summarizeRules(List<Json> rules) {
-  final byVerbs = <String, List<String>>{};
-  final wild = <String, bool>{};
-  for (final r in rules) {
-    final verbsList = asStrings(r['verbs']);
-    final verbs = verbsList.contains('*') ? '*' : verbsList.join(', ');
-    final groups = asStrings(r['apiGroups']);
-    final names = asStrings(r['resourceNames']);
-    final targets = <String>[];
-    for (final res in asStrings(r['resources'])) {
-      for (final g in groups.isEmpty ? [''] : groups) {
-        final qualified = g.isEmpty ? res : '$res.$g';
-        targets.add(names.isEmpty ? qualified : '$qualified[${names.join(',')}]');
-      }
-    }
-    for (final u in asStrings(r['nonResourceURLs'])) {
-      targets.add(u);
-    }
-    if (targets.isEmpty) continue;
-    final list = byVerbs[verbs] ??= [];
-    for (final t in targets) {
-      if (!list.contains(t)) list.add(t);
-    }
-    if (verbs == '*' || targets.any((t) => t.startsWith('*'))) wild[verbs] = true;
-  }
-  return [for (final e in byVerbs.entries) RuleSummary(e.key, e.value.join(', '), wildcard: wild[e.key] ?? false)];
-}
-
 /// True for the built-in bindings every authenticated identity (or every
 /// ServiceAccount) inherits: `system:basic-user`, `system:discovery`, etc.
 /// These are noise when asking "what can this ServiceAccount do?".

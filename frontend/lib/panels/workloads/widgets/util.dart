@@ -4,7 +4,6 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../../api/models.dart';
-import '../../../ui/theme.dart';
 import '../../../ui/widgets/common.dart';
 import '../../../util/k8s.dart';
 import '../../panel.dart';
@@ -82,13 +81,6 @@ class SelectorChips extends StatelessWidget {
     return Wrap(spacing: 4, runSpacing: 4, children: [for (final t in terms) Chipish(text: t, copyValue: t.contains('=') ? t : null)]);
   }
 }
-
-/// Number with a severity colour (e.g. restarts > 0 in amber).
-Widget coloredCount(BuildContext context, String text, Severity s, {bool bold = true}) => Text(
-  text,
-  style: Theme.of(context).textTheme.bodySmall
-      ?.copyWith(color: severityColor(context, s), fontWeight: bold ? FontWeight.w600 : null, fontFeatures: const [FontFeature.tabularFigures()]),
-);
 
 /// Key that changes when replica state or generation moves, used to refetch
 /// related objects without refetching on every watch tick.

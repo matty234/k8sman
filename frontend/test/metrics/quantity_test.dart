@@ -66,7 +66,6 @@ void main() {
     expect(formatCpuUsage(3455), '3.46');
     expect(formatCpuUsage(12500), '12.5');
     expect(formatCpuUsage(null), '—');
-    expect(formatMemUsage(6556 * 1024), '6.4 MiB');
   });
 
   test('Spread: min / median / max', () {

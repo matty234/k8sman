@@ -10,25 +10,6 @@ import '../../util/k8s.dart';
 import '../../ui/inspector/inspector.dart';
 import '../../ui/widgets/atoms.dart';
 
-/// Ready/total pill for section trailers.
-class CountBadge extends StatelessWidget {
-  final int ready;
-  final int total;
-  final String noun;
-  const CountBadge({super.key, required this.ready, required this.total, this.noun = 'ready'});
-
-  @override
-  Widget build(BuildContext context) => StatusBadge('$ready/$total $noun',
-      dense: true,
-      severity: total == 0
-          ? Severity.error
-          : ready == total
-              ? Severity.ok
-              : ready == 0
-                  ? Severity.error
-                  : Severity.warn);
-}
-
 // ---------------------------------------------------------------------------
 // Endpoint rows (shared by Service, EndpointSlice and Endpoints panels)
 
@@ -173,11 +154,4 @@ class PortChips extends StatelessWidget {
         ].join(' ')),
     ]);
   }
-}
-
-/// Minimal client-side label selector check for `k=v` maps (used for
-/// counting / matching, not for querying).
-bool labelsMatch(Json? labels, Json selector) {
-  final l = labels ?? const {};
-  return selector.entries.every((e) => l[e.key]?.toString() == e.value?.toString());
 }

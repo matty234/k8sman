@@ -28,8 +28,6 @@ var (
 	PrometheusGVR      = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "prometheuses"}
 	AlertmanagerGVR    = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "alertmanagers"}
 	PrometheusRuleGVR  = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "prometheusrules"}
-	ServiceMonitorGVR  = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "servicemonitors"}
-	PodMonitorGVR      = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "podmonitors"}
 	discoveryCacheTTL  = 30 * time.Second
 	failedDiscoveryTTL = 10 * time.Second
 )

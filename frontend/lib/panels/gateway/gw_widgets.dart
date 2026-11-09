@@ -10,7 +10,6 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import 'gw_model.dart';
-import '../../ui/inspector/inspector.dart' show Callout;
 import '../../ui/widgets/atoms.dart';
 
 /// Route kinds this cluster serves (TLS/TCP/UDP routes are experimental).
@@ -68,15 +67,6 @@ Severity diagSeverity(DiagLevel l) => switch (l) {
       DiagLevel.warn => Severity.warn,
       DiagLevel.info => Severity.info,
     };
-
-/// A diagnosis as a callout.
-class DiagCallout extends StatelessWidget {
-  final Diag diag;
-  const DiagCallout(this.diag, {super.key});
-
-  @override
-  Widget build(BuildContext context) => Callout(severity: diagSeverity(diag.level), title: diag.title, body: diag.detail);
-}
 
 /// Dense badge for a condition: "Accepted" / "Not accepted · Reason" / "Pending".
 class CondBadge extends StatelessWidget {

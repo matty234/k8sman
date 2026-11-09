@@ -11,7 +11,6 @@ import '../api/models.dart';
 import '../prometheus/metric_history_chart.dart' show formatMetric, MetricUnit, usesHostNetwork;
 import '../prometheus/prom_api.dart';
 import '../state/poller.dart';
-import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
 import 'cache.dart';
@@ -144,10 +143,6 @@ class _LiveNetworkState extends State<LiveNetwork> with PollingState {
     );
   }
 }
-
-/// Monospace rate text for tables.
-Widget rateCell(BuildContext context, double? v) =>
-    Text(formatRate(v), maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11.5, color: v == null ? Theme.of(context).hintColor : null));
 
 /// "Uses the host network — see node `x`", for hostNetwork pods.
 class HostNetworkNote extends StatelessWidget {

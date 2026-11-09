@@ -3,72 +3,12 @@ import 'package:k8sman/panels/workloads/hpa_panel.dart';
 import 'package:k8sman/panels/workloads/rollout.dart';
 import 'package:k8sman/panels/workloads/statefulset_panel.dart';
 import 'package:k8sman/panels/workloads/widgets/pods_list.dart';
-import 'package:k8sman/util/k8s.dart';
 
 import 'support.dart';
 import 'package:k8sman/util/pod.dart';
 
 void main() {
   final deploy = loadFixture('deploy-web.json');
-
-  group('deriveRolloutStatus', () {
-    test('complete for the live fixture', () {
-      final s = deriveRolloutStatus(deploy);
-      expect(s.text, 'Rollout complete');
-      expect(s.severity, Severity.ok);
-    });
-
-    test('paused wins over everything', () {
-      final d = clone(deploy, (c) => c['spec']['paused'] = true);
-      expect(deriveRolloutStatus(d).text, 'Paused');
-    });
-
-    test('generation not yet observed', () {
-      final d = clone(deploy, (c) => c['metadata']['generation'] = 2);
-      expect(deriveRolloutStatus(d).text, startsWith('Progressing: waiting for controller'));
-    });
-
-    test('progress deadline exceeded', () {
-      final d = clone(deploy, (c) {
-        (c['status']['conditions'] as List)[1]
-          ..['status'] = 'False'
-          ..['reason'] = 'ProgressDeadlineExceeded'
-          ..['message'] = 'ReplicaSet "web-x" has timed out progressing.';
-        c['status']['updatedReplicas'] = 1;
-      });
-      final s = deriveRolloutStatus(d);
-      expect(s.text, 'ProgressDeadlineExceeded');
-      expect(s.severity, Severity.error);
-      expect(s.detail, contains('timed out'));
-    });
-
-    test('partially updated', () {
-      final d = clone(deploy, (c) => c['status']['updatedReplicas'] = 1);
-      expect(deriveRolloutStatus(d).text, 'Progressing: 1 of 2 updated');
-    });
-
-    test('old replicas still terminating', () {
-      final d = clone(deploy, (c) => c['status']['replicas'] = 3);
-      expect(deriveRolloutStatus(d).text, 'Progressing: 1 old replica pending termination');
-    });
-
-    test('updated but not yet available', () {
-      final d = clone(deploy, (c) => c['status']['availableReplicas'] = 1);
-      expect(deriveRolloutStatus(d).text, 'Progressing: 1 of 2 updated available');
-    });
-
-    test('replica failure', () {
-      final d = clone(deploy, (c) {
-        (c['status']['conditions'] as List).add({'type': 'ReplicaFailure', 'status': 'True', 'reason': 'FailedCreate', 'message': 'quota'});
-      });
-      expect(deriveRolloutStatus(d).text, 'ReplicaFailure: FailedCreate');
-    });
-
-    test('missing status does not throw', () {
-      final s = deriveRolloutStatus({'metadata': {}, 'spec': {}});
-      expect(s.text, 'Progressing: 0 of 1 updated');
-    });
-  });
 
   test('rolloutHistory keeps owned ReplicaSets, newest revision first (numeric)', () {
     final h = rolloutHistory(deploymentReplicaSets(), '${deploy['metadata']['uid']}');

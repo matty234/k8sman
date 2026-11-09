@@ -308,7 +308,6 @@ class IssueGroup {
   /// (e.g. several alerts on the same Deployment). Never null.
   OverviewOwner get subject => owner ?? OverviewOwner(group: first.group, kind: first.kind, name: first.name);
   IssueSeverity get severity => first.severity;
-  bool get isGroup => owner != null;
   String get category => first.category;
   String? get namespace => first.namespace;
 

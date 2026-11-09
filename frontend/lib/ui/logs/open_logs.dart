@@ -8,9 +8,6 @@ import '../../state/log_dock.dart';
 import '../../util/k8s.dart';
 import '../keys.dart';
 
-/// Most pods the Argo workflow "Logs" action opens as separate tabs.
-const int kMaxWorkloadLogTabs = 5;
-
 /// Action id for opening logs. The inspector shows it first and keeps it
 /// in read-only mode (it doesn't mutate anything).
 const String kLogsActionId = 'logs';

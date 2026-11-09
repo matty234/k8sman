@@ -32,7 +32,6 @@ class ApiException implements Exception {
   bool get isPortInUse => reason == 'LocalPortInUse';
   bool get isConflict => status == 409;
   bool get isNotFound => status == 404;
-  bool get isForbidden => status == 403;
   @override
   String toString() => 'API $status: $message';
 }
@@ -482,10 +481,6 @@ class ApiClient {
         body: yaml);
     return ManifestResult.fromJson(_decode(res));
   }
-
-  /// Action names supported for a type (scale, restart, delete, ...).
-  Future<List<String>> availableActions(ResourceRef r) async =>
-      List<String>.from(((await _get('actions', r.toQuery())) as Json)['actions'] ?? const []);
 
   /// Run an action, e.g. `runAction(ref, namespace: ns, name: n, action: 'scale', body: {'replicas': 3})`.
   Future<ActionResult> runAction(ResourceRef r, {String? namespace, required String name, required String action, Json body = const {}}) async =>

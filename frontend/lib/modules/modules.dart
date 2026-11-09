@@ -104,8 +104,6 @@ Map<String, MainView> kindHomes(AppState app) {
   return out;
 }
 
-/// The page that is the home of kind [gk], if an enabled one claims it.
-MainView? kindHome(AppState app, String gk) => kindHomes(app)[gk];
 
 /// Sidebar glyphs the modules give their kinds.
 final Map<String, IconData> moduleKindIcons = {for (final m in builtInModules) ...m.kindIcons};

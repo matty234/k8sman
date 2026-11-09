@@ -381,8 +381,6 @@ class LogDock extends ChangeNotifier {
     notifyListeners();
   }
 
-  void showAlerts() => showPane(DockPane.alerts);
-
   /// A fixed pane's tab: opens it, or collapses the dock if it's showing.
   void togglePane(DockPane p) {
     if (pane == p && !collapsed) {

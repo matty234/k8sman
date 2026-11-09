@@ -181,10 +181,6 @@ class HubbleFlow {
   }
 }
 
-/// Verdicts the UI filters on, in display order. Hubble has a few more
-/// (TRACED, TRANSLATED, REDIRECTED): they show under "All".
-const flowVerdicts = ['FORWARDED', 'DROPPED', 'ERROR', 'AUDIT'];
-
 /// GET /api/hubble/status.
 class HubbleStatus {
   /// notInstalled | noRelay | connected | unreachable.

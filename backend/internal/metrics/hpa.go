@@ -88,11 +88,6 @@ func selectorString(ls *metav1.LabelSelector) string {
 	return sel.String()
 }
 
-// hpaRef is a custom/external metric referenced by an HPA.
-type hpaRef struct {
-	Type, Metric, Selector, Namespace, HPA string
-}
-
 func (s *Service) listHPAs(ctx context.Context, namespace string) ([]hpaObject, error) {
 	path := "/apis/autoscaling/v2/horizontalpodautoscalers"
 	if namespace != "" {
@@ -109,27 +104,6 @@ func (s *Service) listHPAs(ctx context.Context, namespace string) ([]hpaObject, 
 		return nil, err
 	}
 	return l.Items, nil
-}
-
-func (s *Service) hpaMetricRefs(ctx context.Context, namespace string) ([]hpaRef, error) {
-	hpas, err := s.listHPAs(ctx, namespace)
-	if err != nil {
-		return nil, err
-	}
-	var out []hpaRef
-	for _, h := range hpas {
-		for _, m := range h.Spec.Metrics {
-			switch {
-			case m.External != nil:
-				out = append(out, hpaRef{"External", m.External.Metric.Name, selectorString(m.External.Metric.Selector), h.Metadata.Namespace, h.Metadata.Name})
-			case m.Pods != nil:
-				out = append(out, hpaRef{"Pods", m.Pods.Metric.Name, selectorString(m.Pods.Metric.Selector), h.Metadata.Namespace, h.Metadata.Name})
-			case m.Object != nil:
-				out = append(out, hpaRef{"Object", m.Object.Metric.Name, selectorString(m.Object.Metric.Selector), h.Metadata.Namespace, h.Metadata.Name})
-			}
-		}
-	}
-	return out, nil
 }
 
 // ---- HPA analysis ------------------------------------------------------------

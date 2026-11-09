@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
-import '../../api/models.dart';
 import '../../prometheus/prom_api.dart';
 import '../../state/app_state.dart';
 import '../../ui/theme.dart';
@@ -133,4 +132,3 @@ class ScrapeTargetRow extends StatelessWidget {
   }
 }
 
-ObjectRef crRef(String kind, String namespace, String name) => ObjectRef(group: 'monitoring.coreos.com', kind: kind, name: name, namespace: namespace);

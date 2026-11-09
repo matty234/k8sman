@@ -57,7 +57,6 @@ void main() {
     await app.saveView(saved.copyWith(columns: () => viewColumns));
 
     // Leave it: another kind, all namespaces.
-    app.closeView();
     app.selectType(deployType);
     app.setNamespace(null);
     await tester.pump();

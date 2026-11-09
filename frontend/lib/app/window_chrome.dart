@@ -56,10 +56,6 @@ class WindowChromeScope extends InheritedNotifier<ValueNotifier<bool>> {
   }
 }
 
-/// Space reserved at the top of the window for the native titlebar (traffic
-/// lights): [titlebarHeight] when windowed, 0 in fullscreen.
-double topChromeInset(BuildContext context) => WindowChromeScope.isFullScreen(context) ? 0 : titlebarHeight;
-
 /// Height of the top toolbar rows (nav header, table toolbar): the 52pt
 /// unified titlebar band when windowed, a compact 40pt row in fullscreen.
 double toolbarRowHeight(BuildContext context) => WindowChromeScope.isFullScreen(context) ? 40 : titlebarHeight;

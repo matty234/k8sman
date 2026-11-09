@@ -65,9 +65,6 @@ String formatPercent(double? frac) {
   return '${p.round()}%';
 }
 
-/// Memory for usage readouts ("7.2 MiB"), or "—".
-String formatMemUsage(double? bytes) => bytes == null ? '—' : formatBytes(bytes);
-
 /// Simple spread of a sample: min, median, max.
 class Spread {
   final double min;

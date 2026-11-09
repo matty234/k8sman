@@ -351,11 +351,6 @@ class RadialLayout {
     return null;
   }
 
-  Offset? laneAt(String id) {
-    final l = lanes[id];
-    return l == null ? null : c + _unit(l.theta) * ((rc + l.labelEnd) / 2);
-  }
-
   MapHit? hitTest(Offset p) {
     final d = p - c;
     final r = d.distance;
