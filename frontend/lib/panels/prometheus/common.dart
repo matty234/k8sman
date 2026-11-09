@@ -37,20 +37,9 @@ class SelectorView extends StatelessWidget {
   Widget build(BuildContext context) {
     if (selector == null) return HintText(missingText);
     final sel = asMap(selector);
-    final labels = asMap(sel['matchLabels']);
-    final exprs = asMapList(sel['matchExpressions']);
-    if (labels.isEmpty && exprs.isEmpty) return HintText(emptyText);
-    return Wrap(spacing: 4, runSpacing: 4, children: [
-      for (final e in labels.entries) Chipish(text: '${e.key}=${e.value}'),
-      for (final x in exprs)
-        Chipish(text: switch (x['operator']) {
-          'In' => '${x['key']} in (${(x['values'] as List?)?.join(', ') ?? ''})',
-          'NotIn' => '${x['key']} notin (${(x['values'] as List?)?.join(', ') ?? ''})',
-          'Exists' => '${x['key']}',
-          'DoesNotExist' => '!${x['key']}',
-          _ => '${x['key']} ${x['operator']}',
-        }),
-    ]);
+    final terms = selectorTerms({'matchLabels': sel['matchLabels'], 'matchExpressions': sel['matchExpressions']});
+    if (terms.isEmpty) return HintText(emptyText);
+    return Wrap(spacing: 4, runSpacing: 4, children: [for (final t in terms) Chipish(text: t)]);
   }
 }
 

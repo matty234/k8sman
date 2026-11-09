@@ -77,19 +77,9 @@ class SelectorChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sel = asMap(selector);
-    final isLabelSelector = sel.containsKey('matchLabels') || sel.containsKey('matchExpressions');
-    final labels = isLabelSelector ? asMap(sel['matchLabels']) : sel;
-    final exprs = isLabelSelector ? asMapList(sel['matchExpressions']) : const <Json>[];
-    if (labels.isEmpty && exprs.isEmpty) return const HintText('everything (empty selector)');
-    return Wrap(
-      spacing: 4,
-      runSpacing: 4,
-      children: [
-        for (final e in labels.entries) Chipish(text: '${e.key}=${e.value}', copyValue: '${e.key}=${e.value}'),
-        for (final x in exprs) Chipish(text: '${x['key']} ${x['operator']}${x['values'] is List ? ' (${(x['values'] as List).join(',')})' : ''}'),
-      ],
-    );
+    final terms = selectorTerms(selector);
+    if (terms.isEmpty) return const HintText('everything (empty selector)');
+    return Wrap(spacing: 4, runSpacing: 4, children: [for (final t in terms) Chipish(text: t, copyValue: t.contains('=') ? t : null)]);
   }
 }
 

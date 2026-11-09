@@ -65,33 +65,31 @@ String formatBytes(num? b) {
   return '${v >= 10 || i == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(1)} ${units[i]}';
 }
 
-/// Render a LabelSelector ({matchLabels, matchExpressions}) or a plain
-/// map selector (Service.spec.selector) as a kubectl selector string.
-/// Returns '' for "select everything".
-String selectorToString(dynamic selector) {
+/// The terms of a LabelSelector ({matchLabels, matchExpressions}) or a plain
+/// map selector (Service.spec.selector), spelled as kubectl does:
+/// `app=web`, `tier in (a,b)`, `tier notin (a)`, `key`, `!key`. Empty for
+/// "select everything".
+List<String> selectorTerms(dynamic selector) {
   final sel = asMap(selector);
-  if (sel.isEmpty) return '';
   final isLabelSelector = sel.containsKey('matchLabels') || sel.containsKey('matchExpressions');
   final labels = isLabelSelector ? asMap(sel['matchLabels']) : sel;
-  final parts = <String>[for (final e in labels.entries) '${e.key}=${e.value}'];
-  if (isLabelSelector) {
-    for (final ex in asMapList(sel['matchExpressions'])) {
-      final key = ex['key'], op = ex['operator'];
-      final values = (ex['values'] as List?)?.join(',') ?? '';
-      switch (op) {
-        case 'In':
-          parts.add('$key in ($values)');
-        case 'NotIn':
-          parts.add('$key notin ($values)');
-        case 'Exists':
-          parts.add('$key');
-        case 'DoesNotExist':
-          parts.add('!$key');
-      }
-    }
-  }
-  return parts.join(',');
+  return [
+    for (final e in labels.entries) '${e.key}=${e.value}',
+    if (isLabelSelector)
+      for (final ex in asMapList(sel['matchExpressions']))
+        switch (ex['operator']) {
+          'In' => '${ex['key']} in (${(ex['values'] as List?)?.join(',') ?? ''})',
+          'NotIn' => '${ex['key']} notin (${(ex['values'] as List?)?.join(',') ?? ''})',
+          'Exists' => '${ex['key']}',
+          'DoesNotExist' => '!${ex['key']}',
+          _ => '',
+        },
+  ].where((t) => t.isNotEmpty).toList();
 }
+
+/// A selector as a kubectl selector string (terms joined by commas); ''
+/// for "select everything".
+String selectorToString(dynamic selector) => selectorTerms(selector).join(',');
 
 /// Owner references of an object as navigable refs.
 List<ObjectRef> ownerRefs(Json obj) {

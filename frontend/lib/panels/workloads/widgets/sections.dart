@@ -102,8 +102,8 @@ Widget conditionsSection(BuildContext context, Json status) {
 
 /// "app=web, tier=frontend" (and expressions).
 String selectorSummary(dynamic selector) {
-  final s = selectorToString(selector);
-  return s.isEmpty ? 'everything' : s.replaceAll(',', ', ');
+  final terms = selectorTerms(selector);
+  return terms.isEmpty ? 'everything' : terms.join(', ');
 }
 
 /// The label selector, with any [extra] rows (e.g. min ready seconds).
