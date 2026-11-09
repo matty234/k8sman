@@ -120,7 +120,7 @@ void main() {
       await tester.tap(find.text('Less'));
       await tester.pump();
     }
-    await tester.tap(find.text('Deployment'), buttons: kSecondaryButton);
+    await tester.tap(find.byKey(const ValueKey('nav-kind-apps/Deployment')), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Pin to Sidebar'));
     await tester.pumpAndSettle();
@@ -131,7 +131,7 @@ void main() {
     // With a namespace chosen, the pin can be scoped to it.
     app.setNamespace('kube-system');
     await tester.pump();
-    await tester.tap(find.text('Pod').last, buttons: kSecondaryButton);
+    await tester.tap(find.byKey(const ValueKey('nav-kind-/Pod')), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Pin to Sidebar in “kube-system”'));
     await tester.pumpAndSettle();

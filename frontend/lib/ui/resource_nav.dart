@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,8 +9,11 @@ import '../app/kubeconfig_picker.dart';
 import '../app/window_chrome.dart';
 import '../modules/modules.dart';
 import '../state/app_state.dart';
+import '../state/poller.dart';
+import '../state/startup_gate.dart';
 import '../util/k8s.dart' show Severity;
 import 'keys.dart' show shortcutLabel;
+import 'overview/overview_summary.dart';
 import 'palette/command_palette.dart';
 import 'settings/settings_page.dart';
 import 'theme.dart';
@@ -96,8 +100,126 @@ const _kindIcons = <String, IconData>{
   'admissionregistration.k8s.io/MutatingAdmissionPolicy': Icons.auto_fix_high,
   'admissionregistration.k8s.io/MutatingAdmissionPolicyBinding': Icons.link,
   'admissionregistration.k8s.io/ValidatingWebhookConfiguration': Icons.webhook,
-  'admissionregistration.k8s.io/MutatingWebhookConfiguration': Icons.webhook,
+  'admissionregistration.k8s.io/MutatingWebhookConfiguration': Icons.change_circle_outlined,
+  // Built-ins that land in "Other".
+  'scheduling.k8s.io/PriorityClass': Icons.low_priority,
+  'node.k8s.io/RuntimeClass': Icons.terminal,
+  'coordination.k8s.io/Lease': Icons.lock_clock_outlined,
+  'storage.k8s.io/CSIDriver': Icons.settings_input_component_outlined,
+  'storage.k8s.io/CSINode': Icons.developer_board_outlined,
+  'storage.k8s.io/VolumeAttachment': Icons.attach_file,
+  'storage.k8s.io/VolumeAttributesClass': Icons.tune,
+  'certificates.k8s.io/CertificateSigningRequest': Icons.verified_outlined,
+  'flowcontrol.apiserver.k8s.io/FlowSchema': Icons.filter_alt_outlined,
+  'flowcontrol.apiserver.k8s.io/PriorityLevelConfiguration': Icons.speed,
+  'apps/ControllerRevision': Icons.history,
+  '/PodTemplate': Icons.content_paste_outlined,
+  '/ReplicationController': Icons.control_point_duplicate_outlined,
+  'storage.k8s.io/CSIStorageCapacity': Icons.data_usage,
+  '/ComponentStatus': Icons.fact_check_outlined,
 };
+
+/// Monochrome glyphs for the kind rows of curated CRD sections. Elsewhere
+/// (palette, inspector) these kinds keep their project's logo.
+const _navRowIcons = <String, IconData>{
+  'argoproj.io/Application': Icons.apps_outlined,
+  'argoproj.io/ApplicationSet': Icons.dashboard_customize_outlined,
+  'argoproj.io/AppProject': Icons.folder_special_outlined,
+  'gateway.networking.k8s.io/GatewayClass': Icons.category_outlined,
+  'gateway.networking.k8s.io/Gateway': Icons.door_front_door_outlined,
+  'gateway.networking.k8s.io/HTTPRoute': Icons.alt_route,
+  'gateway.networking.k8s.io/GRPCRoute': Icons.route_outlined,
+  'gateway.networking.k8s.io/TLSRoute': Icons.lock_outline,
+  'gateway.networking.k8s.io/TCPRoute': Icons.cable_outlined,
+  'gateway.networking.k8s.io/UDPRoute': Icons.podcasts_outlined,
+  'gateway.networking.k8s.io/ReferenceGrant': Icons.handshake_outlined,
+  'monitoring.coreos.com/PrometheusRule': Icons.rule,
+  'monitoring.coreos.com/ServiceMonitor': Icons.monitor_heart_outlined,
+  'monitoring.coreos.com/PodMonitor': Icons.troubleshoot,
+  'monitoring.coreos.com/Prometheus': Icons.local_fire_department_outlined,
+  'monitoring.coreos.com/Alertmanager': Icons.notifications_none,
+};
+
+/// The sidebar row's glyph: always monochrome (custom resources without a
+/// glyph get a generic one; their section header shows the group's logo).
+IconData navKindIcon(ResourceType type) => _navRowIcons[type.gk] ?? kindIcon(type);
+
+/// Sidebar labels for built-in kinds: plural and human, short where the
+/// kind is long. The tooltip keeps the kind and apiVersion.
+const _kindLabels = <String, String>{
+  '/Pod': 'Pods',
+  'apps/Deployment': 'Deployments',
+  'apps/StatefulSet': 'StatefulSets',
+  'apps/DaemonSet': 'DaemonSets',
+  'apps/ReplicaSet': 'ReplicaSets',
+  'batch/Job': 'Jobs',
+  'batch/CronJob': 'CronJobs',
+  '/Service': 'Services',
+  'networking.k8s.io/Ingress': 'Ingresses',
+  'networking.k8s.io/IngressClass': 'Ingress Classes',
+  'discovery.k8s.io/EndpointSlice': 'Endpoint Slices',
+  '/Endpoints': 'Endpoints',
+  'networking.k8s.io/NetworkPolicy': 'Network Policies',
+  '/ConfigMap': 'ConfigMaps',
+  '/Secret': 'Secrets',
+  '/ServiceAccount': 'Service Accounts',
+  'autoscaling/HorizontalPodAutoscaler': 'Autoscalers',
+  '/ResourceQuota': 'Resource Quotas',
+  '/LimitRange': 'Limit Ranges',
+  'policy/PodDisruptionBudget': 'Disruption Budgets',
+  '/PersistentVolumeClaim': 'Volume Claims',
+  '/PersistentVolume': 'Persistent Volumes',
+  'storage.k8s.io/StorageClass': 'Storage Classes',
+  '/Node': 'Nodes',
+  '/Namespace': 'Namespaces',
+  '/Event': 'Events',
+  'apiextensions.k8s.io/CustomResourceDefinition': 'Resource Definitions',
+  'apiregistration.k8s.io/APIService': 'API Services',
+  'rbac.authorization.k8s.io/Role': 'Roles',
+  'rbac.authorization.k8s.io/ClusterRole': 'Cluster Roles',
+  'rbac.authorization.k8s.io/RoleBinding': 'Role Bindings',
+  'rbac.authorization.k8s.io/ClusterRoleBinding': 'Cluster Role Bindings',
+  'admissionregistration.k8s.io/ValidatingAdmissionPolicy': 'Validating Policies',
+  'admissionregistration.k8s.io/ValidatingAdmissionPolicyBinding': 'Validating Bindings',
+  'admissionregistration.k8s.io/MutatingAdmissionPolicy': 'Mutating Policies',
+  'admissionregistration.k8s.io/MutatingAdmissionPolicyBinding': 'Mutating Bindings',
+  'admissionregistration.k8s.io/ValidatingWebhookConfiguration': 'Validating Webhooks',
+  'admissionregistration.k8s.io/MutatingWebhookConfiguration': 'Mutating Webhooks',
+  'scheduling.k8s.io/PriorityClass': 'Priority Classes',
+  'node.k8s.io/RuntimeClass': 'Runtime Classes',
+  'coordination.k8s.io/Lease': 'Leases',
+  'storage.k8s.io/CSIDriver': 'CSI Drivers',
+  'storage.k8s.io/CSINode': 'CSI Nodes',
+  'storage.k8s.io/VolumeAttachment': 'Volume Attachments',
+  'storage.k8s.io/VolumeAttributesClass': 'Volume Attributes',
+  'certificates.k8s.io/CertificateSigningRequest': 'Signing Requests',
+  'flowcontrol.apiserver.k8s.io/FlowSchema': 'Flow Schemas',
+  'flowcontrol.apiserver.k8s.io/PriorityLevelConfiguration': 'Priority Levels',
+  'apps/ControllerRevision': 'Controller Revisions',
+  '/PodTemplate': 'Pod Templates',
+  '/ReplicationController': 'Replication Controllers',
+  'storage.k8s.io/CSIStorageCapacity': 'Storage Capacities',
+  '/ComponentStatus': 'Component Statuses',
+};
+
+/// The sidebar's label for [type]: a hand-written one for built-ins, else
+/// the kind made plural when discovery's plural agrees ("HTTPRoute" →
+/// "HTTPRoutes"), else discovery's plural title-cased ("applications" →
+/// "Applications").
+String kindLabel(ResourceType type) {
+  final known = _kindLabels[type.gk];
+  if (known != null) return known;
+  final k = type.kind;
+  final lower = k.toLowerCase();
+  final plural = lower.endsWith('y') && !RegExp(r'[aeiou]y$').hasMatch(lower)
+      ? '${k.substring(0, k.length - 1)}ies'
+      : RegExp(r'(s|x|z|ch|sh)$').hasMatch(lower)
+          ? '${k}es'
+          : '${k}s';
+  final r = type.resource;
+  if (r.isEmpty || plural.toLowerCase() == r) return plural;
+  return r[0].toUpperCase() + r.substring(1);
+}
 
 class ResourceNav extends StatefulWidget {
   const ResourceNav({super.key});
@@ -156,7 +278,28 @@ Future<void> showKindMenu(BuildContext context, Offset globalPosition, ResourceT
 final Map<String, bool> _navExplicit = {};
 bool _navMoreOpen = false;
 
-class _ResourceNavState extends State<ResourceNav> {
+class _ResourceNavState extends State<ResourceNav> with PollingState {
+  /// Problem badges: the all-namespaces overview, shared with the Overview
+  /// page (see [OverviewSummary] for what this costs).
+  late final OverviewSummary _summary = OverviewSummary.of(context.read<AppState>().api);
+  String? _summaryContext;
+
+  @override
+  void initState() {
+    super.initState();
+    poll(OverviewSummary.interval, _pollSummary);
+    // First fetch once the first table has painted (see StartupGate).
+    StartupGate.ready.then((_) => _pollSummary());
+  }
+
+  /// Fetches unless the Overview page did recently. Not while connecting.
+  Future<bool> _pollSummary() async {
+    if (!mounted) return true;
+    final app = context.read<AppState>();
+    if (app.loading || app.error != null || app.types.isEmpty) return true;
+    return _summary.refreshIfStale();
+  }
+
   /// An explicit open/close always wins. Otherwise the default applies,
   /// except that a section holding the current selection auto-opens.
   bool _isCollapsed(String group, {bool holdsSelection = false}) {
@@ -172,6 +315,12 @@ class _ResourceNavState extends State<ResourceNav> {
     final app = context.watch<AppState>();
     final curated = _curatedFor(app);
     final groups = _group(app.types, curated);
+    // A new context (once connected): its badges right away.
+    final connected = !app.loading && app.error == null && app.types.isNotEmpty;
+    if (connected && app.currentContext != _summaryContext) {
+      _summaryContext = app.currentContext;
+      scheduleMicrotask(_pollSummary);
+    }
 
     // Top section: the user's layout (pages and pins); hidden pages fold
     // under "More", which opens by itself while one of them is active.
@@ -245,7 +394,17 @@ class _ResourceNavState extends State<ResourceNav> {
         // Finding a kind (or anything else) is the command palette's job.
         const Padding(padding: EdgeInsets.fromLTRB(10, 10, 10, 2), child: PaletteLauncher()),
         Expanded(
-          child: ListView(
+          child: ListenableBuilder(listenable: _summary, builder: (context, _) {
+            final problems = _summary.forContext(app.api.context);
+            KindProblems? worstIn(List<ResourceType> types) {
+              KindProblems? w;
+              for (final t in types) {
+                final p = problems[t.gk];
+                if (p != null && (w == null || p.severity.index < w.severity.index)) w = p;
+              }
+              return w;
+            }
+            return ListView(
             padding: const EdgeInsets.only(bottom: 12),
             children: [
               // Saved views: those for any context and this context's.
@@ -279,15 +438,23 @@ class _ResourceNavState extends State<ResourceNav> {
                   if (firstCustom)
                     _GroupHeader(title: 'Custom Resources', collapsed: customCollapsed, onTap: () => _toggle('Custom Resources', currentlyCollapsed: customCollapsed)),
                   if (!custom || !customCollapsed) ...[
-                    _GroupHeader(title: g.key, group: custom ? g.key : null, nested: custom, collapsed: collapsed, onTap: () => _toggle(g.key, currentlyCollapsed: collapsed)),
+                    _GroupHeader(
+                      title: g.key,
+                      group: custom ? g.key : null,
+                      nested: custom,
+                      collapsed: collapsed,
+                      problems: collapsed ? worstIn(g.value) : null,
+                      onTap: () => _toggle(g.key, currentlyCollapsed: collapsed),
+                    ),
                     if (!collapsed)
                       for (final t in g.value)
-                        _NavItem(type: t, nested: custom, selected: app.view == MainView.resources && app.selectedType == t),
+                        _NavItem(type: t, nested: custom, problems: problems[t.gk], selected: app.view == MainView.resources && app.selectedType == t),
                   ],
                 ];
               }(),
             ],
-          ),
+          );
+          }),
         ),
         const _NavFooter(),
       ]),
@@ -334,7 +501,10 @@ class _GroupHeader extends StatelessWidget {
 
   /// CRD groups nest (indent) under the "Custom Resources" header.
   final bool nested;
-  const _GroupHeader({required this.title, this.group, required this.collapsed, required this.onTap, this.nested = false});
+
+  /// Collapsed sections: the worst problem among their kinds (a dot).
+  final KindProblems? problems;
+  const _GroupHeader({required this.title, this.group, required this.collapsed, required this.onTap, this.nested = false, this.problems});
 
   @override
   Widget build(BuildContext context) {
@@ -344,14 +514,32 @@ class _GroupHeader extends StatelessWidget {
       onTap: onTap,
       cursor: SystemMouseCursors.basic,
       builder: (h) => Padding(
-        padding: EdgeInsets.fromLTRB(nested ? 26 : 18, nested ? 6 : 14, 14, 4),
+        padding: EdgeInsets.fromLTRB(nested ? 26 : 18, nested ? 6 : 16, 14, 4),
         child: Row(children: [
           if (group != null) ...[GroupIcon(group: group!, size: 14), const SizedBox(width: 6)],
           Expanded(
             child: Text(title,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(color: faint, fontWeight: FontWeight.w600, letterSpacing: 0.1)),
+                maxLines: 1,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: nested ? faint : theme.hintColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                )),
           ),
+          if (problems != null)
+            Tooltip(
+              waitDuration: const Duration(milliseconds: 600),
+              message: 'Problems inside (all namespaces)',
+              child: Container(
+                key: ValueKey('nav-group-problem-$title'),
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.only(right: 4),
+                decoration: BoxDecoration(color: severityColor(context, problems!.severity.badge), shape: BoxShape.circle),
+              ),
+            ),
           // Like Finder: the disclosure shows on hover (and when collapsed).
           if (h || collapsed) Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 14, color: h ? theme.hintColor : faint),
         ]),
@@ -400,6 +588,7 @@ class _SourceListItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(5),
         ),
         child: Row(children: [
+          if ((leading != null || icon != null) && indent > 10) SizedBox(width: indent - 10),
           if (leading != null) ...[
             SizedBox(width: 15, child: Center(child: leading!(iconColor))),
             const SizedBox(width: 8),
@@ -429,24 +618,55 @@ class _NavItem extends StatelessWidget {
   final ResourceType type;
   final bool selected;
 
+  /// Objects of this kind with problems (all namespaces), if any.
+  final KindProblems? problems;
+
   /// Items of CRD groups nested under "Custom Resources" indent one level.
   final bool nested;
-  const _NavItem({required this.type, required this.selected, this.nested = false});
+  const _NavItem({required this.type, required this.selected, this.nested = false, this.problems});
 
   @override
   Widget build(BuildContext context) {
-    // Text-only rows keep the sidebar calm; scope is in the tooltip.
+    final p = problems;
     final item = _SourceListItem(
-      label: type.kind,
+      key: ValueKey('nav-kind-${type.gk}'),
+      leading: (color) => Icon(navKindIcon(type), size: 15, color: color),
+      label: kindLabel(type),
       indent: nested ? 18 : 10,
       selected: selected,
+      trailing: p == null ? null : _ProblemBadge(problems: p),
       onTap: () => context.read<AppState>().selectType(type),
       onSecondaryTap: (pos) => showKindMenu(context, pos, type),
     );
     return Tooltip(
       waitDuration: const Duration(milliseconds: 900),
-      message: '${type.kind} · ${type.apiVersion}${type.namespaced ? '' : ' · cluster-scoped'}',
+      message: [
+        '${type.kind} · ${type.apiVersion}${type.namespaced ? '' : ' · cluster-scoped'}',
+        if (p != null) '${p.count} with problems in all namespaces${p.labels.isEmpty ? '' : ': ${p.labels.join(', ')}'}',
+      ].join('\n'),
       child: item,
+    );
+  }
+}
+
+/// A kind row's problem count: a dot and a number in the severity colour.
+class _ProblemBadge extends StatelessWidget {
+  final KindProblems problems;
+  const _ProblemBadge({required this.problems});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = severityColor(context, problems.severity.badge);
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 6, height: 6, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text(
+          problems.count > 999 ? '999+' : '${problems.count}',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c, fontFeatures: const [FontFeature.tabularFigures()]),
+        ),
+      ]),
     );
   }
 }
@@ -494,7 +714,7 @@ class _TopEntry extends StatelessWidget {
       child: _SourceListItem(
         key: ValueKey('nav-pin-${pin.gk}${pin.scope.isAll ? '' : '@${pin.scope.asString}'}'),
         leading: (color) => kindIconWidget(type, color: color),
-        label: type.kind,
+        label: kindLabel(type),
         selected: selectedPin == pin,
         trailing: pin.scope.isAll
             ? null

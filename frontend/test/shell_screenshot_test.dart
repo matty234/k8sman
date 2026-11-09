@@ -38,7 +38,7 @@ void main() {
     await tester.pump();
 
     // Switch kind: the inspector collapses to a tab, the dock stays.
-    await tester.tap(find.text('Deployment').first);
+    await tester.tap(find.byKey(const ValueKey('nav-kind-apps/Deployment')));
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 50));
     expect(app.inspectorCollapsed, isTrue);

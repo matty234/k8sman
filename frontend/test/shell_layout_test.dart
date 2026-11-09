@@ -69,7 +69,7 @@ void main() {
       // Tabs survive navigating the table and the inspector.
       await tester.tap(find.text('crashy').first);
       await _settle(tester);
-      await tester.tap(find.text('Deployment').first);
+      await tester.tap(find.byKey(const ValueKey('nav-kind-apps/Deployment')));
       await _settle(tester);
       expect(dock.tabs.length, 2);
       expect(find.byType(LogStreamView), findsOneWidget);
@@ -212,7 +212,7 @@ void main() {
       await _openWebPod(tester);
       expect(_inspectorVisible(tester), isTrue);
 
-      await tester.tap(find.text('Deployment').first);
+      await tester.tap(find.byKey(const ValueKey('nav-kind-apps/Deployment')));
       await _settle(tester);
       expect(app.inspectorCollapsed, isTrue);
       expect(app.detail?.name, _webPod);
