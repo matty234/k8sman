@@ -8,6 +8,7 @@ import '../../state/app_state.dart';
 import '../keys.dart';
 import '../theme.dart';
 import 'common.dart';
+import 'picker_kit.dart';
 
 /// A searchable namespace popover: "All namespaces", starred namespaces
 /// (Favourites), recently used scopes, then every namespace with a checkbox
@@ -283,23 +284,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
-  void _move(int delta) {
-    if (_count == 0) return;
-    setState(() => _active = (_active + delta).clamp(0, _count - 1));
-    _reveal();
-  }
-
-  void _reveal() {
-    final i = _active - _header.length;
-    if (i < 0 || !_scroll.hasClients) return;
-    final top = i * _rowHeight;
-    final view = _scroll.position.viewportDimension;
-    if (top < _scroll.offset) {
-      _scroll.jumpTo(top);
-    } else if (top + _rowHeight > _scroll.offset + view) {
-      _scroll.jumpTo(math.min(top + _rowHeight - view, _scroll.position.maxScrollExtent));
-    }
-  }
+  void _reveal() => PickerKeys.reveal(_scroll, _active - _header.length, _rowHeight);
 
   /// Picks row [i] alone and closes.
   void _pick([int? i]) {
@@ -372,29 +357,23 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     });
   }
 
-  KeyEventResult _onKey(FocusNode _, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
-    switch (e.logicalKey) {
-      case LogicalKeyboardKey.arrowDown:
-        _move(1);
-      case LogicalKeyboardKey.arrowUp:
-        _move(-1);
-      case LogicalKeyboardKey.pageDown:
-        _move(10);
-      case LogicalKeyboardKey.pageUp:
-        _move(-10);
-      case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter:
-        HardwareKeyboard.instance.isShiftPressed ? _toggle() : _pick();
-      case LogicalKeyboardKey.escape:
-        if (!_done) {
-          _done = true;
-          Navigator.of(context).pop();
-        }
-      default:
-        return KeyEventResult.ignored;
-    }
-    return KeyEventResult.handled;
-  }
+  KeyEventResult _onKey(FocusNode _, KeyEvent e) => PickerKeys.handle(
+        e,
+        count: _count,
+        active: _active,
+        page: 10,
+        onActive: (i) {
+          setState(() => _active = i);
+          _reveal();
+        },
+        onEnter: () => HardwareKeyboard.instance.isShiftPressed ? _toggle() : _pick(),
+        onEscape: () {
+          if (!_done) {
+            _done = true;
+            Navigator.of(context).pop();
+          }
+        },
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -405,10 +384,7 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     final selectedNs = _value.namespaces.toSet();
     final recentCount = header.length - 1 - favCount;
     final listHeight = math.min(_matches.length * _rowHeight + 8, 320.0);
-    final width = math.min(widget.width, widget.overlaySize.width - 16);
-    final double left = widget.anchor.left.clamp(8.0, math.max(8.0, widget.overlaySize.width - width - 8));
-    final top = widget.anchor.bottom + 4;
-    final maxHeight = math.max(120.0, widget.overlaySize.height - top - 8);
+    final place = popoverPlacement(widget.anchor, widget.overlaySize, widget.width);
 
     Widget row(int i) {
       final r = _at(i);
@@ -433,11 +409,11 @@ class _NamespacePopoverState extends State<_NamespacePopover> {
     final small = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor);
     return Stack(children: [
       Positioned(
-        left: left,
-        top: top,
-        width: width,
+        left: place.left,
+        top: place.top,
+        width: place.width,
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
+          constraints: BoxConstraints(maxHeight: place.maxHeight),
           child: Material(
             type: MaterialType.card,
             elevation: 8,
@@ -606,17 +582,7 @@ class _PickerRowState extends State<_PickerRow> {
       _RecentRow(:final scope) => (scope.label, false),
       _NsRow(:final name, :final missing, :final add) => (add ? 'Use namespace “$name”' : name, missing),
     };
-    final spans = <TextSpan>[];
-    final i = query.isEmpty ? -1 : label.toLowerCase().indexOf(query);
-    if (i < 0) {
-      spans.add(TextSpan(text: label));
-    } else {
-      final hl = TextStyle(fontWeight: FontWeight.w700, color: active ? null : theme.colorScheme.primary);
-      spans
-        ..add(TextSpan(text: label.substring(0, i)))
-        ..add(TextSpan(text: label.substring(i, i + query.length), style: hl))
-        ..add(TextSpan(text: label.substring(i + query.length)));
-    }
+    final spans = highlightSpans(label, query, highlight: TextStyle(fontWeight: FontWeight.w700, color: active ? null : theme.colorScheme.primary));
     final style = missing ? base.copyWith(decoration: TextDecoration.lineThrough, color: fg ?? theme.hintColor) : base;
     final Widget lead = switch (row) {
       _NsRow(add: true) => SizedBox(width: 22, child: Icon(Icons.add, size: 14, color: active ? fg : theme.colorScheme.primary)),
@@ -636,57 +602,52 @@ class _PickerRowState extends State<_PickerRow> {
       _RecentRow() => SizedBox(width: 22, child: Icon(Icons.history, size: 13, color: active ? fg : theme.hintColor)),
       _AllRow() => SizedBox(width: 22, child: selected ? Icon(Icons.check, size: 14, color: active ? fg : theme.colorScheme.primary) : null),
     };
-    return MouseRegion(
-      onHover: (_) => active ? null : onHover(),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.only(left: 2, right: 6),
-          decoration: BoxDecoration(color: active ? theme.colorScheme.primary : null, borderRadius: BorderRadius.circular(5)),
-          child: Row(children: [
-            lead,
-            Flexible(child: Text.rich(TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
-            if (missing) ...[
-              const SizedBox(width: 8),
-              Text('not found', style: theme.textTheme.bodySmall?.copyWith(color: active ? fg : theme.hintColor)),
-            ],
-            if (onStar != null && (starred || active)) ...[
-              const SizedBox(width: 4),
-              Tooltip(
-                message: starred ? 'Remove from favourites' : 'Add to favourites',
-                child: GestureDetector(
-                  key: const ValueKey('picker-star'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onStar,
-                  child: Padding(
-                    padding: const EdgeInsets.all(3),
-                    child: Icon(
-                      starred ? Icons.star : Icons.star_border,
-                      size: 14,
-                      color: starred ? (active ? fg : Colors.amber.shade600) : (active ? fg : theme.hintColor),
-                    ),
-                  ),
+    return PickerRowShell(
+      active: active,
+      onTap: onTap,
+      onHover: onHover,
+      padding: const EdgeInsets.only(left: 2, right: 6),
+      child: Row(children: [
+        lead,
+        Flexible(child: Text.rich(TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
+        if (missing) ...[
+          const SizedBox(width: 8),
+          Text('not found', style: theme.textTheme.bodySmall?.copyWith(color: active ? fg : theme.hintColor)),
+        ],
+        if (onStar != null && (starred || active)) ...[
+          const SizedBox(width: 4),
+          Tooltip(
+            message: starred ? 'Remove from favourites' : 'Add to favourites',
+            child: GestureDetector(
+              key: const ValueKey('picker-star'),
+              behavior: HitTestBehavior.opaque,
+              onTap: onStar,
+              child: Padding(
+                padding: const EdgeInsets.all(3),
+                child: Icon(
+                  starred ? Icons.star : Icons.star_border,
+                  size: 14,
+                  color: starred ? (active ? fg : Colors.amber.shade600) : (active ? fg : theme.hintColor),
                 ),
               ),
-            ],
-            if (onRemove != null) ...[
-              const SizedBox(width: 8),
-              Text('added by you', style: theme.textTheme.bodySmall?.copyWith(color: active ? fg : theme.hintColor)),
-              const SizedBox(width: 2),
-              Tooltip(
-                message: 'Remove from remembered namespaces',
-                child: GestureDetector(
-                  key: const ValueKey('picker-remove'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onRemove,
-                  child: Padding(padding: const EdgeInsets.all(3), child: Icon(Icons.close, size: 13, color: active ? fg : theme.hintColor)),
-                ),
-              ),
-            ],
-          ]),
-        ),
-      ),
+            ),
+          ),
+        ],
+        if (onRemove != null) ...[
+          const SizedBox(width: 8),
+          Text('added by you', style: theme.textTheme.bodySmall?.copyWith(color: active ? fg : theme.hintColor)),
+          const SizedBox(width: 2),
+          Tooltip(
+            message: 'Remove from remembered namespaces',
+            child: GestureDetector(
+              key: const ValueKey('picker-remove'),
+              behavior: HitTestBehavior.opaque,
+              onTap: onRemove,
+              child: Padding(padding: const EdgeInsets.all(3), child: Icon(Icons.close, size: 13, color: active ? fg : theme.hintColor)),
+            ),
+          ),
+        ],
+      ]),
     );
   }
 }

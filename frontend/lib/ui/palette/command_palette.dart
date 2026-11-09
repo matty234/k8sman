@@ -9,6 +9,7 @@ import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../keys.dart';
 import '../theme.dart';
+import '../widgets/picker_kit.dart';
 import 'palette_commands.dart';
 import 'palette_items.dart';
 import 'palette_sources.dart';
@@ -161,12 +162,6 @@ class _CommandPaletteState extends State<CommandPalette> {
     Navigator.of(context).pop(item);
   }
 
-  void _move(int delta) {
-    if (_flat.isEmpty) return;
-    setState(() => _active = (_active + delta).clamp(0, _flat.length - 1));
-    _reveal();
-  }
-
   /// Scroll so the active row (and its group header, at the top) shows.
   void _reveal() {
     if (!_scroll.hasClients) return;
@@ -196,23 +191,20 @@ class _CommandPaletteState extends State<CommandPalette> {
       _close();
       return KeyEventResult.handled;
     }
-    switch (k) {
-      case LogicalKeyboardKey.arrowDown:
-        _move(1);
-      case LogicalKeyboardKey.arrowUp:
-        _move(-1);
-      case LogicalKeyboardKey.pageDown:
-        _move(8);
-      case LogicalKeyboardKey.pageUp:
-        _move(-8);
-      case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter:
+    return PickerKeys.handle(
+      e,
+      count: _flat.length,
+      active: _active,
+      page: 8,
+      onActive: (i) {
+        setState(() => _active = i);
+        _reveal();
+      },
+      onEnter: () {
         if (_flat.isNotEmpty) _close(_flat[_active]);
-      case LogicalKeyboardKey.escape:
-        _close();
-      default:
-        return KeyEventResult.ignored;
-    }
-    return KeyEventResult.handled;
+      },
+      onEscape: _close,
+    );
   }
 
   @override
@@ -367,54 +359,41 @@ class _ResultRow extends StatelessWidget {
     final hl = base.copyWith(fontWeight: FontWeight.w700, color: active ? null : theme.colorScheme.primary);
     final title = item.title;
     final marks = item.highlight(query).toSet();
-    final spans = <TextSpan>[];
-    for (var i = 0; i < title.length;) {
-      final on = marks.contains(i);
-      var j = i + 1;
-      while (j < title.length && marks.contains(j) == on) {
-        j++;
-      }
-      spans.add(TextSpan(text: title.substring(i, j), style: on ? hl : null));
-      i = j;
-    }
+    final spans = highlightSpans(title, query, highlight: hl, marks: marks);
     final small = theme.textTheme.labelSmall?.copyWith(color: muted, fontWeight: FontWeight.w400);
-    return MouseRegion(
-      onHover: (_) => active ? null : onHover(),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          height: _CommandPaletteState._rowHeight,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(color: active ? theme.colorScheme.primary : null, borderRadius: BorderRadius.circular(6)),
+    return PickerRowShell(
+      active: active,
+      onTap: onTap,
+      onHover: onHover,
+      height: _CommandPaletteState._rowHeight,
+      radius: 6,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(children: [
+        SizedBox(width: 18, child: Center(child: item.icon(active ? fg : theme.colorScheme.primary))),
+        const SizedBox(width: 9),
+        Expanded(
           child: Row(children: [
-            SizedBox(width: 18, child: Center(child: item.icon(active ? fg : theme.colorScheme.primary))),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Row(children: [
-                Flexible(flex: 3, child: Text.rich(TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis, style: base)),
-                if (item.detail != null) ...[
-                  const SizedBox(width: 8),
-                  Flexible(
-                    flex: 2,
-                    child: Text(item.detail!, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
-                  ),
-                ],
-                if (item.current) ...[
-                  const SizedBox(width: 6),
-                  Icon(Icons.check, size: 13, color: active ? fg : theme.colorScheme.primary),
-                ],
-              ]),
-            ),
-            const SizedBox(width: 10),
-            if (item.shortcut != null) ...[
-              Text(item.shortcut!, style: small),
-              const SizedBox(width: 10),
+            Flexible(flex: 3, child: Text.rich(TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis, style: base)),
+            if (item.detail != null) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                flex: 2,
+                child: Text(item.detail!, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+              ),
             ],
-            Text(item.typeLabel, style: small),
+            if (item.current) ...[
+              const SizedBox(width: 6),
+              Icon(Icons.check, size: 13, color: active ? fg : theme.colorScheme.primary),
+            ],
           ]),
         ),
-      ),
+        const SizedBox(width: 10),
+        if (item.shortcut != null) ...[
+          Text(item.shortcut!, style: small),
+          const SizedBox(width: 10),
+        ],
+        Text(item.typeLabel, style: small),
+      ]),
     );
   }
 }

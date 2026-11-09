@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../theme.dart';
 import 'common.dart';
+import 'picker_kit.dart';
 
 /// One choice in a [SearchablePicker].
 class PickerOption<T> {
@@ -188,23 +188,9 @@ class _PickerPopoverState<T> extends State<_PickerPopover<T>> {
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
-  void _move(int delta) {
-    if (_count == 0) return;
-    setState(() => _active = (_active + delta).clamp(0, _count - 1));
-    _reveal();
-  }
-
   /// Scroll the list so the active row is visible.
   void _reveal() {
-    final i = _active - _header.length;
-    if (i < 0 || !_scroll.hasClients) return;
-    final top = i * _rowHeight;
-    final view = _scroll.position.viewportDimension;
-    if (top < _scroll.offset) {
-      _scroll.jumpTo(top);
-    } else if (top + _rowHeight > _scroll.offset + view) {
-      _scroll.jumpTo(math.min(top + _rowHeight - view, _scroll.position.maxScrollExtent));
-    }
+    PickerKeys.reveal(_scroll, _active - _header.length, _rowHeight);
   }
 
   void _pick([int? i]) {
@@ -215,29 +201,23 @@ class _PickerPopoverState<T> extends State<_PickerPopover<T>> {
     Navigator.of(context).pop(_at(idx));
   }
 
-  KeyEventResult _onKey(FocusNode _, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
-    switch (e.logicalKey) {
-      case LogicalKeyboardKey.arrowDown:
-        _move(1);
-      case LogicalKeyboardKey.arrowUp:
-        _move(-1);
-      case LogicalKeyboardKey.pageDown:
-        _move(10);
-      case LogicalKeyboardKey.pageUp:
-        _move(-10);
-      case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter:
-        _pick();
-      case LogicalKeyboardKey.escape:
-        if (!_done) {
-          _done = true;
-          Navigator.of(context).pop();
-        }
-      default:
-        return KeyEventResult.ignored;
-    }
-    return KeyEventResult.handled;
-  }
+  KeyEventResult _onKey(FocusNode _, KeyEvent e) => PickerKeys.handle(
+        e,
+        count: _count,
+        active: _active,
+        page: 10,
+        onActive: (i) {
+          setState(() => _active = i);
+          _reveal();
+        },
+        onEnter: _pick,
+        onEscape: () {
+          if (!_done) {
+            _done = true;
+            Navigator.of(context).pop();
+          }
+        },
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -245,10 +225,7 @@ class _PickerPopoverState<T> extends State<_PickerPopover<T>> {
     final colors = AppColors.of(context);
     final header = _header;
     final listHeight = math.min(_matches.length * _rowHeight + 8, widget.maxListHeight);
-    final width = math.min(widget.width, widget.overlaySize.width - 16);
-    final double left = widget.anchor.left.clamp(8.0, math.max(8.0, widget.overlaySize.width - width - 8));
-    final top = widget.anchor.bottom + 4;
-    final maxHeight = math.max(120.0, widget.overlaySize.height - top - 8);
+    final place = popoverPlacement(widget.anchor, widget.overlaySize, widget.width);
 
     Widget row(int i) {
       final o = _at(i);
@@ -267,11 +244,11 @@ class _PickerPopoverState<T> extends State<_PickerPopover<T>> {
     final sep = Container(height: 1, margin: const EdgeInsets.symmetric(vertical: 4), color: colors.separator);
     return Stack(children: [
       Positioned(
-        left: left,
-        top: top,
-        width: width,
+        left: place.left,
+        top: place.top,
+        width: place.width,
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
+          constraints: BoxConstraints(maxHeight: place.maxHeight),
           child: Material(
             type: MaterialType.card,
             elevation: 8,
@@ -362,40 +339,25 @@ class _OptionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final base = theme.textTheme.bodyMedium!.copyWith(color: active ? theme.colorScheme.onPrimary : null);
-    final spans = <TextSpan>[];
-    final i = query.isEmpty ? -1 : label.toLowerCase().indexOf(query);
-    if (i < 0) {
-      spans.add(TextSpan(text: label));
-    } else {
-      final hl = TextStyle(fontWeight: FontWeight.w700, color: active ? null : theme.colorScheme.primary);
-      spans
-        ..add(TextSpan(text: label.substring(0, i)))
-        ..add(TextSpan(text: label.substring(i, i + query.length), style: hl))
-        ..add(TextSpan(text: label.substring(i + query.length)));
-    }
-    return MouseRegion(
-      onHover: (_) => active ? null : onHover(),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          decoration: BoxDecoration(color: active ? theme.colorScheme.primary : null, borderRadius: BorderRadius.circular(5)),
-          child: Row(children: [
-            SizedBox(width: 18, child: selected ? Icon(Icons.check, size: 14, color: active ? theme.colorScheme.onPrimary : theme.colorScheme.primary) : null),
-            Flexible(child: Text.rich(TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis, style: base)),
-            if (detail != null) ...[
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(detail!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(color: active ? theme.colorScheme.onPrimary.withValues(alpha: 0.8) : theme.hintColor)),
-              ),
-            ],
-          ]),
-        ),
-      ),
+    final spans = highlightSpans(label, query, highlight: TextStyle(fontWeight: FontWeight.w700, color: active ? null : theme.colorScheme.primary));
+    return PickerRowShell(
+      active: active,
+      onTap: onTap,
+      onHover: onHover,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Row(children: [
+        SizedBox(width: 18, child: selected ? Icon(Icons.check, size: 14, color: active ? theme.colorScheme.onPrimary : theme.colorScheme.primary) : null),
+        Flexible(child: Text.rich(TextSpan(children: spans), maxLines: 1, overflow: TextOverflow.ellipsis, style: base)),
+        if (detail != null) ...[
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(detail!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(color: active ? theme.colorScheme.onPrimary.withValues(alpha: 0.8) : theme.hintColor)),
+          ),
+        ],
+      ]),
     );
   }
 }
