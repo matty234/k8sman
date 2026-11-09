@@ -11,9 +11,10 @@ void main() {
         api: FakeApiClient(itemsByResource: {'pods': demoPods()}, itemsFilter: labelSelectorFilter));
     await saveScreenshot(tester, 'network-netpol-web');
     expect(find.text('Applies to pods matching app=web in demo (2 pods).'), findsOneWidget);
-    expect(find.text('Restricted'), findsOneWidget);
+    expect(find.text('Restricts ingress'), findsOneWidget);
+    expect(find.text('Restricted · 2 allowed'), findsOneWidget);
     expect(find.text('Not restricted'), findsOneWidget);
-    expect(find.text('• pods with tier=frontend in this namespace'), findsOneWidget);
+    expect(find.text('from pods with tier=frontend in this namespace on TCP 8080'), findsOneWidget);
     await tester.tap(find.text('web-6fd47b8fcb-4v4m9'));
     expect(app.detail?.type.kind, 'Pod');
   });
@@ -54,6 +55,9 @@ void main() {
     );
     await saveScreenshot(tester, 'network-netpol-deny');
     expect(find.text('Applies to all pods in demo (9 pods).'), findsOneWidget);
+    expect(find.text('Default deny ingress'), findsNothing);
+    expect(find.text('Restricts ingress and egress'), findsOneWidget);
     expect(find.text('Deny all'), findsOneWidget);
+    expect(find.text('to IPs in 0.0.0.0/0 except 169.254.169.254/32, 10.0.0.0/8 on TCP 30000-32767'), findsOneWidget);
   });
 }

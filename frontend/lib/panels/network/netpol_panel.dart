@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
-import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
+import 'inspector_kit.dart';
 import 'netpol_explain.dart';
 import 'widgets.dart';
-import '../../util/pod.dart';
 
 class NetworkPolicyPanel extends ResourcePanel {
   const NetworkPolicyPanel();
@@ -19,6 +18,30 @@ class NetworkPolicyPanel extends ResourcePanel {
   List<Widget> buildSections(BuildContext context, PanelContext ctx) =>
       [_NetpolView(key: ValueKey('${ctx.uid}/netpol'), ctx: ctx)];
 }
+
+/// The headline for a policy: what it does to the directions it governs.
+String netpolHeadline(NetpolExplanation ex) {
+  final governed = [for (final d in [ex.ingress, ex.egress]) if (d.mode != PolicyMode.unrestricted) d];
+  if (governed.isEmpty) return 'No effect';
+  String dirs(Iterable<DirectionExplanation> ds) => ds.map((d) => d.direction.toLowerCase()).join(' and ');
+  if (governed.every((d) => d.mode == PolicyMode.denyAll)) return governed.length == 2 ? 'Default deny' : 'Default deny ${dirs(governed)}';
+  if (governed.every((d) => d.mode == PolicyMode.allowAll)) return 'Allows all ${dirs(governed)}';
+  return 'Restricts ${dirs(governed)}';
+}
+
+/// One plain-language line per allowed source/destination of a rule:
+/// "from pods with tier=frontend in this namespace on TCP 8080".
+List<String> ruleLines(DirectionExplanation d, RuleExplanation r) {
+  final where = r.ports.isEmpty ? 'on any port' : 'on ${r.ports.join(', ')}';
+  return [for (final p in r.peers.isEmpty ? const ['anywhere'] : r.peers) '${d.preposition} $p $where'];
+}
+
+String _modeLabel(PolicyMode m) => switch (m) {
+      PolicyMode.unrestricted => 'Not restricted',
+      PolicyMode.denyAll => 'Deny all',
+      PolicyMode.allowAll => 'Allow all',
+      PolicyMode.restricted => 'Restricted',
+    };
 
 class _NetpolView extends StatelessWidget {
   final PanelContext ctx;
@@ -34,17 +57,16 @@ class _NetpolView extends StatelessWidget {
         final pods = snap.data;
         final ex = explainNetworkPolicy(ctx.object, matchedPods: pods?.length);
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          DetailSection(
-            title: 'What this policy does',
-            icon: Icons.shield_outlined,
-            child: _explanation(context, ex),
-          ),
-          DetailSection(
+          _header(context, ex, pods, sel, snap.error),
+          _direction(context, ex.ingress),
+          _direction(context, ex.egress),
+          PodSection(
+            id: 'netpol-pods',
             title: 'Selected pods',
-            icon: Icons.widgets_outlined,
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (pods != null) StatusBadge('${pods.length}', dense: true, severity: pods.isEmpty ? Severity.warn : Severity.info),
-              RefreshButton(reload),
+              if (pods != null) Flexible(child: SectionSummary('${pods.length}')),
+              const SizedBox(width: 4),
+              SizedBox(height: 20, child: RefreshButton(reload)),
             ]),
             child: snap.hasError
                 ? InlineMessage('${snap.error}', isError: true)
@@ -57,94 +79,78 @@ class _NetpolView extends StatelessWidget {
     );
   }
 
-  Widget _explanation(BuildContext context, NetpolExplanation ex) {
-    final theme = Theme.of(context);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(ex.appliesTo, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-      const SizedBox(height: 8),
-      _direction(context, ex.ingress),
-      const SizedBox(height: 8),
-      _direction(context, ex.egress),
-      const SizedBox(height: 8),
-      Row(children: [
+  Widget _header(BuildContext context, NetpolExplanation ex, List<Json>? pods, String sel, Object? error) {
+    String figure(DirectionExplanation d) => switch (d.mode) {
+          PolicyMode.unrestricted => '–',
+          PolicyMode.denyAll => 'deny',
+          PolicyMode.allowAll => 'all',
+          PolicyMode.restricted => '${[for (final r in d.rules) ...ruleLines(d, r)].length}',
+        };
+    final insights = <PodInsight>[
+      if (pods != null && pods.isEmpty)
+        PodInsight(
+          Severity.warn,
+          'Selects no pods',
+          sel.isEmpty ? 'No pods in ${ctx.namespace} yet; the policy will apply to every pod created here.' : 'No pods match $sel; the policy currently has no effect.',
+        ),
+      if (error != null) PodInsight(Severity.warn, 'Could not list pods', '$error'),
+    ];
+    return InspectorHeader(
+      mark: worstOf(insights) ?? (pods == null ? Severity.neutral : Severity.ok),
+      headline: netpolHeadline(ex),
+      detail: ex.appliesTo,
+      figures: [
+        HeaderFigure(pods == null ? '–' : '${pods.length}', pods?.length == 1 ? 'pod' : 'pods', severity: pods != null && pods.isEmpty ? Severity.warn : Severity.neutral),
+        HeaderFigure(figure(ex.ingress), 'ingress', tooltip: ex.ingress.text),
+        HeaderFigure(figure(ex.egress), 'egress', tooltip: ex.egress.text),
+      ],
+      insights: insights,
+      facts: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Muted('policyTypes: ${ex.policyTypes.join(', ')}${ex.policyTypesDefaulted ? ' (defaulted)' : ''}  ·  '
               'policies are additive: traffic is allowed if any policy selecting the pod allows it'),
         ),
-        IconButton(
-          iconSize: 13,
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 24, height: 24),
-          style: const ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-          tooltip: 'Copy explanation',
-          icon: const Icon(Icons.copy),
-          onPressed: () => copyToClipboard(context, ex.text),
-        ),
-      ]),
-    ]);
-  }
-
-  Widget _direction(BuildContext context, DirectionExplanation d) {
-    final theme = Theme.of(context);
-    final (label, sev) = switch (d.mode) {
-      PolicyMode.unrestricted => ('Not restricted', Severity.neutral),
-      PolicyMode.denyAll => ('Deny all', Severity.error),
-      PolicyMode.allowAll => ('Allow all', Severity.ok),
-      PolicyMode.restricted => ('Restricted', Severity.warn),
-    };
-    final c = severityColor(context, sev);
-    final body = d.text.substring(d.direction.length + 2);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: c, width: 3)),
-        color: c.withValues(alpha: 0.06),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Icon(d.direction == 'Ingress' ? Icons.call_received : Icons.call_made, size: 14, color: c),
-          const SizedBox(width: 6),
-          Text(d.direction, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(width: 8),
-          StatusBadge(label, dense: true, severity: sev),
-        ]),
-        const SizedBox(height: 4),
-        if (d.mode != PolicyMode.restricted)
-          Text(body, style: theme.textTheme.bodySmall)
-        else ...[
-          Text(body, style: theme.textTheme.bodySmall),
-          if (d.rules.length > 1 || d.rules.any((r) => r.peers.length > 1)) ...[
-            const SizedBox(height: 4),
-            for (var i = 0; i < d.rules.length; i++) _rule(context, d, i),
-          ],
-        ],
+        RowAction(icon: Icons.copy, tooltip: 'Copy explanation', onTap: () => copyToClipboard(context, ex.text)),
       ]),
     );
   }
 
-  /// Structured view of one rule: peers as bullets plus port chips.
-  Widget _rule(BuildContext context, DirectionExplanation d, int i) {
-    final theme = Theme.of(context);
-    final r = d.rules[i];
-    final small = theme.textTheme.bodySmall;
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Text('Rule ${i + 1}', style: small?.copyWith(fontWeight: FontWeight.w600, color: theme.hintColor)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Wrap(spacing: 4, runSpacing: 2, children: [
-              if (r.ports.isEmpty) const Chipish(text: 'any port') else for (final p in r.ports) Chipish(text: p),
-            ]),
-          ),
-        ]),
-        if (r.peers.isEmpty)
-          Padding(padding: const EdgeInsets.only(left: 12, top: 2), child: Text('• ${d.preposition} anywhere', style: small))
-        else
-          for (final p in r.peers) Padding(padding: const EdgeInsets.only(left: 12, top: 2), child: Text('• $p', style: small)),
-      ]),
+  /// A direction's section: its mode in the header, then one row per
+  /// allowed peer in plain language.
+  Widget _direction(BuildContext context, DirectionExplanation d) {
+    final lines = [
+      for (final (i, r) in d.rules.indexed)
+        for (final l in ruleLines(d, r)) (i, l),
+    ];
+    final multiRule = d.rules.length > 1;
+    final Widget body = switch (d.mode) {
+      PolicyMode.unrestricted => Padding(padding: const EdgeInsets.only(left: 4), child: Muted('This policy does not restrict ${d.direction.toLowerCase()} traffic.')),
+      PolicyMode.denyAll => CompactRow(
+          severity: Severity.neutral,
+          title: Text('All ${d.direction.toLowerCase()} traffic denied', maxLines: 2),
+          subtitle: const Text('No rule allows anything, so only other policies can open it.'),
+        ),
+      PolicyMode.allowAll => CompactRow(
+          severity: Severity.ok,
+          title: Text('All ${d.direction.toLowerCase()} traffic allowed', maxLines: 2),
+          subtitle: const Text('A rule with no peers and no ports allows everything.'),
+        ),
+      PolicyMode.restricted => TrimmedRows([
+          for (final (i, l) in lines)
+            CompactRow(
+              key: ValueKey('netpol-${d.direction}-$l'),
+              severity: Severity.ok,
+              title: Text(l, maxLines: 3),
+              subtitle: multiRule ? Text('rule ${i + 1}') : null,
+            ),
+        ], limit: 8),
+    };
+    return PodSection(
+      id: 'netpol-${d.direction.toLowerCase()}',
+      title: d.direction,
+      initiallyExpanded: d.mode != PolicyMode.unrestricted,
+      trailing: SectionSummary(d.mode == PolicyMode.restricted ? '${_modeLabel(d.mode)} · ${lines.length} allowed' : _modeLabel(d.mode)),
+      child: body,
     );
   }
 
@@ -154,20 +160,6 @@ class _NetpolView extends StatelessWidget {
           ? 'No pods in ${ctx.namespace} yet; the policy will apply to every pod created here.'
           : 'No pods match $sel; the policy currently has no effect.');
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (final p in pods.take(50))
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(children: [
-            StatusBadge(podReady(p) ? 'Ready' : dig(p, ['status', 'phase']) == 'Succeeded' ? 'Completed' : 'NotReady · ${dig(p, ['status', 'phase']) ?? 'Unknown'}',
-                dense: true, severity: podReady(p) ? Severity.ok : (dig(p, ['status', 'phase']) == 'Succeeded' ? Severity.neutral : Severity.error)),
-            const SizedBox(width: 8),
-            Flexible(child: ResourceLink(ObjectRef(kind: 'Pod', name: '${dig(p, ['metadata', 'name'])}', namespace: ctx.namespace), label: '${dig(p, ['metadata', 'name'])}')),
-            const SizedBox(width: 8),
-            if (dig(p, ['status', 'podIP']) != null) Muted('${dig(p, ['status', 'podIP'])}', mono: true),
-          ]),
-        ),
-      if (pods.length > 50) Muted('… and ${pods.length - 50} more'),
-    ]);
+    return PodRows(pods, trailing: (p) => [if (dig(p, ['status', 'podIP']) != null) Muted('${dig(p, ['status', 'podIP'])}', mono: true)]);
   }
 }

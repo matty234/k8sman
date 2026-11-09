@@ -26,9 +26,8 @@ void main() {
     await saveScreenshot(tester, 'network-endpointslice-web');
     expect(find.text('IPv4'), findsOneWidget);
     expect(find.text('http 8080/TCP'), findsOneWidget);
-    expect(find.text('2/3 ready'), findsOneWidget);
-    expect(find.text('Terminating'), findsOneWidget);
-    expect(find.text('Serving'), findsOneWidget);
+    expect(find.text('2 of 3 ready'), findsWidgets);
+    expect(find.text('not ready · serving · terminating'), findsOneWidget);
     expect(find.text('us-east-1a'), findsOneWidget);
     await tester.tap(find.text('web'));
     expect(app.detail?.type.kind, 'Service');
@@ -47,9 +46,9 @@ void main() {
     ];
     final app = await pumpPanel(tester, ep);
     await saveScreenshot(tester, 'network-endpoints-web');
-    expect(find.text('2/3 ready'), findsOneWidget);
-    expect(find.text('NotReady'), findsOneWidget);
-    await tester.tap(find.text('Pod/web-starting'));
+    expect(find.text('2 of 3 ready'), findsWidgets);
+    expect(find.text('not ready'), findsWidgets);
+    await tester.tap(find.text('web-starting'));
     expect(app.detail?.name, 'web-starting');
   });
 

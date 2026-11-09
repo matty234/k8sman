@@ -9,6 +9,7 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import 'inspector_kit.dart';
 
 /// Runs [load] once (in initState) and re-runs it only when [fetchKey]
 /// changes or the user asks for a reload. Build it with a stable key
@@ -298,7 +299,9 @@ class EndpointAddr {
       );
 }
 
-/// Rows of addresses with condition badges and links to pod/node.
+/// Addresses as compact rows, not-ready first: a state dot, the IP, what
+/// backs it (pod and node links, zone) and its condition when not plainly
+/// ready; copy on hover.
 class EndpointList extends StatelessWidget {
   final List<EndpointAddr> addrs;
   final String? namespace;
@@ -307,73 +310,59 @@ class EndpointList extends StatelessWidget {
   final String? headlessDnsSuffix;
   const EndpointList(this.addrs, {super.key, this.namespace, this.headlessDnsSuffix});
 
+  /// Not ready first, then terminating, then by IP.
+  static List<EndpointAddr> ordered(List<EndpointAddr> addrs) => [...addrs]..sort((a, b) {
+      int rank(EndpointAddr x) => !x.ready ? 0 : (x.terminating ? 1 : 2);
+      final r = rank(a).compareTo(rank(b));
+      return r != 0 ? r : a.ip.compareTo(b.ip);
+    });
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    if (addrs.isEmpty) return const InlineMessage('No addresses');
-    final sorted = [...addrs]..sort((a, b) {
-        final r = (b.ready ? 1 : 0) - (a.ready ? 1 : 0);
-        return r != 0 ? r : a.ip.compareTo(b.ip);
-      });
-    final line = BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35));
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (var i = 0; i < sorted.length; i++)
-        Container(
-          decoration: BoxDecoration(border: i == 0 ? null : Border(top: line)),
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: _row(context, sorted[i]),
-        ),
-    ]);
+    if (addrs.isEmpty) return const Padding(padding: EdgeInsets.only(left: 4), child: Muted('No addresses'));
+    return TrimmedRows([for (final a in ordered(addrs)) _row(context, a)], limit: 10);
   }
 
   Widget _row(BuildContext context, EndpointAddr a) {
     final theme = Theme.of(context);
-    final sev = a.terminating ? Severity.warn : (a.ready ? Severity.ok : Severity.error);
-    final dot = Container(width: 8, height: 8, decoration: BoxDecoration(color: severityColor(context, sev), shape: BoxShape.circle));
+    final sev = !a.ready ? Severity.error : (a.terminating ? Severity.warn : Severity.ok);
     final tr = a.targetRef;
-    final small = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        dot,
-        const SizedBox(width: 8),
-        CopyText(a.ip),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Wrap(spacing: 4, runSpacing: 2, children: [
-            StatusBadge(a.ready ? 'Ready' : 'NotReady', dense: true, severity: a.ready ? Severity.ok : Severity.error),
-            if (a.serving != null && a.serving != a.ready)
-              StatusBadge(a.serving! ? 'Serving' : 'Not serving', dense: true, severity: a.serving! ? Severity.warn : Severity.error),
-            if (a.terminating) const StatusBadge('Terminating', dense: true, severity: Severity.warn),
-          ]),
-        ),
+    final state = [
+      if (!a.ready) 'not ready',
+      if (a.serving != null && a.serving != a.ready) a.serving! ? 'serving' : 'not serving',
+      if (a.terminating) 'terminating',
+    ].join(' · ');
+    final dns = a.hostname != null && headlessDnsSuffix != null ? '${a.hostname}.$headlessDnsSuffix' : null;
+    return CompactRow(
+      key: ValueKey('endpoint-${a.ip}'),
+      severity: sev,
+      dotTooltip: state.isEmpty ? 'ready' : state,
+      title: Row(children: [
+        Text(a.ip, style: monoStyle(context, size: 12)),
+        if (state.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(state, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, sev), fontWeight: FontWeight.w600)),
+          ),
+        ],
       ]),
-      Padding(
-        padding: const EdgeInsets.only(left: 16, top: 2),
-        child: Wrap(spacing: 10, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          if (tr != null)
-            _iconed(context, Icons.widgets_outlined, ResourceLink(
-              ObjectRef.fromOwnerRef({...tr, 'apiVersion': tr['apiVersion'] ?? 'v1'}, namespace: namespace),
-              label: '${tr['kind'] ?? ''}/${tr['name'] ?? ''}',
-            ))
-          else
-            Text('no targetRef', style: small),
-          if (a.nodeName != null) _iconed(context, Icons.dns_outlined, ResourceLink(ObjectRef(kind: 'Node', name: a.nodeName!), label: a.nodeName)),
-          if (a.zone != null) _iconed(context, Icons.place_outlined, Text(a.zone!, style: small)),
-          if (a.hints.isNotEmpty) Text('hints: ${a.hints.join(', ')}', style: small),
-          if (a.hostname != null)
-            headlessDnsSuffix != null
-                ? CopyText('${a.hostname}.$headlessDnsSuffix', size: 11, color: theme.hintColor)
-                : Text('hostname: ${a.hostname}', style: small),
-        ]),
-      ),
-    ]);
+      subtitle: Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        if (tr != null)
+          ResourceLink(
+            ObjectRef.fromOwnerRef({...tr, 'apiVersion': tr['apiVersion'] ?? 'v1'}, namespace: namespace),
+            label: tr['kind'] == 'Pod' ? '${tr['name'] ?? ''}' : '${tr['kind'] ?? ''}/${tr['name'] ?? ''}',
+          )
+        else
+          const Text('no targetRef'),
+        if (a.nodeName != null) ResourceLink(ObjectRef(kind: 'Node', name: a.nodeName!), label: a.nodeName),
+        if (a.zone != null) Text(a.zone!),
+        if (a.hints.isNotEmpty) Text('hints: ${a.hints.join(', ')}'),
+        if (dns != null) Text(dns, style: monoStyle(context, size: 11, color: theme.hintColor)),
+        if (a.hostname != null && dns == null) Text('hostname: ${a.hostname}'),
+      ]),
+      actions: [copyAction(context, a.ip), if (dns != null) copyAction(context, dns, tooltip: 'Copy $dns')],
+    );
   }
-
-  static Widget _iconed(BuildContext context, IconData icon, Widget child) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 12, color: Theme.of(context).hintColor),
-        const SizedBox(width: 3),
-        child,
-      ]);
 }
 
 /// Chips for EndpointSlice / Endpoints ports: `http 8080/TCP`.

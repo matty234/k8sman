@@ -1,6 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/network/ingress_panel.dart';
+import 'package:k8sman/panels/pod/pod_section.dart';
 
 import '../../support/harness.dart';
 import '../../support/screenshot.dart';
@@ -40,6 +42,8 @@ Json ingressWithExtras() {
 }
 
 void main() {
+  setUp(PodSectionMemory.reset);
+
   testWidgets('ingress: rules, named port resolution, missing TLS secret', (tester) async {
     await loadRealFonts();
     final app = await pumpPanel(tester, devFixture('ingress-web'),
@@ -48,8 +52,11 @@ void main() {
     expect(find.text('web.demo.local'), findsWidgets);
     expect(find.text(':http (80)'), findsOneWidget);
     expect(find.text(':80'), findsOneWidget);
-    expect(find.text('Secret not found'), findsOneWidget);
-    expect(find.text('Pending'), findsOneWidget);
+    expect(find.text('TLS Secret web-tls not found'), findsOneWidget);
+    expect(find.text('pending'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pod-section-ing-tls')));
+    await tester.pump();
+    expect(find.text('Secret not found'), findsNWidgets(2)); // summary and row
     await tester.tap(find.text('web').first);
     expect(app.detail?.type.kind, 'Service');
   });
@@ -64,7 +71,8 @@ void main() {
     expect(find.text('nginx'), findsOneWidget);
     expect(find.text('172.18.0.2'), findsOneWidget);
     expect(find.text('missing'), findsOneWidget);
-    expect(find.text('Secret not found'), findsNothing);
+    expect(find.text('Service ghost not found'), findsOneWidget);
+    expect(find.textContaining('not found'), findsNWidgets(2)); // the insight and the figure, no Secret
     expect(find.text('Controller annotations'), findsOneWidget);
   });
 

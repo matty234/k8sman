@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../ui/widgets/common.dart';
+import '../../ui/theme.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
+import '../network/inspector_kit.dart';
 import '../panel.dart';
 import 'gw_model.dart';
 import 'gw_widgets.dart';
@@ -51,27 +53,28 @@ class RoutedBySection extends StatelessWidget {
       builder: (context, snap, reload) {
         final uses = snap.data ?? const <ServiceRouteUse>[];
         if (snap.hasError || uses.isEmpty) return const SizedBox.shrink();
-        return DetailSection(
+        return PodSection(
+          id: 'svc-routed-by',
           title: 'Routed by',
-          icon: Icons.alt_route,
-          trailing: Text('${uses.length}'),
+          trailing: SectionSummary(plural(uses.length, 'route')),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            for (final u in uses)
+            for (final u in [...uses]..sort((a, b) => (RouteHealth.of(a.route).healthy ? 1 : 0).compareTo(RouteHealth.of(b.route).healthy ? 1 : 0)))
               () {
                 final h = RouteHealth.of(u.route);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(children: [
-                    Expanded(
-                      child: Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                        routeLink(u.route, showKind: true),
-                        if (u.route.hostnames.isNotEmpty) Muted(u.route.hostnames.join(', '), mono: true),
-                        if (u.percent != null) Muted('${u.percent}% of its rule'),
-                        if (u.mirror) const Muted('mirror'),
-                      ]),
-                    ),
-                    StatusBadge(h.label, dense: true, severity: h.healthy ? Severity.ok : diagSeverity(h.level)),
+                final sev = h.healthy ? Severity.ok : diagSeverity(h.level);
+                return CompactRow(
+                  severity: sev,
+                  dotTooltip: h.label,
+                  title: routeLink(u.route, showKind: true),
+                  subtitle: dotLine([
+                    if (u.route.hostnames.isNotEmpty) u.route.hostnames.join(', '),
+                    if (u.percent != null) '${u.percent}% of its rule',
+                    if (u.mirror) 'mirror',
                   ]),
+                  trailing: [
+                    if (!h.healthy)
+                      Text(h.label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: severityColor(context, sev), fontWeight: FontWeight.w600)),
+                  ],
                 );
               }(),
           ]),

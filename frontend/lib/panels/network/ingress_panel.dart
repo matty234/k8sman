@@ -5,7 +5,10 @@ import '../../api/models.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
+import '../../util/text.dart';
 import '../panel.dart';
+import '../pod/pod_widgets.dart' show InlineWrap;
+import 'inspector_kit.dart';
 import 'widgets.dart';
 
 /// Annotation prefixes that configure ingress controllers / related tooling.
@@ -103,6 +106,39 @@ class IngressPanel extends ResourcePanel {
   }
 }
 
+/// How a backend resolves against the looked-up Services.
+class _BackendState {
+  final String? service;
+  final String portText;
+  final bool missing;
+  final bool portBad;
+  const _BackendState({this.service, this.portText = '', this.missing = false, this.portBad = false});
+
+  bool get broken => missing || portBad;
+}
+
+_BackendState _resolveBackend(Json backend, _IngressLookups? data) {
+  final svc = asMap(backend['service']);
+  if (svc.isEmpty) return const _BackendState();
+  final name = '${svc['name']}';
+  final port = asMap(svc['port']);
+  final known = data != null && data.services.containsKey(name);
+  final svcObj = data?.services[name];
+  var portBad = false;
+  String portText;
+  if (port['number'] != null) {
+    portText = '${port['number']}';
+    if (svcObj != null && !asMapList(dig(svcObj, ['spec', 'ports'])).any((p) => p['port'] == port['number'])) portBad = true;
+  } else if (port['name'] != null) {
+    final match = svcObj == null ? null : asMapList(dig(svcObj, ['spec', 'ports'])).where((p) => p['name'] == port['name']).firstOrNull;
+    portText = match != null ? '${port['name']} (${match['port']})' : '${port['name']}';
+    if (svcObj != null && match == null) portBad = true;
+  } else {
+    portText = '?';
+  }
+  return _BackendState(service: name, portText: portText, missing: known && svcObj == null, portBad: portBad);
+}
+
 class _IngressView extends StatelessWidget {
   final PanelContext ctx;
   const _IngressView({super.key, required this.ctx});
@@ -142,45 +178,123 @@ class _IngressView extends StatelessWidget {
         final data = snap.data;
         final spec = ctx.spec;
         final annotations = controllerAnnotations(ctx.metadata['annotations']);
+        final paths = flattenIngressRules(spec);
+        final tls = asMapList(spec['tls']);
+        final missingSecrets = [for (final t in tls) if (t['secretName'] != null && data?.secrets['${t['secretName']}'] == false) '${t['secretName']}'];
+        final def = asMap(spec['defaultBackend']);
+        final defState = _resolveBackend(def, data);
+        final hosts = {for (final p in paths) p.host ?? '*'}.length;
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          DetailSection(title: 'Ingress', icon: Icons.input, child: _summary(context, data)),
-          DetailSection(
+          _header(context, data, paths, missingSecrets, defState, snap.error),
+          PodSection(
+            id: 'ing-rules',
             title: 'Rules',
-            icon: Icons.alt_route,
-            trailing: RefreshButton(reload),
-            child: _rules(context, data, snap.error),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              Flexible(child: SectionSummary(paths.isEmpty ? 'none' : '${plural(hosts, 'host')} · ${plural(paths.length, 'path')}')),
+              const SizedBox(width: 4),
+              SizedBox(height: 20, child: RefreshButton(reload)),
+            ]),
+            child: _rules(context, data, paths),
           ),
-          if (asMapList(spec['tls']).isNotEmpty) DetailSection(title: 'TLS', icon: Icons.lock_outline, child: _tls(context, data)),
+          if (tls.isNotEmpty)
+            PodSection(
+              id: 'ing-tls',
+              title: 'TLS',
+              initiallyExpanded: false,
+              trailing: SectionSummary(
+                missingSecrets.isNotEmpty ? 'Secret not found' : '${plural(tls.length, 'certificate')} · ${plural(ingressTlsHosts(spec).length, 'host')}',
+                color: missingSecrets.isNotEmpty ? severityColor(context, Severity.error) : null,
+              ),
+              child: _tls(context, data),
+            ),
+          if (def.isNotEmpty)
+            PodSection(
+              id: 'ing-default-backend',
+              title: 'Default backend',
+              initiallyExpanded: false,
+              trailing: SectionSummary(
+                defState.service == null ? 'resource' : '${defState.service}:${defState.portText}',
+                color: defState.broken ? severityColor(context, Severity.error) : null,
+              ),
+              child: Padding(padding: const EdgeInsets.only(left: 4), child: _backend(context, def, data)),
+            ),
           if (annotations.isNotEmpty)
-            DetailSection(title: 'Controller annotations', icon: Icons.tune, child: _annotations(context, annotations)),
+            PodSection(
+              id: 'ing-annotations',
+              title: 'Controller annotations',
+              initiallyExpanded: false,
+              trailing: SectionSummary(annotations.keys.map((k) => k.substring(k.lastIndexOf('/') + 1)).join(' · ')),
+              child: _annotations(context, annotations),
+            ),
         ]);
       },
     );
   }
 
-  Widget _summary(BuildContext context, _IngressLookups? data) {
+  Widget _header(BuildContext context, _IngressLookups? data, List<IngressPath> paths, List<String> missingSecrets, _BackendState defState, Object? error) {
     final spec = ctx.spec;
     final className = spec['ingressClassName'] as String?;
     final legacyClass = dig<String>(ctx.metadata, ['annotations', 'kubernetes.io/ingress.class']);
     final lb = asMapList(dig(ctx.status, ['loadBalancer', 'ingress']));
-    final def = asMap(spec['defaultBackend']);
-    return KeyValueTable([
-      (
-        'Class',
-        className != null
-            ? ResourceLink(ObjectRef(group: 'networking.k8s.io', kind: 'IngressClass', name: className), label: className)
-            : legacyClass != null
-                ? Text('$legacyClass (legacy annotation)', style: Theme.of(context).textTheme.bodySmall)
-                : const Muted('none: uses the cluster default IngressClass'),
-      ),
-      (
-        'Address',
-        lb.isEmpty
-            ? const Row(children: [StatusBadge('Pending', dense: true, severity: Severity.warn), SizedBox(width: 6), Expanded(child: Muted('no address assigned by a controller'))])
-            : Wrap(spacing: 10, children: [for (final i in lb) CopyText('${i['ip'] ?? i['hostname'] ?? ''}')]),
-      ),
-      ('Default backend', def.isEmpty ? null : _backend(context, def, data)),
-    ], keyWidth: 110);
+    final tlsHosts = ingressTlsHosts(spec);
+    final ruleHosts = {for (final p in paths) if (p.host != null) p.host!};
+    final covered = ruleHosts.where((h) => _tlsCovers(tlsHosts, h)).toList();
+    final uncovered = ruleHosts.where((h) => !_tlsCovers(tlsHosts, h)).toList();
+    final states = [for (final p in paths) (p, _resolveBackend(p.backend, data))];
+    final missing = {for (final (_, s) in states) if (s.missing) s.service!, if (defState.missing) defState.service!};
+    final badPorts = [for (final (p, s) in states) if (s.portBad && !s.missing) (p, s)];
+    final routesNothing = paths.isEmpty && asMap(spec['defaultBackend']).isEmpty;
+    final insights = <PodInsight>[
+      if (routesNothing) const PodInsight(Severity.error, 'No rules and no default backend', 'This Ingress routes nothing.'),
+      for (final m in missing) PodInsight(Severity.error, 'Service $m not found', 'Requests routed to it get an error from the controller.'),
+      for (final (p, s) in badPorts) PodInsight(Severity.error, 'Service ${s.service} has no port ${s.portText}', 'Used by ${p.host ?? '*'}${p.path}.'),
+      for (final s in missingSecrets) PodInsight(Severity.error, 'TLS Secret $s not found', 'The controller serves its default certificate instead.'),
+      if (lb.isEmpty) PodInsight(Severity.warn, 'No address assigned', 'No ingress controller${className != null ? ' for class $className' : ''} has published an address yet.'),
+      if (tlsHosts.isNotEmpty && uncovered.isNotEmpty) PodInsight(Severity.warn, '${uncovered.join(', ')} ${uncovered.length == 1 ? 'is' : 'are'} not covered by TLS', 'Served over plain HTTP only.'),
+      if (error != null) PodInsight(Severity.warn, 'Lookup failed', '$error'),
+    ];
+    final worst = worstOf(insights);
+    final headline = routesNothing
+        ? 'Routes nothing'
+        : missing.isNotEmpty || badPorts.isNotEmpty
+            ? 'Backend missing'
+            : lb.isEmpty
+                ? 'No address yet'
+                : 'Serving';
+    final classLabel = className ?? (legacyClass != null ? '$legacyClass (legacy annotation)' : null);
+    return InspectorHeader(
+      mark: worst ?? (data == null ? Severity.neutral : Severity.ok),
+      headline: headline,
+      detail: [
+        classLabel == null ? 'default class' : 'class $classLabel',
+        if (ruleHosts.isNotEmpty) tlsHosts.isEmpty ? 'no TLS' : 'TLS on ${covered.length} of ${ruleHosts.length} hosts',
+      ].join(' · '),
+      figures: [
+        HeaderFigure('${{for (final p in paths) p.host ?? '*'}.length}', 'hosts'),
+        HeaderFigure('${paths.length}', paths.length == 1 ? 'path' : 'paths'),
+        if (ruleHosts.isNotEmpty)
+          HeaderFigure('${covered.length}', 'on TLS',
+              of: '/${ruleHosts.length}', severity: tlsHosts.isNotEmpty && uncovered.isNotEmpty ? Severity.warn : Severity.neutral, tooltip: '${covered.length} of ${ruleHosts.length} hosts covered by TLS'),
+        if (missing.isNotEmpty) HeaderFigure('${missing.length}', 'not found', severity: Severity.error, tooltip: 'Services that do not exist'),
+      ],
+      insights: insights,
+      facts: KeyValueTable(keyWidth: 64, [
+        (
+          'Class',
+          className != null
+              ? ResourceLink(ObjectRef(group: 'networking.k8s.io', kind: 'IngressClass', name: className), label: className)
+              : legacyClass != null
+                  ? Text('$legacyClass (legacy annotation)')
+                  : const Muted('none: uses the cluster default IngressClass'),
+        ),
+        (
+          'Address',
+          lb.isEmpty
+              ? Text('pending', style: TextStyle(color: severityColor(context, Severity.warn)))
+              : InlineWrap([for (final i in lb) Chipish(text: '${i['ip'] ?? i['hostname'] ?? ''}', copyValue: '${i['ip'] ?? i['hostname'] ?? ''}')]),
+        ),
+      ]),
+    );
   }
 
   Widget _backend(BuildContext context, Json backend, _IngressLookups? data) {
@@ -192,35 +306,18 @@ class _IngressView extends StatelessWidget {
       final group = '${res['apiGroup'] ?? ''}';
       return ResourceLink(ObjectRef(group: group, kind: '${res['kind']}', name: '${res['name']}', namespace: ctx.namespace));
     }
-    final name = '${svc['name']}';
-    final port = asMap(svc['port']);
-    final known = data != null && data.services.containsKey(name);
-    final svcObj = data?.services[name];
-    final missing = known && svcObj == null;
-    String portText;
-    var portBad = false;
-    if (port['number'] != null) {
-      portText = '${port['number']}';
-      if (svcObj != null && !asMapList(dig(svcObj, ['spec', 'ports'])).any((p) => p['port'] == port['number'])) portBad = true;
-    } else if (port['name'] != null) {
-      final match = svcObj == null ? null : asMapList(dig(svcObj, ['spec', 'ports'])).where((p) => p['name'] == port['name']).firstOrNull;
-      portText = match != null ? '${port['name']} (${match['port']})' : '${port['name']}';
-      if (svcObj != null && match == null) portBad = true;
-    } else {
-      portText = '?';
-    }
+    final s = _resolveBackend(backend, data);
     final err = severityColor(context, Severity.error);
+    final flag = theme.textTheme.bodySmall?.copyWith(color: err, fontWeight: FontWeight.w600);
     return Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, runSpacing: 2, children: [
-      ResourceLink(ObjectRef(kind: 'Service', name: name, namespace: ctx.namespace), label: name),
-      Text(':$portText', style: monoStyle(context, size: 11.5, color: portBad ? err : theme.hintColor)),
-      if (missing) const StatusBadge('missing', dense: true, severity: Severity.error),
-      if (portBad) const StatusBadge('no such port', dense: true, severity: Severity.error),
+      ResourceLink(ObjectRef(kind: 'Service', name: s.service!, namespace: ctx.namespace), label: s.service),
+      Text(':${s.portText}', style: monoStyle(context, size: 11.5, color: s.portBad ? err : theme.hintColor)),
+      if (s.missing) Text('missing', style: flag),
+      if (s.portBad) Text('no such port', style: flag),
     ]);
   }
 
-  Widget _rules(BuildContext context, _IngressLookups? data, Object? error) {
-    final theme = Theme.of(context);
-    final paths = flattenIngressRules(ctx.spec);
+  Widget _rules(BuildContext context, _IngressLookups? data, List<IngressPath> paths) {
     if (paths.isEmpty) {
       return asMap(ctx.spec['defaultBackend']).isEmpty
           ? const InlineMessage('No rules and no default backend: this Ingress routes nothing.', isError: true)
@@ -232,39 +329,25 @@ class _IngressView extends StatelessWidget {
       byHost.putIfAbsent(p.host, () => []).add(p);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (error != null) Padding(padding: const EdgeInsets.only(bottom: 6), child: InlineMessage('Lookup failed: $error', isError: true)),
       for (final e in byHost.entries) ...[
-        Padding(
-          padding: const EdgeInsets.only(top: 4, bottom: 2),
-          child: Row(children: [
-            Icon(e.key != null && _tlsCovers(tlsHosts, e.key!) ? Icons.lock : Icons.public, size: 14, color: theme.colorScheme.primary),
-            const SizedBox(width: 6),
-            Flexible(child: CopyText(e.key ?? '* (any host)', copyValue: e.key ?? '*')),
-          ]),
-        ),
-        NetTable(
-          headers: const ['Path', 'Type', 'Backend', ''],
-          flex: const [1.2, null, 1.6, null],
-          rows: [
-            for (final p in e.value)
-              [
-                Mono(p.path),
-                Muted(p.pathType),
-                _backend(context, p.backend, data),
-                IconButton(
-                  iconSize: 13,
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 22, height: 22),
-          style: const ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                  tooltip: 'Copy ${p.url(tlsHosts)}',
-                  icon: const Icon(Icons.link),
-                  onPressed: () => copyToClipboard(context, p.url(tlsHosts)),
-                ),
-              ],
-          ],
-        ),
-        const SizedBox(height: 4),
+        _HostLabel(e.key, tls: e.key != null && _tlsCovers(tlsHosts, e.key!)),
+        for (final p in [...e.value]..sort((a, b) => (_resolveBackend(b.backend, data).broken ? 1 : 0).compareTo(_resolveBackend(a.backend, data).broken ? 1 : 0)))
+          () {
+            final s = _resolveBackend(p.backend, data);
+            return CompactRow(
+              key: ValueKey('ing-rule-${p.host}${p.path}'),
+              severity: s.broken ? Severity.error : (data == null ? Severity.neutral : Severity.ok),
+              title: Text.rich(TextSpan(children: [
+                TextSpan(text: p.path, style: monoStyle(context, size: 12)),
+                TextSpan(text: '  ${p.pathType}', style: TextStyle(color: Theme.of(context).hintColor, fontSize: 11)),
+              ])),
+              subtitle: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('→ '),
+                Flexible(child: _backend(context, p.backend, data)),
+              ]),
+              actions: [RowAction(icon: Icons.link, tooltip: 'Copy ${p.url(tlsHosts)}', onTap: () => copyToClipboard(context, p.url(tlsHosts)))],
+            );
+          }(),
       ],
     ]);
   }
@@ -273,28 +356,25 @@ class _IngressView extends StatelessWidget {
     final ruleHosts = {for (final p in flattenIngressRules(ctx.spec)) if (p.host != null) p.host!};
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final t in asMapList(ctx.spec['tls']))
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(
-              child: Wrap(spacing: 4, runSpacing: 4, children: [
-                for (final h in (t['hosts'] as List? ?? const ['(all hosts)']))
-                  Chipish(text: '$h', copyValue: '$h', color: ruleHosts.isEmpty || ruleHosts.contains('$h') || '$h'.startsWith('*') ? null : severityColor(context, Severity.warn)),
-              ]),
-            ),
-            const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Icon(Icons.arrow_forward, size: 13)),
-            Expanded(child: _secret(context, t['secretName'] as String?, data)),
-          ]),
-        ),
-    ]);
-  }
-
-  Widget _secret(BuildContext context, String? name, _IngressLookups? data) {
-    if (name == null) return const Muted('no secret (controller default cert)');
-    final exists = data?.secrets[name];
-    return Wrap(spacing: 6, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      ResourceLink(ObjectRef(kind: 'Secret', name: name, namespace: ctx.namespace), label: name),
-      if (data != null && exists == false) const StatusBadge('Secret not found', dense: true, severity: Severity.error),
+        () {
+          final name = t['secretName'] as String?;
+          final missing = name != null && data?.secrets[name] == false;
+          final hosts = [for (final h in (t['hosts'] as List? ?? const ['(all hosts)'])) '$h'];
+          final unused = [for (final h in hosts) if (ruleHosts.isNotEmpty && !ruleHosts.contains(h) && !h.startsWith('*') && !h.startsWith('(')) h];
+          return CompactRow(
+            severity: missing ? Severity.error : (unused.isNotEmpty ? Severity.warn : Severity.ok),
+            title: name == null
+                ? const Muted('no secret (controller default cert)')
+                : Row(children: [
+                    Flexible(child: ResourceLink(ObjectRef(kind: 'Secret', name: name, namespace: ctx.namespace), label: name, singleLine: true)),
+                    if (missing) ...[
+                      const SizedBox(width: 8),
+                      Text('Secret not found', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.error), fontWeight: FontWeight.w600)),
+                    ],
+                  ]),
+            subtitle: dotLine([hosts.join(', '), if (unused.isNotEmpty) 'not used by any rule: ${unused.join(', ')}']),
+          );
+        }(),
     ]);
   }
 
@@ -307,13 +387,37 @@ class _IngressView extends StatelessWidget {
           child: Text.rich(
             TextSpan(children: [
               TextSpan(text: e.key.substring(0, e.key.lastIndexOf('/') + 1), style: monoStyle(context, size: 11, color: theme.hintColor)),
-              TextSpan(text: e.key.substring(e.key.lastIndexOf('/') + 1), style: monoStyle(context, size: 11, color: theme.colorScheme.primary)),
+              TextSpan(text: e.key.substring(e.key.lastIndexOf('/') + 1), style: monoStyle(context, size: 11, color: theme.colorScheme.onSurface).copyWith(fontWeight: FontWeight.w600)),
               TextSpan(text: ': ', style: monoStyle(context, size: 11, color: theme.hintColor)),
               TextSpan(text: e.value.length > 200 ? '${e.value.substring(0, 200)}…' : e.value, style: monoStyle(context, size: 11)),
             ]),
           ),
         ),
     ]);
+  }
+}
+
+/// A host heading over its paths: a lock when TLS covers it, copy on hover.
+class _HostLabel extends StatelessWidget {
+  final String? host;
+  final bool tls;
+  const _HostLabel(this.host, {required this.tls});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final text = host ?? '* (any host)';
+    return Hoverable(
+      builder: (h) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 0, 2),
+        child: Row(children: [
+          Tooltip(message: tls ? 'Covered by TLS' : 'Plain HTTP', child: Icon(tls ? Icons.lock_outline : Icons.public, size: 12, color: theme.hintColor)),
+          const SizedBox(width: 6),
+          Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: theme.hintColor))),
+          Opacity(opacity: h ? 1 : 0, child: copyAction(context, host ?? '*')),
+        ]),
+      ),
+    );
   }
 }
 
