@@ -10,6 +10,7 @@ import 'pod_logic.dart';
 import '../../ui/inspector/inspector.dart';
 import '../../util/text.dart';
 import '../../ui/widgets/atoms.dart';
+import '../../ui/widgets/editorial.dart' show HairlineBar;
 
 /// The token volume Kubernetes adds to every pod (`kube-api-access-*`).
 bool isDefaultTokenMount(Json m) => '${m['name']}'.startsWith('kube-api-access-') && '${m['mountPath']}' == '/var/run/secrets/kubernetes.io/serviceaccount';
@@ -246,15 +247,9 @@ class _MiniBar extends StatelessWidget {
                 : theme.colorScheme.onSurface.withValues(alpha: 0.45);
     // A sliver for tiny non-zero usage, so the bar never reads as broken.
     final width = f == null ? 0.0 : f.clamp(0.04, 1.0);
-    return Container(
+    return SizedBox(
       width: 28,
-      height: 3,
-      decoration: BoxDecoration(color: theme.colorScheme.onSurface.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(2)),
-      alignment: Alignment.centerLeft,
-      child: FractionallySizedBox(
-        widthFactor: width,
-        child: Container(decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
-      ),
+      child: HairlineBar(frac: width, color: color, height: 3, radius: 2, track: theme.colorScheme.onSurface.withValues(alpha: 0.1)),
     );
   }
 }

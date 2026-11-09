@@ -10,6 +10,7 @@ import '../prometheus/metric_history_chart.dart' show promQuote;
 import '../prometheus/prom_api.dart';
 import '../state/poller.dart';
 import '../ui/theme.dart';
+import '../ui/widgets/editorial.dart' show HairlineBar;
 import '../util/k8s.dart';
 import 'cache.dart';
 import 'quantity.dart';
@@ -39,12 +40,7 @@ class PvcUsage {
 }
 
 /// PVC thresholds: amber from 80% full, red from 90%.
-Severity pvcSeverity(double? frac) {
-  if (frac == null) return Severity.neutral;
-  if (frac >= 0.9) return Severity.error;
-  if (frac >= 0.8) return Severity.warn;
-  return Severity.neutral;
-}
+Severity pvcSeverity(double? frac) => thresholdSeverity(frac, warn: 0.8);
 
 String _sel(String? namespace, String? claim) =>
     [if (namespace != null) 'namespace="${promQuote(namespace)}"', if (claim != null) 'persistentvolumeclaim="${promQuote(claim)}"'].join(',');
@@ -161,10 +157,10 @@ class PvcUsageUnavailable extends PvcUsageState {
 }
 
 /// A slim used/capacity bar: neutral below 80%, amber from 80%, red from 90%.
-class UsageBar extends StatelessWidget {
+class PvcBar extends StatelessWidget {
   final double? frac;
   final double height;
-  const UsageBar(this.frac, {super.key, this.height = 8});
+  const PvcBar(this.frac, {super.key, this.height = 8});
 
   @override
   Widget build(BuildContext context) {
@@ -172,16 +168,12 @@ class UsageBar extends StatelessWidget {
     final sev = pvcSeverity(frac);
     final fill = sev == Severity.neutral ? theme.colorScheme.onSurface.withValues(alpha: 0.42) : severityColor(context, sev);
     final f = (frac ?? 0).clamp(0.0, 1.0);
-    return Container(
+    return HairlineBar(
+      frac: f == 0 ? 0 : f.clamp(0.01, 1.0),
+      color: fill,
       height: height,
-      decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(height / 2.5)),
-      alignment: Alignment.centerLeft,
-      child: FractionallySizedBox(
-        widthFactor: f == 0 ? 0 : f.clamp(0.01, 1.0),
-        child: Container(
-          decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(height / 2.5)),
-        ),
-      ),
+      radius: height / 2.5,
+      track: theme.colorScheme.surfaceContainerHighest,
     );
   }
 }
@@ -235,7 +227,7 @@ class PvcUsageView extends StatelessWidget {
         final inodeSev = pvcSeverity(u.inodeFrac);
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            Expanded(child: UsageBar(frac)),
+            Expanded(child: PvcBar(frac)),
             const SizedBox(width: 10),
             Text('${u.used == null ? '—' : formatBytes(u.used!)} of ${u.capacity == null ? '—' : formatBytes(u.capacity!)}', style: mono),
             SizedBox(

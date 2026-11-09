@@ -130,18 +130,24 @@ class HairlineBar extends StatelessWidget {
   final double? under;
   final Color color;
   final double height;
-  const HairlineBar({super.key, required this.frac, required this.color, this.under, this.height = 3});
+
+  /// Track colour (default a faint tint of the text colour) and corner
+  /// radius (default [height]).
+  final Color? track;
+  final double? radius;
+  const HairlineBar({super.key, required this.frac, required this.color, this.under, this.height = 3, this.track, this.radius});
 
   @override
   Widget build(BuildContext context) {
-    final track = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
+    final track = this.track ?? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
+    final radius = this.radius ?? height;
     Widget fill(double f, Color c) => FractionallySizedBox(
           alignment: Alignment.centerLeft,
           widthFactor: f.clamp(0.0, 1.0),
-          child: DecoratedBox(decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(height))),
+          child: DecoratedBox(decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(radius))),
         );
     return ClipRRect(
-      borderRadius: BorderRadius.circular(height),
+      borderRadius: BorderRadius.circular(radius),
       child: SizedBox(
         height: height,
         child: Stack(fit: StackFit.expand, children: [

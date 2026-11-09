@@ -10,10 +10,12 @@ import '../util/k8s.dart';
 const warnAt = 0.70;
 const critAt = 0.90;
 
-Severity thresholdSeverity(double? frac) {
+/// Severity of a usage [frac]: [crit] and above critical, [warn] and above
+/// warning, neutral below (and for null).
+Severity thresholdSeverity(double? frac, {double warn = warnAt, double crit = critAt}) {
   if (frac == null) return Severity.neutral;
-  if (frac >= critAt) return Severity.error;
-  if (frac >= warnAt) return Severity.warn;
+  if (frac >= crit) return Severity.error;
+  if (frac >= warn) return Severity.warn;
   return Severity.neutral;
 }
 

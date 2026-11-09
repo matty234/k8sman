@@ -13,7 +13,9 @@ import '../actions/bulk.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../app/window_chrome.dart';
+import '../metrics/quantity.dart' show thresholdSeverity;
 import '../metrics/quantity_cell.dart';
+import 'widgets/editorial.dart' show HairlineBar;
 import '../state/app_state.dart';
 import '../state/cluster_error.dart';
 import '../state/table_controller.dart';
@@ -1482,20 +1484,12 @@ Widget percentCell(BuildContext context, dynamic v, TextStyle? base) {
   if (p == null) {
     return Align(alignment: Alignment.centerRight, child: Text('—', style: base?.copyWith(color: AppColors.of(context).faint)));
   }
-  final sev = p >= 90 ? Severity.error : (p >= 80 ? Severity.warn : Severity.ok);
-  final color = sev == Severity.ok ? theme.colorScheme.primary : severityColor(context, sev);
+  final sev = thresholdSeverity(p / 100, warn: 0.8);
+  final color = sev == Severity.neutral ? theme.colorScheme.primary : severityColor(context, sev);
   final label = p >= 10 || p == 0 ? '${p.round()}%' : '${p.toStringAsFixed(1)}%';
   return Row(children: [
     Expanded(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(2),
-        child: LinearProgressIndicator(
-          value: (p / 100).clamp(0.0, 1.0),
-          minHeight: 4,
-          color: color,
-          backgroundColor: AppColors.of(context).separator,
-        ),
-      ),
+      child: HairlineBar(frac: p / 100, color: color, height: 4, radius: 2, track: AppColors.of(context).separator),
     ),
     SizedBox(
       width: 40,
@@ -1503,7 +1497,7 @@ Widget percentCell(BuildContext context, dynamic v, TextStyle? base) {
         label,
         textAlign: TextAlign.right,
         style: base?.copyWith(
-          color: sev == Severity.ok ? null : color,
+          color: sev == Severity.neutral ? null : color,
           fontFeatures: const [FontFeature.tabularFigures()],
         ),
       ),

@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
 import '../../ui/theme.dart';
+import '../../metrics/quantity.dart' show thresholdSeverity;
 import '../../ui/widgets/common.dart';
+import '../../ui/widgets/editorial.dart' show HairlineBar;
 import '../../util/k8s.dart';
 import 'logic.dart';
 import '../../ui/inspector/inspector.dart' show Callout;
-
-/// Severity for a utilisation fraction.
-Severity usageSeverity(double frac) => frac >= 0.9 ? Severity.error : (frac >= 0.7 ? Severity.warn : Severity.ok);
 
 /// `label  [=====-----]  used / total  42%`.
 class UsageBar extends StatelessWidget {
@@ -34,7 +33,8 @@ class UsageBar extends StatelessWidget {
     final theme = Theme.of(context);
     final t = total;
     final frac = (t == null || t <= 0) ? (used > 0 ? 1.0 : 0.0) : used / t;
-    final c = (t == null || t <= 0) ? theme.hintColor : severityColor(context, usageSeverity(frac));
+    final sev = thresholdSeverity(frac);
+    final c = (t == null || t <= 0) ? theme.hintColor : severityColor(context, sev == Severity.neutral ? Severity.ok : sev);
     final pct = (t == null || t <= 0) ? '' : '${(frac * 100).toStringAsFixed(0)}%';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
@@ -44,15 +44,7 @@ class UsageBar extends StatelessWidget {
           child: Text(label, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
         ),
         Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: frac.clamp(0.0, 1.0),
-              minHeight: 8,
-              color: c,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
-            ),
-          ),
+          child: HairlineBar(frac: frac, color: c, height: 8, radius: 3, track: theme.colorScheme.surfaceContainerHighest),
         ),
         const SizedBox(width: 8),
         SizedBox(

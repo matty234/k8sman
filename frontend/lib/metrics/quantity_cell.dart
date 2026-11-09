@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../ui/theme.dart';
+import '../ui/widgets/editorial.dart' show HairlineBar;
 import '../util/k8s.dart';
 import 'quantity.dart';
 import 'widgets.dart';
@@ -105,24 +106,5 @@ class UsageBar extends StatelessWidget {
   const UsageBar({super.key, required this.frac, required this.color});
 
   @override
-  Widget build(BuildContext context) {
-    const h = 3.0;
-    final track = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
-    return Center(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(h),
-        child: SizedBox(
-          height: h,
-          child: Stack(fit: StackFit.expand, children: [
-            ColoredBox(color: track),
-            FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: frac.clamp(0.0, 1.0),
-              child: ColoredBox(color: color),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Center(child: HairlineBar(frac: frac, color: color));
 }
