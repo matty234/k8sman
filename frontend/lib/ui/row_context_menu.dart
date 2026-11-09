@@ -85,4 +85,5 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
   if (chosen != null && context.mounted) chosen();
 }
 
-String _short(String v) => v.length > 28 ? '${v.substring(0, 27)}…' : v;
+/// Long values keep both ends (a pod's hash suffix is what tells it apart).
+String _short(String v) => v.length > 24 ? '${v.substring(0, 12)}…${v.substring(v.length - 10)}' : v;

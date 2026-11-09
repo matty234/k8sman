@@ -26,7 +26,7 @@ PopupMenuItem<T> menuItem<T>(T value, IconData icon, String label, {String? shor
         return Row(children: [
           Icon(icon, size: 15, color: color ?? theme.hintColor),
           const SizedBox(width: 10),
-          Expanded(child: Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: color))),
+          Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: theme.textTheme.bodyMedium?.copyWith(color: color))),
           if (shortcut != null) Text(shortcut, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
         ]);
       }),
