@@ -9,7 +9,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
@@ -39,36 +38,26 @@ const (
 // that they fill the watch cache for the next poll. Pods are the exception:
 // nothing renders without them, so they are waited for up to the limit.
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
-	scope, err := s.parseScope(r.URL.Query())
-	if err != nil {
-		writeErr(w, httpx.BadRequest("%v", err))
-		return
-	}
-	wait, err := parseSoftWait(r, overviewSoftWait, overviewMaxWait)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	ns := scope.String() // "" = all, "a" or a set "a,b" (see listScope)
-
-	c := s.mgr.Clients()
-	l := s.overviewRuns.get(fmt.Sprintf("%p|%s", c, ns), func() *OverviewLists { return s.startOverview(c, ns) })
-	res, errs, ok := l.respond(r.Context(), wait)
+	l, _, ns, ok := softRequest(s, w, r, overviewSoftWait, overviewMaxWait, &s.overviewRuns,
+		func(c *cluster.Clients, ns string) string { return fmt.Sprintf("%p|%s", c, ns) },
+		s.startOverview)
 	if !ok {
 		return
 	}
+	res, errs := l.analyze()
 	if err, bad := errs["pods"]; bad {
 		writeErr(w, err)
 		return
 	}
 	res.Namespace = ns
-	if len(errs) > 0 {
-		res.Errors = map[string]string{}
-		for k, e := range errs {
-			res.Errors[k] = e.Error()
-		}
-	}
+	res.Errors = errStrings(errs)
 	httpx.WriteJSON(w, 200, res)
+}
+
+// analyze analyses what has completed so far.
+func (l *OverviewLists) analyze() (*overview.Result, map[string]error) {
+	in, errs := l.snapshot()
+	return overview.Analyze(in), errs
 }
 
 // respond waits for every source up to wait, then (always) for pods, and
@@ -77,8 +66,8 @@ func (l *OverviewLists) respond(reqCtx context.Context, wait time.Duration) (*ov
 	if !l.await(reqCtx, wait) {
 		return nil, nil, false
 	}
-	in, errs := l.snapshot()
-	return overview.Analyze(in), errs, true
+	res, errs := l.analyze()
+	return res, errs, true
 }
 
 // startOverview starts listing the core types, then whatever the enabled
@@ -92,16 +81,16 @@ func (s *Server) startOverview(c *cluster.Clients, ns string) *OverviewLists {
 	// LIST per type, later polls (every 10s while the page is open) none.
 	kc := kcache.For(c)
 
-	listInto(l, kc, "pods", gvrPods, ns, "", func(in *overview.Input, v []corev1.Pod) { in.Pods = v })
-	listInto(l, kc, "deployments", gvrDeployments, ns, "", func(in *overview.Input, v []appsv1.Deployment) { in.Deployments = v })
-	listInto(l, kc, "statefulsets", gvrStatefulSets, ns, "", func(in *overview.Input, v []appsv1.StatefulSet) { in.StatefulSets = v })
-	listInto(l, kc, "daemonsets", gvrDaemonSets, ns, "", func(in *overview.Input, v []appsv1.DaemonSet) { in.DaemonSets = v })
-	listInto(l, kc, "replicasets", gvrReplicaSets, ns, "", func(in *overview.Input, v []appsv1.ReplicaSet) { in.ReplicaSets = v })
-	listInto(l, kc, "jobs", gvrJobs, ns, "", func(in *overview.Input, v []batchv1.Job) { in.Jobs = v })
-	listInto(l, kc, "cronjobs", gvrCronJobs, ns, "", func(in *overview.Input, v []batchv1.CronJob) { in.CronJobs = v })
-	listInto(l, kc, "nodes", gvrNodes, "", "", func(in *overview.Input, v []corev1.Node) { in.Nodes = v })
-	listInto(l, kc, "persistentvolumeclaims", gvrPVCs, ns, "", func(in *overview.Input, v []corev1.PersistentVolumeClaim) { in.PVCs = v })
-	listInto(l, kc, "events", gvrEvents, ns, "type=Warning", func(in *overview.Input, v []corev1.Event) { in.Events = v })
+	listInto(l.sourceRun, kc, "pods", gvrPods, ns, "", func(in *overview.Input, v []corev1.Pod) { in.Pods = v })
+	listInto(l.sourceRun, kc, "deployments", gvrDeployments, ns, "", func(in *overview.Input, v []appsv1.Deployment) { in.Deployments = v })
+	listInto(l.sourceRun, kc, "statefulsets", gvrStatefulSets, ns, "", func(in *overview.Input, v []appsv1.StatefulSet) { in.StatefulSets = v })
+	listInto(l.sourceRun, kc, "daemonsets", gvrDaemonSets, ns, "", func(in *overview.Input, v []appsv1.DaemonSet) { in.DaemonSets = v })
+	listInto(l.sourceRun, kc, "replicasets", gvrReplicaSets, ns, "", func(in *overview.Input, v []appsv1.ReplicaSet) { in.ReplicaSets = v })
+	listInto(l.sourceRun, kc, "jobs", gvrJobs, ns, "", func(in *overview.Input, v []batchv1.Job) { in.Jobs = v })
+	listInto(l.sourceRun, kc, "cronjobs", gvrCronJobs, ns, "", func(in *overview.Input, v []batchv1.CronJob) { in.CronJobs = v })
+	listInto(l.sourceRun, kc, "nodes", gvrNodes, "", "", func(in *overview.Input, v []corev1.Node) { in.Nodes = v })
+	listInto(l.sourceRun, kc, "persistentvolumeclaims", gvrPVCs, ns, "", func(in *overview.Input, v []corev1.PersistentVolumeClaim) { in.PVCs = v })
+	listInto(l.sourceRun, kc, "events", gvrEvents, ns, "type=Warning", func(in *overview.Input, v []corev1.Event) { in.Events = v })
 	for _, m := range s.enabledModules() {
 		if src, ok := m.(OverviewSource); ok {
 			src.OverviewInputs(l)
@@ -119,14 +108,3 @@ const overviewReuse = time.Second
 // overviewRuns shares the overview run in flight (or just finished) per
 // context and namespace scope.
 type overviewRuns = runRegistry[*OverviewLists]
-
-// listInto lists one core type and stores it with set, under the lock.
-func listInto[T any](l *OverviewLists, kc *kcache.Cache, name string, gvr schema.GroupVersionResource, ns, fieldSelector string, set func(in *overview.Input, v []T)) {
-	l.Go(name, func() (func(*overview.Input), error) {
-		items, err := listTyped[T](l.Ctx, kc, gvr, ns, fieldSelector)
-		if err != nil {
-			return nil, err
-		}
-		return func(in *overview.Input) { set(in, items) }, nil
-	})
-}

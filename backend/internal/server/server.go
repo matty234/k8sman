@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -327,43 +326,15 @@ func (s *Server) snapshotSet(ctx context.Context, c *cluster.Clients, rq resourc
 	if snap, ok := kcache.For(c).CachedSet(rq.cacheKey(), rq.Namespaces); ok {
 		return listing{items: snap.Items, rv: snap.ResourceVersion, memo: snap.Memo}, nil
 	}
-	parts := make([]listing, len(rq.Namespaces))
-	errs := make([]error, len(rq.Namespaces))
-	var wg sync.WaitGroup
-	for i, ns := range rq.Namespaces {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			parts[i], errs[i] = s.snapshot(ctx, c, rq.inNamespace(ns))
-		}()
+	var partial []PartialError
+	items, memo, err := fanOutNamespaces(rq.Namespaces, func(ns string) (nsPart, error) {
+		l, err := s.snapshot(ctx, c, rq.inNamespace(ns))
+		return nsPart{items: l.items, memo: l.memo}, err
+	}, func(ns string, err error) { partial = append(partial, partialError(ns, err)) })
+	if err != nil {
+		return listing{}, err
 	}
-	wg.Wait()
-	var out listing
-	memos := map[string]memoFunc{}
-	failed := 0
-	for i, ns := range rq.Namespaces {
-		if errs[i] != nil {
-			failed++
-			out.partial = append(out.partial, partialError(ns, errs[i]))
-			continue
-		}
-		out.items = append(out.items, parts[i].items...)
-		if parts[i].memo != nil {
-			memos[ns] = parts[i].memo
-		}
-	}
-	if failed == len(rq.Namespaces) {
-		return listing{}, errs[0]
-	}
-	if len(memos) > 0 {
-		out.memo = func(u *unstructured.Unstructured, tag any, extra string, compute func() any) any {
-			if m := memos[u.GetNamespace()]; m != nil {
-				return m(u, tag, extra, compute)
-			}
-			return compute()
-		}
-	}
-	return out, nil
+	return listing{items: items, memo: memo, partial: partial}, nil
 }
 
 func (rq resourceQuery) listOptions() metav1.ListOptions {

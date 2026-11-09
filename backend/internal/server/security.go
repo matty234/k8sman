@@ -62,27 +62,18 @@ type securityLists = sourceRun[security.Input]
 // analysis time.
 func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
 	q := r.URL.Query()
-	scope, err := s.parseScope(q)
-	if err != nil {
-		writeErr(w, httpx.BadRequest("%v", err))
-		return
-	}
-	wait, err := parseSoftWait(r, securitySoftWait, securityMaxWait)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	ns := scope.String() // "" = all, "a" or a set "a,b" (see listScope)
-	c := s.mgr.Clients()
-
 	// With an allowlist, RBAC is read in the allowed namespaces too: a
 	// tenant may not list Roles cluster-wide.
-	rbacNS := ""
-	if len(s.allowedNamespaces()) > 0 {
-		rbacNS = ns
+	rbacOf := func(ns string) string {
+		if len(s.allowedNamespaces()) > 0 {
+			return ns
+		}
+		return ""
 	}
-	l := s.securityRuns.get(fmt.Sprintf("%p|%s|%s", c, ns, rbacNS), func() *securityLists { return startSecurity(c, ns, rbacNS) })
-	if !l.await(r.Context(), wait) {
+	l, c, ns, ok := softRequest(s, w, r, securitySoftWait, securityMaxWait, &s.securityRuns,
+		func(c *cluster.Clients, ns string) string { return fmt.Sprintf("%p|%s|%s", c, ns, rbacOf(ns)) },
+		func(c *cluster.Clients, ns string) *securityLists { return startSecurity(c, ns, rbacOf(ns)) })
+	if !ok {
 		return
 	}
 	in, pending, errs := l.snap()
@@ -110,12 +101,7 @@ func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *secu
 	// Ignore rules are applied here, to this request's own result, not in
 	// the shared run: editing them takes effect on the next fetch.
 	security.ApplyIgnores(res, s.settings.SecurityIgnores(c.Context))
-	if len(errs) > 0 {
-		res.Errors = map[string]string{}
-		for k, e := range errs {
-			res.Errors[k] = e.Error()
-		}
-	}
+	res.Errors = errStrings(errs)
 	httpx.WriteJSON(w, 200, res)
 }
 
@@ -141,17 +127,6 @@ func gatewayVersion(c *cluster.Clients) (string, map[string]bool) {
 	return "", nil
 }
 
-// securityList lists one core type into the input with set.
-func securityList[T any](l *securityLists, kc *kcache.Cache, name string, gvr schema.GroupVersionResource, ns string, set func(in *security.Input, v []T)) {
-	l.Go(name, func() (func(*security.Input), error) {
-		items, err := listTyped[T](l.Ctx, kc, gvr, ns, "")
-		if err != nil {
-			return nil, err
-		}
-		return func(in *security.Input) { set(in, items) }, nil
-	})
-}
-
 // startSecurity starts every list the analysis needs, under its own context
 // (the hard limit), not the request's, so the lists survive a request that
 // answered early.
@@ -161,7 +136,7 @@ func startSecurity(c *cluster.Clients, ns, rbacNS string) *securityLists {
 	// Lists go through the shared watch cache (see listTyped).
 	kc := kcache.For(c)
 
-	securityList(l, kc, "pods", gvrPods, ns, func(in *security.Input, v []corev1.Pod) { in.Pods = v })
+	listInto(l, kc, "pods", gvrPods, ns, "", func(in *security.Input, v []corev1.Pod) { in.Pods = v })
 	l.Go("namespaces", func() (func(*security.Input), error) {
 		var out []corev1.Namespace
 		if ns != "" {
@@ -194,22 +169,22 @@ func startSecurity(c *cluster.Clients, ns, rbacNS string) *securityLists {
 		}
 		return func(in *security.Input) { in.Namespaces = out }, nil
 	})
-	securityList(l, kc, "deployments", gvrDeployments, ns, func(in *security.Input, v []appsv1.Deployment) { in.Deployments = v })
-	securityList(l, kc, "statefulsets", gvrStatefulSets, ns, func(in *security.Input, v []appsv1.StatefulSet) { in.StatefulSets = v })
-	securityList(l, kc, "daemonsets", gvrDaemonSets, ns, func(in *security.Input, v []appsv1.DaemonSet) { in.DaemonSets = v })
-	securityList(l, kc, "replicasets", gvrReplicaSets, ns, func(in *security.Input, v []appsv1.ReplicaSet) { in.ReplicaSets = v })
-	securityList(l, kc, "jobs", gvrJobs, ns, func(in *security.Input, v []batchv1.Job) { in.Jobs = v })
-	securityList(l, kc, "cronjobs", gvrCronJobs, ns, func(in *security.Input, v []batchv1.CronJob) { in.CronJobs = v })
-	securityList(l, kc, "services", gvrServices, ns, func(in *security.Input, v []corev1.Service) { in.Services = v })
-	securityList(l, kc, "serviceaccounts", gvrServiceAccounts, ns, func(in *security.Input, v []corev1.ServiceAccount) { in.ServiceAccounts = v })
-	securityList(l, kc, "ingresses", gvrIngresses, ns, func(in *security.Input, v []networkingv1.Ingress) { in.Ingresses = v })
-	securityList(l, kc, "networkpolicies", gvrNetworkPolicies, ns, func(in *security.Input, v []networkingv1.NetworkPolicy) { in.NetworkPolicies = v })
+	listInto(l, kc, "deployments", gvrDeployments, ns, "", func(in *security.Input, v []appsv1.Deployment) { in.Deployments = v })
+	listInto(l, kc, "statefulsets", gvrStatefulSets, ns, "", func(in *security.Input, v []appsv1.StatefulSet) { in.StatefulSets = v })
+	listInto(l, kc, "daemonsets", gvrDaemonSets, ns, "", func(in *security.Input, v []appsv1.DaemonSet) { in.DaemonSets = v })
+	listInto(l, kc, "replicasets", gvrReplicaSets, ns, "", func(in *security.Input, v []appsv1.ReplicaSet) { in.ReplicaSets = v })
+	listInto(l, kc, "jobs", gvrJobs, ns, "", func(in *security.Input, v []batchv1.Job) { in.Jobs = v })
+	listInto(l, kc, "cronjobs", gvrCronJobs, ns, "", func(in *security.Input, v []batchv1.CronJob) { in.CronJobs = v })
+	listInto(l, kc, "services", gvrServices, ns, "", func(in *security.Input, v []corev1.Service) { in.Services = v })
+	listInto(l, kc, "serviceaccounts", gvrServiceAccounts, ns, "", func(in *security.Input, v []corev1.ServiceAccount) { in.ServiceAccounts = v })
+	listInto(l, kc, "ingresses", gvrIngresses, ns, "", func(in *security.Input, v []networkingv1.Ingress) { in.Ingresses = v })
+	listInto(l, kc, "networkpolicies", gvrNetworkPolicies, ns, "", func(in *security.Input, v []networkingv1.NetworkPolicy) { in.NetworkPolicies = v })
 	// RBAC is listed cluster-wide: whether a role is bound, or a
 	// ClusterRoleBinding names a ServiceAccount in ns, needs every binding.
-	securityList(l, kc, "roles", gvrRoles, rbacNS, func(in *security.Input, v []rbacv1.Role) { in.Roles = v })
-	securityList(l, kc, "rolebindings", gvrRoleBindings, rbacNS, func(in *security.Input, v []rbacv1.RoleBinding) { in.RoleBindings = v })
-	securityList(l, kc, "clusterroles", gvrClusterRoles, "", func(in *security.Input, v []rbacv1.ClusterRole) { in.ClusterRoles = v })
-	securityList(l, kc, "clusterrolebindings", gvrClusterRoleBindings, "", func(in *security.Input, v []rbacv1.ClusterRoleBinding) { in.ClusterRoleBindings = v })
+	listInto(l, kc, "roles", gvrRoles, rbacNS, "", func(in *security.Input, v []rbacv1.Role) { in.Roles = v })
+	listInto(l, kc, "rolebindings", gvrRoleBindings, rbacNS, "", func(in *security.Input, v []rbacv1.RoleBinding) { in.RoleBindings = v })
+	listInto(l, kc, "clusterroles", gvrClusterRoles, "", "", func(in *security.Input, v []rbacv1.ClusterRole) { in.ClusterRoles = v })
+	listInto(l, kc, "clusterrolebindings", gvrClusterRoleBindings, "", "", func(in *security.Input, v []rbacv1.ClusterRoleBinding) { in.ClusterRoleBindings = v })
 
 	dyn := func(name string, gvr schema.GroupVersionResource, namespaced bool, set func(in *security.Input, v []unstructured.Unstructured)) {
 		l.Go(name, func() (func(*security.Input), error) {

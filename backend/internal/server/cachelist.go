@@ -93,16 +93,38 @@ func listScope(ctx context.Context, kc *kcache.Cache, key kcache.Key, scope stri
 	if snap, ok := kc.CachedSet(key, set); ok {
 		return snap.Items, snap.Memo, nil
 	}
-	snaps := make([]kcache.Snapshot, len(set))
+	items, memo, err := fanOutNamespaces(set, func(ns string) (nsPart, error) {
+		k := key
+		k.Namespace = ns
+		snap, err := kc.List(ctx, k)
+		return nsPart{items: snap.Items, memo: snap.Memo}, err
+	}, func(ns string, err error) { kube.ReportSkipped(ctx, ns, err) })
+	if err != nil {
+		return nil, nil, err
+	}
+	return items, memo, nil
+}
+
+// nsPart is one namespace's share of a namespace-set listing.
+type nsPart struct {
+	items []*unstructured.Unstructured
+	memo  memoFunc // nil when the part has none
+}
+
+// fanOutNamespaces fetches each namespace of set in parallel and merges the
+// results in set order. A namespace that fails is reported to skipped and
+// left out; the error is returned only when every one failed. The merged
+// memo routes each object to its namespace's memo (nil when no part had
+// one).
+func fanOutNamespaces(set kube.Namespaces, fetch func(ns string) (nsPart, error), skipped func(ns string, err error)) ([]*unstructured.Unstructured, memoFunc, error) {
+	parts := make([]nsPart, len(set))
 	errs := make([]error, len(set))
 	var wg sync.WaitGroup
 	for i, ns := range set {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			k := key
-			k.Namespace = ns
-			snaps[i], errs[i] = kc.List(ctx, k)
+			parts[i], errs[i] = fetch(ns)
 		}()
 	}
 	wg.Wait()
@@ -111,15 +133,20 @@ func listScope(ctx context.Context, kc *kcache.Cache, key kcache.Key, scope stri
 	ok := false
 	for i, ns := range set {
 		if errs[i] != nil {
-			kube.ReportSkipped(ctx, ns, errs[i])
+			skipped(ns, errs[i])
 			continue
 		}
 		ok = true
-		items = append(items, snaps[i].Items...)
-		memos[ns] = snaps[i].Memo
+		items = append(items, parts[i].items...)
+		if parts[i].memo != nil {
+			memos[ns] = parts[i].memo
+		}
 	}
 	if !ok {
 		return nil, nil, errs[0]
+	}
+	if len(memos) == 0 {
+		return items, nil, nil
 	}
 	return items, func(u *unstructured.Unstructured, tag any, extra string, compute func() any) any {
 		if m := memos[u.GetNamespace()]; m != nil {

@@ -8,7 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kcache"
 )
 
 // Progressive pages (Overview, Security) list many sources for one answer.
@@ -24,6 +28,8 @@ import (
 //   - runRegistry[R]: one run per key (context + scope) in flight or just
 //     finished; requests attach to it instead of starting the sources again.
 //   - parseSoftWait: the `wait` query parameter.
+//   - softRequest: the shared start of those handlers (scope, wait, run).
+//   - listInto: one typed core list as a source.
 
 // parseSoftWait reads the `wait` query parameter (a duration), defaulting to
 // def and capped at max.
@@ -219,4 +225,58 @@ func (o *runRegistry[R]) get(key string, start func() R) R {
 	e.run = start()
 	close(e.ready)
 	return e.run
+}
+
+// softRunner is a run a request can wait on.
+type softRunner interface {
+	expired() bool
+	await(reqCtx context.Context, soft time.Duration) bool
+}
+
+// softRequest is the start of a progressive handler: it parses the scope and
+// the `wait` parameter (answering 400 itself), attaches to the run for
+// runKey(c, ns) in runs, starting it when there is none, and waits for it up
+// to the soft deadline. ok is false when the response is already written or
+// the request ended. ns is the scope as a string ("" = all, "a" or "a,b").
+func softRequest[R softRunner](s *Server, w http.ResponseWriter, r *http.Request, soft, max time.Duration, runs *runRegistry[R],
+	runKey func(c *cluster.Clients, ns string) string, start func(c *cluster.Clients, ns string) R) (run R, c *cluster.Clients, ns string, ok bool) {
+	scope, err := s.parseScope(r.URL.Query())
+	if err != nil {
+		writeErr(w, httpx.BadRequest("%v", err))
+		return run, nil, "", false
+	}
+	wait, err := parseSoftWait(r, soft, max)
+	if err != nil {
+		writeErr(w, err)
+		return run, nil, "", false
+	}
+	ns = scope.String() // "" = all, "a" or a set "a,b" (see listScope)
+	c = s.mgr.Clients()
+	run = runs.get(runKey(c, ns), func() R { return start(c, ns) })
+	return run, c, ns, run.await(r.Context(), wait)
+}
+
+// errStrings renders the sources' errors for a response's `errors` field
+// (nil when there are none).
+func errStrings(errs map[string]error) map[string]string {
+	if len(errs) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(errs))
+	for k, e := range errs {
+		out[k] = e.Error()
+	}
+	return out
+}
+
+// listInto lists one core type through the watch cache and stores it with
+// set, under the run's lock.
+func listInto[In, T any](l *sourceRun[In], kc *kcache.Cache, name string, gvr schema.GroupVersionResource, ns, fieldSelector string, set func(in *In, v []T)) {
+	l.Go(name, func() (func(*In), error) {
+		items, err := listTyped[T](l.Ctx, kc, gvr, ns, fieldSelector)
+		if err != nil {
+			return nil, err
+		}
+		return func(in *In) { set(in, items) }, nil
+	})
 }
