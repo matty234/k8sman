@@ -120,6 +120,7 @@ type aggregator struct {
 	initial  bool
 	warned   bool
 	reported map[aggKey]bool
+	streams  sync.WaitGroup // the stream goroutines alone (see run)
 	seq      atomic.Uint64
 }
 
@@ -131,8 +132,9 @@ func (a *aggregator) run(ctx context.Context, pods <-chan []*corev1.Pod) {
 	defer cancel()
 	var wg sync.WaitGroup
 	in := make(chan *aggEntry, 1024)
+	finished := make(chan struct{}) // closed once a non-following run has read every stream to EOF
 	wg.Add(1)
-	go func() { defer wg.Done(); a.merge(ctx, in, cancel) }()
+	go func() { defer wg.Done(); a.merge(ctx, in, finished, cancel) }()
 	streams := map[aggKey]*aggStream{}
 	a.initial = true
 	a.reported = map[aggKey]bool{}
@@ -144,6 +146,10 @@ loop:
 		case ps := <-pods:
 			a.reconcile(ctx, &wg, in, streams, ps)
 			a.initial = false
+			if !a.follow { // one pass over the pods as they are, to EOF
+				go func() { a.streams.Wait(); close(finished) }()
+				pods = nil
+			}
 		}
 	}
 	cancel()
@@ -250,8 +256,10 @@ func (a *aggregator) reconcile(ctx context.Context, wg *sync.WaitGroup, in chan<
 			streams[k] = st
 			_ = a.emit(AggEvent{Event: "added", Namespace: p.Namespace, Pod: p.Name, Container: c})
 			wg.Add(1)
+			a.streams.Add(1)
 			go func(k aggKey, st *aggStream, initial bool) {
 				defer wg.Done()
+				defer a.streams.Done()
 				defer st.done.Store(true)
 				a.stream(sctx, in, k, initial)
 			}(k, st, a.initial)
@@ -320,7 +328,7 @@ func splitTimestamp(s string) (string, string) {
 // held for the reorder window, smallest timestamp first, so a slower stream's
 // older lines can still slot in ahead of it. Released entries go out as one
 // array frame per flush interval.
-func (a *aggregator) merge(ctx context.Context, in <-chan *aggEntry, cancel context.CancelFunc) {
+func (a *aggregator) merge(ctx context.Context, in <-chan *aggEntry, finished <-chan struct{}, cancel context.CancelFunc) {
 	var h entryHeap
 	tick := time.NewTicker(aggFlushEvery)
 	defer tick.Stop()
@@ -330,6 +338,19 @@ func (a *aggregator) merge(ctx context.Context, in <-chan *aggEntry, cancel cont
 			return
 		case e := <-in:
 			heap.Push(&h, e)
+		case <-finished: // every stream ended: flush what is held, then end the run
+			for len(in) > 0 {
+				heap.Push(&h, <-in)
+			}
+			var batch []AggLine
+			for h.Len() > 0 {
+				batch = append(batch, heap.Pop(&h).(*aggEntry).AggLine)
+			}
+			if len(batch) > 0 {
+				_ = a.emit(batch)
+			}
+			cancel()
+			return
 		case now := <-tick.C:
 			var batch []AggLine
 			for h.Len() > 0 && now.Sub(h[0].arrived) >= aggReorderWindow {

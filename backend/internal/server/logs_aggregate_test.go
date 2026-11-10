@@ -168,3 +168,37 @@ func TestAggregateQueryRegexAndUnion(t *testing.T) {
 		t.Errorf("containers = %v", got)
 	}
 }
+
+func TestAggregateWithoutFollowEndsAtEOF(t *testing.T) {
+	aggReorderWindow, aggFlushEvery = 60*time.Millisecond, 10*time.Millisecond
+	f := &fakeLogs{open: map[string]*io.PipeWriter{}}
+	var mu sync.Mutex
+	var lines []string
+	a := &aggregator{tail: -1, opener: f, emit: func(v any) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if ls, ok := v.([]AggLine); ok {
+			for _, l := range ls {
+				lines = append(lines, l.Line)
+			}
+		}
+		return nil
+	}}
+	pods := make(chan []*corev1.Pod, 1)
+	pods <- []*corev1.Pod{runningPod("a"), runningPod("b")}
+	done := make(chan struct{})
+	go func() { a.run(context.Background(), pods); close(done) }()
+	waitFor(t, func() bool { f.mu.Lock(); defer f.mu.Unlock(); return f.n == 2 })
+	f.write("a", "2024-01-01T00:00:01Z one")
+	f.write("b", "2024-01-01T00:00:02Z two")
+	f.open["a"].Close()
+	f.open["b"].Close()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("run did not end at EOF")
+	}
+	if !reflect.DeepEqual(lines, []string{"one", "two"}) {
+		t.Errorf("lines = %v", lines)
+	}
+}
