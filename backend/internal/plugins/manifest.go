@@ -611,6 +611,9 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 		if a.Icon != "" && !IconAllowed(a.Icon) {
 			d.errAt(resolve(field(an, "icon")), "unknown icon %q", a.Icon)
 		}
+		if msg := shortcutProblem(a.Shortcut); msg != "" {
+			d.warnAt(resolve(field(an, "shortcut")), "shortcut %q %s; it is ignored", a.Shortcut, msg)
+		}
 		if (a.Shell == nil) == (a.Patch == nil) {
 			d.errAt(an, "action %q needs exactly one of shell and patch", a.ID)
 			continue
@@ -640,6 +643,38 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 			d.warnAt(resolve(field(an, "confirm")), "plugin shell actions are always confirmed in this version")
 		}
 	}
+}
+
+// builtinKeys are the table's single-key bindings (k9s style), which win
+// over a plugin action's shortcut.
+var builtinKeys = []string{"J", "K", "G", "/", "D", "Y", "E", "L", "S", "shift+G", "shift+/", "shift+F"}
+
+// shortcutProblem says why shortcut s can't be bound ("" = it can): the
+// table binds one letter or digit, with or without Shift, on the selected
+// row.
+func shortcutProblem(s string) string {
+	if s == "" {
+		return ""
+	}
+	parts := strings.Split(s, "+")
+	key := parts[len(parts)-1]
+	mods := parts[:len(parts)-1]
+	if len(key) != 1 || !isWordChar(key[0]) || key[0] == '_' {
+		return "must be one letter or digit, optionally with shift+ (e.g. shift+R)"
+	}
+	for _, m := range mods {
+		if !strings.EqualFold(m, "shift") {
+			return "uses " + m + ": only plain and shift+ shortcuts are bound in this version"
+		}
+	}
+	norm := strings.ToUpper(key)
+	if len(mods) > 0 {
+		norm = "shift+" + norm
+	}
+	if slices.Contains(builtinKeys, norm) {
+		return "is a built-in key of the table"
+	}
+	return ""
 }
 
 // validatePatch checks a patch action of kind key.
