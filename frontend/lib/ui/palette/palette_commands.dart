@@ -80,7 +80,7 @@ CommandResults rankCommand(
   if (cmd == 'settings' || cmd == 'preferences' || cmd == 'prefs') {
     final named = SettingsSection.parse(arg);
     final items = [
-      for (final s in SettingsSection.values)
+      for (final s in settingsSections(app))
         PaletteItem(
           group: PaletteGroup.pages,
           title: 'Settings: ${s.title}',
@@ -90,8 +90,23 @@ CommandResults rankCommand(
           run: () => showSettings(app, section: s),
         ),
     ];
-    final first = named == null ? null : items[named.index];
+    final first = named == null ? null : items.where((i) => i.title == 'Settings: ${named.title}').firstOrNull;
     return CommandResults([PaletteSection(PaletteGroup.pages, first != null ? [first, ...items.where((i) => i != first)] : _filter(arg, items))], arg);
+  }
+  // Add-ons live in Settings now: `:addons` opens that section.
+  if ((cmd == 'addons' || cmd == 'add-ons') && settingsSections(app).contains(SettingsSection.addons)) {
+    return CommandResults([
+      PaletteSection(PaletteGroup.pages, [
+        PaletteItem(
+          group: PaletteGroup.pages,
+          title: 'Add-ons',
+          typeLabel: 'Settings',
+          icon: _icon(SettingsSection.addons.icon),
+          aliases: const ['addons', 'add-ons'],
+          run: () => showSettings(app, section: SettingsSection.addons),
+        ),
+      ]),
+    ], cmd);
   }
   if (cmd == 'ctx' || cmd == 'context' || cmd == 'contexts') {
     final items = [

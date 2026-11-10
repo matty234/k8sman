@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
-import 'package:k8sman/modules/addons_module.dart';
 import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/resource_nav.dart';
@@ -46,6 +45,7 @@ void main() {
           {'view': 'helm'},
           {'view': 'nope'},
           {'view': 'alerts'}, // moved to the dock: dropped from saved layouts
+          {'view': 'addons'}, // moved to Settings: dropped too
           {'view': 'resources'},
           {'kind': 'Pod'},
           {'kind': 'Pod'},
@@ -55,9 +55,8 @@ void main() {
       expect(odd.pins, [const SidebarPin(group: '', kind: 'Pod')]);
       // Every page is present exactly once; ones the file lacked keep their default visibility.
       expect(odd.entries.where((e) => e.view != null).length, SidebarConfig.pages.length);
-      expect(odd.isHidden(AddonsModule.page), isTrue);
       expect(odd.isHidden(MainView.overview), isFalse);
-      expect(odd.entries.any((e) => e.view == MainView.alerts), isFalse);
+      expect(odd.entries.any((e) => e.view == MainView.alerts || e.view?.name == 'addons'), isFalse);
       expect(SidebarConfig.fromJson(null).isDefault, isTrue);
     });
 

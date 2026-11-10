@@ -22,7 +22,10 @@ import 'addon_install_dialog.dart';
 class AddonsView extends StatefulWidget {
   /// Injected in tests; defaults to [helmApiOf].
   final HelmApi? api;
-  const AddonsView({super.key, this.api});
+
+  /// Inside Settings: no page header or scroll of its own (the pane scrolls).
+  final bool embedded;
+  const AddonsView({super.key, this.api, this.embedded = false});
 
   @override
   State<AddonsView> createState() => _AddonsViewState();
@@ -162,13 +165,50 @@ class _AddonsViewState extends State<AddonsView> {
     if (_context != null && _context != app.currentContext && !_scanning) scheduleMicrotask(_scan);
     final st = _statuses;
     final installed = st?.where((s) => s.installed).length ?? 0;
+    final refresh = IconButton(tooltip: 'Refresh', iconSize: 18, icon: const Icon(Icons.refresh), onPressed: _scanning ? null : () => _scan(rediscover: true));
+    if (widget.embedded) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(
+            child: Text(
+              app.readOnly
+                  ? 'Read-only mode: k8sman was started with --read-only, so add-ons can\'t be installed, upgraded or removed.'
+                  : 'Acting on ${app.currentContext}: add-ons are installed per cluster, with Helm.',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+            ),
+          ),
+          if (_scanning && st != null) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5)),
+          refresh,
+        ]),
+        const SizedBox(height: 14),
+        if (st == null)
+          _error == null ? const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())) : LoadFailure(_error!, onRetry: () => _scan(rediscover: true))
+        else ...[
+          if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: ErrorNotice(_error!, title: 'Refresh failed', note: 'Showing the last result.', onRetry: () => _scan(rediscover: true))),
+          LayoutBuilder(builder: (context, box) {
+            final cols = ((box.maxWidth + 32) / (340 + 32)).floor().clamp(1, 4);
+            return evenGrid([
+              for (final a in st)
+                AddonCard(
+                  key: ValueKey('addon-${a.addon.id}'),
+                  status: a,
+                  readOnly: app.readOnly,
+                  onInstall: () => _install(a),
+                  onUpgrade: () => _upgrade(a),
+                  onUninstall: () => _uninstall(a),
+                ),
+            ], cols, gap: 32, runGap: 30);
+          }),
+        ],
+      ]);
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PageHeader(
         title: 'Add-ons',
         subtitle: st == null ? null : Text('$installed installed · ${st.length - installed} available'),
         actions: [
           if (_scanning && st != null) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5)),
-          IconButton(tooltip: 'Refresh', iconSize: 18, icon: const Icon(Icons.refresh), onPressed: _scanning ? null : () => _scan(rediscover: true)),
+          refresh,
         ],
       ),
       const Divider(),

@@ -232,6 +232,15 @@ List<PaletteItem> paletteItems(BuildContext context) {
       aliases: const ['modules', 'plugins', 'settings'],
       run: () => openSettings(context, section: SettingsSection.integrations),
     ),
+    if (settingsSections(app).contains(SettingsSection.addons))
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'Add-ons',
+        typeLabel: 'Settings',
+        icon: _icon(Icons.extension_outlined),
+        aliases: const ['addons', 'add-ons', 'metrics-server', 'prometheus', 'helm', 'settings'],
+        run: () => openSettings(context, section: SettingsSection.addons),
+      ),
     PaletteItem(
       group: PaletteGroup.actions,
       title: 'Rediscover API Resources',

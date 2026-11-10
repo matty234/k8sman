@@ -4,7 +4,6 @@ import 'package:k8sman/addons/addon_status.dart';
 import 'package:k8sman/addons/addons.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
-import 'package:k8sman/modules/addons_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/addons/addons_view.dart';
 import 'package:k8sman/ui/helm/helm_api.dart';
@@ -44,8 +43,7 @@ Future<(AppState, FakeAddonHelmApi)> pumpAddons(
   final app = AppState(client)
     ..types = client.types
     ..readOnly = readOnly
-    ..currentContext = context
-    ..view = AddonsModule.page;
+    ..currentContext = context;
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);

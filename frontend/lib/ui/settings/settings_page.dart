@@ -11,8 +11,10 @@ import 'package:provider/provider.dart';
 
 import '../../app/updates/update_controller.dart';
 import '../../app/updates/update_ui.dart';
+import '../../modules/modules.dart';
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
+import '../addons/addons_view.dart';
 import '../keyboard_help.dart';
 import '../keys.dart';
 import '../theme.dart';
@@ -32,6 +34,7 @@ enum SettingsSection {
   views('Views', Icons.bookmark_outline, 'Saved views: order, names, contexts, import and export.'),
   integrations('Integrations', Icons.extension_outlined,
       'Turn off what you don\'t use: its pages, panels and checks go away on every cluster. Status is for the current cluster.'),
+  addons('Add-ons', Icons.extension_outlined, 'Cluster tools k8sman builds on (metrics-server, Prometheus, Trivy, …), installed with Helm on the current cluster.'),
   tables('Tables', Icons.table_rows_outlined, 'Each kind\'s table remembers its sort, column widths and filter.'),
   keyboard('Keyboard', Icons.keyboard_outlined, 'Shortcuts. Press ? outside a text field for this list anywhere.'),
   about('About', Icons.info_outline, 'Version and updates.');
@@ -46,10 +49,16 @@ enum SettingsSection {
   static SettingsSection? parse(String arg) {
     final a = arg.trim().toLowerCase();
     if (a.isEmpty) return null;
-    const aliases = {'modules': integrations, 'plugins': integrations, 'shortcuts': keyboard, 'keys': keyboard, 'updates': about, 'kubeconfig': clusters, 'contexts': clusters};
+    const aliases = {'add-ons': addons, 'add-on': addons, 'helm': addons, 'modules': integrations, 'plugins': integrations, 'shortcuts': keyboard, 'keys': keyboard, 'updates': about, 'kubeconfig': clusters, 'contexts': clusters};
     return aliases[a] ?? values.where((s) => s.name.startsWith(a)).firstOrNull;
   }
 }
+
+/// The sections shown: Add-ons only while that module (and Helm) is on.
+List<SettingsSection> settingsSections(AppState app) => [
+      for (final s in SettingsSection.values)
+        if (s != SettingsSection.addons || moduleEnabled('addons', app.disabledModules)) s,
+    ];
 
 /// Shows the Settings page, at [section] if given (else where it was
 /// left), with module [module]'s settings open under Integrations.
@@ -121,7 +130,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (f == null || !f.startsWith(_focusPrefix)) return;
     app.pageFocus = null;
     final parts = f.substring(_focusPrefix.length).split('/');
-    final section = SettingsSection.values.where((s) => s.name == parts.first).firstOrNull;
+    final section = settingsSections(app).where((s) => s.name == parts.first).firstOrNull;
     if (section == null) return;
     _last = _section = section;
     _search.clear();
@@ -166,6 +175,7 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsSection.sidebar => sidebarSettings(),
         SettingsSection.views => viewSettings(),
         SettingsSection.integrations => integrationSettings(_modules),
+        SettingsSection.addons => _addonsSettings(),
         SettingsSection.tables => tableSettings(),
         SettingsSection.keyboard => _keyboardSettings(),
         SettingsSection.about => _aboutSettings(),
@@ -179,7 +189,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final searching = terms.isNotEmpty;
     final matches = {
       if (searching)
-        for (final s in SettingsSection.values) s: [for (final i in _items(s)) if (i.matches(terms, s.title)) i],
+        for (final s in settingsSections(app)) s: [for (final i in _items(s)) if (i.matches(terms, s.title)) i],
     };
     return Focus(
       focusNode: _focus,
@@ -230,7 +240,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 SizedBox(
                   width: box.maxWidth < 760 ? 176 : 212,
                   child: _SectionList(
-                    selected: searching ? null : _section,
+                    sections: settingsSections(app),
+                    selected: searching ? null : (settingsSections(app).contains(_section) ? _section : SettingsSection.general),
                     counts: searching ? {for (final e in matches.entries) e.key: e.value.length} : null,
                     onTap: _show,
                   ),
@@ -245,7 +256,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         constraints: const BoxConstraints(maxWidth: 780),
                         child: Padding(
                           padding: EdgeInsets.fromLTRB(box.maxWidth < 760 ? 24 : 40, 28, box.maxWidth < 760 ? 24 : 40, 40),
-                          child: SettingsSearchTerms(terms: terms, child: searching ? _results(matches) : _sectionBody(_section)),
+                          child: SettingsSearchTerms(terms: terms, child: searching ? _results(matches) : _sectionBody(settingsSections(app).contains(_section) ? _section : SettingsSection.general)),
                         ),
                       ),
                     ),
@@ -359,6 +370,18 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ];
 
+  // ---- Add-ons ----
+
+  List<SettingItem> _addonsSettings() => [
+        SettingItem(
+          key: const ValueKey('settings-addons'),
+          label: 'Add-ons',
+          description: 'Install, upgrade or remove cluster tools on the current cluster.',
+          keywords: const ['addons', 'add-on', 'add-ons', 'helm', 'install', 'metrics-server', 'prometheus', 'trivy', 'argo cd', 'argocd', 'envoy gateway', 'cert-manager', 'catalog'],
+          builder: (context) => const Padding(padding: EdgeInsets.fromLTRB(14, 12, 14, 18), child: AddonsView(embedded: true)),
+        ),
+      ];
+
   // ---- Keyboard ----
 
   List<SettingItem> _keyboardSettings() => [
@@ -401,10 +424,11 @@ class _SettingsPageState extends State<SettingsPage> {
 /// section, the current one on a soft pill. While searching, [counts]
 /// dims the sections without matches and counts the rest.
 class _SectionList extends StatelessWidget {
+  final List<SettingsSection> sections;
   final SettingsSection? selected;
   final Map<SettingsSection, int>? counts;
   final ValueChanged<SettingsSection> onTap;
-  const _SectionList({required this.selected, required this.counts, required this.onTap});
+  const _SectionList({required this.sections, required this.selected, required this.counts, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -414,7 +438,7 @@ class _SectionList extends StatelessWidget {
     return ColoredBox(
       color: colors.inspector,
       child: ListView(padding: const EdgeInsets.fromLTRB(10, 16, 10, 16), children: [
-        for (final s in SettingsSection.values)
+        for (final s in sections)
           Hoverable(
             key: ValueKey('settings-nav-${s.name}'),
             cursor: SystemMouseCursors.basic,
