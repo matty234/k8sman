@@ -251,12 +251,14 @@ type Evaluator struct {
 	errs    []error
 	jq      bool
 	usesNow bool
+	// enriched: some column reads `.k8sman` (see UsesEnrichment).
+	enriched bool
 }
 
 // NewEvaluator compiles the columns. Compile errors are reported per column
 // rather than failing the whole table.
 func NewEvaluator(cols []Column) *Evaluator {
-	e := &Evaluator{cols: cols, codes: make([]*gojq.Code, len(cols)), errs: make([]error, len(cols))}
+	e := &Evaluator{cols: cols, codes: make([]*gojq.Code, len(cols)), errs: make([]error, len(cols)), enriched: usesEnrichment(cols)}
 	for i, c := range cols {
 		switch {
 		case c.Program != nil:

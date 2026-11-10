@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/columns"
 	"github.com/matty234/k8sman/backend/internal/metrics"
 )
 
@@ -52,6 +53,15 @@ func (s *Server) usageDecorator(ctx context.Context, c *cluster.Clients, rq reso
 	return metrics.For(c).UsageDecorator(ctx, rq.Type.Group, rq.Type.Resource, namespaceFor(rq))
 }
 
+// decoratorFor is usageDecorator, but only when a column of eval reads
+// `.k8sman`: with none, nothing is fetched.
+func (s *Server) decoratorFor(ctx context.Context, c *cluster.Clients, rq resourceQuery, eval *columns.Evaluator) metrics.Decorator {
+	if !eval.UsesEnrichment() {
+		return nil
+	}
+	return s.usageDecorator(ctx, c, rq)
+}
+
 func usageResource(rt cluster.ResourceType) bool {
 	return rt.Group == "" && (rt.Resource == "pods" || rt.Resource == "nodes" || rt.Resource == "persistentvolumeclaims")
 }
@@ -73,10 +83,10 @@ type liveUsage struct {
 	cells   map[types.UID][]any
 }
 
-// newLiveUsage returns nil for types without usage, so callers can use it
-// unconditionally.
-func (s *Server) newLiveUsage(c *cluster.Clients, rq resourceQuery) *liveUsage {
-	if !usageResource(rq.Type) {
+// newLiveUsage returns nil for types without usage, or when no column reads
+// it (no ticker, no refetch), so callers can use it unconditionally.
+func (s *Server) newLiveUsage(c *cluster.Clients, rq resourceQuery, used bool) *liveUsage {
+	if !used || !usageResource(rq.Type) {
 		return nil
 	}
 	return &liveUsage{

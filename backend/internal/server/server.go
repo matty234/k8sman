@@ -683,7 +683,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 	}
 	cols, isDefault := s.tableColumns(r.Context(), c, rq)
 	b := newTableBuilder(cols, r.URL.Query().Get("includeObject") == "true")
-	b.decorate = s.usageDecorator(r.Context(), c, rq)
+	b.decorate = s.decoratorFor(r.Context(), c, rq, b.eval)
 	b.memo = snap.memo
 	t, _ := b.tableOf(rq.Type, isDefault, snap.items, snap.rv)
 	t.PartialErrors = snap.partial
@@ -796,7 +796,7 @@ func (s *Server) handleGetColumns(w http.ResponseWriter, r *http.Request) {
 	}
 	cols, isDefault := s.columnsFor(r.Context(), c, rq.Type)
 	defaults := s.defaultColumns(r.Context(), c, rq.Type)
-	httpx.WriteJSON(w, 200, map[string]any{"columns": cols, "isDefault": isDefault, "defaults": defaults})
+	httpx.WriteJSON(w, 200, map[string]any{"columns": cols, "isDefault": isDefault, "defaults": defaults, "enrichments": columns.Enrichments(rq.Type)})
 }
 
 func (s *Server) handlePutColumns(w http.ResponseWriter, r *http.Request) {
@@ -859,6 +859,6 @@ func (s *Server) handlePreviewColumns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b := newTableBuilder(s.resolvePluginColumns(c, rq.Type, body.Columns), false)
-	b.decorate = s.usageDecorator(r.Context(), c, rq)
+	b.decorate = s.decoratorFor(r.Context(), c, rq, b.eval)
 	httpx.WriteJSON(w, 200, b.table(rq.Type, false, list))
 }

@@ -614,6 +614,27 @@ func (kp *kindProgs) readsNow(p *program, seen map[string]bool) bool {
 	return false
 }
 
+// readsK8sman is whether p's source mentions k8sman, directly or through
+// variables.
+func (kp *kindProgs) readsK8sman(p *program, seen map[string]bool) bool {
+	if strings.Contains(p.expr.Src, "k8sman") {
+		return true
+	}
+	if seen == nil {
+		seen = map[string]bool{}
+	}
+	for _, v := range p.vars {
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		if vp := kp.vars[v]; vp != nil && kp.readsK8sman(vp, seen) {
+			return true
+		}
+	}
+	return false
+}
+
 func itoa(i int) string {
 	const digits = "0123456789"
 	if i < 10 {

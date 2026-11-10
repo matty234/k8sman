@@ -130,3 +130,20 @@ func TestLiveUsageSendsOnlyChangedRows(t *testing.T) {
 		t.Fatalf("no metrics and nothing to clear should be a no-op: %+v", rows)
 	}
 }
+
+// Without a column that reads .k8sman nothing is decorated, fetched or
+// refreshed. The nil Server and clients would panic on any metrics fetch.
+func TestNoEnrichmentWithoutColumnsReadingIt(t *testing.T) {
+	var s *Server
+	rq := resourceQuery{Type: podsType, Namespace: "demo"}
+	plain := columns.NewEvaluator([]columns.Column{{Name: "Name", Query: ".metadata.name"}})
+	if d := s.decoratorFor(context.Background(), nil, rq, plain); d != nil {
+		t.Fatal("decorator built for columns that do not read .k8sman")
+	}
+	if l := s.newLiveUsage(nil, rq, plain.UsesEnrichment()); l != nil {
+		t.Fatal("live usage refresh started for columns that do not read .k8sman")
+	}
+	if !columns.NewEvaluator(columns.Defaults(podsType, nil)).UsesEnrichment() {
+		t.Fatal("default pod columns must still enrich")
+	}
+}

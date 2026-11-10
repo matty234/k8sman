@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/columns"
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/kcache"
 	corev1 "k8s.io/api/core/v1"
@@ -169,8 +170,8 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 	sub := s.subscribe(c, rq) // one stream, or a namespace set merged
 
 	defer func() { sub.Close() }()
-	live := s.newLiveUsage(c, rq) // periodic usage refresh for pods/nodes
-	defer live.stop()
+	live := s.newLiveUsage(c, rq, columns.NewEvaluator(cols).UsesEnrichment()) // periodic usage refresh, only when a column reads it
+	defer func() { live.stop() }()
 	out := newFrameWriter(ws, r.URL.Query().Get("batch") == "true")
 	defer out.stop()
 
@@ -194,6 +195,8 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 				sub.Close()
 				sub = s.subscribe(c, rq)
 				b = nil
+				live.stop()
+				live = s.newLiveUsage(c, rq, columns.NewEvaluator(cols).UsesEnrichment())
 			}
 		case <-live.tick():
 			if b == nil {
@@ -219,7 +222,7 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 			case u.Snapshot != nil:
 				out.discard() // the snapshot supersedes queued deltas
 				b = newTableBuilder(cols, includeObject)
-				b.decorate = s.usageDecorator(ctx, c, rq)
+				b.decorate = s.decoratorFor(ctx, c, rq, b.eval)
 				b.memo = sub.Memo
 				t, built := b.tableOf(rq.Type, isDefault, u.Snapshot.Items, u.Snapshot.ResourceVersion)
 				live.resetItems(u.Snapshot.Items, t.Rows)

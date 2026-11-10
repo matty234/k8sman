@@ -118,6 +118,11 @@ func (c *ColumnProgram) evalAt(obj map[string]any, now time.Time) (any, error) {
 // must be re-evaluated as time passes).
 func (c *ColumnProgram) UsesNow() bool { return c.prog.usesNow }
 
+// ReadsK8sman reports whether the expression (or a variable it reads)
+// mentions k8sman, i.e. may read the usage fields the backend merges into
+// the object (`object.k8sman.usage...`). Conservative: a text match.
+func (c *ColumnProgram) ReadsK8sman() bool { return c.kp.readsK8sman(c.prog, nil) }
+
 // ---- panels ----------------------------------------------------------------
 
 // PanelOut is one plugin's sections for an object (GET /api/plugins/panel).
