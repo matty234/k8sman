@@ -16,6 +16,10 @@ import (
 // the backend: one action, externalsecrets-refresh, which sets the
 // force-sync annotation ESO documents for refreshing an ExternalSecret (or
 // PushSecret) now. Everything else is read-only and lives in the UI.
+//
+// The bundled external-secrets plugin replaces it (plugins/bundled): the
+// module is off unless settings' plugins.useModule names the plugin (see
+// moduleOff).
 type externalSecretsModule struct{}
 
 func (m *externalSecretsModule) Name() string { return "external_secrets" }

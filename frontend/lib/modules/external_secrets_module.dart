@@ -10,6 +10,12 @@ import 'module.dart';
 /// and PushSecrets with their panels. The sidebar section only lists the
 /// kinds the cluster serves, so it is absent without ESO. The backend part
 /// is the "Refresh now" action and the table columns.
+///
+/// Replaced by the bundled external-secrets plugin
+/// (backend/internal/plugins/bundled): the backend reports this module as
+/// superseded, so it is off and has no Integrations row, unless
+/// settings.json's plugins.useModule names the plugin (to compare the two;
+/// docs/PLUGINS.md, "Bundled plugins").
 class ExternalSecretsModule extends AppModule {
   const ExternalSecretsModule();
 

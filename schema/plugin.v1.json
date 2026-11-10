@@ -84,6 +84,7 @@
             "terminal",
             "timer",
             "tune",
+            "upload",
             "verified",
             "vpn_key",
             "warning"
@@ -676,6 +677,7 @@
             "terminal",
             "timer",
             "tune",
+            "upload",
             "verified",
             "vpn_key",
             "warning",
@@ -938,6 +940,7 @@
             "terminal",
             "timer",
             "tune",
+            "upload",
             "verified",
             "vpn_key",
             "warning"

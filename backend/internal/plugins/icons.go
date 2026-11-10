@@ -15,8 +15,8 @@ var Icons = []string{
 	"memory", "notifications", "open_in_new", "person", "play_arrow", "policy",
 	"public", "receipt", "refresh", "restart_alt", "rocket_launch", "router",
 	"schedule", "security", "settings", "shield", "speed", "stop", "storage",
-	"sync", "task_alt", "terminal", "timer", "tune", "verified", "vpn_key",
-	"warning",
+	"sync", "task_alt", "terminal", "timer", "tune", "upload", "verified",
+	"vpn_key", "warning",
 }
 
 // IconAllowed reports whether name is in Icons.

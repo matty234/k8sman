@@ -64,6 +64,7 @@ const Map<String, IconData> pluginIcons = {
   'terminal': Icons.terminal,
   'timer': Icons.timer_outlined,
   'tune': Icons.tune,
+  'upload': Icons.upload_outlined,
   'verified': Icons.verified_outlined,
   'vpn_key': Icons.vpn_key_outlined,
   'warning': Icons.warning_amber_rounded,

@@ -392,13 +392,27 @@ func containsValue(l []any, v any) bool {
 // snapshots, then the flow on a new plugin: scaffold (snapshots written),
 // pass, change a fixture (fail with a diff), --update, pass.
 func TestPluginTestGolden(t *testing.T) {
-	res, err := RunFixtures("../../../examples/plugins/cert-manager", false)
-	if err != nil {
-		t.Fatal(err)
+	// The example and every bundled plugin (each must have fixtures).
+	dirs := []string{"../../../examples/plugins/cert-manager"}
+	bundledDirs, _ := filepath.Glob("bundled/*/" + ManifestFile)
+	if len(bundledDirs) == 0 {
+		t.Fatal("no bundled plugins found")
 	}
-	for _, r := range res {
-		if r.Status != "pass" {
-			t.Errorf("examples/plugins/cert-manager %s: %s %v\n%s", r.Fixture, r.Status, r.Err, r.Diff)
+	for _, m := range bundledDirs {
+		dirs = append(dirs, filepath.Dir(m))
+	}
+	for _, dir := range dirs {
+		if diags := Validate(dir); len(diags) > 0 {
+			t.Errorf("%s: %v", dir, diags)
+		}
+		res, err := RunFixtures(dir, false)
+		if err != nil {
+			t.Fatalf("%s: %v", dir, err)
+		}
+		for _, r := range res {
+			if r.Status != "pass" {
+				t.Errorf("%s %s: %s %v\n%s", dir, r.Fixture, r.Status, r.Err, r.Diff)
+			}
 		}
 	}
 

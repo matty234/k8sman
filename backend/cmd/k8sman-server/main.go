@@ -21,6 +21,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/columns"
 	"github.com/matty234/k8sman/backend/internal/icons"
 	"github.com/matty234/k8sman/backend/internal/plugins"
+	"github.com/matty234/k8sman/backend/internal/plugins/bundled"
 	"github.com/matty234/k8sman/backend/internal/portforward"
 	"github.com/matty234/k8sman/backend/internal/server"
 	"github.com/matty234/k8sman/backend/internal/settings"
@@ -89,8 +90,10 @@ func main() {
 	// Machine-readable ready line so a parent process can discover the port.
 	fmt.Fprintf(os.Stdout, "K8SMAN_LISTENING %s\n", ln.Addr().String())
 
-	// Plugins load in the background (dev mode only in this version).
-	ph := plugins.NewHost(plugins.Options{InstalledDir: filepath.Join(filepath.Dir(*settingsPath), "plugins"), FlagDirs: pluginDev, Settings: st})
+	// Bundled plugins load now; the user's own (dev mode only in this
+	// version) in the background.
+	ph := plugins.NewHost(plugins.Options{InstalledDir: filepath.Join(filepath.Dir(*settingsPath), "plugins"), FlagDirs: pluginDev, Settings: st,
+		Bundled: bundled.FS, Replaces: bundled.ReplacesModule})
 	ph.Start()
 	defer ph.Close()
 
