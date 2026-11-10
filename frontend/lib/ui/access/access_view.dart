@@ -212,7 +212,8 @@ class _Toggle extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       onTap: () => onChanged(!value),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        SizedBox(height: 18, child: Transform.scale(scale: 0.6, child: Switch(value: value, onChanged: onChanged))),
+        SizedBox(width: 36, height: 20, child: FittedBox(child: Switch(value: value, onChanged: onChanged))),
+        const SizedBox(width: 6),
         Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
       ]),
     );
@@ -483,44 +484,57 @@ class _ExplorerTabState extends State<_ExplorerTab> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 12, 8),
-        child: Row(children: [
-          Flexible(flex: 4, child: SubjectLabel(s, showKind: true, style: theme.textTheme.titleSmall)),
-          if (s.objectRef != null) ...[
-            const SizedBox(width: 6),
-            IconButton(
-              tooltip: 'Open ServiceAccount in the inspector',
-              iconSize: 15,
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.open_in_new),
-              onPressed: () => app.openRef(s.objectRef!),
-            ),
-          ],
-          const SizedBox(width: 12),
-          ScopePicker(value: namespaceScope, onChanged: (v) {
-            setState(() {
-              namespaceScope = v;
-              _cell = null;
-            });
-            _loadMatrix();
-          }),
-          const Spacer(flex: 1),
-          if (_loading) const Padding(padding: EdgeInsets.only(right: 8), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5))),
-          _FilterField(onChanged: (v) => setState(() => _filter = v)),
-          const SizedBox(width: 8),
-          _Toggle(label: 'Only granted', value: _hideEmpty, onChanged: (v) => setState(() => _hideEmpty = v)),
-          if (!app.readOnly) ...[
-            const SizedBox(width: 6),
-            TextButton.icon(
-              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-              onPressed: () async {
-                final ok = await showGrantDialog(context, api: widget.api, subject: s, namespace: namespace ?? s.namespace);
-                if (ok == true) _loadMatrix();
-              },
-              icon: const Icon(Icons.add, size: 15),
-              label: const Text('Grant'),
-            ),
-          ],
-        ]),
+        child: LayoutBuilder(builder: (context, box) {
+          final who = Row(children: [
+            Flexible(child: SubjectLabel(s, showKind: true, style: theme.textTheme.titleSmall)),
+            if (s.objectRef != null) ...[
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Open ServiceAccount in the inspector',
+                iconSize: 15,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.open_in_new),
+                onPressed: () => app.openRef(s.objectRef!),
+              ),
+            ],
+            const SizedBox(width: 12),
+            ScopePicker(value: namespaceScope, onChanged: (v) {
+              setState(() {
+                namespaceScope = v;
+                _cell = null;
+              });
+              _loadMatrix();
+            }),
+          ]);
+          // Right-aligned; the filter gives way first when room is short.
+          final controls = Row(mainAxisSize: MainAxisSize.min, children: [
+            if (_loading) const Padding(padding: EdgeInsets.only(right: 8), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5))),
+            Flexible(child: _FilterField(onChanged: (v) => setState(() => _filter = v))),
+            const SizedBox(width: 10),
+            _Toggle(label: 'Only granted', value: _hideEmpty, onChanged: (v) => setState(() => _hideEmpty = v)),
+            if (!app.readOnly) ...[
+              const SizedBox(width: 6),
+              TextButton.icon(
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                onPressed: () async {
+                  final ok = await showGrantDialog(context, api: widget.api, subject: s, namespace: namespace ?? s.namespace);
+                  if (ok == true) _loadMatrix();
+                },
+                icon: const Icon(Icons.add, size: 15),
+                label: const Text('Grant'),
+              ),
+            ],
+          ]);
+          // Narrow (a wide subjects list): the controls take their own row.
+          if (box.maxWidth < 680) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              who,
+              const SizedBox(height: 6),
+              Align(alignment: Alignment.centerRight, child: controls),
+            ]);
+          }
+          return Row(children: [Expanded(child: who), const SizedBox(width: 12), controls]);
+        }),
       ),
       if (d != null && d.identity.groups.isNotEmpty)
         Padding(

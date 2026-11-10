@@ -30,8 +30,17 @@ class SubjectLabel extends StatelessWidget {
     final text = Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(subjectIcon(subject.kind), size: 14, color: theme.hintColor),
       const SizedBox(width: 5),
-      if (showKind) Text('${subject.kind} ', style: (style ?? theme.textTheme.bodySmall)?.copyWith(color: theme.hintColor)),
-      Flexible(child: Text(subject.label, overflow: TextOverflow.ellipsis, style: style ?? theme.textTheme.bodySmall)),
+      Flexible(
+        child: Text.rich(
+          TextSpan(children: [
+            if (showKind) TextSpan(text: '${subject.kind} ', style: TextStyle(color: theme.hintColor)),
+            TextSpan(text: subject.label),
+          ]),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: style ?? theme.textTheme.bodySmall,
+        ),
+      ),
     ]);
     return known == null ? text : Tooltip(message: '${subject.name}: $known', child: text);
   }
