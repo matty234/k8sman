@@ -2,16 +2,25 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"reflect"
+	"regexp"
 	"runtime"
+	"sort"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kcache"
+	"github.com/matty234/k8sman/backend/internal/kube"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 )
 
 type fakeLogs struct {
@@ -58,7 +67,7 @@ func TestAggregateMergesByTimestampAndCleansUp(t *testing.T) {
 	f := &fakeLogs{open: map[string]*io.PipeWriter{}}
 	var mu sync.Mutex
 	var lines, events []string
-	a := &aggregator{ns: "d", tail: 10, follow: true, opener: f, emit: func(v any) error {
+	a := &aggregator{tail: 10, follow: true, opener: f, emit: func(v any) error {
 		mu.Lock()
 		defer mu.Unlock()
 		switch v := v.(type) {
@@ -114,4 +123,48 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(15 * time.Millisecond)
 	}
 	t.Fatal("condition not reached")
+}
+
+func TestAggregateQueryRegexAndUnion(t *testing.T) {
+	scope := func(q url.Values) (kube.Namespaces, error) { return kube.ParseNamespaces(q) }
+	if _, err := parseAggQuery(url.Values{"podRegex": {"web-("}}, scope); !errors.Is(err, httpx.ErrBadRequest) {
+		t.Errorf("bad regex: err = %v, want a bad request", err)
+	}
+	aq, err := parseAggQuery(url.Values{"podRegex": {"^web-"}, "namespaces": {"default,demo"}, "selector": {"app=web", "app=api"}}, scope)
+	if err != nil || len(aq.selectors) != 2 || len(aq.scope) != 2 {
+		t.Fatalf("parse = %+v, %v", aq, err)
+	}
+
+	obj := func(ns, name string) *unstructured.Unstructured {
+		p := runningPod(name)
+		p.Namespace = ns
+		m, _ := k8sruntime.DefaultUnstructuredConverter.ToUnstructured(p)
+		return &unstructured.Unstructured{Object: m}
+	}
+	ps := newPodSet(2, aq.podRe)
+	// The set stays unpublished until both selectors have reported.
+	if ps.apply(0, kcache.Update{Snapshot: &kcache.Snapshot{Items: []*unstructured.Unstructured{
+		obj("default", "web-1"), obj("demo", "web-1"), obj("default", "api-1")}}}) {
+		t.Fatal("published before every watch reported")
+	}
+	// web-1 in default matches both selectors: it must appear once.
+	if !ps.apply(1, kcache.Update{Snapshot: &kcache.Snapshot{Items: []*unstructured.Unstructured{
+		obj("default", "web-1"), obj("demo", "web-2")}}}) {
+		t.Fatal("not published")
+	}
+	var got []string
+	for _, p := range <-ps.out {
+		got = append(got, podID(p))
+	}
+	sort.Strings(got)
+	if want := []string{"default/web-1", "demo/web-1", "demo/web-2"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("pods = %v, want %v", got, want)
+	}
+
+	a := &aggregator{containerRe: regexp.MustCompile("^(app|side)")}
+	p := runningPod("web-1")
+	p.Spec.Containers = append(p.Spec.Containers, corev1.Container{Name: "side"}, corev1.Container{Name: "init"})
+	if got := a.containersFor(p); !reflect.DeepEqual(got, []string{"app", "side"}) {
+		t.Errorf("containers = %v", got)
+	}
 }

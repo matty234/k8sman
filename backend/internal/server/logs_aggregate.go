@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/matty234/k8sman/backend/internal/httpx"
 	"github.com/matty234/k8sman/backend/internal/kcache"
+	"github.com/matty234/k8sman/backend/internal/kube"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,6 +53,7 @@ func (k kubeLogOpener) Open(ctx context.Context, ns, pod string, opts *corev1.Po
 // AggLine is one element of a line frame (a JSON array of these is sent per
 // flush).
 type AggLine struct {
+	Namespace string `json:"namespace,omitempty"`
 	Pod       string `json:"pod"`
 	Container string `json:"container"`
 	TS        string `json:"ts"`
@@ -59,6 +63,7 @@ type AggLine struct {
 // AggEvent is a control frame on /api/logs/aggregate.
 type AggEvent struct {
 	Event     string `json:"event,omitempty"` // added | removed
+	Namespace string `json:"namespace,omitempty"`
 	Pod       string `json:"pod,omitempty"`
 	Container string `json:"container,omitempty"`
 	Error     string `json:"error,omitempty"`
@@ -97,18 +102,20 @@ type aggStream struct {
 	restarts int32
 }
 
-type aggKey struct{ pod, container string }
+type aggKey struct{ ns, pod, container string }
 
 // aggregator merges the logs of a changing set of pods.
 type aggregator struct {
-	ns        string
 	container string // "" = each pod's default, "*" = all, else a name
-	tail      int64  // -1 = all
-	since     int64
-	previous  bool
-	follow    bool
-	opener    logOpener
-	emit      func(any) error // must be safe for concurrent use
+	// containerRe, when set, keeps only the matching containers (of all the
+	// pod's containers when container is "").
+	containerRe *regexp.Regexp
+	tail        int64 // -1 = all
+	since       int64
+	previous    bool
+	follow      bool
+	opener      logOpener
+	emit        func(any) error // must be safe for concurrent use
 
 	initial  bool
 	warned   bool
@@ -144,7 +151,25 @@ loop:
 }
 
 func (a *aggregator) containersFor(p *corev1.Pod) []string {
-	switch a.container {
+	cs := a.baseContainers(p)
+	if a.containerRe == nil {
+		return cs
+	}
+	out := cs[:0:0]
+	for _, c := range cs {
+		if a.containerRe.MatchString(c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func (a *aggregator) baseContainers(p *corev1.Pod) []string {
+	container := a.container
+	if container == "" && a.containerRe != nil {
+		container = "*"
+	}
+	switch container {
 	case "*":
 		out := make([]string, 0, len(p.Spec.Containers))
 		for _, c := range p.Spec.Containers {
@@ -191,19 +216,19 @@ func hasContainer(p *corev1.Pod, name string) bool {
 }
 
 func (a *aggregator) reconcile(ctx context.Context, wg *sync.WaitGroup, in chan<- *aggEntry, streams map[aggKey]*aggStream, ps []*corev1.Pod) {
-	sort.Slice(ps, func(i, j int) bool { return ps[i].Name < ps[j].Name })
+	sort.Slice(ps, func(i, j int) bool { return podID(ps[i]) < podID(ps[j]) })
 	if len(ps) > aggMaxPods {
 		if !a.warned {
 			a.warned = true
-			_ = a.emit(AggEvent{Warning: fmt.Sprintf("%d pods match; streaming the first %d by name", len(ps), aggMaxPods)})
+			_ = a.emit(AggEvent{Warning: fmt.Sprintf("%d pods match; streaming the first %d by name; narrow the query to see the rest", len(ps), aggMaxPods)})
 		}
 		ps = ps[:aggMaxPods]
 	}
 	present := map[string]bool{}
 	for _, p := range ps {
-		present[p.Name] = true
+		present[podID(p)] = true
 		for _, c := range a.containersFor(p) {
-			k := aggKey{p.Name, c}
+			k := aggKey{p.Namespace, p.Name, c}
 			ok, restarts := startable(p, c, a.previous)
 			st := streams[k]
 			if st != nil && st.done.Load() && a.follow && restarts > st.restarts {
@@ -216,14 +241,14 @@ func (a *aggregator) reconcile(ctx context.Context, wg *sync.WaitGroup, in chan<
 			if !ok {
 				if !hasContainer(p, c) && !a.reported[k] {
 					a.reported[k] = true
-					_ = a.emit(AggEvent{Pod: p.Name, Container: c, Error: "container not found in pod"})
+					_ = a.emit(AggEvent{Namespace: p.Namespace, Pod: p.Name, Container: c, Error: "container not found in pod"})
 				}
 				continue
 			}
 			sctx, scancel := context.WithCancel(ctx)
 			st = &aggStream{cancel: scancel, restarts: restarts}
 			streams[k] = st
-			_ = a.emit(AggEvent{Event: "added", Pod: p.Name, Container: c})
+			_ = a.emit(AggEvent{Event: "added", Namespace: p.Namespace, Pod: p.Name, Container: c})
 			wg.Add(1)
 			go func(k aggKey, st *aggStream, initial bool) {
 				defer wg.Done()
@@ -233,10 +258,10 @@ func (a *aggregator) reconcile(ctx context.Context, wg *sync.WaitGroup, in chan<
 		}
 	}
 	for k, st := range streams {
-		if !present[k.pod] {
+		if !present[k.ns+"/"+k.pod] {
 			st.cancel()
 			delete(streams, k)
-			_ = a.emit(AggEvent{Event: "removed", Pod: k.pod, Container: k.container})
+			_ = a.emit(AggEvent{Event: "removed", Namespace: k.ns, Pod: k.pod, Container: k.container})
 		}
 	}
 }
@@ -251,10 +276,10 @@ func (a *aggregator) stream(ctx context.Context, in chan<- *aggEntry, k aggKey, 
 		s := a.since
 		opts.SinceSeconds = &s
 	}
-	rc, err := a.opener.Open(ctx, a.ns, k.pod, opts)
+	rc, err := a.opener.Open(ctx, k.ns, k.pod, opts)
 	if err != nil {
 		if ctx.Err() == nil {
-			_ = a.emit(AggEvent{Pod: k.pod, Container: k.container, Error: err.Error()})
+			_ = a.emit(AggEvent{Namespace: k.ns, Pod: k.pod, Container: k.container, Error: err.Error()})
 		}
 		return
 	}
@@ -271,7 +296,7 @@ func (a *aggregator) stream(ctx context.Context, in chan<- *aggEntry, k aggKey, 
 		if err != nil { // no timestamp: keep the whole line, order by arrival
 			t, ts, line = now, now.UTC().Format(time.RFC3339Nano), sc.Text()
 		}
-		e := &aggEntry{AggLine: AggLine{Pod: k.pod, Container: k.container, TS: ts, Line: line}, t: t, arrived: now, seq: a.seq.Add(1)}
+		e := &aggEntry{AggLine: AggLine{Namespace: k.ns, Pod: k.pod, Container: k.container, TS: ts, Line: line}, t: t, arrived: now, seq: a.seq.Add(1)}
 		select {
 		case in <- e:
 		case <-ctx.Done():
@@ -279,7 +304,7 @@ func (a *aggregator) stream(ctx context.Context, in chan<- *aggEntry, k aggKey, 
 		}
 	}
 	if err := sc.Err(); err != nil && err != io.EOF && ctx.Err() == nil {
-		_ = a.emit(AggEvent{Pod: k.pod, Container: k.container, Error: err.Error()})
+		_ = a.emit(AggEvent{Namespace: k.ns, Pod: k.pod, Container: k.container, Error: err.Error()})
 	}
 }
 
@@ -318,25 +343,138 @@ func (a *aggregator) merge(ctx context.Context, in <-chan *aggEntry, cancel cont
 	}
 }
 
-// handleLogsAggregate streams the merged logs of several pods.
-// Query: namespace; selector or pods (comma-separated); container (name, *,
-// or empty for each pod's default: annotation, then main, then the first); tailLines (per stream, default 200),
-// sinceSeconds, previous, follow (default true).
-func (s *Server) handleLogsAggregate(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	ns, selector := q.Get("namespace"), q.Get("selector")
-	var names []string
-	for _, n := range strings.Split(q.Get("pods"), ",") {
-		if n = strings.TrimSpace(n); n != "" {
-			names = append(names, n)
+func podID(p *corev1.Pod) string { return p.Namespace + "/" + p.Name }
+
+// aggQuery is a parsed /api/logs/aggregate request.
+type aggQuery struct {
+	scope      kube.Namespaces
+	selectors  []string
+	names      []string // fixed pods (one namespace)
+	podRe      *regexp.Regexp
+	containerR *regexp.Regexp
+}
+
+func parseAggQuery(q url.Values, parseScope func(url.Values) (kube.Namespaces, error)) (*aggQuery, error) {
+	aq := &aggQuery{}
+	var err error
+	if aq.scope, err = parseScope(q); err != nil {
+		return nil, httpx.BadRequest("%v", err)
+	}
+	for _, sel := range q["selector"] {
+		if sel = strings.TrimSpace(sel); sel != "" {
+			aq.selectors = append(aq.selectors, sel)
 		}
 	}
-	if ns == "" || (selector == "") == (len(names) == 0) {
-		writeErr(w, httpx.BadRequest("namespace and exactly one of selector or pods are required"))
+	for _, n := range strings.Split(q.Get("pods"), ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			aq.names = append(aq.names, n)
+		}
+	}
+	for _, f := range []struct {
+		param string
+		dst   **regexp.Regexp
+	}{{"podRegex", &aq.podRe}, {"containerRegex", &aq.containerR}} {
+		if v := q.Get(f.param); v != "" {
+			if *f.dst, err = regexp.Compile(v); err != nil {
+				return nil, httpx.BadRequest("%s: %v", f.param, err)
+			}
+		}
+	}
+	switch {
+	case len(aq.names) > 0:
+		if len(aq.selectors) > 0 || aq.podRe != nil || len(aq.scope) != 1 {
+			return nil, httpx.BadRequest("pods needs exactly one namespace and no selector or podRegex")
+		}
+	case len(aq.selectors) == 0 && aq.podRe == nil:
+		return nil, httpx.BadRequest("one of selector, pods or podRegex is required")
+	}
+	return aq, nil
+}
+
+// podSet unions the pods of several watches, keeping those whose name
+// matches re, and delivers the latest full set once every watch has
+// reported. Safe for concurrent use.
+type podSet struct {
+	mu    sync.Mutex
+	re    *regexp.Regexp
+	cur   []map[string]*corev1.Pod
+	ready []bool
+	out   chan []*corev1.Pod // capacity 1; only the latest set is kept
+}
+
+func newPodSet(n int, re *regexp.Regexp) *podSet {
+	ps := &podSet{re: re, cur: make([]map[string]*corev1.Pod, n), ready: make([]bool, n), out: make(chan []*corev1.Pod, 1)}
+	for i := range ps.cur {
+		ps.cur[i] = map[string]*corev1.Pod{}
+	}
+	return ps
+}
+
+func (ps *podSet) allReady() bool {
+	for _, r := range ps.ready {
+		if !r {
+			return false
+		}
+	}
+	return true
+}
+
+// apply folds one watch update in and publishes the union; it reports
+// whether the set has been published.
+func (ps *podSet) apply(i int, u kcache.Update) bool {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if u.Snapshot != nil {
+		clear(ps.cur[i])
+		for _, it := range u.Snapshot.Items {
+			addPod(ps.cur[i], it.Object)
+		}
+		ps.ready[i] = true
+	}
+	for _, ev := range u.Events {
+		if ev.Type == watch.Deleted {
+			delete(ps.cur[i], ev.Object.GetNamespace()+"/"+ev.Object.GetName())
+		} else {
+			addPod(ps.cur[i], ev.Object.Object)
+		}
+	}
+	if !ps.allReady() {
+		return false
+	}
+	seen := map[string]bool{}
+	var set []*corev1.Pod
+	for _, m := range ps.cur {
+		for id, p := range m {
+			if !seen[id] && (ps.re == nil || ps.re.MatchString(p.Name)) {
+				seen[id] = true
+				set = append(set, p)
+			}
+		}
+	}
+	select {
+	case <-ps.out:
+	default:
+	}
+	ps.out <- set
+	return true
+}
+
+// handleLogsAggregate streams the merged logs of several pods.
+// Query: namespace or namespaces (none = every allowed namespace); selector
+// (repeatable, results unioned), podRegex and containerRegex (RE2, unanchored)
+// or pods (comma-separated, one namespace); container (name, *, or empty for
+// each pod's default: annotation, then main, then the first); tailLines (per
+// stream, default 200), sinceSeconds, previous, follow (default true). The
+// pod set follows the shared pod watch and is capped at aggMaxPods.
+func (s *Server) handleLogsAggregate(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	aq, err := parseAggQuery(q, s.parseScope)
+	if err != nil {
+		writeErr(w, err)
 		return
 	}
 	a := &aggregator{
-		ns: ns, container: q.Get("container"), tail: aggDefaultTail,
+		container: q.Get("container"), containerRe: aq.containerR, tail: aggDefaultTail,
 		previous: q.Get("previous") == "true", follow: q.Get("follow") != "false",
 	}
 	if v, err := strconv.ParseInt(q.Get("tailLines"), 10, 64); err == nil {
@@ -357,14 +495,16 @@ func (s *Server) handleLogsAggregate(w http.ResponseWriter, r *http.Request) {
 	a.emit = ws.send
 
 	pods := make(chan []*corev1.Pod, 1)
-	if selector == "" {
+	if len(aq.names) > 0 {
+		ns := aq.scope[0]
 		var ps []*corev1.Pod
-		for _, n := range names {
+		for _, n := range aq.names {
 			p, err := c.Typed.CoreV1().Pods(ns).Get(ctx, n, metav1.GetOptions{})
 			if err != nil {
-				_ = ws.send(AggEvent{Pod: n, Error: err.Error()})
+				_ = ws.send(AggEvent{Namespace: ns, Pod: n, Error: err.Error()})
 				continue
 			}
+			p.Namespace = ns
 			ps = append(ps, p)
 		}
 		pods <- ps
@@ -372,62 +512,50 @@ func (s *Server) handleLogsAggregate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Follow the selector through the shared pod watch.
-	sub := kcache.For(c).Subscribe(kcache.Key{GVR: gvrPods, Namespace: ns, LabelSelector: selector})
-	defer sub.Close()
-	runDone := make(chan struct{})
-	go func() { defer close(runDone); a.run(ctx, pods); cancel() }()
-	defer func() { cancel(); <-runDone }()
-	cur := map[string]*corev1.Pod{}
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-sub.C():
-		}
-		u := sub.Next()
-		if u.Err != nil {
-			_ = ws.send(AggEvent{Error: u.Err.Error()})
-			if u.Terminal {
-				return
-			}
-		}
-		if u.Snapshot != nil {
-			clear(cur)
-			for _, it := range u.Snapshot.Items {
-				addPod(cur, it.Object)
-			}
-		}
-		for _, ev := range u.Events {
-			if ev.Type == watch.Deleted {
-				delete(cur, ev.Object.GetName())
-			} else {
-				addPod(cur, ev.Object.Object)
-			}
-		}
-		set := make([]*corev1.Pod, 0, len(cur))
-		for _, p := range cur {
-			set = append(set, p)
-		}
-		select { // the latest set wins
-		case <-pods:
-		default:
-		}
-		select {
-		case pods <- set:
-		case <-ctx.Done():
-			return
-		}
-		if a.previous { // previous logs are finite: the pod set is not followed
-			<-ctx.Done()
-			return
-		}
+	// Follow the selectors through the shared pod watch.
+	sels := aq.selectors
+	if len(sels) == 0 {
+		sels = []string{""}
 	}
+	set := newPodSet(len(sels), aq.podRe)
+	runDone := make(chan struct{})
+	go func() { defer close(runDone); a.run(ctx, set.out); cancel() }()
+	var wg sync.WaitGroup
+	defer func() { cancel(); wg.Wait(); <-runDone }()
+	for i, sel := range sels {
+		sub := kcache.For(c).SubscribeSet(kcache.Key{GVR: gvrPods, LabelSelector: sel}, aq.scope)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer sub.Close()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-sub.C():
+				}
+				u := sub.Next()
+				if u.Err != nil {
+					_ = ws.send(AggEvent{Error: u.Err.Error()})
+					if u.Terminal {
+						cancel()
+						return
+					}
+				}
+				// Previous logs are finite: the set is not followed.
+				if set.apply(i, u) && a.previous {
+					<-ctx.Done()
+					return
+				}
+			}
+		}()
+	}
+	<-ctx.Done()
 }
 
 func addPod(m map[string]*corev1.Pod, obj map[string]any) {
 	var p corev1.Pod
 	if runtime.DefaultUnstructuredConverter.FromUnstructured(obj, &p) == nil {
-		m[p.Name] = &p
+		m[podID(&p)] = &p
 	}
 }
