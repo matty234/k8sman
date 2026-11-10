@@ -171,6 +171,40 @@ and raises an issue in category `plugin.<plugin>.<alert>`. Alerts in the
 `custom` section show under **Plugins** on the Overview; all of them show
 in the dock's Issues tab.
 
+### Status lines
+
+A kind's `status` adds to the plugin's one-line summary, shown on a bundled
+plugin's row in Settings ▸ Integrations as modules show theirs:
+
+```yaml
+    status:
+      label: Certificates               # "Certificates: 12"
+      counts:
+        - label: not ready              # " · not ready: 2"
+          severity: warning             # colours the line while the count isn't zero
+          when: condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")
+```
+
+Objects are counted across the cluster, from the watch cache, with the
+alerts' budgets; counts see the object only, like alerts. A shared
+predicate is best a variable that both an alert and a count read.
+
+### Panels that replace the generic one
+
+For a kind without a compiled-in panel (most custom resources), the
+generic panel's sections (Health, Conditions, Spec, Status, …) follow the
+plugin's. `panel.generic` changes that: `collapse` keeps them, collapsed;
+`replace` leaves them out, so the plugin's sections are the panel (the
+inspector's Owns and Metadata sections, and the YAML and Events tabs,
+stay). Use `replace` when the sections cover the object, conditions
+included.
+
+```yaml
+    panel:
+      generic: replace       # keep (default), collapse or replace
+      sections: […]
+```
+
 ### Fixtures and tests
 
 ```
@@ -230,7 +264,7 @@ compiled into the backend with Go `embed`, in
 [`backend/internal/plugins/bundled/<id>/`](../backend/internal/plugins/bundled)
 (`plugin.yaml`, `README.md`, `fixtures/`; only the first two are embedded).
 The first is [External Secrets](../backend/internal/plugins/bundled/external-secrets),
-which replaces the built-in `external_secrets` module.
+which replaced the built-in `external_secrets` module (since removed).
 
 - **Loaded by default.** They load at start (a parse each; a kind compiles
   on first use), with or without developer mode, and whether the Plugins
@@ -241,8 +275,9 @@ which replaces the built-in `external_secrets` module.
   run and asks, every shell command still asks, and all of them are hidden
   and refused on read-only contexts.
 - **A switch each.** Each has a row in **Settings ▸ Integrations**, like a
-  module (name, description, whether the cluster serves its kinds, on/off),
-  marked "plugin", in the place of the module it replaces. Off is saved in
+  module (name, description, on/off, and its [status line](#status-lines),
+  or else whether the cluster serves its kinds), marked "plugin", in the
+  place of the module it replaces, if any. Off is saved in
   settings.json's `plugins.disabled`, as for any plugin. In developer mode
   they also appear under Integrations ▸ Plugins (badge **Bundled**) with
   their kinds, permissions and timings.
@@ -261,27 +296,24 @@ it replaces a module, an entry in `bundled.ReplacesModule`.
 
 ### Comparing a bundled plugin with the module it replaces
 
-While the old module is still in the app, the two are never on at once: a
-module that a bundled plugin replaces is off (the backend leaves out its
-routes, overview inputs and actions, and the UI its sidebar section,
-panels, icons and Integrations row), unless settings.json's
+When a module is rewritten as a bundled plugin, the module can stay in the
+app for a while to compare the two (`bundled.ReplacesModule`). They are
+never on at once: a module that a bundled plugin replaces is off (the
+backend leaves out its routes, overview inputs and actions, and the UI its
+sidebar section, panels, icons and Integrations row), unless settings.json's
 `plugins.useModule` names the plugin; then the plugin is off and the module
 on. Default: the plugin.
 
 To flip: turn on developer mode (Settings ▸ Integrations ▸ Plugins), find
-the **External Secrets** card and switch **Use the built-in module
-instead**; switch it off to go back. It applies at once (tables, sidebar
-and inspector follow). Or edit `~/.config/k8sman/settings.json` with the app
-closed:
+the plugin's card and switch **Use the built-in module instead**; switch it
+off to go back. It applies at once (tables, sidebar and inspector follow).
+Or edit `~/.config/k8sman/settings.json` with the app closed, e.g.
+`{"plugins": {"useModule": ["<plugin id>"]}}` (or `PUT /api/plugins/settings
+{"useModule": [...]}`).
 
-```json
-{"plugins": {"useModule": ["external-secrets"]}}
-```
-
-(`PUT /api/plugins/settings {"useModule": ["external-secrets"]}` does the
-same.) The built-in columns of these kinds (`internal/columns`) are core,
-not the module's: the plugin's columns have the same names and replace
-them in place, so there is one set either way.
+No bundled plugin replaces a module now: External Secrets was compared this
+way and its module removed once the plugin matched it (§13). A saved
+`useModule` entry for a plugin without a module is ignored.
 
 ## 1. Goals and non-goals
 
@@ -318,6 +350,7 @@ A plugin contributes to **kinds**. For each kind it can add:
 | Panel sections | the inspector's Overview tab | per object change, streamed |
 | Actions | inspector header, row menu, palette | on click |
 | Alerts | Overview page and Alerts tiles | per object, on each overview poll |
+| Status line | the plugin's row in Settings ▸ Integrations | per object, when the row is shown (at most every 30 s) |
 
 Palette entries are not a separate contribution: plugin actions appear in the
 palette wherever built-in actions do.
@@ -375,9 +408,10 @@ A **kind key** is `group/Kind`, as in the UI: `/Pod`,
 | `metrics` | map of name → Metric | §6 |
 | `columns` | list of Column | |
 | `hideColumns` | list of string | default columns to drop (by name) |
-| `panel` | `{sections: [Section]}` | §4 |
+| `panel` | `{generic, sections: [Section]}` | §4; `generic`: `keep` (default), `collapse` or `replace` |
 | `actions` | list of Action | |
 | `alerts` | list of Alert | |
+| `status` | Status | the kind's part of the plugin's status line (below) |
 
 ### Column
 
@@ -444,6 +478,22 @@ subresource, so plugins don't redeclare it.
 | `when` | **CEL** | bool: whether this object has the problem |
 | `message` | **CEL** | string |
 | `since` | **CEL** | optional timestamp or RFC3339 string |
+
+### Status
+
+A plugin's status line is its kinds' `status` parts in file order, joined
+with ` · `: "ExternalSecrets: 12 · not synced: 2". It is coloured by the
+most severe count that isn't zero (critical red, warning amber).
+
+| Field | Type | Notes |
+|---|---|---|
+| `label` | string | what the objects are called: "ExternalSecrets: 12" |
+| `counts` | list of `{label, when` **CEL** bool`, severity}` | objects for which `when` is true: " · not synced: 2"; `severity` `critical`, `warning` (default) or `info` |
+
+Counted over every namespace from the watch cache, with the alerts'
+limits (100,000 per expression, 500 ms per plugin); `when` sees what an
+alert's does (the object, `variables`, `now`; not `related` or `metrics`).
+Served by `GET /api/plugins/status`.
 
 ### k9s compatibility
 
@@ -783,20 +833,36 @@ A panel is a list of **sections**: `title` (text), `icon` (text), `when`
 
 | Block | Widget | Fields |
 |---|---|---|
-| `fields` | `KeyValueTable` | `items`: list of `{label, value` **CEL**`, type, link` **CEL** `Ref, copy: bool, when}`. A row whose value is null or empty is hidden |
+| `fields` | `KeyValueTable` | `items`: list of `{label, value` **CEL**`, type, link` **CEL** `Ref, copy: bool, mono: bool, when}`. A row whose value is null or empty is hidden; `mono` draws it in the monospace font |
 | `badges` | `StatusBadge` row | `items`: list of `{text` **CEL**`, severity` **CEL** optional`, when}`; without severity the badge colours itself from the text as today |
 | `chips` | `Chipish` / `LabelChips` | `items` **CEL**: a list of strings, or a map (shown as `key=value`) |
 | `conditions` | `ConditionsTable` | `from` **CEL**, default `object.status.conditions` |
 | `links` | `ResourceLink` list | `items` **CEL**: a list of Refs; `empty` (text) |
-| `table` | compact table | `rows` **CEL** list; `columns`: list of `{name, value` **CEL** (sees `row`)`, type, link}`; `sortBy` (column name), `descending`, `limit` (default 20, "Show all" beyond), `empty` (text) |
+| `table` | compact table | `rows` **CEL** list; `columns`: list of `{name, value` **CEL** (sees `row`)`, type, link, mono: bool}`; `sortBy` (column name), `descending`, `limit` (default 20, "Show all" beyond), `empty` (text) |
+| `settings` | `KeyValueTable` | `value` **CEL**: a map of any depth, flattened into sorted `path → value` rows; `limit` (default 14, at most 50; "and N more" beyond), `empty` (text). See below |
 | `bar` | `UsageBar` | `label`, `value` **CEL** number, `max` **CEL** number, `format`: `number`, `quantity` or `percent`; amber from 80%, red from 90% |
 | `code` | `CodeBlock` | `value` **CEL** string, `language`: `text`, `yaml`, `json` or `shell` |
 | `json` | `JsonTree` | `value` **CEL**, any value |
-| `message` | `InlineMessage` | `text` **CEL** string, `severity`: `info`, `warning` or `error` |
+| `message` | `InlineMessage` / `Callout` | `text` **CEL** string, `severity`: `info`, `warning` or `error`; `title` **CEL** string, optional: a warning or error with a title is a callout headed by it, the text under it |
 
 Value `type` in `fields` and `table` columns: `text` (default), `number`,
-`bool`, `status`, `age`, `until`, `timestamp`, `quantity`, `labels`, `url`
-(opens the browser on click), `code` (monospace, with copy).
+`bool`, `status`, `age` (with the timestamp in a tooltip), `until`,
+`timestamp`, `quantity`, `labels`, `url` (opens the browser on click),
+`code` (monospace, with copy).
+
+**The `settings` block** shows a configuration object (a store's provider,
+an issuer's ACME or Vault settings) as the module panels did, which CEL
+can't (it has no recursion). The host walks the map: nested keys join with
+`.`; a list of scalars is one row (`a, b`), a list of maps says how many
+entries it has; a value longer than 80 characters says how long it is;
+nulls and empty strings are skipped. A map with a string `name` under a key
+ending in `SecretRef`, `ConfigMapRef` or `ServiceAccountRef` (any case:
+`tokenSecretRef`, `secretRef`, `serviceAccountRef`) is a **reference**: one
+row, `Secret/<name> · <key>`, linked to that object in the map's
+`namespace` or the object's (not linked when neither is known, as for a
+cluster-scoped object). A reference shows a name and a key, never anything
+read from the object it names: plugins never see Secret values, and this
+block reads nothing beyond the value it is given.
 
 `icon` is one of a fixed list of ~40 Material icon names (in the schema as an
 enum: `verified`, `key`, `dns`, `history`, `memory`, `tune`, `refresh`,
@@ -808,7 +874,9 @@ kind with a compiled-in panel they follow its sections. For a kind that only
 has the generic custom-resource panel, they replace its summary; the generic
 spec and status trees stay, collapsed, at the end. Two plugins for one kind
 appear in plugin id order. Panels get the shared YAML and Events tabs as
-before; plugins can't add tabs in v1.
+before; plugins can't add tabs in v1. (As built: plugin sections come
+before Owns and Metadata, and the generic panel's sections follow them
+unless `panel.generic` says `collapse` or `replace`; see §13.)
 
 The vocabulary grows by adding blocks or fields; an older app shows "this
 section needs k8sman ≥ x" for a block it doesn't know.
@@ -1585,3 +1653,84 @@ Operator" from the `reconcile.external-secrets.io/managed` label), but it
 would sit after the Secret panel's own sections rather than at the top,
 and the plugin would be asked about every Secret panel. Keep it core: move
 `managed_by.dart` into `panels/config` when the module goes.
+
+### Closing the pilot's gaps; the module removed
+
+Four additions to the vocabulary, each generic (none names ESO), close
+the gaps that mattered; the External Secrets plugin uses all of them and
+the `external_secrets` module is gone.
+
+**Vocabulary added** (compatible, per §5's contract; in the schema):
+
+- `panel.generic: keep | collapse | replace` (gap 1). The UI reads it from
+  `GET /api/plugins` (`kinds[].generic`); `panelFor` in
+  `lib/panels/registry.dart` composes the panel: `collapse` builds the
+  generic panel with every section collapsed (`GenericPanel(collapsed:
+  true)`), `replace` leaves its sections out (`PluginComposedPanel
+  .replaceBase`), keeping its tabs and actions. If two plugins disagree,
+  `replace` wins over `collapse` over `keep`. The inspector shell
+  (`ui/detail/detail_sidebar.dart`) needed no change: its Owns and
+  Metadata sections are its own, not the panel's.
+- The `settings` block (gap 2), in `internal/plugins/settings_block.go`:
+  the flattening and reference detection described in §4, done by the host
+  because CEL can't recurse. Rows are sorted by path (the module kept the
+  YAML's order). A reference whose namespace isn't known (a
+  ClusterSecretStore's `secretRef` without `namespace`) is text, not a link
+  (the module linked it with no namespace).
+- `status` on a kind (gap 5), in `internal/plugins/status.go`, served by
+  `GET /api/plugins/status`; the bundled plugin's Integrations row shows
+  the line (fetched when the row is built, again after 30 s or on a
+  context or plugin change), red for a critical count, amber for a
+  warning (`ModuleState.warning`, new), else as before. **Why a manifest
+  field and not lines derived from the alerts:** alerts answer "which
+  objects have a problem", per object and in the overview's namespace
+  scope, with labels written for the Overview ("ExternalSecrets not
+  synced for over a day"); the status line answers "how many are there
+  and how many are wrong" across the cluster, which needs the total count
+  that no alert has, and short count labels. A shared predicate goes in a
+  variable both read (as `notSynced` does). Snapshots include the line
+  for the fixture's object.
+- `mono: true` on `fields` items and `table` columns, and `title` on
+  `message` blocks (gap 8): a warning or error with a title is a `Callout`
+  headed by it, as the module's Ready callout was.
+
+**Alerts.** ExternalSecrets have two: *not synced* (warning: Ready is
+False) and *not synced for over a day* (critical: Ready False since a
+`lastTransitionTime` at least 24 h ago). They show under Plugins on the
+Overview and in the dock's Issues tab. Fixtures: `externalsecret-error`
+(failing a day: critical) and `externalsecret-not-synced` (an hour:
+warning).
+
+**Columns.** The built-in ESO jq columns (`internal/columns`) are removed:
+the plugin supplies every column, and `hideColumns` drops the CRD printer
+columns it repeats (`Refresh Interval`, and the filter-based `Ready` and
+`Status`, which the table skips anyway). With the plugin off, the tables
+show the CRDs' printer columns.
+
+**The pilot's list, now:**
+
+1. Generic panel: replaced (`generic: replace` on every ESO kind with
+   sections; PushSecret, which has none, keeps the generic panel, as the
+   module did). Stores gained a Conditions section, as the module had.
+2. Provider settings: `settings` rows with Secret and ServiceAccount links.
+3. "ExternalSecrets using this store" capped at 200 before the filter:
+   **accepted**, unchanged.
+4. Refresh now confirms with a dry run: **accepted**, unchanged.
+5. Integrations status: the status line.
+6. Missing target Secret needs list rights on Secrets: unchanged (it warns,
+   with a note, without them).
+7. Section headers: unchanged; the Ready badge is the first block, and
+   sections aren't drawn as cards.
+8. Small renderings: callouts titled with the reason, monospace synced
+   version, mappings and selectors (a one-column table); Last refresh is an
+   age whose tooltip has the timestamp (`AgeText` already did). A Ready
+   message is still an info line, and `dataFrom` entries rows of a table.
+
+**Removed.** `lib/modules/external_secrets_module.dart`,
+`lib/panels/externalsecrets/` (`managed_by.dart` moved to
+`lib/panels/config/`, unchanged in behaviour),
+`internal/server/externalsecrets.go` (the `externalsecrets-refresh`
+action; the plugin's `plugin.external-secrets.refresh` replaces it), the
+ESO built-in columns and their test, and the `external-secrets` entry of
+`bundled.ReplacesModule` (now empty; the `useModule` mechanism stays for
+the next module a plugin replaces).

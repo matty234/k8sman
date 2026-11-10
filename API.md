@@ -780,13 +780,14 @@ developer mode. The `plugins` module: while it is turned off these answer 404
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/plugins` | `{devMode, devModeSaved, devFolders, flagFolders, installedDir, generation, readOnly, icons, plugins: [{id, name, version, dir, source, status, loaded, disabled, diags: [{file, line, col, message, warning, snippet}], permissions, permissionsHash, consented, kinds: [{key, served, compiled, columns, sections, actions, alerts, related, metrics, errors}], nav, kindIcons, hasIcon, loadMs, compileMs, stats: {column\|panel\|action\|alert: {count, errors, limitHits, p50Us, p95Us, maxUs}}}]}` |
+| GET | `/api/plugins` | `{devMode, devModeSaved, devFolders, flagFolders, installedDir, generation, readOnly, icons, plugins: [{id, name, version, dir, source, status, loaded, disabled, diags: [{file, line, col, message, warning, snippet}], permissions, permissionsHash, consented, kinds: [{key, served, compiled, columns, sections, actions, alerts, related, metrics, errors, generic, status}], nav, kindIcons, hasIcon, loadMs, compileMs, stats: {column\|panel\|action\|alert: {count, errors, limitHits, p50Us, p95Us, maxUs}}}]}` |
 | PUT | `/api/plugins/settings` | `{devMode?, devFolders?}` (absolute paths); reloads |
 | POST | `/api/plugins/reload` | reload every folder |
 | PUT | `/api/plugins/{id}/enabled` | `{enabled}` |
 | PUT/DELETE | `/api/plugins/{id}/consent` | PUT `{permissionsHash}` agrees to the permissions shown (400 if they changed since) |
 | GET | `/api/plugins/{id}/icon` | the plugin's `icon.png` (≤ 64 KB) |
 | GET | `/api/plugins/panel` | `?group&version&resource&namespace&name`: `{generation, resourceVersion, panels: [{plugin, name, sections: [{title, icon, collapsed, blocks: [{type, …}]}], errors, notes, refresh}], actions: [{plugin, id, type, label, icon, shortcut, message, dangerous, argv, background, patchType, inputs: [{name, label, type, options, default, validateMessage}], consented}]}`; no actions on read-only contexts. `notes` say what related objects or metrics couldn't be read; `refresh` (seconds) asks the UI to fetch again while open (related objects 5, metrics 15, `now` 30) |
+| GET | `/api/plugins/status` | `{plugins: {id: {plugin, text, severity, kinds: [{key, label, total, counts: [{label, severity, count}]}], errors}}}`: the status lines of active plugins with a `status` on a kind the cluster serves, over every namespace from the watch cache (the alerts' budgets). `text` is e.g. `ExternalSecrets: 12 · not synced: 2`; `severity` the most severe non-zero count (`critical`, `warning`, `info`; absent when none) |
 | POST | `/api/plugins/run` | `?plugin&action&group&version&resource&namespace&name`: runs a `background` shell action (same checks as the dock tab; 403 on read-only contexts; at most 2 min) and answers `{argv, exitCode, output, timedOut}` with the last 20 lines of output |
 | WS | `/api/plugins/events` | `{generation}` now and after every change (load, hot reload, setting) |
 
