@@ -8,6 +8,7 @@ import '../panels/registry.dart';
 import '../state/app_state.dart';
 import 'detail/detail_sidebar.dart' show resourceActionsFor;
 import 'kubectl_menu.dart';
+import 'logs/open_logs.dart' show hasWorkloadLogs, openWorkloadLogs;
 import 'links_ui.dart';
 import 'widgets/common.dart' show copyToClipboard;
 import 'widgets/context_menu.dart';
@@ -61,6 +62,8 @@ Future<void> showRowContextMenu(BuildContext context, Offset globalPosition, Res
     ],
     if (safe.isNotEmpty) const PopupMenuDivider(height: 9),
     for (final a in safe) item(a.icon, a.label, () => a.run(context)),
+    if (ctx != null && hasWorkloadLogs(type.kind) && ctx.spec['selector'] != null)
+      item(Icons.stream, 'Stream all logs', () => openWorkloadLogs(context, ctx, allContainers: true)),
     const PopupMenuDivider(height: 9),
     item(Icons.content_copy, 'Copy name', () => copy(row.name, 'name')),
     if (ns != null) item(Icons.content_copy, 'Copy namespace/name', () => copy(qualified, qualified)),

@@ -9,6 +9,7 @@ import '../util/k8s.dart';
 import 'dock_tab.dart';
 import 'aggregate_log_stream.dart';
 import 'log_session.dart';
+import 'namespace_scope.dart';
 
 export 'aggregate_log_stream.dart';
 export 'dock_tab.dart';
@@ -357,21 +358,44 @@ class LogDock extends ChangeNotifier {
   }
 
   /// Opens (or focuses, if already open) one tab merging the logs of every
-  /// pod matching [selector], or of exactly [pods]; the tab follows pods as
-  /// they come and go. [title] is e.g. `deploy/web`.
+  /// pod matching [selector] / [selectors] (unioned) and [podRegex], or of
+  /// exactly [pods]; the tab follows pods as they come and go. [namespace]
+  /// (or [scope], several namespaces; empty = all) says where to look.
+  /// [title] is e.g. `deploy/web`.
   AggregateLogStream openAggregate(
     String namespace, {
+    NamespaceScope? scope,
     String? selector,
+    List<String> selectors = const [],
     List<String> pods = const [],
+    String? podRegex,
+    String? containerRegex,
     String? title,
-    bool allContainers = false,
+    bool? allContainers,
+    int? tail,
+    int? since,
     bool focus = true,
   }) {
-    final id = aggregateId(namespace, selector, pods);
+    final sc = scope ?? NamespaceScope.single(namespace);
+    final sels = [?selector, ...selectors];
+    final id = aggregateId(sc, sels, pods, podRegex, containerRegex);
     var s = _tabs.whereType<AggregateLogStream>().where((t) => t.id == id).firstOrNull;
     if (s == null) {
-      s = AggregateLogStream(api: api, namespace: namespace, selector: selector, podNames: pods, title: title, allContainers: allContainers)..newestFirst = newestFirst;
+      s = AggregateLogStream(
+        api: api,
+        scope: sc,
+        selectors: sels,
+        podNames: pods,
+        podRegex: podRegex,
+        containerRegex: containerRegex,
+        title: title,
+        allContainers: allContainers ?? false,
+        tail: tail,
+        since: since,
+      )..newestFirst = newestFirst;
       _tabs.add(s);
+    } else if (allContainers != null && allContainers != s.allContainers) {
+      s.setOptions(allContainers: allContainers);
     } else if (s.phase == LogPhase.error || s.phase == LogPhase.eof) {
       s.reconnect();
     }

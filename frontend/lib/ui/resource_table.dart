@@ -30,7 +30,7 @@ import '../panels/registry.dart';
 import 'detail/detail_sidebar.dart' show resourceActionsFor;
 import 'keyboard_help.dart';
 import 'kubectl_menu.dart';
-import 'logs/open_logs.dart' show kLogsActionId, openPodsLogs;
+import 'logs/open_logs.dart' show hasWorkloadLogs, kLogsActionId, openPodsLogs, openWorkloadsLogs;
 import 'row_context_menu.dart';
 import 'terminal/open_terminal.dart' show kTerminalActionId;
 import 'theme.dart';
@@ -419,6 +419,18 @@ class _TableBodyState extends State<_TableBody> {
   }
 
   /// One merged log tab for exactly the selected pods (one per namespace).
+  /// Logs of several selected rows: the pods themselves, or (workload rows)
+  /// all the pods of every selected workload.
+  bool _canMergeLogs(TableController tc) => tc.type.gk == '/Pod' || hasWorkloadLogs(tc.type.kind);
+
+  void _openSelectedLogs(TableController tc, List<TableRowData> rows) {
+    if (tc.type.gk != '/Pod') {
+      openWorkloadsLogs(context, tc.type, rows);
+      return;
+    }
+    _openSelectedPodLogs(rows);
+  }
+
   void _openSelectedPodLogs(List<TableRowData> rows) {
     final byNs = <String, List<String>>{};
     for (final r in rows) {
@@ -459,7 +471,7 @@ class _TableBodyState extends State<_TableBody> {
           height: 26,
           child: Text('${rows.length} ${tc.type.resource} selected', style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor)),
         ),
-        if (tc.type.gk == '/Pod') item(Icons.layers_outlined, 'Logs (${rows.length} pods)', () => _openSelectedPodLogs(rows)),
+        if (_canMergeLogs(tc)) item(Icons.layers_outlined, 'Logs (${rows.length} ${tc.type.resource})', () => _openSelectedLogs(tc, rows)),
         for (final a in safe) item(a.icon, '${a.verb} ${rows.length} ${tc.type.resource}', () => _runBulk(a, rows)),
         const PopupMenuDivider(height: 9),
         item(Icons.content_copy, 'Copy names', () => copyToClipboard(context, names, label: '${rows.length} names')),
@@ -556,7 +568,7 @@ class _TableBodyState extends State<_TableBody> {
     if (key == LogicalKeyboardKey.keyE) return did(() => inspect(DetailTab.edit));
     if (key == LogicalKeyboardKey.keyL) {
       final sel = tc.selectedRows;
-      return did(() => sel.length >= 2 && tc.type.gk == '/Pod' ? _openSelectedPodLogs(sel) : act(kLogsActionId, 'logs'));
+      return did(() => sel.length >= 2 && _canMergeLogs(tc) ? _openSelectedLogs(tc, sel) : act(kLogsActionId, 'logs'));
     }
     if (key == LogicalKeyboardKey.keyS) return did(() => act(kTerminalActionId, 'shell'));
     return false;

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import 'namespace_scope.dart';
 import 'log_buffer.dart';
 import 'log_session.dart';
 
@@ -15,6 +16,10 @@ const int kMaxSourceLabel = 26;
 /// are worked out once here, not per line.
 class LogSource {
   final int index;
+
+  /// The pod's namespace ('' when the tab spans a single namespace, where it
+  /// would only repeat itself).
+  final String ns;
   final String pod;
   final String container;
   final int colorIndex;
@@ -24,10 +29,13 @@ class LogSource {
   final String lowerFull;
   bool hidden = false;
 
-  LogSource(this.index, this.pod, this.container, this.colorIndex) : lowerFull = '$pod/$container'.toLowerCase();
+  LogSource(this.index, this.ns, this.pod, this.container, this.colorIndex) : lowerFull = sourceName(ns, pod, container).toLowerCase();
 
-  String get full => '$pod/$container';
+  String get full => sourceName(ns, pod, container);
 }
+
+/// `[ns/]pod/container`: how a source is named in copies, downloads and search.
+String sourceName(String ns, String pod, String container) => ns.isEmpty ? '$pod/$container' : '$ns/$pod/$container';
 
 /// What a buffered row is: a log line from a source, or a notice.
 class LineMeta {
@@ -48,17 +56,31 @@ int stableHash(String s) {
   return h;
 }
 
-/// The logs of many pods (a workload's selector, or a hand-picked list) in
-/// one tab: the backend merges them in timestamp order and follows the pod
-/// set; lines are labelled by [LogSource].
+/// The logs of many pods (workload selectors, a name regex, or a hand-picked
+/// list) in one tab: the backend merges them in timestamp order and follows
+/// the pod set; lines are labelled by [LogSource].
 class AggregateLogStream extends LogSession {
   final ApiClient api;
-  @override
-  final String namespace;
 
-  /// Label selector to follow, or null for the fixed [podNames].
-  final String? selector;
+  /// Where to look; empty (all) or several namespaces label sources
+  /// `ns/pod/container`.
+  final NamespaceScope scope;
+
+  /// Label selectors to follow (their pods are unioned).
+  final List<String> selectors;
+
+  /// Pod and container name regexes (RE2, unanchored), or null.
+  final String? podRegex;
+  final String? containerRegex;
+
+  /// A fixed list of pods of one namespace, instead of a query.
   final List<String> podNames;
+
+  @override
+  String get namespace => scope.single ?? '';
+
+  /// Whether sources carry their namespace.
+  bool get qualified => scope.single == null;
 
   /// Shown in the tab, e.g. `deploy/web`; null for a hand-picked set.
   final String? title;
@@ -96,19 +118,25 @@ class AggregateLogStream extends LogSession {
 
   AggregateLogStream({
     required this.api,
-    required this.namespace,
-    this.selector,
+    this.scope = NamespaceScope.all,
+    this.selectors = const [],
     this.podNames = const [],
+    this.podRegex,
+    this.containerRegex,
     this.title,
     bool allContainers = false,
+    int? tail,
+    int? since,
     // ignore: prefer_initializing_formals
   }) : _allContainers = allContainers {
-    assert((selector == null) != podNames.isEmpty, 'exactly one of selector or pods');
+    assert(podNames.isEmpty != (selectors.isEmpty && podRegex == null), 'a query (selectors, podRegex) or a pod list');
+    if (tail != null) this.tail = tail;
+    this.since = since;
     _subscribe();
   }
 
   @override
-  String get id => aggregateId(namespace, selector, podNames);
+  String get id => aggregateId(scope, selectors, podNames, podRegex, containerRegex);
 
   @override
   String get pod => '';
@@ -129,7 +157,7 @@ class AggregateLogStream extends LogSession {
   @override
   int get extraChars => prefixChars + 1 + (timestamps ? 31 : 0);
 
-  /// Distinct pod names seen, sorted.
+  /// Distinct pods seen (`ns/pod` when sources carry their namespace), sorted.
   List<String> get pods => (_byPod.keys.toList()..sort());
 
   bool get anyHidden => sources.any((s) => s.hidden);
@@ -165,8 +193,8 @@ class AggregateLogStream extends LogSession {
     _filtersChanged();
   }
 
-  void setPodHidden(String pod, bool hidden) {
-    for (final s in _byPod[pod]?.values ?? const <LogSource>[]) {
+  void setPodHidden(String podKey, bool hidden) {
+    for (final s in _byPod[podKey]?.values ?? const <LogSource>[]) {
       s.hidden = hidden;
       hidden ? _hiddenKeys.add(s.full) : _hiddenKeys.remove(s.full);
     }
@@ -247,11 +275,12 @@ class AggregateLogStream extends LogSession {
 
   // --- sources ---
 
-  LogSource _source(String pod, String container) {
-    final byContainer = _byPod.putIfAbsent(pod, () => {});
+  LogSource _source(String ns, String pod, String container) {
+    if (!qualified) ns = '';
+    final byContainer = _byPod.putIfAbsent(ns.isEmpty ? pod : '$ns/$pod', () => {});
     final existing = byContainer[container];
     if (existing != null) return existing;
-    final h = stableHash('$pod/$container') % kLogSourceColors;
+    final h = stableHash(sourceName(ns, pod, container)) % kLogSourceColors;
     var color = h;
     // Prefer a colour no other source uses (still derived from the hash).
     if (sources.length < kLogSourceColors) {
@@ -264,7 +293,7 @@ class AggregateLogStream extends LogSession {
       }
     }
     _colorUse[color]++;
-    final s = LogSource(sources.length, pod, container, color)..hidden = _hiddenKeys.contains('$pod/$container');
+    final s = LogSource(sources.length, ns, pod, container, color)..hidden = _hiddenKeys.contains(sourceName(ns, pod, container));
     sources.add(s);
     byContainer[container] = s;
     _relabel();
@@ -279,7 +308,7 @@ class AggregateLogStream extends LogSession {
   }
 
   void _relabel() {
-    final names = _byPod.keys.toList();
+    final names = {for (final s in sources) s.pod}.toList();
     var prefix = names.first;
     for (final n in names.skip(1)) {
       var i = 0;
@@ -290,10 +319,13 @@ class AggregateLogStream extends LogSession {
     }
     final cut = prefix.lastIndexOf('-');
     prefix = cut < 0 ? '' : prefix.substring(0, cut + 1);
+    // Containers show when asked for, and whenever one pod has several.
+    final multiContainer = _allContainers || containerRegex != null || _byPod.values.any((c) => c.length > 1);
     var longest = 0;
     for (final s in sources) {
       var l = _short(s.pod, prefix);
-      if (_allContainers) l = '$l/${s.container}';
+      if (s.ns.isNotEmpty) l = '${s.ns}/$l';
+      if (multiContainer) l = '$l/${s.container}';
       if (l.length > kMaxSourceLabel) l = '…${l.substring(l.length - kMaxSourceLabel + 1)}';
       s.label = l;
       if (l.length > longest) longest = l.length;
@@ -336,18 +368,36 @@ class AggregateLogStream extends LogSession {
       phase = LogPhase.streaming;
       notifyListeners();
     });
-    _sub = api
-        .aggregateLogs(
-          namespace: namespace,
-          selector: selector,
-          pods: selector == null ? podNames : null,
-          container: _allContainers ? '*' : null,
-          tailLines: tail,
-          sinceSeconds: since,
-          follow: follow && !_previous,
-          previous: _previous,
-        )
-        .listen(_onMessage, onError: (Object e) => _finish(LogPhase.error, '$e'), onDone: () => _finish(LogPhase.eof));
+    _sub = _open(follow: follow && !_previous).listen(_onMessage, onError: (Object e) => _finish(LogPhase.error, '$e'), onDone: () => _finish(LogPhase.eof));
+  }
+
+  Stream<AggregateMessage> _open({required bool follow}) => api.aggregateLogs(
+    scope: scope,
+    selectors: selectors,
+    pods: podNames.isEmpty ? null : podNames,
+    podRegex: podRegex,
+    containerRegex: containerRegex,
+    container: _allContainers ? '*' : null,
+    tailLines: tail,
+    sinceSeconds: since,
+    follow: follow,
+    previous: _previous,
+  );
+
+  @override
+  Future<List<String>?> fetchFull() async {
+    final out = <String>[];
+    // The same query and range, read to the end rather than followed, merged
+    // by the backend and prefixed like the buffer.
+    await for (final m in _open(follow: false)) {
+      if (m.error != null && m.pod == null) throw StateError(m.error!);
+      for (final l in m.lines) {
+        final name = sourceName(qualified ? l.namespace : '', l.pod, l.container);
+        if (_hiddenKeys.contains(name)) continue;
+        out.add('$name ${timestamps && l.ts.isNotEmpty ? '${l.ts} ' : ''}${l.line}');
+      }
+    }
+    return out;
   }
 
   void _notice(LogSource src, String text, {int kind = 1}) {
@@ -358,14 +408,15 @@ class AggregateLogStream extends LogSession {
   void _onMessage(AggregateMessage m) {
     if (phase == LogPhase.connecting) phase = LogPhase.streaming;
     for (final l in m.lines) {
-      final src = _byPod[l.pod]?[l.container] ?? _source(l.pod, l.container);
+      final src = _source(l.namespace, l.pod, l.container);
       _pendingText.add(l.line);
       _pendingMeta.add(LineMeta(src.index, l.ts, 0));
     }
-    final pod = m.pod;
+    final ns = m.namespace ?? '';
     final container = m.container ?? '';
+    final pod = m.pod == null ? null : (qualified && ns.isNotEmpty ? '$ns/${m.pod}' : m.pod);
     if (m.event != null && pod != null) {
-      final src = _source(pod, container);
+      final src = _source(ns, m.pod!, container);
       final settled = DateTime.now().difference(_connectedAt) > const Duration(seconds: 2);
       if (m.event == 'added') {
         final fresh = !_live.containsKey(pod);
@@ -380,7 +431,7 @@ class AggregateLogStream extends LogSession {
       }
     }
     if (m.error != null) {
-      final src = pod == null ? null : _source(pod, container);
+      final src = m.pod == null ? null : _source(ns, m.pod!, container);
       if (src != null) {
         _notice(src, '! ${src.full}: ${m.error}', kind: 2);
       } else if (sources.isNotEmpty) {
@@ -427,4 +478,5 @@ class AggregateLogStream extends LogSession {
   }
 }
 
-String aggregateId(String namespace, String? selector, List<String> pods) => 'agg/$namespace/${selector ?? ([...pods]..sort()).join(',')}';
+String aggregateId(NamespaceScope scope, List<String> selectors, List<String> pods, [String? podRegex, String? containerRegex]) =>
+    'agg/${scope.namespaces.join(',')}/${([...selectors]..sort()).join('|')}/${([...pods]..sort()).join(',')}/${podRegex ?? ''}/${containerRegex ?? ''}';

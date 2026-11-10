@@ -18,6 +18,7 @@ import '../terminal/terminal_session.dart';
 import '../terminal/open_terminal.dart';
 import '../terminal/terminal_tab.dart';
 import 'log_stream_view.dart';
+import 'stream_logs_dialog.dart' show showStreamLogsDialog;
 import '../keys.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/context_menu.dart';
@@ -156,6 +157,12 @@ class _TabStrip extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         children: [for (final t in tabs) _DockTab(tab: t, active: t == active && !dock.collapsed)],
                       ),
+              ),
+              IconButton(
+                key: const ValueKey('dock-stream-logs'),
+                tooltip: 'Stream logs… (pods by name regex or selector, across namespaces)',
+                icon: const Icon(Icons.stream, size: 17),
+                onPressed: () => showStreamLogsDialog(context),
               ),
               IconButton(
                 key: const ValueKey('dock-new-local-shell'),

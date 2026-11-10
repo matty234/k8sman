@@ -242,7 +242,10 @@ class AggLine {
   final String container;
   final String ts;
   final String line;
-  const AggLine(this.pod, this.container, this.ts, this.line);
+
+  /// The pod's namespace.
+  final String namespace;
+  const AggLine(this.pod, this.container, this.ts, this.line, [this.namespace = '']);
 }
 
 /// A frame of `/api/logs/aggregate`: a batch of [lines], or an [event]
@@ -252,16 +255,17 @@ class AggregateMessage {
   final String? event;
   final String? pod;
   final String? container;
+  final String? namespace;
   final String? error;
   final String? warning;
-  const AggregateMessage({this.lines = const [], this.event, this.pod, this.container, this.error, this.warning});
+  const AggregateMessage({this.lines = const [], this.event, this.pod, this.container, this.namespace, this.error, this.warning});
 
   factory AggregateMessage.fromJson(dynamic j) {
     if (j is List) {
-      return AggregateMessage(lines: [for (final l in j) AggLine('${l['pod']}', '${l['container']}', '${l['ts'] ?? ''}', '${l['line'] ?? ''}')]);
+      return AggregateMessage(lines: [for (final l in j) AggLine('${l['pod']}', '${l['container']}', '${l['ts'] ?? ''}', '${l['line'] ?? ''}', '${l['namespace'] ?? ''}')]);
     }
     final m = j as Json;
-    return AggregateMessage(event: m['event'], pod: m['pod'], container: m['container'], error: m['error'], warning: m['warning']);
+    return AggregateMessage(event: m['event'], pod: m['pod'], container: m['container'], namespace: m['namespace'], error: m['error'], warning: m['warning']);
   }
 }
 

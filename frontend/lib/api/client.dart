@@ -695,27 +695,36 @@ class ApiClient {
         'sinceSeconds': sinceSeconds?.toString(),
       })).map(LogMessage.fromJson);
 
-  /// Merged logs of many pods (one `/api/logs/aggregate` socket): follow a
-  /// label [selector] or a fixed list of [pods]. [container] is a name, `*`
-  /// for every container, or null for each pod's default.
+  /// Merged logs of many pods (one `/api/logs/aggregate` socket): follow the
+  /// pods matching [selectors] (unioned) and/or [podRegex] across [scope]
+  /// (empty = every namespace), or a fixed list of [pods] in one namespace.
+  /// [container] is a name, `*` for every container, or null for each pod's
+  /// default; [containerRegex] keeps only the matching containers.
   Stream<AggregateMessage> aggregateLogs({
-    required String namespace,
-    String? selector,
+    NamespaceScope scope = NamespaceScope.all,
+    List<String> selectors = const [],
     List<String>? pods,
+    String? podRegex,
+    String? containerRegex,
     String? container,
     int tailLines = 200,
     bool follow = true,
     bool previous = false,
     int? sinceSeconds,
-  }) =>
-      _wsRaw(_ws('logs/aggregate', {
-        'namespace': namespace,
-        'selector': selector,
-        'pods': pods?.join(','),
-        'container': container,
-        'tailLines': '$tailLines',
-        'follow': follow ? null : 'false',
-        'previous': previous ? 'true' : null,
-        'sinceSeconds': sinceSeconds?.toString(),
-      })).map(AggregateMessage.fromJson);
+  }) {
+    final u = _ws('logs/aggregate', {
+      ...scope.query,
+      'pods': pods?.join(','),
+      'podRegex': podRegex,
+      'containerRegex': containerRegex,
+      'container': container,
+      'tailLines': '$tailLines',
+      'follow': follow ? null : 'false',
+      'previous': previous ? 'true' : null,
+      'sinceSeconds': sinceSeconds?.toString(),
+    });
+    // `selector` repeats (a selector holds commas, so it can't be joined).
+    final uri = selectors.isEmpty ? u : u.replace(queryParameters: {...u.queryParametersAll, 'selector': selectors});
+    return _wsRaw(uri).map(AggregateMessage.fromJson);
+  }
 }

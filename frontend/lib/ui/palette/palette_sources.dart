@@ -13,6 +13,7 @@ import '../../state/table_controller.dart';
 import '../keys.dart';
 import '../portforward/portforward_view.dart' show stopAllForwards;
 import '../editor/resource_editor_screen.dart';
+import '../logs/stream_logs_dialog.dart' show showStreamLogsDialog;
 import '../resource_nav.dart';
 import '../resource_table.dart';
 import '../settings/settings_page.dart';
@@ -112,6 +113,15 @@ List<PaletteItem> paletteItems(BuildContext context) {
         aliases: const ['logs', 'terminal'],
         shortcut: shortcutLabel('J'),
         run: dock.toggle,
+      ),
+    if (dock != null)
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'Stream Logs…',
+        typeLabel: 'Action',
+        icon: _icon(Icons.stream),
+        aliases: const ['logs', 'stern', 'tail'],
+        run: () => showStreamLogsDialog(context),
       ),
     if (dock != null && localShellSupported)
       PaletteItem(
