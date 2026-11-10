@@ -214,7 +214,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     sync status and error message, store and target Secret links (with a
     warning when the Secret is missing), data mapping, provider settings
     (auth Secrets as links, never values), "Refresh now" (sets `force-sync`),
-    and "Managed by ExternalSecret" on the Secret it owns.
+    and "Managed by ExternalSecret" on the Secret it owns. Now a bundled
+    plugin (see [PLUGINS.md](PLUGINS.md#bundled-plugins)); the module it
+    replaces stays in the app for comparison, off (the differences are listed
+    in PLUGINS.md §13).
   - **Kyverno** (module, `kyverno.io` and `wgpolicyk8s.io`) ClusterPolicy and
     Policy (rules, status, and the results they produced), PolicyReport and
     ClusterPolicyReport (summary, results filterable by outcome), exceptions,

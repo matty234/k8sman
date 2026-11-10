@@ -1,8 +1,10 @@
 # Plugins
 
-Status: **Milestone 2 implemented** (dev mode only). Sections 1–12 are the
-design; [§13 As built](#13-as-built) says where Milestones 1 and 2 differ
-from it, and [Writing a plugin](#writing-a-plugin) is how to use it.
+Status: **Milestone 2 implemented** (your own plugins load in dev mode
+only), plus [bundled plugins](#bundled-plugins) that load by default: the
+External Secrets integration is the first. Sections 1–12 are the design;
+[§13 As built](#13-as-built) says where the build differs from it, and
+[Writing a plugin](#writing-a-plugin) is how to use it.
 
 Deep integrations (Argo CD, Helm, Gateway API, …) are compile-time modules
 (see [DEVELOPMENT.md](DEVELOPMENT.md#adding-an-integration)). Plugins cover
@@ -11,8 +13,9 @@ with a `plugin.yaml`, in YAML and [CEL](https://cel.dev), loaded at runtime.
 
 ## Writing a plugin
 
-Plugins load only in **developer mode**, from folders on your computer, and
-reload as you save.
+Your own plugins load only in **developer mode**, from folders on your
+computer, and reload as you save. (Plugins bundled with the app load
+without it: see [Bundled plugins](#bundled-plugins).)
 
 1. Start one: `k8sman-server plugin new my-plugin` writes `my-plugin/` with
    a `plugin.yaml` (a column, a panel section with a related object, a patch
@@ -219,6 +222,66 @@ that diff before committing, as for any golden file.
 `$RESOURCE_NAME`, `$RESOURCE_GROUP` and `$RESOURCE_VERSION`, and skips
 entries that use `$POD`, `$CONTAINER` or `$FILTER`. Validate the result
 before loading it.
+
+## Bundled plugins
+
+Some of the app's own integrations are plugins: ordinary plugin folders
+compiled into the backend with Go `embed`, in
+[`backend/internal/plugins/bundled/<id>/`](../backend/internal/plugins/bundled)
+(`plugin.yaml`, `README.md`, `fixtures/`; only the first two are embedded).
+The first is [External Secrets](../backend/internal/plugins/bundled/external-secrets),
+which replaces the built-in `external_secrets` module.
+
+- **Loaded by default.** They load at start (a parse each; a kind compiles
+  on first use), with or without developer mode, and whether the Plugins
+  integration is on or off: that switch now turns off only your own plugins.
+- **Trusted.** No consent prompt: their actions need no Allow… first. They
+  still read only the kinds they declare (and never Secret values), change
+  the cluster only through the action path, every patch still shows its dry
+  run and asks, every shell command still asks, and all of them are hidden
+  and refused on read-only contexts.
+- **A switch each.** Each has a row in **Settings ▸ Integrations**, like a
+  module (name, description, whether the cluster serves its kinds, on/off),
+  marked "plugin", in the place of the module it replaces. Off is saved in
+  settings.json's `plugins.disabled`, as for any plugin. In developer mode
+  they also appear under Integrations ▸ Plugins (badge **Bundled**) with
+  their kinds, permissions and timings.
+- **Overridable.** A plugin folder with the same `id`, loaded in developer
+  mode, overrides the bundled copy while it is loaded (badges *Unpacked ·
+  overrides bundled* and *Bundled · overridden*): load
+  `backend/internal/plugins/bundled/external-secrets` to work on it with hot
+  reload. Two of your own folders with one id still refuse the second.
+- **Tested in `go test`.** `TestPluginTestGolden` validates every bundled
+  plugin and runs its fixtures against their snapshots (a bundled plugin
+  must have fixtures). By hand:
+  `k8sman-server plugin test backend/internal/plugins/bundled/external-secrets`.
+
+To add one: a folder under `bundled/` with fixtures and snapshots, and, if
+it replaces a module, an entry in `bundled.ReplacesModule`.
+
+### Comparing a bundled plugin with the module it replaces
+
+While the old module is still in the app, the two are never on at once: a
+module that a bundled plugin replaces is off (the backend leaves out its
+routes, overview inputs and actions, and the UI its sidebar section,
+panels, icons and Integrations row), unless settings.json's
+`plugins.useModule` names the plugin; then the plugin is off and the module
+on. Default: the plugin.
+
+To flip: turn on developer mode (Settings ▸ Integrations ▸ Plugins), find
+the **External Secrets** card and switch **Use the built-in module
+instead**; switch it off to go back. It applies at once (tables, sidebar
+and inspector follow). Or edit `~/.config/k8sman/settings.json` with the app
+closed:
+
+```json
+{"plugins": {"useModule": ["external-secrets"]}}
+```
+
+(`PUT /api/plugins/settings {"useModule": ["external-secrets"]}` does the
+same.) The built-in columns of these kinds (`internal/columns`) are core,
+not the module's: the plugin's columns have the same names and replace
+them in place, so there is one set either way.
 
 ## 1. Goals and non-goals
 
@@ -1023,7 +1086,8 @@ confirmed on each run with the full argv shown).
 
 Plugins are not modules, but the plugin host is: one built-in module,
 `plugins`, that can be turned off in Integrations like any other, which
-turns every plugin off.
+turns every plugin off. (As built, it turns off the user's own plugins;
+bundled ones have a switch each: see [Bundled plugins](#bundled-plugins).)
 
 **Backend**
 
@@ -1429,3 +1493,95 @@ enums and per-block fields; rules across fields (exactly one of `name`,
 **Not built in Milestone 2:** distribution (Milestone 3), suspension after
 repeated limit hits, the IP, CIDR, Format and Semver CEL libraries, and
 `$POD`, `$CONTAINER` and `$FILTER` in shell actions.
+
+### Bundled plugins: the External Secrets pilot
+
+**Where.** `internal/plugins/bundled` (the embedded folders and
+`ReplacesModule`); `host.go` loads them from an `fs.FS`
+(`Options.Bundled`, `Options.Replaces`; every plugin now reads its files
+through one, `os.DirFS` for folders). Settings: `plugins.useModule`.
+Server: `moduleOff` (`module.go`) keeps a replaced module off and the
+`plugins` module's routes mounted; `GET /api/settings/modules` adds
+`superseded`. Frontend: bundled rows in `ui/settings/integrations_settings.dart`
+(`BundledPluginTile`, sharing `IntegrationRow` with modules),
+`AppState.supersededModules`, plugin sidebar sections from `pluginHost`
+directly (`ui/resource_nav.dart`), and the comparison switch in
+`plugins/plugins_settings.dart`.
+
+**Changes to how plugins work, for every plugin:**
+
+- Which plugins apply is decided by the backend (`Info.active`): bundled
+  ones unless turned off, overridden or set aside for their module; the
+  user's own in dev mode with the `plugins` module on. The `plugins`
+  module's switch no longer turns bundled plugins off, and its routes stay
+  mounted (they 404 only on an older backend).
+- Panels: for a kind without a dedicated panel (the generic one), plugin
+  sections now come *before* the generic sections, as §4 placed them,
+  instead of after. Kinds with a compiled-in panel are unchanged (after).
+- Plugin sidebar sections show whether the `plugins` module is on or not.
+  Kind icons from plugins win over a module's for the same kind.
+- New icon: `upload` (63 names).
+
+**Size.** The backend grows by 51,664 bytes (74,020,258 → 74,071,922,
+`-trimpath -ldflags="-s -w"`, darwin/arm64): the embedded `plugin.yaml` and
+README and the loading code.
+
+**What the plugin can't match yet.** Compared with the `external_secrets`
+module and its panels (`frontend/lib/panels/externalsecrets/`), in order of
+how much it shows:
+
+1. **The generic panel stays.** ESO kinds have no compiled-in panel in
+   plugin mode, so the inspector shows the plugin's sections and then the
+   generic panel's (Health, Conditions, Spec and Status trees). The module's
+   panels replaced the generic one. Longer and partly repeated (Ready shows
+   in Health and Conditions too). Needs a way for a plugin to replace or
+   collapse the generic sections (the rest of §4's placement).
+2. **Store provider settings.** The module walks the provider's settings to
+   any depth into up to 14 `path → value` rows, turning every `*SecretRef`
+   into a Secret link (with its key) and `serviceAccountRef` into a
+   ServiceAccount link, and shortening long values. CEL has no recursion or
+   `flatten`, so the plugin shows the provider settings as a JSON tree; the
+   references are text, not links.
+3. **"ExternalSecrets using this store".** There is no "every object of a
+   kind" relation; the plugin lists ExternalSecrets with a selector no
+   object fails (`k8sman.dev/none DoesNotExist`) and filters by
+   `secretStoreRef` in CEL. Related lists are capped at 200 objects
+   *before* the filter (with a note), so in a namespace (or, for a
+   ClusterSecretStore, a cluster) with more than 200 ExternalSecrets some
+   users can be missed. The module read them all and showed 50.
+4. **Refresh now asks first.** The module's action ran on one click
+   (`confirm: false`). Plugin patch actions always run a dry run and show a
+   confirmation with the diff (by design, §3). It is offered on PushSecrets
+   too (the backend module accepted them; its UI never offered it).
+5. **Integrations status.** The module's row said "ExternalSecrets: N · not
+   synced: M" and turned red when any wasn't synced; the plugin's row says
+   which of its kinds the cluster serves. Plugins have no status summary.
+6. **Missing target Secret.** The module GETs the Secret and warns only on
+   a 404. The plugin reads it through a `name` relation (a list with a field
+   selector), so it needs list rights on Secrets; without them it warns too
+   (with a note saying why).
+7. **Section headers.** The module puts the Ready badge and counts
+   (mappings, provisioned and failed namespaces) in section headers and
+   draws the first section as a card. Plugin section titles are plain text
+   with no trailing widget; the badge is the first block.
+8. **Small renderings.** Ready not true is a message "Reason: message"
+   (warning for Pending, Progressing, Unknown or Waiting, else error) rather
+   than a callout titled with the reason; a Ready message is an info line
+   rather than a hint. Last refresh is an age without the timestamp;
+   Synced version and the mapping tables aren't monospace; selectors are
+   chips, not monospace lines; `dataFrom` entries are rows of a table.
+
+Not a gap: the module has no overview issues, so the plugin has no alerts
+("ExternalSecrets not synced" would be a natural first one). Icons, the
+sidebar section, the columns, the store and target links, the owning
+ClusterExternalSecret, the target's keys (never values), data mapping and
+template match.
+
+**Managed by.** The core Secret panel's "Managed by ExternalSecret X" line
+(`panels/externalsecrets/managed_by.dart`) is untouched and still shows in
+plugin mode. A plugin could provide it with a `/Secret` kind entry (a
+section with a link built from `ownerReferences`, or "External Secrets
+Operator" from the `reconcile.external-secrets.io/managed` label), but it
+would sit after the Secret panel's own sections rather than at the top,
+and the plugin would be asked about every Secret panel. Keep it core: move
+`managed_by.dart` into `panels/config` when the module goes.
