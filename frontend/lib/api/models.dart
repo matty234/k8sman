@@ -296,15 +296,31 @@ class ContextInfo {
       fingerprint: j['fingerprint']);
 }
 
+/// A backend-computed value a column query can read (`.k8sman.usage.cpuMillis`).
+class EnrichmentField {
+  final String path;
+  final String description;
+
+  /// The cell type that suits the value.
+  final String type;
+  const EnrichmentField({required this.path, required this.description, this.type = 'string'});
+  factory EnrichmentField.fromJson(Json j) => EnrichmentField(
+      path: j['path'] ?? '', description: j['description'] ?? '', type: (j['type'] as String?)?.isNotEmpty == true ? j['type'] : 'string');
+}
+
 class ColumnsConfig {
   final List<ColumnDef> columns;
   final List<ColumnDef> defaults;
   final bool isDefault;
-  const ColumnsConfig({required this.columns, required this.defaults, required this.isDefault});
+
+  /// Computed fields available for the kind (the editor's "Computed" group).
+  final List<EnrichmentField> enrichments;
+  const ColumnsConfig({required this.columns, required this.defaults, required this.isDefault, this.enrichments = const []});
   factory ColumnsConfig.fromJson(Json j) => ColumnsConfig(
         columns: [for (final c in (j['columns'] as List? ?? const [])) ColumnDef.fromJson(c)],
         defaults: [for (final c in (j['defaults'] as List? ?? const [])) ColumnDef.fromJson(c)],
         isDefault: j['isDefault'] ?? false,
+        enrichments: [for (final f in (j['enrichments'] as List? ?? const [])) EnrichmentField.fromJson(f)],
       );
 }
 

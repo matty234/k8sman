@@ -60,6 +60,7 @@ class ColumnEditorDialog extends StatefulWidget {
 class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
   List<_EditableColumn> _cols = [];
   List<ColumnDef> _defaults = [];
+  List<EnrichmentField> _enrichments = [];
   bool _loading = true;
   String? _error;
   TableData? _preview;
@@ -83,6 +84,7 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
       final items = await _api.items(widget.type.ref, namespace: ns).catchError((_) => <Json>[]);
       setState(() {
         _defaults = cfg.defaults;
+        _enrichments = cfg.enrichments;
         _cols = [for (final c in widget.initial ?? cfg.columns) _EditableColumn(c)];
         _sample = items.isNotEmpty ? items.first : null;
         _loading = false;
@@ -174,7 +176,7 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
                       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Expanded(flex: 3, child: _columnList(context)),
                         const VerticalDivider(width: 1),
-                        SizedBox(width: 340, child: _FieldPicker(sample: _sample, onPick: (path) => _add(ColumnDef(name: _nameFor(path), query: path)))),
+                        SizedBox(width: 340, child: _FieldPicker(sample: _sample, computed: _enrichments, onPick: (path, type) => _add(ColumnDef(name: _nameFor(path), query: path, type: type)))),
                       ]),
                     ),
                     const Divider(),
@@ -369,8 +371,9 @@ class _PreviewCell extends StatelessWidget {
 /// Lists leaf paths of a sample object; clicking one adds it as a column.
 class _FieldPicker extends StatefulWidget {
   final Json? sample;
-  final void Function(String path) onPick;
-  const _FieldPicker({required this.sample, required this.onPick});
+  final List<EnrichmentField> computed;
+  final void Function(String path, String type) onPick;
+  const _FieldPicker({required this.sample, required this.computed, required this.onPick});
 
   @override
   State<_FieldPicker> createState() => _FieldPickerState();
@@ -414,37 +417,42 @@ class _FieldPickerState extends State<_FieldPicker> {
     final theme = Theme.of(context);
     final q = _q.toLowerCase();
     final visible = _paths.where((p) => q.isEmpty || p.$1.toLowerCase().contains(q)).take(400).toList();
+    final computed = widget.computed.where((f) => q.isEmpty || f.path.toLowerCase().contains(q) || f.description.toLowerCase().contains(q)).toList();
+    Widget entry(String path, String sub, VoidCallback onTap) => InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(path, style: monoStyle(context, size: 11, color: theme.colorScheme.primary)),
+              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+            ]),
+          ),
+        );
+    Widget header(String text) => Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+          child: Text(text, style: theme.textTheme.titleSmall),
+        );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-        child: Text('Fields from a sample object', style: theme.textTheme.titleSmall),
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
         child: TextField(
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 16), hintText: 'e.g. image, replicas'),
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 16), hintText: 'Find a field, e.g. image, cpu'),
           onChanged: (v) => setState(() => _q = v),
         ),
       ),
       Expanded(
-        child: widget.sample == null
-            ? Center(child: Text('No objects in scope', style: TextStyle(color: theme.hintColor)))
-            : ListView.builder(
-                itemCount: visible.length,
-                itemBuilder: (context, i) {
-                  final (path, val) = visible[i];
-                  return InkWell(
-                    onTap: () => widget.onPick(path.contains('[]') ? '[$path | tostring] | join(", ")' : path),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(path, style: monoStyle(context, size: 11, color: theme.colorScheme.primary)),
-                        Text(val, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-                      ]),
-                    ),
-                  );
-                },
-              ),
+        child: ListView(children: [
+          if (computed.isNotEmpty) ...[
+            header('Computed'),
+            for (final f in computed) entry(f.path, f.description, () => widget.onPick(f.path, f.type)),
+          ],
+          header('Fields from a sample object'),
+          if (widget.sample == null)
+            Padding(padding: const EdgeInsets.all(14), child: Text('No objects in scope', style: TextStyle(color: theme.hintColor)))
+          else
+            for (final (path, val) in visible)
+              entry(path, val, () => widget.onPick(path.contains('[]') ? '[$path | tostring] | join(", ")' : path, 'string')),
+        ]),
       ),
     ]);
   }
