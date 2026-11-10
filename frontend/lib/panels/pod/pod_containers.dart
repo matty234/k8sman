@@ -23,6 +23,13 @@ String shortImage(String image) {
   return s;
 }
 
+/// The full image with a digest cut to its first 12 hex digits:
+/// "registry.example.com/app:1.2@sha256:65645c7bb6a0…".
+String displayImage(String image) {
+  final m = RegExp(r'@(sha256:)?([0-9a-f]{12})[0-9a-f]{4,}$').firstMatch(image);
+  return m == null ? image : '${image.substring(0, m.start)}@${m[1] ?? ''}${m[2]}…';
+}
+
 /// One container as a compact row: state dot, name, short image and state,
 /// restarts, usage mini-bars and its actions (logs, previous logs,
 /// terminal; on hover, or always while it has a problem). Click to expand
@@ -59,6 +66,17 @@ class ContainerRow extends StatelessWidget {
 
   /// A pod template's container: the spec only.
   final bool template;
+
+  /// Shows this container's restart count beside it: only worth it when
+  /// the pod has several containers (else the header's figure says it).
+  final bool showRestarts;
+
+  /// The pod, so env vars from fields resolve and mounts name their claims.
+  final Json? pod;
+
+  /// Shows requests and limits in the details (false while the pod's
+  /// history charts draw them).
+  final bool showResources;
   const ContainerRow(
     this.c, {
     super.key,
@@ -71,6 +89,9 @@ class ContainerRow extends StatelessWidget {
     this.volumes = const [],
     this.portAction,
     this.template = false,
+    this.showRestarts = true,
+    this.pod,
+    this.showResources = true,
   });
 
   bool get _canTerminal => onOpenTerminal != null && c.isRunning && c.kind != ContainerKind.init;
@@ -140,22 +161,50 @@ class ContainerRow extends StatelessWidget {
           ),
         ]),
       ),
+      // Open, the details show the full image: the subtitle keeps the state.
+      openSubtitle: () => state,
       trailing: [
-        if (live && c.restarts > 0)
-          Tooltip(
-            message: plural(c.restarts, 'restart'),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.replay, size: 12, color: severityColor(context, Severity.warn)),
-              const SizedBox(width: 2),
-              Text('${c.restarts}', style: small?.copyWith(color: severityColor(context, Severity.warn), fontWeight: FontWeight.w600)),
-            ]),
-          ),
+        if (live && showRestarts && c.restarts > 0) _restartBadge(context, small),
         if (live && miniUsage != null) Padding(padding: const EdgeInsets.only(left: 2, top: 3), child: miniUsage!),
       ],
       actions: actions,
-      details: (_) => ContainerDetails(c, namespace: namespace, volumes: volumes, portAction: live ? portAction : null, template: template),
+      details: (_) => ContainerDetails(c,
+          namespace: namespace, volumes: volumes, portAction: live ? portAction : null, template: template, pod: pod, showResources: showResources),
     );
   }
+
+  /// "↻ 3" in the restart pattern's colour (grey for clean exits).
+  Widget _restartBadge(BuildContext context, TextStyle? small) {
+    final sev = restartKind(c)?.severity ?? Severity.warn;
+    final color = sev == Severity.info ? Theme.of(context).hintColor : severityColor(context, sev);
+    return Tooltip(
+      message: '${plural(c.restarts, 'restart')}${restartKind(c) == null ? '' : ' · ${restartKind(c)!.short}'}',
+      child: Row(key: ValueKey('container-restarts-${c.name}'), mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.replay, size: 12, color: color),
+        const SizedBox(width: 2),
+        Text('${c.restarts}', style: small?.copyWith(color: color, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+}
+
+/// A single-container pod's container, inline: no row to open, no actions
+/// (the header has Logs and Terminal; the restart insight has Previous
+/// logs), just its details.
+class InlineContainer extends StatelessWidget {
+  final PodContainer c;
+  final String? namespace;
+  final List<Json> volumes;
+  final Widget Function(Json port)? portAction;
+  final Json pod;
+  final bool showResources;
+  const InlineContainer(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, required this.pod, this.showResources = true});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(left: 4, right: 6),
+        child: ContainerDetails(c, namespace: namespace, volumes: volumes, portAction: portAction, pod: pod, showResources: showResources),
+      );
 }
 
 /// A pod template's containers (init and sidecars, then the rest) as
@@ -308,7 +357,15 @@ class ContainerDetails extends StatelessWidget {
 
   /// A pod template's container: no state, just the spec.
   final bool template;
-  const ContainerDetails(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, this.template = false});
+
+  /// The pod: env vars from its fields show their values, and mounts of
+  /// ephemeral volumes name their claims.
+  final Json? pod;
+
+  /// False while the pod's history charts show CPU and memory requests
+  /// and limits: then only other resources (storage, GPUs) show here.
+  final bool showResources;
+  const ContainerDetails(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, this.template = false, this.pod, this.showResources = true});
 
   @override
   Widget build(BuildContext context) {
@@ -338,7 +395,7 @@ class ContainerDetails extends StatelessWidget {
           if (envFrom.isNotEmpty) _envFromWidget(context, envFrom),
         ]),
       if (mounts.isNotEmpty) _mountsWidget(context, mounts),
-      if (_hasResources(spec)) _resourcesWidget(context),
+      if (_resourceKeys.isNotEmpty) _resourcesWidget(context),
     ];
 
     final groups = <Widget>[
@@ -429,7 +486,9 @@ class ContainerDetails extends StatelessWidget {
   }
 
   Widget _lastStateWidget(BuildContext context) {
-    final c2 = severityColor(context, c.lastTerminated['exitCode'] == 0 ? Severity.warn : Severity.error);
+    // The restart pattern's colour (calm for clean exits), as the dot.
+    final sev = restartKind(c)?.severity ?? (c.lastTerminated['exitCode'] == 0 ? Severity.info : Severity.error);
+    final c2 = sev == Severity.info ? Theme.of(context).hintColor : severityColor(context, sev);
     return IntrinsicHeight(
       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Container(width: 2, margin: const EdgeInsets.only(right: 8, top: 1, bottom: 1), color: c2),
@@ -438,21 +497,36 @@ class ContainerDetails extends StatelessWidget {
     );
   }
 
-  /// The image as plain text (copy on hover), the pull policy only when
-  /// it isn't the default for the tag, the digest in the tooltip (and a
-  /// copy-digest action on hover).
+  /// The image once, in full but with a digest shortened (click to copy
+  /// it whole), the pull policy only when it isn't the default for the
+  /// tag, the running digest in the tooltip (and a copy-digest action on
+  /// hover).
   Widget _imageWidget(BuildContext context) {
+    final theme = Theme.of(context);
     final image = '${c.spec['image'] ?? ''}';
     final policy = c.spec['imagePullPolicy'] as String?;
     final id = '${c.status['imageID'] ?? ''}';
     final at = id.indexOf('@');
     final digest = at >= 0 ? id.substring(at + 1) : id;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _Copyable(
-        image,
-        key: ValueKey('container-image-${c.name}'),
-        tooltip: digest.isEmpty ? null : '$image\n$digest',
-        extra: digest.isEmpty ? null : _HoverIcon(icon: Icons.fingerprint, tooltip: 'Copy digest $digest', onTap: () => copyToClipboard(context, id)),
+      Hoverable(
+        builder: (h) => Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Flexible(
+            child: Tooltip(
+              message: [image, if (digest.isNotEmpty && !image.contains(digest)) 'running $digest', 'Click to copy'].join('\n'),
+              waitDuration: const Duration(milliseconds: 400),
+              child: Hoverable(
+                onTap: () => copyToClipboard(context, image),
+                builder: (th) => Text(
+                  displayImage(image),
+                  key: ValueKey('container-image-${c.name}'),
+                  style: monoStyle(context, size: 11, color: th ? theme.colorScheme.primary : null),
+                ),
+              ),
+            ),
+          ),
+          if (h && digest.isNotEmpty) _HoverIcon(icon: Icons.fingerprint, tooltip: 'Copy digest $digest', onTap: () => copyToClipboard(context, id)),
+        ]),
       ),
       if (policy != null && policy != defaultPullPolicy(image)) HintText('pull $policy'),
     ]);
@@ -462,9 +536,11 @@ class ContainerDetails extends StatelessWidget {
         for (final p in ports) _Port(p, key: ValueKey('container-port-${c.name}-${p['containerPort']}'), action: portAction),
       ]);
 
-  static bool _hasResources(Json spec) {
-    final r = asMap(spec['resources']);
-    return asMap(r['requests']).isNotEmpty || asMap(r['limits']).isNotEmpty;
+  /// The resources to list: all of them, or (while the charts draw CPU and
+  /// memory) the rest.
+  List<String> get _resourceKeys {
+    final r = asMap(c.spec['resources']);
+    return {...asMap(r['requests']).keys, ...asMap(r['limits']).keys}.where((k) => showResources || (k != 'cpu' && k != 'memory')).toList()..sort();
   }
 
   /// One line per resource: "50m request · 200m limit".
@@ -475,7 +551,7 @@ class ContainerDetails extends StatelessWidget {
     final r = asMap(c.spec['resources']);
     final req = asMap(r['requests']);
     final lim = asMap(r['limits']);
-    final keys = {...req.keys, ...lim.keys}.toList()..sort();
+    final keys = _resourceKeys;
     String label(String k) => switch (k) { 'cpu' => 'CPU', 'memory' => 'Memory', 'ephemeral-storage' => 'Storage', _ => k };
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       for (final k in keys)
@@ -521,10 +597,15 @@ class ContainerDetails extends StatelessWidget {
           if (r['key'] != e['name'] || r['optional'] == true) Text('${r['key'] != e['name'] ? 'key ${r['key']}' : ''}${optional(r)}'.trim(), style: hint),
         ]);
       }
-      if (vf['fieldRef'] is Map) return Text('field ${dig(vf, ['fieldRef', 'fieldPath'])}', style: hint);
-      if (vf['resourceFieldRef'] is Map) {
+      // From the pod's fields or resources: the value, its source in grey.
+      if (vf['fieldRef'] is Map || vf['resourceFieldRef'] is Map) {
         final r = asMap(vf['resourceFieldRef']);
-        return Text('resource ${r['resource']}${r['containerName'] != null ? ' of ${r['containerName']}' : ''}${r['divisor'] != null ? ' / ${r['divisor']}' : ''}', style: hint);
+        final source = vf['fieldRef'] is Map
+            ? '${dig(vf, ['fieldRef', 'fieldPath'])}'
+            : '${r['resource']}${r['containerName'] != null ? ' of ${r['containerName']}' : ''}${r['divisor'] != null ? ' / ${r['divisor']}' : ''}';
+        final resolved = pod == null ? null : resolveEnvSource(pod!, c.spec, vf);
+        if (resolved == null) return Text('${vf['fieldRef'] is Map ? 'field' : 'resource'} $source', style: hint);
+        return InlineWrap([_Copyable(resolved), Text(source, style: hint)]);
       }
       return Text(vf.keys.join(', '), style: hint);
     }
@@ -579,10 +660,29 @@ class ContainerDetails extends StatelessWidget {
       final v = volumes.where((v) => v['name'] == name).firstOrNull ?? const {};
       final type = v.keys.firstWhere((k) => k != 'name', orElse: () => '');
       final src = asMap(v[type]);
+      // A claim by its own name (what env vars and the PVC list say), the
+      // volume's name quiet after it.
+      final podName = dig<String>(pod, ['metadata', 'name']);
+      final claim = switch (type) {
+        'persistentVolumeClaim' => '${src['claimName']}',
+        'ephemeral' when podName != null => '$podName-$name',
+        _ => null,
+      };
+      if (claim != null) {
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(
+            child: Tooltip(
+              message: 'PersistentVolumeClaim $claim${type == 'ephemeral' ? ' (ephemeral, deleted with the pod)' : ''}',
+              waitDuration: const Duration(milliseconds: 400),
+              child: ResourceLink(ObjectRef(kind: 'PersistentVolumeClaim', name: claim, namespace: namespace), label: claim),
+            ),
+          ),
+          if (claim != name) Text('  vol $name', style: hint),
+        ]);
+      }
       final ref = switch (type) {
         'configMap' => ObjectRef(kind: 'ConfigMap', name: '${src['name']}', namespace: namespace),
         'secret' => ObjectRef(kind: 'Secret', name: '${src['secretName']}', namespace: namespace),
-        'persistentVolumeClaim' => ObjectRef(kind: 'PersistentVolumeClaim', name: '${src['claimName']}', namespace: namespace),
         _ => null,
       };
       if (ref == null) return Tooltip(message: type.isEmpty ? 'volume $name' : '$type volume', child: Text(name, style: hint));
@@ -643,24 +743,19 @@ class _Field extends StatelessWidget {
   }
 }
 
-/// Mono text with copy (and optional [extra]) icons after it on hover.
+/// Mono text with a copy icon after it on hover.
 class _Copyable extends StatelessWidget {
   final String text;
-  final String? tooltip;
-  final Widget? extra;
-  const _Copyable(this.text, {super.key, this.tooltip, this.extra});
+  const _Copyable(this.text);
 
   @override
-  Widget build(BuildContext context) {
-    final t = Text(text, style: monoStyle(context, size: 11));
-    return Hoverable(
-      builder: (h) => Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Flexible(child: tooltip == null ? t : Tooltip(message: tooltip!, waitDuration: const Duration(milliseconds: 400), child: t)),
-        // Trailing, so showing them moves nothing.
-        if (h) ...[_HoverIcon(icon: Icons.copy, tooltip: 'Copy', onTap: () => copyToClipboard(context, text)), ?extra],
-      ]),
-    );
-  }
+  Widget build(BuildContext context) => Hoverable(
+        builder: (h) => Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Flexible(child: Text(text, style: monoStyle(context, size: 11))),
+          // Trailing, so showing it moves nothing.
+          if (h) _HoverIcon(icon: Icons.copy, tooltip: 'Copy', onTap: () => copyToClipboard(context, text)),
+        ]),
+      );
 }
 
 class _HoverIcon extends StatelessWidget {

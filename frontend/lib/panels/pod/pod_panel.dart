@@ -6,6 +6,7 @@ import '../../actions/actions.dart';
 import '../../api/models.dart';
 import '../../gpu/gpu_sections.dart';
 import '../../prometheus/metric_history_chart.dart';
+import '../../prometheus/prom_api.dart';
 import '../../metrics/network_usage.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/terminal/open_terminal.dart';
@@ -45,6 +46,21 @@ class PodPanel extends ResourcePanel {
     final healthyMain = [for (final c in containers) if (!c.hasProblem && (c.kind == ContainerKind.regular || c.kind == ContainerKind.sidecar)) c];
     final healthyInit = [for (final c in containers) if (!c.hasProblem && c.kind == ContainerKind.init) c];
     final healthyEph = [for (final c in containers) if (!c.hasProblem && c.kind == ContainerKind.ephemeral) c];
+    // While the history charts draw requests and limits, the container
+    // details leave CPU and memory out (known once Prometheus was asked).
+    final charted = PromApi.of(ctx.api).knownHasPrometheus == true;
+    // One forward per port (only while the container runs).
+    Widget Function(Json)? forward(PodContainer c) => c.isRunning
+        ? (p) => QuickForwardButton(
+              api: ctx.api,
+              app: ctx.app,
+              namespace: ctx.namespace ?? 'default',
+              kind: 'pod',
+              name: ctx.name,
+              port: '${p['containerPort']}',
+              protocol: p['protocol'] as String?,
+            )
+        : null;
     Widget row(PodContainer c, {bool quiet = false}) => ContainerRow(
       c,
       key: ValueKey('container-${ctx.uid}/${c.name}'),
@@ -55,24 +71,35 @@ class PodPanel extends ResourcePanel {
       onOpenTerminal: ctx.app.readOnly ? null : (context) => openPodTerminal(context, ctx.object, container: c.name),
       miniUsage: c.isRunning ? ContainerMiniUsage(pod: ctx.object, container: c.name, spec: c.spec) : null,
       volumes: volumes,
-      // One-click forward per port (only while the container runs).
-      portAction: c.isRunning
-          ? (p) => QuickForwardButton(
-              api: ctx.api,
-              app: ctx.app,
-              namespace: ctx.namespace ?? 'default',
-              kind: 'pod',
-              name: ctx.name,
-              port: '${p['containerPort']}',
-              protocol: p['protocol'] as String?,
-            )
-          : null,
+      portAction: forward(c),
+      showRestarts: containers.length > 1,
+      pod: pod,
+      showResources: !charted,
     );
 
-    return [
-      // Is this pod OK, and if not, why?
-      PodStatusHeader(ctx),
-      InspectorSection(
+    // One long-running container: shown inline, its init and ephemeral
+    // containers (if any) as rows under it.
+    final single = singleMainContainer(containers);
+    final Widget containersSection;
+    if (single != null) {
+      final initRows = [for (final c in containers) if (c.kind == ContainerKind.init) row(c, quiet: !c.hasProblem)];
+      final ephRows = [for (final c in containers) if (c.kind == ContainerKind.ephemeral) row(c, quiet: !c.hasProblem)];
+      containersSection = InspectorSection(
+        id: 'container',
+        title: 'Container',
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(child: SectionSummary(single.name)),
+          if (single.isRunning) ...[const SizedBox(width: 8), ContainerMiniUsage(pod: pod, container: single.name, spec: single.spec)],
+        ]),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          InlineContainer(single,
+              key: ValueKey('inline-container-${ctx.uid}'), namespace: ctx.namespace, volumes: volumes, portAction: forward(single), pod: pod, showResources: !charted),
+          if (initRows.isNotEmpty) ...[const _GroupLabel('Init'), ...initRows],
+          if (ephRows.isNotEmpty) ...[const _GroupLabel('Ephemeral'), ...ephRows],
+        ]),
+      );
+    } else {
+      containersSection = InspectorSection(
         id: 'containers',
         title: 'Containers',
         trailing: SectionSummary(_containerCounts(containers)),
@@ -86,13 +113,14 @@ class PodPanel extends ResourcePanel {
             if (containers.isEmpty) const HintText('No containers'),
           ],
         ),
-      ),
-      // CPU / memory history (hidden when Prometheus isn't available).
-      podHistory(ctx),
-      // Live network from the kubelet when there is no Prometheus.
-      liveNetworkSection(ctx),
-      gpuPodSection(ctx),
-      draPodSection(ctx),
+      );
+    }
+
+    return [
+      // Is this pod OK, and if not, why?
+      PodStatusHeader(ctx),
+      // What it runs (the spec), then the live data.
+      containersSection,
       // Reference detail: collapsed by default, a one-line summary in the
       // header; opening one keeps it open for the next pod.
       if (volumes.isNotEmpty)
@@ -118,6 +146,12 @@ class PodPanel extends ResourcePanel {
         trailing: SectionSummary(_configSummary(ctx)),
         child: _Configuration(ctx),
       ),
+      draPodSection(ctx),
+      // CPU / memory history (hidden when Prometheus isn't available).
+      podHistory(ctx),
+      // Live network from the kubelet when there is no Prometheus.
+      liveNetworkSection(ctx),
+      gpuPodSection(ctx),
       InspectorSection(
         id: 'conditions',
         title: 'Conditions',
@@ -388,6 +422,13 @@ class _Volumes extends StatelessWidget {
     final type = v.keys.firstWhere((k) => k != 'name', orElse: () => 'unknown');
     final src = asMap(v[type]);
     final mounts = _mountSummary(name);
+    // A claim leads with its own name (what the PVC list and env vars
+    // say), the volume's name quiet after it.
+    final claim = switch (type) {
+      'persistentVolumeClaim' => '${src['claimName']}',
+      'ephemeral' => '$pod-$name',
+      _ => null,
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -395,11 +436,17 @@ class _Volumes extends StatelessWidget {
           spacing: 8,
           runSpacing: 2,
           crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(name, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
-            Chipish(text: type),
-            _source(context, type, src, name),
-          ],
+          children: claim != null
+              ? [
+                  _link('PersistentVolumeClaim', claim, label: claim),
+                  if (claim != name) HintText('vol $name'),
+                  _source(context, type, src, name),
+                ]
+              : [
+                  Text(name, style: monoStyle(context, size: 12).copyWith(fontWeight: FontWeight.w600)),
+                  Chipish(text: type),
+                  _source(context, type, src, name),
+                ],
         ),
         Padding(
           padding: const EdgeInsets.only(top: 1),
@@ -430,10 +477,8 @@ class _Volumes extends StatelessWidget {
       case 'secret':
         return InlineWrap([_link('Secret', src['secretName'] as String?, label: '${src['secretName']}'), ?opt, _items(context, src)]);
       case 'persistentVolumeClaim':
-        return InlineWrap([
-          _link('PersistentVolumeClaim', src['claimName'] as String?, label: 'pvc/${src['claimName']}'),
-          if (src['readOnly'] == true) const HintText('read-only'),
-        ]);
+        // The claim leads the line (see _volume).
+        return src['readOnly'] == true ? const HintText('read-only') : const SizedBox.shrink();
       case 'emptyDir':
         return HintText([src['medium'] == 'Memory' ? 'tmpfs (memory-backed)' : 'node disk', if (src['sizeLimit'] != null) 'limit ${src['sizeLimit']}'].join(' · '));
       case 'hostPath':
@@ -453,9 +498,7 @@ class _Volumes extends StatelessWidget {
       case 'ephemeral':
         // Kubernetes names the claim <pod>-<volume> and deletes it with the pod.
         final t = asMap(dig(src, ['volumeClaimTemplate', 'spec']));
-        final claim = '$pod-$volume';
         return InlineWrap([
-          _link('PersistentVolumeClaim', claim, label: 'pvc/$claim'),
           HintText(
             [
               'ephemeral, deleted with the pod',

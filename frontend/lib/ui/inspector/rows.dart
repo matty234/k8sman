@@ -24,6 +24,10 @@ class InspectorRow extends StatefulWidget {
   final String? dotTooltip;
   final Widget title;
   final Widget? subtitle;
+
+  /// Builds the subtitle while the row is open, when the details repeat
+  /// part of it (null from it: no subtitle). Unset: [subtitle] always.
+  final Widget? Function()? openSubtitle;
   final List<Widget> trailing;
   final List<Widget> actions;
 
@@ -48,6 +52,7 @@ class InspectorRow extends StatefulWidget {
     this.hollowDot = false,
     this.dotTooltip,
     this.subtitle,
+    this.openSubtitle,
     this.trailing = const [],
     this.actions = const [],
     this.actionsAlways = false,
@@ -128,9 +133,9 @@ class _InspectorRowState extends State<InspectorRow> {
             overflow: TextOverflow.ellipsis,
             child: widget.title,
           ),
-          if (widget.subtitle != null) ...[
+          if ((open && widget.openSubtitle != null ? widget.openSubtitle!() : widget.subtitle) case final sub?) ...[
             const SizedBox(height: 2),
-            DefaultTextStyle.merge(style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor), maxLines: 1, overflow: TextOverflow.ellipsis, child: widget.subtitle!),
+            DefaultTextStyle.merge(style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor), maxLines: 1, overflow: TextOverflow.ellipsis, child: sub),
           ],
         ]),
       ),
