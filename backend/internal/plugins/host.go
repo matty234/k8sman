@@ -613,25 +613,35 @@ func (h *Host) entries(rt cluster.ResourceType) []entry {
 }
 
 // Columns is defaults with the plugins' columns for rt: one with the
-// name of a default column replaces it in place, others go before Age;
-// hideColumns drop defaults by name (never Name).
+// name of a default column (in any case: CRD printer columns are often
+// upper-case) replaces it in place, others go before Age. hideColumns drop
+// defaults by name, "*" every default but Name, Namespace and Age.
 func (h *Host) Columns(contextName string, rt cluster.ResourceType, defaults []columns.Column) []columns.Column {
 	es := h.entries(rt)
 	if len(es) == 0 {
 		return defaults
 	}
+	isAge := func(c columns.Column) bool { return strings.EqualFold(c.Name, "Age") && c.Type == "age" }
 	out := slices.Clone(defaults)
 	for _, e := range es {
 		for _, name := range e.kp.kind.HideColumns {
-			out = slices.DeleteFunc(out, func(c columns.Column) bool { return c.Name == name && c.Name != "Name" && c.Plugin == "" })
+			out = slices.DeleteFunc(out, func(c columns.Column) bool {
+				if c.Plugin != "" || c.Name == "Name" {
+					return false
+				}
+				if name == "*" {
+					return c.Name != "Namespace" && !isAge(c)
+				}
+				return strings.EqualFold(c.Name, name)
+			})
 		}
 		for _, cp := range e.kp.columns {
 			c := h.column(e, cp, contextName)
-			if i := slices.IndexFunc(out, func(x columns.Column) bool { return x.Name == c.Name }); i >= 0 {
+			if i := slices.IndexFunc(out, func(x columns.Column) bool { return strings.EqualFold(x.Name, c.Name) }); i >= 0 {
 				out[i] = c
 				continue
 			}
-			at := slices.IndexFunc(out, func(x columns.Column) bool { return x.Name == "Age" && x.Type == "age" })
+			at := slices.IndexFunc(out, isAge)
 			if at < 0 {
 				at = len(out)
 			}

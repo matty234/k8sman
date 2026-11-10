@@ -72,7 +72,7 @@ func schemaField() map[string]map[string]any {
 		"Kind.variables":         {"propertyNames": map[string]any{"pattern": identRe.String()}, "description": "Named CEL values, read as variables.<name>."},
 		"Kind.related":           {"propertyNames": map[string]any{"pattern": identRe.String()}, "description": "Related objects for panels and actions, read as related.<name>."},
 		"Kind.metrics":           {"propertyNames": map[string]any{"pattern": identRe.String()}, "description": "Instant PromQL queries for panels, read as metrics.<name>."},
-		"Kind.hideColumns":       {"description": "Default columns to drop, by name."},
+		"Kind.hideColumns":       {"description": "Default columns to drop, by name (any case); \"*\" drops every default but Name, Namespace and Age."},
 		"Related.kind":           {"pattern": kindKeyPattern, "description": "Kind key; must be in permissions.read."},
 		"Related.owner":          {"description": "Objects whose ownerReferences include this object (at most 200)."},
 		"Related.filter":         {"description": "bool, sees each candidate as item: keep those for which it is true, before the list is capped at 200. Alone, the candidates are every object of the kind in the namespace."},

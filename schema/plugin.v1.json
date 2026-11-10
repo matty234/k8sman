@@ -656,7 +656,7 @@
           "type": "array"
         },
         "hideColumns": {
-          "description": "Default columns to drop, by name.",
+          "description": "Default columns to drop, by name (any case); \"*\" drops every default but Name, Namespace and Age.",
           "items": {
             "type": "string"
           },

@@ -216,6 +216,16 @@ func TestPluginColumnsEvaluate(t *testing.T) {
 	if want := []string{"Name", "Ready", "Size", "Expires", "Age"}; !reflect.DeepEqual(names, want) {
 		t.Fatalf("columns = %v, want %v (Status hidden, plugin columns before Age)", names, want)
 	}
+	// "*" hides every default but Name, Namespace and Age (upper-case CRD
+	// printer columns included).
+	star := demoHost(t, strings.Replace(demoManifest, "hideColumns: [Status]", `hideColumns: ["*"]`, 1))
+	names = nil
+	for _, c := range star.Columns("demo-context", widgetType, []columns.Column{{Name: "Name"}, {Name: "Namespace"}, {Name: "READY"}, {Name: "MESSAGE"}, {Name: "AGE", Type: "age"}}) {
+		names = append(names, c.Name)
+	}
+	if want := []string{"Name", "Namespace", "Ready", "Size", "Expires", "AGE"}; !reflect.DeepEqual(names, want) {
+		t.Fatalf(`hideColumns "*": columns = %v, want %v`, names, want)
+	}
 	ev := columns.NewEvaluator(cols)
 	cells, errs := ev.Row(widget(false, "2030-01-02T03:04:05Z"))
 	for i, err := range errs {
