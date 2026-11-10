@@ -384,6 +384,11 @@ class ApiClient {
   /// Whether the log viewer shows the newest line at the top.
   Future<bool> getLogNewestFirst() async => (await _get('settings/logs') as Json)['newestFirst'] == true;
 
+  /// Whether JSON / logfmt log lines are syntax coloured (default on).
+  Future<bool> getLogColourSyntax() async => (await _get('settings/logs') as Json)['colourSyntax'] != false;
+
+  Future<void> putLogColourSyntax(bool v) => _send('PUT', 'settings/logs', const {}, {'colourSyntax': v});
+
   Future<void> putLogNewestFirst(bool v) => _send('PUT', 'settings/logs', const {}, {'newestFirst': v});
 
   /// Whether Copy link copies the `k8sman://` form (else the https one).

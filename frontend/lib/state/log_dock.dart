@@ -252,11 +252,15 @@ class LogDock extends ChangeNotifier {
   /// Newest line at the top (an app setting in settings.json; new tabs start
   /// with it and changing it applies to every open one).
   bool newestFirst = false;
+
+  /// Colour JSON / logfmt lines (an app setting, on by default).
+  bool colourSyntax = true;
   Future<void> _prefSaves = Future.value();
 
   Future<void> loadPrefs() async {
     try {
       newestFirst = await api.getLogNewestFirst();
+      colourSyntax = await api.getLogColourSyntax();
       for (final t in _tabs.whereType<LogSession>()) {
         t.setView(newestFirst: newestFirst);
       }
@@ -264,6 +268,12 @@ class LogDock extends ChangeNotifier {
     } catch (e) {
       debugPrint('log preferences: $e');
     }
+  }
+
+  void setColourSyntax(bool v) {
+    colourSyntax = v;
+    notifyListeners();
+    _prefSaves = _prefSaves.then((_) => api.putLogColourSyntax(v)).catchError((Object e) => debugPrint('save log preferences: $e'));
   }
 
   void setNewestFirst(bool v) {

@@ -11,6 +11,7 @@ import '../../state/log_dock.dart';
 import '../../app/kubeconfig_picker.dart' show NativeFiles;
 import '../../util/k8s.dart';
 import '../theme.dart';
+import 'log_syntax.dart';
 import '../widgets/common.dart';
 
 /// Severity shown by a stream's status dot (tab strip, status text).
@@ -284,6 +285,7 @@ class _LogStreamViewState extends State<LogStreamView> {
     final agg = session is AggregateLogStream ? session : null;
     final palette = agg == null ? null : sourcePalette(Theme.of(context).brightness);
     final prefixW = agg == null ? 0.0 : (agg.prefixChars + 1) * _charWidth(style);
+    final syntax = context.select<LogDock, bool>((d) => d.colourSyntax);
     final list = Scrollbar(
       controller: _scroll,
       thumbVisibility: true,
@@ -306,6 +308,7 @@ class _LogStreamViewState extends State<LogStreamView> {
             wrap: s.wrap,
             style: style,
             highlight: q.isNotEmpty && s.lineMatches(idx, q),
+            syntax: syntax,
             source: src,
             sourceColor: src == null ? null : palette![src.colorIndex],
             prefixWidth: prefixW,
@@ -861,6 +864,7 @@ class _Toggle extends StatelessWidget {
 
 final _errRe = RegExp(r'\b(error|err|fatal|panic|exception|fail(ed|ure)?)\b', caseSensitive: false);
 final _warnRe = RegExp(r'\b(warn(ing)?)\b', caseSensitive: false);
+final _syntaxCache = LogSyntaxCache();
 final _tsRe = RegExp(r'^\d{4}-\d\d-\d\dT[\d:.]+(Z|[+-]\d\d:\d\d) ');
 
 /// Prefix colours for aggregated log sources: eight hues that stay legible
@@ -896,6 +900,7 @@ class _LogLine extends StatelessWidget {
   final bool timestamps;
   final bool wrap;
   final bool highlight;
+  final bool syntax;
   final TextStyle style;
 
   // Aggregated streams: the line's source, its precomputed colour and the
@@ -914,6 +919,7 @@ class _LogLine extends StatelessWidget {
     required this.wrap,
     required this.style,
     required this.highlight,
+    this.syntax = false,
     this.source,
     this.sourceColor,
     this.prefixWidth = 0,
@@ -953,8 +959,9 @@ class _LogLine extends StatelessWidget {
     } else if (timestamps && ts != null && ts!.isNotEmpty) {
       stamp = '$ts ';
     }
+    final toks = syntax ? _syntaxCache.tokens(body) : null;
     final head = body.length > 300 ? body.substring(0, 300) : body;
-    final level = _errRe.hasMatch(head) ? Severity.error : (_warnRe.hasMatch(head) ? Severity.warn : null);
+    final level = toks != null ? null : (_errRe.hasMatch(head) ? Severity.error : (_warnRe.hasMatch(head) ? Severity.warn : null));
     final base = level == null ? style : style.copyWith(color: severityColor(context, level).withValues(alpha: 0.95));
     final spans = <InlineSpan>[
       if (stamp != null)
@@ -962,7 +969,7 @@ class _LogLine extends StatelessWidget {
           text: stamp,
           style: style.copyWith(color: theme.hintColor),
         ),
-      ..._highlight(body, base),
+      ..._highlight(body, base, toks == null ? null : _tokStyles(context, base, toks, body)),
     ];
     final content = Text.rich(
       TextSpan(children: spans),
@@ -1005,31 +1012,91 @@ class _LogLine extends StatelessWidget {
     );
   }
 
-  List<InlineSpan> _highlight(String s, TextStyle base) {
+  /// Per-token styles for a structured line (same font and metrics as [base]).
+  List<(int, int, TextStyle)> _tokStyles(BuildContext context, TextStyle base, List<LogTok> toks, String body) {
+    final theme = Theme.of(context);
+    final key = base.copyWith(color: theme.colorScheme.primary.withValues(alpha: 0.9));
+    final str = base.copyWith(color: severityColor(context, Severity.ok).withValues(alpha: 0.85));
+    final num = base.copyWith(color: theme.colorScheme.tertiary);
+    final punct = base.copyWith(color: AppColors.of(context).faint);
+    return [
+      for (final k in toks)
+        (
+          k.start,
+          k.end,
+          switch (k.kind) {
+            LogTokKind.plain || LogTokKind.message => base,
+            LogTokKind.key => key,
+            LogTokKind.string => str,
+            LogTokKind.number || LogTokKind.keyword => num,
+            LogTokKind.punct => punct,
+            LogTokKind.level => base.copyWith(color: _levelColor(context, body.substring(k.start, k.end))),
+          },
+        ),
+    ];
+  }
+
+  Color? _levelColor(BuildContext context, String v) {
+    final l = v.replaceAll('"', '').toLowerCase();
+    final sev = switch (l) {
+      'error' || 'err' || 'fatal' || 'panic' || 'critical' || 'crit' || 'dpanic' || 'emerg' || 'alert' => Severity.error,
+      'warn' || 'warning' => Severity.warn,
+      'info' || 'notice' => Severity.info,
+      'debug' || 'trace' || 'dbg' => Severity.neutral,
+      _ => null,
+    };
+    return sev == null ? null : severityColor(context, sev);
+  }
+
+  /// Search-hit ranges in [s] as flat start/end pairs.
+  List<int> _hits(String s) {
     final re = regex;
-    if (query.isEmpty && re == null) return [TextSpan(text: s, style: base)];
-    final hit = base.copyWith(backgroundColor: Colors.amber.withValues(alpha: 0.85), color: Colors.black);
-    final out = <InlineSpan>[];
-    var start = 0;
+    final out = <int>[];
     if (re != null) {
       for (final m in re.allMatches(s)) {
         if (m.end == m.start) continue;
-        if (m.start > start) out.add(TextSpan(text: s.substring(start, m.start), style: base));
-        out.add(TextSpan(text: s.substring(m.start, m.end), style: hit));
-        start = m.end;
+        out..add(m.start)..add(m.end);
       }
-    } else {
+    } else if (query.isNotEmpty) {
       final lower = s.toLowerCase();
       final q = query.toLowerCase();
+      var start = 0;
       while (true) {
         final i = lower.indexOf(q, start);
         if (i < 0) break;
-        if (i > start) out.add(TextSpan(text: s.substring(start, i), style: base));
-        out.add(TextSpan(text: s.substring(i, i + q.length), style: hit));
+        out..add(i)..add(i + q.length);
         start = i + q.length;
       }
     }
-    if (start < s.length) out.add(TextSpan(text: s.substring(start), style: base));
+    return out;
+  }
+
+  /// Spans for [s]: [toks] (or one [base] run) split at search-hit edges; a
+  /// hit keeps the token's font but paints over its colour.
+  List<InlineSpan> _highlight(String s, TextStyle base, List<(int, int, TextStyle)>? toks) {
+    final hits = query.isEmpty && regex == null ? const <int>[] : _hits(s);
+    if (hits.isEmpty && toks == null) return [TextSpan(text: s, style: base)];
+    final runs = toks ?? [(0, s.length, base)];
+    final amber = Colors.amber.withValues(alpha: 0.85);
+    final out = <InlineSpan>[];
+    var h = 0;
+    for (final (a, b, st) in runs) {
+      var pos = a;
+      while (pos < b) {
+        while (h < hits.length && hits[h + 1] <= pos) {
+          h += 2;
+        }
+        if (h < hits.length && hits[h] <= pos) {
+          final e = math.min(b, hits[h + 1]);
+          out.add(TextSpan(text: s.substring(pos, e), style: st.copyWith(backgroundColor: amber, color: Colors.black)));
+          pos = e;
+        } else {
+          final e = h < hits.length ? math.min(b, hits[h]) : b;
+          out.add(TextSpan(text: s.substring(pos, e), style: st));
+          pos = e;
+        }
+      }
+    }
     return out;
   }
 }

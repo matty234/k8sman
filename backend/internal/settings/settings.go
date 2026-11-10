@@ -86,6 +86,9 @@ type Settings struct {
 
 	// LogsNewestFirst shows log lines newest first in every log view.
 	LogsNewestFirst bool `json:"logsNewestFirst,omitempty"`
+	// LogsPlainSyntax turns off colouring of JSON / logfmt log lines (the
+	// zero value keeps it on).
+	LogsPlainSyntax bool `json:"logsPlainSyntax,omitempty"`
 
 	// DefaultNamespace maps kube context → the namespace scope the app
 	// opens in. Absent = all namespaces.

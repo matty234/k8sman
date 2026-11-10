@@ -346,6 +346,18 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
         SettingItem.row(
+          key: const ValueKey('settings-logs-colour-syntax'),
+          group: 'Logs',
+          label: 'Colour structured logs',
+          description: 'Colours the keys, values and level of JSON and key=value (logfmt) log lines. Copy and download stay plain text.',
+          keywords: const ['log', 'logs', 'json', 'logfmt', 'syntax', 'colour', 'color', 'highlight', 'structured'],
+          trailing: (context) => SettingSwitch(
+            key: const ValueKey('logs-colour-syntax-switch'),
+            value: context.watch<LogDock>().colourSyntax,
+            onChanged: context.read<LogDock>().setColourSyntax,
+          ),
+        ),
+        SettingItem.row(
           key: const ValueKey('settings-app-links'),
           group: 'Links',
           label: 'Use links that open the app directly (k8sman://)',

@@ -81,17 +81,25 @@ var fingerprintRE = regexp.MustCompile(`^[0-9a-f]{12}$`)
 // The log viewer's "Newest first" preference, applied to every log view.
 func (s *Server) logSettingsRoutes() {
 	s.mux.HandleFunc("GET /api/settings/logs", func(w http.ResponseWriter, r *http.Request) {
-		httpx.WriteJSON(w, 200, map[string]any{"newestFirst": s.settings.Get().LogsNewestFirst})
+		httpx.WriteJSON(w, 200, map[string]any{"newestFirst": s.settings.Get().LogsNewestFirst, "colourSyntax": !s.settings.Get().LogsPlainSyntax})
 	})
 	s.mux.HandleFunc("PUT /api/settings/logs", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			NewestFirst bool `json:"newestFirst"`
+			NewestFirst  *bool `json:"newestFirst"`
+			ColourSyntax *bool `json:"colourSyntax"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeErr(w, httpx.BadRequest("body must be {\"newestFirst\": bool}: %v", err))
+			writeErr(w, httpx.BadRequest("body must be {\"newestFirst\"?: bool, \"colourSyntax\"?: bool}: %v", err))
 			return
 		}
-		if err := s.settings.Update(func(st *settings.Settings) { st.LogsNewestFirst = body.NewestFirst }); err != nil {
+		if err := s.settings.Update(func(st *settings.Settings) { 
+			if body.NewestFirst != nil {
+				st.LogsNewestFirst = *body.NewestFirst
+			}
+			if body.ColourSyntax != nil {
+				st.LogsPlainSyntax = !*body.ColourSyntax
+			}
+		}); err != nil {
 			writeErr(w, err)
 			return
 		}
