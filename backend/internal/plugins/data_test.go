@@ -560,4 +560,91 @@ func BenchmarkPluginData(b *testing.B) {
 			}
 		}
 	})
+
+	// What every inspected object costs with the bundled kyverno plugin's
+	// "*" entry: its panel (the Policy results tab) over 2,000
+	// PolicyReports in the namespace, served as a warm watch cache serves
+	// them (the namespace's list, shared), for an object that owns one
+	// report and for one that owns none.
+	kp2, _, err := loadForFixtures("bundled/kyverno")
+	if err != nil {
+		b.Fatal(err)
+	}
+	reports, err := readFixture("bundled/kyverno/fixtures/pod-results.yaml")
+	if err != nil {
+		b.Fatal(err)
+	}
+	pod, owned := reports[0], reports[1]
+	list := make([]map[string]any, 2000)
+	for i := range list {
+		r := plain(owned).(map[string]any)
+		md := r["metadata"].(map[string]any)
+		md["name"] = "uid-" + itoa(i)
+		md["ownerReferences"] = []any{map[string]any{"kind": "Pod", "name": "pod-" + itoa(i), "uid": "uid-" + itoa(i)}}
+		list[i] = r
+	}
+	list[1000] = owned
+	lookup := sliceLookup{"wgpolicyk8s.io/PolicyReport": list}
+	podType := fixtureType(pod)
+	cm := map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "metadata": map[string]any{"name": "web-config", "namespace": "demo", "uid": "uid-none"}}
+	cmType := cluster.ResourceType{Version: "v1", Kind: "ConfigMap", Resource: "configmaps", Namespaced: true}
+	for _, c := range []struct {
+		name string
+		rt   cluster.ResourceType
+		obj  map[string]any
+		tabs int
+	}{{"any-kind-tab/owns-a-report", podType, pod, 1}, {"any-kind-tab/owns-none", cmType, cm, 0}} {
+		b.Run(c.name, func(b *testing.B) {
+			env := Env{Context: "demo", Now: cfg.Now, Lookup: lookup}
+			for b.Loop() {
+				po, ok := kp2.panel(env, c.rt, c.obj)
+				if !ok || len(po.Tabs) != c.tabs {
+					b.Fatalf("tabs = %+v", po.Tabs)
+				}
+			}
+		})
+	}
+
+	// The dra plugin's Node section: a filter relation over 1,000
+	// ResourceSlices (cluster-wide), two of them the node's.
+	dra, _, err := loadForFixtures("bundled/dra")
+	if err != nil {
+		b.Fatal(err)
+	}
+	nodeObjs, err := readFixture("bundled/dra/fixtures/node.yaml")
+	if err != nil {
+		b.Fatal(err)
+	}
+	slices := make([]map[string]any, 1000)
+	for i := range slices {
+		s := plain(nodeObjs[3]).(map[string]any)
+		s["metadata"].(map[string]any)["name"] = "slice-" + itoa(i)
+		s["spec"].(map[string]any)["nodeName"] = "node-" + itoa(i)
+		slices[i] = s
+	}
+	slices[10], slices[500] = nodeObjs[1], nodeObjs[2]
+	b.Run("filter-1000/node-slices", func(b *testing.B) {
+		env := Env{Context: "demo", Now: cfg.Now, Lookup: sliceLookup{"resource.k8s.io/ResourceSlice": slices}}
+		for b.Loop() {
+			po, ok := dra.panel(env, fixtureType(nodeObjs[0]), nodeObjs[0])
+			if !ok || len(po.Sections) != 1 {
+				b.Fatalf("panel = %+v", po)
+			}
+		}
+	})
+}
+
+// sliceLookup serves each kind's objects from a list, unfiltered by
+// namespace, as a warm watch cache answers for one namespace.
+type sliceLookup map[string][]map[string]any
+
+func (s sliceLookup) List(_ context.Context, kindKey, _, _, _ string) ([]map[string]any, error) {
+	if l, ok := s[kindKey]; ok {
+		return l, nil
+	}
+	return nil, ErrNotServed
+}
+
+func (s sliceLookup) Query(context.Context, string, string) ([]Sample, error) {
+	return nil, ErrNoPrometheus
 }
