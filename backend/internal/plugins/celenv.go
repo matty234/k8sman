@@ -157,7 +157,29 @@ func envOptions() []cel.EnvOption {
 			cel.MemberOverload("list_flatten", []*cel.Type{cel.ListType(cel.DynType)}, cel.ListType(cel.DynType),
 				cel.UnaryBinding(flattenList)),
 		),
+		// list.distinct(): each value once, in first-seen order (the
+		// device classes of a claim's requests, the nodes of a selector).
+		cel.Function("distinct",
+			cel.MemberOverload("list_distinct", []*cel.Type{cel.ListType(cel.DynType)}, cel.ListType(cel.DynType),
+				cel.UnaryBinding(distinctList)),
+		),
 	}
+}
+
+// distinctList keeps the first of equal values.
+func distinctList(v ref.Val) ref.Val {
+	l, ok := v.(traits.Lister)
+	if !ok {
+		return types.NewErr("distinct: expected a list")
+	}
+	var items []ref.Val
+	for it := l.Iterator(); it.HasNext() == types.True; {
+		e := it.Next()
+		if !slices.ContainsFunc(items, func(x ref.Val) bool { return x.Equal(e) == types.True }) {
+			items = append(items, e)
+		}
+	}
+	return types.DefaultTypeAdapter.NativeToValue(items)
 }
 
 // flattenList joins the lists in a list; other elements are kept as they

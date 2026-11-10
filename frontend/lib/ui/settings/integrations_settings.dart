@@ -154,7 +154,11 @@ class _BundledPluginTileState extends State<BundledPluginTile> {
 
   Widget _row(BuildContext context) {
     final p = widget.plugin;
-    final kinds = [for (final k in p.kinds) if (k.key != '*') k];
+    // The plugin's own kinds: its sidebar section's, when it has one (an
+    // entry for a core kind, such as /Pod, adds to that kind's panel and
+    // doesn't say the integration is installed), else its kind entries.
+    final navKinds = p.nav?.kinds.toSet() ?? const <String>{};
+    final kinds = [for (final k in p.kinds) if (k.key != '*' && (navKinds.isEmpty || navKinds.contains(k.key))) k];
     final served = kinds.where((k) => k.served).length;
     // The plugin's own status line (its kinds' `status`), when it has one.
     final line = p.disabled || served == 0 || !kinds.any((k) => k.status) ? null : pluginHost.statusOf(p.id, context.read<AppState>().currentContext);
