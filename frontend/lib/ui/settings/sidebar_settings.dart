@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../api/models.dart';
 import '../../modules/modules.dart' show kindHomes, pageEnabled, pageFor;
 import '../../state/app_state.dart';
-import '../resource_nav.dart' show kindIconWidget;
+import '../resource_nav.dart' show kindIconWidget, sectionTitles;
 import '../theme.dart';
 import '../widgets/searchable_picker.dart';
 import 'settings_widgets.dart';
@@ -22,7 +22,64 @@ List<SettingItem> sidebarSettings() => [
         ),
         child: (_) => const SidebarLayoutEditor(),
       ),
+      SettingItem.row(
+        key: const ValueKey('settings-sidebar-sections'),
+        label: 'Kinds list order',
+        description: 'Drag the sections of the kinds list into any order. Custom Resources and Other always come last.',
+        keywords: const ['sections', 'order', 'reorder', 'integrations', 'kinds', 'groups', 'sort'],
+        trailing: (context) => TextButton(
+          onPressed: context.select<AppState, bool>((a) => a.sidebar.sectionOrder.isEmpty) ? null : () => context.read<AppState>().setSidebar(context.read<AppState>().sidebar.withSectionOrder(const [])),
+          child: const Text('Reset order'),
+        ),
+        child: (_) => const SectionOrderEditor(),
+      ),
     ];
+
+/// The kinds list's sections as a draggable list (same look as the pages).
+class SectionOrderEditor extends StatelessWidget {
+  const SectionOrderEditor({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    final titles = sectionTitles(app);
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border.all(color: colors.separator),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        buildDefaultDragHandles: false,
+        itemCount: titles.length,
+        onReorderItem: (a, b) => app.setSidebar(app.sidebar.withSectionOrder(titles..insert(b, titles.removeAt(a)))),
+        itemBuilder: (context, i) => SizedBox(
+          key: ValueKey('section-${titles[i]}'),
+          height: SidebarLayoutEditor._rowHeight,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Row(children: [
+              ReorderableDragStartListener(
+                index: i,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.grab,
+                  child: SizedBox(width: 22, height: SidebarLayoutEditor._rowHeight, child: Icon(Icons.drag_indicator, size: 16, color: colors.faint)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(titles[i], maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// The sidebar's top section as an editable list: tick pages to show them,
 /// drag to reorder, unpin kinds or pin new ones. Every change saves at once.

@@ -8,7 +8,7 @@ see [docs/PLUGINS.md](../../../../../docs/PLUGINS.md#bundled-plugins).
 
 What it adds, for `external-secrets.io` kinds the cluster serves:
 
-- An **External Secrets** sidebar section after Config, with icons.
+- An **External Secrets** sidebar section, with icons.
 - Columns: ExternalSecret Store, Refresh, Status, Last Sync and Target;
   ClusterExternalSecret External Secret, Namespaces, Failed, Refresh and
   Status; SecretStore and ClusterSecretStore Provider, Status and

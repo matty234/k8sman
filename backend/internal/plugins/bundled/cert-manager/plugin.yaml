@@ -36,7 +36,6 @@ permissions:
 # A sidebar section for the plugin's kinds (instead of Custom Resources).
 nav:
   title: cert-manager
-  after: Network
   kinds:
     - cert-manager.io/Certificate
     - cert-manager.io/CertificateRequest

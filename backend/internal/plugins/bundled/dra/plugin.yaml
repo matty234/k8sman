@@ -37,7 +37,6 @@ permissions:
 # without DRA.
 nav:
   title: Dynamic Resources
-  after: Storage
   kinds:
     - resource.k8s.io/ResourceClaim
     - resource.k8s.io/ResourceClaimTemplate

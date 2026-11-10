@@ -237,7 +237,7 @@ than importing Cilium).
      Hubble's Flows tab on Pods and Deployments; return nothing for kinds
      you don't handle, and return quickly: it runs on every inspector
      rebuild);
-   - `navGroups` (a section of the kinds list, placed `after` a core one),
+   - `navGroups` (a section of the kinds list; integration sections follow the core ones, alphabetically),
      `kindIcons` and `requires` (other module ids it needs);
    - `description`: one line under the module's name in Settings (the
      settings search matches it);

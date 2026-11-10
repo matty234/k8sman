@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
+import 'package:k8sman/api/models.dart';
 import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/resource_nav.dart';
@@ -37,6 +38,12 @@ void main() {
       expect(back.entries, c.entries);
       expect(back.isHidden(MainView.security), isTrue);
       expect(back.pins, [_deploy, _podsKs]);
+      // The section order round-trips; unknown titles drop out, missing ones follow.
+      final ordered = c.withSectionOrder(['Storage', 'Nope', 'Workloads']);
+      expect(SidebarConfig.fromJson(ordered.toJson()).sectionOrder, ['Storage', 'Nope', 'Workloads']);
+      expect(ordered.orderSections(['Workloads', 'Network', 'Storage']), ['Storage', 'Workloads', 'Network']);
+      expect(ordered.pin(_deploy).sectionOrder, ordered.sectionOrder);
+      expect(ordered.isDefault, isFalse);
       // Pins land after the last visible entry, not under More.
       expect(back.entries.indexWhere((e) => e.pin == _deploy), lessThan(back.entries.indexWhere((e) => e.view == HelmModule.page)));
 
@@ -60,6 +67,40 @@ void main() {
       expect(SidebarConfig.fromJson(null).isDefault, isTrue);
     });
 
+  });
+
+  testWidgets('kinds list: core, then integrations A-Z, then Custom Resources; a saved order wins', (tester) async {
+    final extra = [
+      const ResourceType(group: 'gateway.networking.k8s.io', version: 'v1', resource: 'gateways', kind: 'Gateway'),
+      const ResourceType(group: 'argoproj.io', version: 'v1alpha1', resource: 'applications', kind: 'Application', custom: true),
+      const ResourceType(group: 'example.com', version: 'v1', resource: 'widgets', kind: 'Widget', custom: true),
+    ];
+    Future<void> pump(SidebarConfig? layout) async {
+      final api = FakeApiClient();
+      final app = AppState(api)..types = [...testTypes, ...extra];
+      if (layout != null) app.sidebar = layout;
+      tester.view.physicalSize = const Size(232, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+        child: MaterialApp(theme: buildTheme(Brightness.dark), home: const Scaffold(body: ResourceNav())),
+      ));
+      await tester.pump();
+    }
+
+    double y(String t) => tester.getTopLeft(find.text(t)).dy;
+    await pump(null);
+    final order = ['Workloads', 'Access Control', 'Argo CD', 'Gateway API', 'Custom Resources'];
+    for (var i = 1; i < order.length; i++) {
+      expect(y(order[i - 1]), lessThan(y(order[i])), reason: '${order[i - 1]} before ${order[i]}');
+    }
+
+    await pump(SidebarConfig.defaults.withSectionOrder(['Gateway API', 'Nope', 'Workloads']));
+    expect(y('Gateway API'), lessThan(y('Workloads')));
+    expect(y('Workloads'), lessThan(y('Network')));
+    expect(y('Argo CD'), greaterThan(y('Access Control')));
+    expect(y('Argo CD'), lessThan(y('Custom Resources')));
   });
 
   testWidgets('hidden and reordered pages, pins with selection highlight', (tester) async {

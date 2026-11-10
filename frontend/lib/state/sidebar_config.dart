@@ -90,7 +90,10 @@ class SidebarEntry {
 @immutable
 class SidebarConfig {
   final List<SidebarEntry> entries;
-  const SidebarConfig._(this.entries);
+
+  /// The kinds list's section titles in the user's order (empty = default).
+  final List<String> sectionOrder;
+  const SidebarConfig._(this.entries, [this.sectionOrder = const []]);
 
   /// Pages in the sidebar, in the default order: the core pages and every
   /// module's (also those turned off, so they keep their place). Less-used
@@ -105,7 +108,7 @@ class SidebarConfig {
   /// Normalises [entries]: every page exactly once (pages missing from a
   /// saved layout, e.g. new in this version, are appended with their
   /// default visibility), duplicate pins dropped.
-  factory SidebarConfig(Iterable<SidebarEntry> entries) {
+  factory SidebarConfig(Iterable<SidebarEntry> entries, {Iterable<String> sectionOrder = const []}) {
     final out = <SidebarEntry>[];
     final seenViews = <MainView>{};
     final seenPins = <SidebarPin>{};
@@ -117,7 +120,7 @@ class SidebarConfig {
     for (final p in pages) {
       if (!seenViews.contains(p)) out.add(SidebarEntry.view(p, hidden: _underMoreByDefault.contains(p)));
     }
-    return SidebarConfig._(List.unmodifiable(out));
+    return SidebarConfig._(List.unmodifiable(out), List.unmodifiable(sectionOrder.toSet()));
   }
 
   /// From `/api/settings/sidebar`'s `sidebar` value (null = defaults).
@@ -126,26 +129,38 @@ class SidebarConfig {
     return SidebarConfig([
       for (final i in (j['items'] as List? ?? const []))
         if (i is Map) ?SidebarEntry.fromJson(Map<String, dynamic>.from(i)),
-    ]);
+    ], sectionOrder: [for (final t in (j['sectionOrder'] as List? ?? const [])) '$t']);
   }
 
-  Map<String, dynamic> toJson() => {'items': [for (final e in entries) e.toJson()]};
+  Map<String, dynamic> toJson() => {
+        'items': [for (final e in entries) e.toJson()],
+        if (sectionOrder.isNotEmpty) 'sectionOrder': sectionOrder,
+      };
 
-  bool get isDefault => listEquals(entries, defaults.entries);
+  bool get isDefault => listEquals(entries, defaults.entries) && sectionOrder.isEmpty;
+
+  /// [defaults] (section titles) in the saved order: unknown saved titles
+  /// are ignored, sections the order lacks keep their default order after.
+  List<String> orderSections(List<String> defaults) => [
+        for (final t in sectionOrder) if (defaults.contains(t)) t,
+        for (final t in defaults) if (!sectionOrder.contains(t)) t,
+      ];
+
+  SidebarConfig withSectionOrder(List<String> order) => SidebarConfig(entries, sectionOrder: order);
 
   List<SidebarPin> get pins => [for (final e in entries) ?e.pin];
   bool isPinned(SidebarPin p) => pins.contains(p);
   bool isHidden(MainView v) => entries.any((e) => e.view == v && e.hidden);
 
   SidebarConfig setHidden(MainView v, bool hidden) =>
-      SidebarConfig([for (final e in entries) e.view == v ? e.withHidden(hidden) : e]);
+      SidebarConfig([for (final e in entries) e.view == v ? e.withHidden(hidden) : e], sectionOrder: sectionOrder);
 
   /// Pins go after the last visible entry (so they don't land under More).
   SidebarConfig pin(SidebarPin p) {
     if (isPinned(p)) return this;
     final at = entries.lastIndexWhere((e) => !e.hidden) + 1;
-    return SidebarConfig([...entries]..insert(at, SidebarEntry.pin(p)));
+    return SidebarConfig([...entries]..insert(at, SidebarEntry.pin(p)), sectionOrder: sectionOrder);
   }
 
-  SidebarConfig unpin(SidebarPin p) => SidebarConfig([for (final e in entries) if (e.pin != p) e]);
+  SidebarConfig unpin(SidebarPin p) => SidebarConfig([for (final e in entries) if (e.pin != p) e], sectionOrder: sectionOrder);
 }

@@ -1532,8 +1532,11 @@ Frontend: `lib/plugins/` (`plugin_api.dart`, `plugin_host.dart`,
   it without a shell in the dock, with `K8SMAN_<NAME>` exported. The dock
   tab's Restart doesn't re-run it (each run is confirmed).
 
-**Navigation (question 7).** New top-level `nav: {title, after?, kinds?}`
-(a sidebar section; `kinds` defaults to the plugin's kinds in file order)
+**Navigation (question 7).** New top-level `nav: {title, kinds?}`
+(a sidebar section; `kinds` defaults to the plugin's kinds in file order).
+Integration sections list after the core ones, alphabetically by title; the
+user can reorder them in Settings ▸ Sidebar. `after` is deprecated and
+ignored (still accepted)
 and per-kind `icon` (a name from the icon list, or `icon.png`). The icon
 list is 62 Material names, in `internal/plugins/icons.go` and
 `lib/plugins/plugin_icons.dart`.

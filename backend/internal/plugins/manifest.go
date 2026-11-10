@@ -52,7 +52,9 @@ type Permissions struct {
 // (owner decision for v1: plugins may add one, see docs/PLUGINS.md §12).
 type Nav struct {
 	Title string `yaml:"title" json:"title"`
-	// After names the section this one follows ("" = at the end).
+	// After is deprecated and ignored: integration sections follow the core
+	// ones, alphabetically (the user can reorder them in Settings). Still
+	// accepted so existing plugins load.
 	After string `yaml:"after" json:"after,omitempty"`
 	// Kinds in display order; default: the plugin's kinds in file order.
 	Kinds []string `yaml:"kinds" json:"kinds"`

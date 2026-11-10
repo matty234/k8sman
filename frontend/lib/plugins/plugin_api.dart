@@ -142,9 +142,8 @@ class PluginPermissions {
 /// A plugin's sidebar section.
 class PluginNav {
   final String title;
-  final String? after;
   final List<String> kinds;
-  const PluginNav({required this.title, this.after, this.kinds = const []});
+  const PluginNav({required this.title, this.kinds = const []});
 }
 
 /// One plugin folder.
@@ -251,7 +250,7 @@ class PluginInfo {
       kinds: [for (final k in asMapList(j['kinds'])) PluginKind.fromJson(k)],
       nav: nav.isEmpty
           ? null
-          : PluginNav(title: '${nav['title'] ?? ''}', after: (nav['after'] as String?)?.isEmpty == true ? null : nav['after'] as String?, kinds: [
+          : PluginNav(title: '${nav['title'] ?? ''}', kinds: [
               for (final k in (nav['kinds'] as List? ?? const [])) '$k',
             ]),
       kindIcons: {for (final e in asMap(j['kindIcons']).entries) e.key: '${e.value}'},

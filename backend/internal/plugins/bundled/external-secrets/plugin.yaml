@@ -33,7 +33,6 @@ permissions:
 
 nav:
   title: External Secrets
-  after: Config
   kinds:
     - external-secrets.io/ExternalSecret
     - external-secrets.io/ClusterExternalSecret

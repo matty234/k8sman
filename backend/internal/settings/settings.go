@@ -271,6 +271,9 @@ func cloneTables(t map[string]TablePrefs) map[string]TablePrefs {
 // across clusters and are keyed by API group and kind, not version.
 type Sidebar struct {
 	Items []SidebarItem `json:"items"`
+	// SectionOrder is the kinds list's section titles in the user's order
+	// (empty = the default order).
+	SectionOrder []string `json:"sectionOrder,omitempty"`
 }
 
 // SidebarItem is one entry of [Sidebar].
@@ -303,7 +306,7 @@ func cloneSidebar(sb *Sidebar) *Sidebar {
 	if sb == nil {
 		return nil
 	}
-	return &Sidebar{Items: slices.Clone(sb.Items)}
+	return &Sidebar{Items: slices.Clone(sb.Items), SectionOrder: slices.Clone(sb.SectionOrder)}
 }
 
 // Store reads and writes the settings file. Methods are safe for concurrent use.

@@ -44,7 +44,6 @@ permissions:
 # Only the kinds the cluster serves are listed.
 nav:
   title: Kyverno
-  after: Access Control
   kinds:
     - kyverno.io/ClusterPolicy
     - kyverno.io/Policy

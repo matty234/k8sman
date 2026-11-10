@@ -33,7 +33,7 @@ class PrometheusModule extends AppModule {
 
   @override
   List<NavGroup> get navGroups => const [
-        NavGroup(after: 'Config', 'Monitoring', [
+        NavGroup('Monitoring', [
           'monitoring.coreos.com/PrometheusRule',
           'monitoring.coreos.com/ServiceMonitor',
           'monitoring.coreos.com/PodMonitor',

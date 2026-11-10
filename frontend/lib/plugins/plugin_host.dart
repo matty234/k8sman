@@ -175,7 +175,7 @@ class PluginHost extends ChangeNotifier {
   /// The plugins' sidebar sections.
   List<NavGroup> get navGroups => [
         for (final p in active)
-          if (p.nav case final nav? when nav.title.isNotEmpty) NavGroup(nav.title, nav.kinds, after: nav.after),
+          if (p.nav case final nav? when nav.title.isNotEmpty) NavGroup(nav.title, nav.kinds),
       ];
 
   /// Sidebar glyphs the plugins give their kinds (by icon name).

@@ -9,7 +9,7 @@ It replaced the built-in `dra` module, which has been removed: see
 
 What it adds, for the `resource.k8s.io` kinds the cluster serves:
 
-- A **Dynamic Resources** sidebar section after Storage, with icons.
+- A **Dynamic Resources** sidebar section, with icons.
 - Columns: ResourceClaim State, Device Classes, Devices and Node;
   ResourceClaimTemplate Device Classes; DeviceClass Selectors;
   ResourceSlice Node, Driver, Pool and Devices; DeviceTaintRule Driver and

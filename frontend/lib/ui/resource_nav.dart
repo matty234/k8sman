@@ -51,12 +51,23 @@ const _coreSections = [
   ]),
 ];
 
-/// Section title → kinds: the core sections plus the enabled modules' and
-/// the active plugins'.
-Map<String, List<String>> _curatedFor(AppState app) => {
-      for (final g in placeAfter(_coreSections, [for (final m in enabledModules(app)) ...m.navGroups, ...pluginHost.navGroups], (g) => g.title, (g) => g.after))
-        g.title: g.kinds,
-    };
+/// The core sections, then the enabled modules' and the active plugins'
+/// sorted by title (the default order, before the user's own).
+List<NavGroup> _defaultSections(AppState app) => [
+      ..._coreSections,
+      ...[for (final m in enabledModules(app)) ...m.navGroups, ...pluginHost.navGroups]
+        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase())),
+    ];
+
+/// The kinds list's sections in the user's order (Custom Resources and
+/// Other always follow).
+List<String> sectionTitles(AppState app) => app.sidebar.orderSections([for (final g in _defaultSections(app)) g.title]);
+
+/// Section title → kinds, in display order.
+Map<String, List<String>> _curatedFor(AppState app) {
+  final by = {for (final g in _defaultSections(app)) g.title: g.kinds};
+  return {for (final t in sectionTitles(app)) t: by[t]!};
+}
 
 /// Source-list glyphs for well-known kinds (others get a generic one).
 /// The nav's icon for a kind (also used by the collapsed inspector tab).

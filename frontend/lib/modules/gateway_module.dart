@@ -24,7 +24,7 @@ class GatewayModule extends AppModule {
 
   @override
   List<NavGroup> get navGroups => const [
-        NavGroup(after: 'Network', 'Gateway API', [
+        NavGroup('Gateway API', [
           'gateway.networking.k8s.io/GatewayClass',
           'gateway.networking.k8s.io/Gateway',
           'gateway.networking.k8s.io/HTTPRoute',

@@ -20,10 +20,7 @@ class NavGroup {
 
   /// Kinds in display order, as `group/Kind`.
   final List<String> kinds;
-
-  /// The section this one follows (null = at the end).
-  final String? after;
-  const NavGroup(this.title, this.kinds, {this.after});
+  const NavGroup(this.title, this.kinds);
 }
 
 /// Where a module stands on the current cluster, from [AppModule.detect].
