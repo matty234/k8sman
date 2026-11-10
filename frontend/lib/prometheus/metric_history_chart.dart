@@ -69,20 +69,34 @@ Widget podHistory(PanelContext ctx) {
   final hostNet = usesHostNetwork(ctx.spec);
   final pod = 'namespace="${_q(ctx.namespace ?? '')}",pod="${_q(ctx.name)}"';
   final sel = '$pod,container!="",container!="POD"';
+  final res = podChartResources(ctx.spec);
   return MetricHistorySection(
     key: ValueKey('pod-history-${ctx.uid}'),
     api: ctx.api,
     breakdownLabel: 'container',
-    markers: () async => podMarkers(ctx.object, await ctx.api.events(namespace: ctx.namespace, uid: ctx.uid)),
+    markers: (start, end) async {
+      final events = ctx.api.events(namespace: ctx.namespace, uid: ctx.uid);
+      // Each container instance's start time: the restarts in the window
+      // (the pod status only keeps the last one).
+      var starts = const <String, List<DateTime>>{};
+      try {
+        final s = await PromApi.of(ctx.api).queryRange('max by (container) (container_start_time_seconds{$sel})',
+            start: start, end: end, step: stepFor(end.difference(start)).step);
+        starts = containerStarts(s.series, start, end);
+      } catch (_) {}
+      return podMarkers(ctx.object, await events, starts: starts);
+    },
     charts: [
       MetricChartSpec(
         title: 'CPU',
         unit: MetricUnit.cores,
+        resources: res.cpu,
         query: (w, by) => 'sum${by == null ? '' : ' by ($by)'} (rate(container_cpu_usage_seconds_total{$sel}[$w]))',
       ),
       MetricChartSpec(
         title: 'Memory',
         unit: MetricUnit.bytes,
+        resources: res.memory,
         query: (w, by) => 'sum${by == null ? '' : ' by ($by)'} (container_memory_working_set_bytes{$sel})',
       ),
       if (!hostNet)
@@ -93,6 +107,29 @@ Widget podHistory(PanelContext ctx) {
           query: (w, _) => _rxTx((m) => 'sum(${_podNet(pod, w, m)})', 'container_network'),
         ),
     ],
+  );
+}
+
+/// A pod's CPU (cores) and memory (bytes) requests and limits, summed over
+/// the containers that keep running (regular and sidecars). A limit counts
+/// only when every one of them sets it (one without leaves the pod
+/// unbounded).
+({ChartResources cpu, ChartResources memory}) podChartResources(Map<String, dynamic> podSpec) {
+  final cs = [
+    ...asMapList(podSpec['containers']),
+    for (final c in asMapList(podSpec['initContainers'])) if (c['restartPolicy'] == 'Always') c,
+  ];
+  double? sum(String kind, String res, double? Function(dynamic) parse, {required bool all}) {
+    final vs = [for (final c in cs) parse(dig(c, ['resources', kind, res]))];
+    final set = vs.whereType<double>();
+    if (set.isEmpty || (all && set.length < vs.length)) return null;
+    return set.fold<double>(0, (a, b) => a + b);
+  }
+
+  double? cores(dynamic q) => parseCpuMillis(q) == null ? null : parseCpuMillis(q)! / 1000;
+  return (
+    cpu: ChartResources(request: sum('requests', 'cpu', cores, all: false), limit: sum('limits', 'cpu', cores, all: true)),
+    memory: ChartResources(request: sum('requests', 'memory', parseBytes, all: false), limit: sum('limits', 'memory', parseBytes, all: true)),
   );
 }
 
@@ -257,7 +294,34 @@ class MetricChartSpec {
   /// series' latest value in its header, and orders series as the query
   /// mentions their label values.
   final String? seriesLabel;
-  const MetricChartSpec({required this.title, required this.unit, required this.query, this.seriesLabel});
+
+  /// Requests and limits to measure against (in [unit]): faint labelled
+  /// lines on the summed chart and a share beside the "now" value.
+  final ChartResources? resources;
+  const MetricChartSpec({required this.title, required this.unit, required this.query, this.seriesLabel, this.resources});
+}
+
+/// A request and/or limit for a [MetricChartSpec] (either may be null:
+/// none set).
+class ChartResources {
+  final double? request;
+  final double? limit;
+  const ChartResources({this.request, this.limit});
+
+  bool get isEmpty => request == null && limit == null;
+
+  /// "4% of limit" (else of request), or "no request set".
+  String share(double now) {
+    final base = limit ?? request;
+    if (base == null || base <= 0) return 'no request set';
+    final pct = now / base * 100;
+    return '${pct < 1 && pct > 0 ? '<1' : pct.round()}% of ${limit != null ? 'limit' : 'request'}';
+  }
+
+  /// "request 50m · limit 200m" (or "no request or limit set").
+  String describe(MetricUnit unit) => isEmpty
+      ? 'no request or limit set'
+      : [if (request != null) 'request ${formatMetric(request!, unit)}', if (limit != null) 'limit ${formatMetric(limit!, unit)}'].join(' · ');
 }
 
 /// Selectable time ranges.
@@ -308,9 +372,10 @@ class MetricHistorySection extends StatefulWidget {
   /// A hint line under the charts.
   final String? note;
 
-  /// Events to mark on every chart; fetched on open and again with each
-  /// range change (which re-queries the charts). Failures just mean no markers.
-  final Future<List<ChartMarker>> Function()? markers;
+  /// Events to mark on every chart, for the charts' time window; fetched
+  /// on open and again with each range change (which re-queries the
+  /// charts). Failures just mean no markers.
+  final Future<List<ChartMarker>> Function(DateTime start, DateTime end)? markers;
 
   const MetricHistorySection({
     super.key,
@@ -347,18 +412,26 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
   bool _breakdown = false;
   List<ChartMarker> _markers = const [];
 
+  /// One window end for every chart (set with each range), so their time
+  /// axes line up exactly.
+  DateTime _end = DateTime.now();
+
   @override
   void initState() {
     super.initState();
-    _loadMarkers();
+    _available.then((ok) {
+      if (ok && mounted) _loadMarkers();
+    });
   }
 
   Future<void> _loadMarkers() async {
     final load = widget.markers;
-    if (load == null) return;
+    final range = _range;
+    if (load == null || range == null) return;
+    final end = _end;
     try {
-      final m = await load();
-      if (mounted) setState(() => _markers = m);
+      final m = await load(end.subtract(range), end);
+      if (mounted && end == _end) setState(() => _markers = m);
     } catch (_) {}
   }
 
@@ -373,7 +446,10 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
           title: widget.title,
           icon: Icons.show_chart,
           trailing: RangePicker(value: _range!, onChanged: (r) {
-            setState(() => _range = r);
+            setState(() {
+              _range = r;
+              _end = DateTime.now();
+            });
             _loadMarkers();
           }),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -381,10 +457,11 @@ class _MetricHistorySectionState extends State<MetricHistorySection> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: MetricHistoryChart(
-                  key: ValueKey('${spec.title}/${_range!.inSeconds}/$_breakdown'),
+                  key: ValueKey('${spec.title}/${_range!.inSeconds}/${_end.millisecondsSinceEpoch}/$_breakdown'),
                   prom: _prom,
                   spec: spec,
                   range: _range!,
+                  end: _end,
                   breakdown: _breakdown ? widget.breakdownLabel : null,
                   markers: _markers,
                 ),
@@ -459,7 +536,11 @@ class MetricHistoryChart extends StatefulWidget {
   final String? breakdown;
   final double height;
   final List<ChartMarker> markers;
-  const MetricHistoryChart({super.key, required this.prom, required this.spec, required this.range, this.breakdown, this.height = 76, this.markers = const []});
+
+  /// The window's end (default now); charts in a section share one, so
+  /// their time axes line up.
+  final DateTime? end;
+  const MetricHistoryChart({super.key, required this.prom, required this.spec, required this.range, this.breakdown, this.height = 76, this.markers = const [], this.end});
 
   @override
   State<MetricHistoryChart> createState() => _MetricHistoryChartState();
@@ -468,14 +549,32 @@ class MetricHistoryChart extends StatefulWidget {
 class _MetricHistoryChartState extends State<MetricHistoryChart> {
   late final Future<QueryData> _data;
   late final String _query;
+  late final DateTime _end = widget.end ?? DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    final end = DateTime.now();
     final s = stepFor(widget.range);
     _query = widget.spec.query(s.window, widget.spec.seriesLabel == null ? widget.breakdown : null);
-    _data = widget.prom.queryRange(_query, start: end.subtract(widget.range), end: end, step: s.step);
+    _data = widget.prom.queryRange(_query, start: _end.subtract(widget.range), end: _end, step: s.step);
+  }
+
+  /// Request and limit as faint labelled lines across the window, on the
+  /// summed chart only (per-container lines would need one each). A line
+  /// far above the data (more than 4× its peak) isn't drawn, so the data
+  /// keeps its height; its label sits at the top right with an arrow.
+  (List<ChartGuide>, double?) _guides(List<MetricSeries> series) {
+    final r = widget.spec.resources;
+    if (r == null || r.isEmpty || widget.breakdown != null || series.isEmpty) return (const [], null);
+    final start = _end.subtract(widget.range);
+    final unit = widget.spec.unit;
+    ChartGuide line(String name, double v) =>
+        ChartGuide(name, [(start, v), (_end, v)], faint: true, dashed: name == 'request', label: '$name ${formatMetric(v, unit)}');
+    final peak = [for (final s in series) for (final p in s.points) p.$2].fold<double>(0, math.max);
+    final guides = [if (r.request != null) line('request', r.request!), if (r.limit != null) line('limit', r.limit!)];
+    final shown = [for (final g in guides) g.points.first.$2].where((v) => peak <= 0 || v <= peak * 4);
+    final yMax = [peak, ...shown].fold<double>(0, math.max);
+    return (guides, yMax <= 0 ? null : yMax);
   }
 
   /// Series in the order the query names their [MetricChartSpec.seriesLabel] values.
@@ -501,17 +600,27 @@ class _MetricHistoryChartState extends State<MetricHistoryChart> {
         final series = _ordered(data?.series.where((s) => s.points.isNotEmpty).toList() ?? const <MetricSeries>[]);
         final latest = series.isEmpty ? null : series.map((s) => s.points.last.$2).fold<double>(0, (a, b) => a + b);
         final k = widget.spec.seriesLabel;
+        final res = widget.spec.resources;
+        // "now 5.3 MiB · 4% of limit"; with no data yet, what it's held to.
         final nowText = latest == null
-            ? null
+            ? (res == null || snap.connectionState != ConnectionState.done ? null : res.describe(widget.spec.unit))
             : k == null
-            ? 'now ${formatMetric(latest, widget.spec.unit)}'
+            ? ['now ${formatMetric(latest, widget.spec.unit)}', ?res?.share(latest)].join(' · ')
             : 'now ${series.map((s) => '${s.metric[k] ?? ''} ${formatMetric(s.points.last.$2, widget.spec.unit)}').join(' · ')}';
         final header = Row(children: [
           Text(widget.spec.title, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(width: 8),
           const Spacer(),
-          if (nowText != null) Flexible(flex: 6, child: Text(nowText, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right, style: hint)),
+          if (nowText != null)
+            Flexible(
+              flex: 6,
+              child: Tooltip(
+                message: res == null ? '' : res.describe(widget.spec.unit),
+                child: Text(nowText, key: ValueKey('chart-now-${widget.spec.title}'), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right, style: hint),
+              ),
+            ),
         ]);
+        final (guides, yMax) = _guides(series);
         Widget body;
         if (snap.hasError) {
           body = _ChartMessage('Query failed: ${errorText(snap.error!)}', height: widget.height);
@@ -520,7 +629,19 @@ class _MetricHistoryChartState extends State<MetricHistoryChart> {
         } else if (series.isEmpty) {
           body = _ChartMessage('No data in this range', height: widget.height);
         } else {
-          body = AreaChart(series: series, unit: widget.spec.unit, height: widget.height, labelKey: widget.spec.seriesLabel ?? widget.breakdown, range: widget.range, seriesName: widget.spec.title, markers: widget.markers);
+          body = AreaChart(
+            series: series,
+            unit: widget.spec.unit,
+            height: widget.height,
+            labelKey: widget.spec.seriesLabel ?? widget.breakdown,
+            range: widget.range,
+            seriesName: widget.spec.title,
+            markers: widget.markers,
+            window: (_end.subtract(widget.range), _end),
+            guides: guides,
+            yMax: yMax,
+            labelGuides: guides.isNotEmpty,
+          );
         }
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, const SizedBox(height: 4), body]);
       },
@@ -568,7 +689,11 @@ class ChartGuide {
 
   /// Thin and faint (a ceiling) rather than a normal-weight line.
   final bool faint;
-  const ChartGuide(this.name, this.points, {this.dashed = false, this.faint = false});
+
+  /// Its label on the chart (with `labelGuides`), e.g. "limit 128 MiB";
+  /// default [name].
+  final String? label;
+  const ChartGuide(this.name, this.points, {this.dashed = false, this.faint = false, this.label});
 }
 
 /// Area (one series) or stacked lines (several) with a hover readout.
@@ -597,9 +722,15 @@ class AreaChart extends StatefulWidget {
   final bool labelGuides;
 
   /// Events on the time axis: ticks along the bottom edge, below the data.
-  /// Hovering one shows its tooltip instead of the value readout.
+  /// Hovering one shows its tooltip instead of the value readout. A
+  /// restart also draws a faint line up through the data.
   final List<ChartMarker> markers;
+
+  /// The time axis' extent; default the data's. Stacked charts pass the
+  /// same window so their axes (and restart lines) line up exactly.
+  final (DateTime, DateTime)? window;
   const AreaChart({
+    this.window,
     super.key,
     required this.series,
     required this.unit,
@@ -634,8 +765,12 @@ class _AreaChartState extends State<AreaChart> {
     final colors = seriesColors(context);
     final hint = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontSize: 10);
     final all = [for (final s in widget.series) ...s.points];
-    final tMin = all.map((p) => p.$1.millisecondsSinceEpoch).reduce(math.min).toDouble();
-    final tMax = all.map((p) => p.$1.millisecondsSinceEpoch).reduce(math.max).toDouble();
+    // The window, widened only if the data somehow falls outside it.
+    final window = widget.window;
+    final dMin = all.map((p) => p.$1.millisecondsSinceEpoch).reduce(math.min);
+    final dMax = all.map((p) => p.$1.millisecondsSinceEpoch).reduce(math.max);
+    final tMin = (window == null ? dMin : math.min(dMin, window.$1.millisecondsSinceEpoch)).toDouble();
+    final tMax = (window == null ? dMax : math.max(dMax, window.$2.millisecondsSinceEpoch)).toDouble();
     final vMax = widget.yMax != null ? _niceMax(widget.yMax!) : _niceMax([...all, for (final g in widget.guides) ...g.points].map((p) => p.$2).fold<double>(0, math.max));
     final multi = widget.series.length > 1;
     final onScale = [for (final g in widget.guides) if (!widget.labelGuides || g.points.isEmpty || g.points.last.$2 <= vMax) g];
@@ -795,7 +930,7 @@ class _AreaChartState extends State<AreaChart> {
     var top = -1.0;
     for (final g in widget.guides) {
       if (g.points.isEmpty || onScale.contains(g)) continue;
-      out.add(Positioned(right: 0, top: top, child: Text('${g.name} ${formatMetric(g.points.last.$2, widget.unit)}$unit ↑', style: hint)));
+      out.add(Positioned(right: 0, top: top, child: Text('${g.label ?? '${g.name} ${formatMetric(g.points.last.$2, widget.unit)}$unit'} ↑', style: hint)));
       top += 12;
     }
     final placed = <double>[];
@@ -807,7 +942,7 @@ class _AreaChartState extends State<AreaChart> {
         if ((t - p).abs() < 12) t = p + 12;
       }
       placed.add(t);
-      out.add(Positioned(right: 0, top: t, child: Text(g.name, style: hint)));
+      out.add(Positioned(right: 0, top: t, child: Text(g.label ?? g.name, style: hint)));
     }
     return out;
   }
@@ -998,6 +1133,12 @@ class _AreaPainter extends CustomPainter {
     if (hoverX != null) {
       canvas.drawLine(Offset(hoverX!, 0), Offset(hoverX!, size.height), Paint()..color = grid.withValues(alpha: 1)..strokeWidth = 1);
     }
+    // Restarts: a faint line through the data (every stacked chart draws
+    // its own at the same x, so they read as one).
+    for (final c in clusters) {
+      if (!c.restart || identical(c, active)) continue;
+      canvas.drawLine(Offset(c.x, top), Offset(c.x, size.height), Paint()..color = severityColors[c.severity]!.withValues(alpha: 0.22)..strokeWidth = 1);
+    }
     if (active != null) {
       // A faint guide up through the chart at the hovered marker's time.
       canvas.drawLine(Offset(active!.x, 0), Offset(active!.x, size.height), Paint()..color = severityColors[active!.severity]!.withValues(alpha: 0.45)..strokeWidth = 1);
@@ -1072,7 +1213,11 @@ class ChartMarker {
 
   /// How many times the event repeated ("×5" when above 1).
   final int count;
-  const ChartMarker({required this.time, required this.title, this.severity = ChartSeverity.info, this.details = const [], this.count = 1});
+
+  /// A container restart: also drawn as a faint line through the data,
+  /// its tooltip one line ("Restart · exit 0 · 14:32").
+  final bool restart;
+  const ChartMarker({required this.time, required this.title, this.severity = ChartSeverity.info, this.details = const [], this.count = 1, this.restart = false});
 }
 
 /// Tick band under the chart, tick height, merge distance and hit distance (px).
@@ -1087,6 +1232,7 @@ class _MarkerCluster {
   _MarkerCluster(this.x, this.items);
 
   DateTime get time => items.first.time;
+  bool get restart => items.any((m) => m.restart);
   ChartSeverity get severity => items.map((m) => m.severity).reduce((a, b) => a.index >= b.index ? a : b);
 }
 
@@ -1121,7 +1267,17 @@ class _MarkerTooltip extends StatelessWidget {
     Widget dot(ChartSeverity s) => Container(width: 6, height: 6, margin: const EdgeInsets.only(right: 5), decoration: BoxDecoration(color: colors[s], shape: BoxShape.circle));
     final items = cluster.items;
     final rows = <Widget>[];
-    if (items.length == 1) {
+    if (items.length == 1 && items.single.restart) {
+      final m = items.single;
+      final hm = at(m.time).substring(0, 5);
+      rows.add(Row(mainAxisSize: MainAxisSize.min, children: [
+        dot(m.severity),
+        Flexible(child: Text('${m.title} · $hm', overflow: TextOverflow.ellipsis, style: small?.copyWith(fontWeight: FontWeight.w600))),
+      ]));
+      for (final d in m.details) {
+        rows.add(Text(d, maxLines: 2, overflow: TextOverflow.ellipsis, style: hint));
+      }
+    } else if (items.length == 1) {
       final m = items.single;
       rows.add(Row(mainAxisSize: MainAxisSize.min, children: [
         dot(m.severity),
