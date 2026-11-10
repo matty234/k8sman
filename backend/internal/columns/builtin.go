@@ -6,10 +6,7 @@ package columns
 var builtin = map[string][]Column{
 	"pods": {
 		{Name: "Ready", Type: "ratio", Query: `"\([.status.containerStatuses[]? | select(.ready)] | length)/\(.spec.containers | length)"`},
-		{Name: "Status", Type: "status", Query: `if .metadata.deletionTimestamp then "Terminating"
-else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode // 0) != 0) or (.state.waiting != null)) | "Init:" + (.state.waiting.reason // .state.terminated.reason // "Error")] | first)
-  // ([.status.containerStatuses[]? | .state.waiting.reason // (select(.state.terminated) | .state.terminated.reason) | select(.)] | first)
-  // .status.phase end`},
+		{Name: "Status", Type: "status", Query: `podstatus`},
 		{Name: "Restarts", Type: "number", Query: `[.status.containerStatuses[]?.restartCount] | add // 0`},
 		usageCPU,
 		usageMemory,
@@ -19,7 +16,7 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 	},
 	"deployments.apps": {
 		{Name: "Ready", Type: "ratio", Query: `"\(.status.readyReplicas // 0)/\(.spec.replicas // 0)"`},
-		{Name: "Status", Type: "status", Query: deploymentStatus},
+		{Name: "Status", Type: "status", Query: `deploymentstatus`},
 		{Name: "Up-to-date", Type: "number", Query: `.status.updatedReplicas // 0`},
 		{Name: "Available", Type: "number", Query: `.status.availableReplicas // 0`},
 		{Name: "Images", Query: `[.spec.template.spec.containers[].image] | join(", ")`},
@@ -27,7 +24,7 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 	},
 	"statefulsets.apps": {
 		{Name: "Ready", Type: "ratio", Query: `"\(.status.readyReplicas // 0)/\(.spec.replicas // 0)"`},
-		{Name: "Status", Type: "status", Query: statefulSetStatus},
+		{Name: "Status", Type: "status", Query: `statefulsetstatus`},
 		{Name: "Service", Query: `.spec.serviceName`},
 		{Name: "Images", Query: `[.spec.template.spec.containers[].image] | join(", ")`},
 		ageCol,
@@ -36,7 +33,7 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Desired", Type: "number", Query: `.status.desiredNumberScheduled // 0`},
 		{Name: "Current", Type: "number", Query: `.status.currentNumberScheduled // 0`},
 		{Name: "Ready", Type: "number", Query: `.status.numberReady // 0`},
-		{Name: "Status", Type: "status", Query: daemonSetStatus},
+		{Name: "Status", Type: "status", Query: `daemonsetstatus`},
 		{Name: "Up-to-date", Type: "number", Query: `.status.updatedNumberScheduled // 0`},
 		{Name: "Available", Type: "number", Query: `.status.numberAvailable // 0`},
 		{Name: "Node Selector", Query: `(.spec.template.spec.nodeSelector // {}) | to_entries | map("\(.key)=\(.value)") | join(",")`},
@@ -50,7 +47,7 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		ageCol,
 	},
 	"jobs.batch": {
-		{Name: "Status", Type: "status", Query: `([.status.conditions[]? | select(.status == "True") | .type] | last) // (if (.status.active // 0) > 0 then "Running" else "Pending" end)`},
+		{Name: "Status", Type: "status", Query: `jobstatus`},
 		{Name: "Completions", Query: `"\(.status.succeeded // 0)/\(.spec.completions // 1)"`},
 		{Name: "Duration", Query: `if .status.startTime then (((.status.completionTime // (now | todate)) | fromdate) - (.status.startTime | fromdate) | tostring + "s") else "" end`},
 		ageCol,
@@ -460,30 +457,3 @@ var (
 	usageCPU    = Column{Name: "CPU", Type: "usage", Query: `.k8sman.usage // empty | {raw: (.cpuMillis / 1000), base: .cpuBase, percent: .cpuPercent, basis: .cpuBasis, unit: "cpu"}`}
 	usageMemory = Column{Name: "Memory", Type: "usage", Query: `.k8sman.usage // empty | {raw: .memoryBytes, base: .memoryBase, percent: .memoryPercent, basis: .memoryBasis, unit: "bytes"}`}
 )
-
-// Workload status words, so a Ready column isn't the only signal: Paused,
-// Scaled down, Stalled (progress deadline exceeded), Progressing (a rollout
-// is under way), Unavailable (none available), Degraded (some short) or
-// Available. The frontend colours them via severityOf.
-const deploymentStatus = `(.spec.replicas // 1) as $want | (.status.availableReplicas // 0) as $avail
-| if .spec.paused then "Paused"
-elif $want == 0 then (if (.status.replicas // 0) > 0 then "Progressing" else "Scaled down" end)
-elif any(.status.conditions[]?; .type == "Progressing" and .reason == "ProgressDeadlineExceeded") then "Stalled"
-elif (.status.observedGeneration // 0) < (.metadata.generation // 0) or (.status.updatedReplicas // 0) < $want or (.status.replicas // 0) > $want then "Progressing"
-elif $avail == 0 then "Unavailable"
-elif $avail < $want or (.status.readyReplicas // 0) < $want then "Degraded"
-else "Available" end`
-
-const statefulSetStatus = `(.spec.replicas // 1) as $want | (.status.readyReplicas // 0) as $ready
-| if $want == 0 then (if (.status.replicas // 0) > 0 then "Progressing" else "Scaled down" end)
-elif (.status.observedGeneration // 0) < (.metadata.generation // 0) or (.status.updateRevision != null and .status.currentRevision != .status.updateRevision) or (.status.replicas // 0) != $want then "Progressing"
-elif $ready == 0 then "Unavailable"
-elif $ready < $want then "Degraded"
-else "Available" end`
-
-const daemonSetStatus = `(.status.desiredNumberScheduled // 0) as $want | (.status.numberAvailable // 0) as $avail
-| if $want == 0 then "Scaled down"
-elif (.status.observedGeneration // 0) < (.metadata.generation // 0) or (.status.updatedNumberScheduled // 0) < $want then "Progressing"
-elif $avail == 0 then "Unavailable"
-elif $avail < $want then "Degraded"
-else "Available" end`

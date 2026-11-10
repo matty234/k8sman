@@ -237,7 +237,7 @@ func compile(query string) (*gojq.Code, error) {
 	if err != nil {
 		return nil, err
 	}
-	code, err := gojq.Compile(q, jqFunctions...)
+	code, err := gojq.Compile(q, append(jqFunctions, statusFunctions...)...)
 	if err != nil {
 		return nil, err
 	}
