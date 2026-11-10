@@ -338,33 +338,8 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 		{Name: "Taint", Query: `"\(.spec.taint.key // ""):\(.spec.taint.effect // "")"`},
 		ageCol,
 	},
-	// External Secrets Operator (external-secrets.io). v1 and v1beta1 share
-	// these fields. Status is the Ready condition's reason (SecretSynced,
-	// SecretSyncedError, Valid, InvalidProviderConfig, …).
-	"externalsecrets.external-secrets.io": {
-		{Name: "Store", Query: `"\(.spec.secretStoreRef.kind // "SecretStore")/\(.spec.secretStoreRef.name // "")"`},
-		{Name: "Refresh", Query: `if (.spec.refreshPolicy // "Periodic") != "Periodic" then .spec.refreshPolicy else (.spec.refreshInterval // "1h") end`},
-		{Name: "Status", Type: "status", Query: esReadyReason},
-		{Name: "Last Sync", Type: "age", Query: `.status.refreshTime`},
-		{Name: "Target", Query: `.spec.target.name // .metadata.name`},
-		ageCol,
-	},
-	"clusterexternalsecrets.external-secrets.io": {
-		{Name: "External Secret", Query: `.spec.externalSecretName // .metadata.name`},
-		{Name: "Namespaces", Type: "number", Query: `.status.provisionedNamespaces // [] | length`},
-		{Name: "Failed", Type: "number", Query: `.status.failedNamespaces // [] | length`},
-		{Name: "Refresh", Query: `.spec.refreshTime // .spec.externalSecretSpec.refreshInterval // "1h"`},
-		{Name: "Status", Type: "status", Query: esReadyReason},
-		ageCol,
-	},
-	"secretstores.external-secrets.io":        esStoreCols,
-	"clustersecretstores.external-secrets.io": esStoreCols,
-	"pushsecrets.external-secrets.io": {
-		{Name: "Stores", Query: `[.spec.secretStoreRefs[]? | "\(.kind // "SecretStore")/\(.name // "(selector)")"] | join(",")`},
-		{Name: "Status", Type: "status", Query: esReadyReason},
-		{Name: "Last Sync", Type: "age", Query: `.status.refreshTime`},
-		ageCol,
-	},
+	// External Secrets Operator kinds have no built-in columns: the bundled
+	// external-secrets plugin supplies them (plugins/bundled).
 	// Admission policies and webhook configurations (admissionregistration.k8s.io).
 	"validatingadmissionpolicies.admissionregistration.k8s.io": {
 		{Name: "Failure Policy", Query: `.spec.failurePolicy // "Fail"`},
@@ -396,18 +371,6 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 	},
 	"validatingwebhookconfigurations.admissionregistration.k8s.io": {admissionWebhookCount, admissionWebhookTarget, ageCol},
 	"mutatingwebhookconfigurations.admissionregistration.k8s.io":   {admissionWebhookCount, admissionWebhookTarget, ageCol},
-}
-
-// esReadyReason is an ESO object's Ready condition reason ("Unknown" when
-// it has none yet).
-const esReadyReason = `([.status.conditions[]? | select(.type == "Ready")][0]) as $c
-| if $c == null then "Unknown" else ($c.reason // $c.status) end`
-
-var esStoreCols = []Column{
-	{Name: "Provider", Query: `.spec.provider // {} | keys[0] // ""`},
-	{Name: "Status", Type: "status", Query: esReadyReason},
-	{Name: "Capabilities", Query: `.status.capabilities // ""`},
-	ageCol,
 }
 
 // Admission column queries.

@@ -115,9 +115,10 @@ type PluginSettings struct {
 	// (needed before a plugin's shell actions run).
 	Consent map[string]string `json:"consent,omitempty"`
 	// UseModule lists bundled plugins (by id) for which the app uses the
-	// compiled-in module they replace instead (e.g. "external-secrets" →
-	// the external_secrets module), to compare the two. Hidden: set in
-	// developer mode or by editing settings.json. Absent = the plugin.
+	// compiled-in module they replace instead (see bundled.ReplacesModule),
+	// to compare the two. Hidden: set in developer mode or by editing
+	// settings.json. Absent = the plugin. An id whose module is gone is
+	// ignored.
 	UseModule []string `json:"useModule,omitempty"`
 }
 

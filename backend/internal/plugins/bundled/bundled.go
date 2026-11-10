@@ -15,9 +15,9 @@ import "embed"
 var FS embed.FS
 
 // ReplacesModule maps a bundled plugin id to the compiled-in module it
-// replaces. The module stays in the app, off, so the owner can compare
-// the two: settings.json's plugins.useModule (a list of plugin ids) turns
-// the module back on and the plugin off. Never both at once.
-var ReplacesModule = map[string]string{
-	"external-secrets": "external_secrets",
-}
+// replaces, while that module is still in the app (off), so the two can
+// be compared: settings.json's plugins.useModule (a list of plugin ids)
+// turns the module back on and the plugin off. Never both at once. Empty
+// now: external-secrets replaced the external_secrets module, which has
+// since been removed.
+var ReplacesModule = map[string]string{}
