@@ -1,8 +1,8 @@
 # Plugins
 
-Status: **Milestone 1 implemented** (dev mode only). Sections 1–12 are the
-design; [§13 As built](#13-as-built-milestone-1) says where Milestone 1
-differs from it, and [Writing a plugin](#writing-a-plugin) is how to use it.
+Status: **Milestone 2 implemented** (dev mode only). Sections 1–12 are the
+design; [§13 As built](#13-as-built) says where Milestones 1 and 2 differ
+from it, and [Writing a plugin](#writing-a-plugin) is how to use it.
 
 Deep integrations (Argo CD, Helm, Gateway API, …) are compile-time modules
 (see [DEVELOPMENT.md](DEVELOPMENT.md#adding-an-integration)). Plugins cover
@@ -11,47 +11,214 @@ with a `plugin.yaml`, in YAML and [CEL](https://cel.dev), loaded at runtime.
 
 ## Writing a plugin
 
-In Milestone 1 plugins load only in **developer mode**, from folders on your
-computer, and reload as you save.
+Plugins load only in **developer mode**, from folders on your computer, and
+reload as you save.
 
-1. Turn it on: **Settings ▸ Integrations ▸ Plugins ▸ Developer mode** (or
-   the palette's **Integrations…**). Or start the backend with
+1. Start one: `k8sman-server plugin new my-plugin` writes `my-plugin/` with
+   a `plugin.yaml` (a column, a panel section with a related object, a patch
+   action and an alert), a README, and one fixture with its snapshot. Or
+   copy [`examples/plugins/cert-manager`](../examples/plugins/cert-manager),
+   which uses every contribution type.
+2. Turn developer mode on: **Settings ▸ Integrations ▸ Plugins ▸ Developer
+   mode** (or the palette's **Integrations…**). Or start the backend with
    `--plugin-dev <folder>` (repeatable), e.g.
    `make backend BACKEND_ARGS="--plugin-dev examples/plugins/cert-manager"`
    with `make app-dev`, or for the packaged macOS app
    `defaults write dev.k8sman.app BackendArgs -array --plugin-dev /path/to/plugin`.
-2. **Load plugin folder…** and pick a folder with a `plugin.yaml` (or a
-   folder of such folders). Start from
-   [`examples/plugins/cert-manager`](../examples/plugins/cert-manager): it
-   has columns, every common panel block, a sidebar section with kind icons,
-   and two `cmctl` shell actions.
-3. Open a table of one of its kinds: the plugin's columns are there (hover a
+3. **Load plugin folder…** and pick a folder with a `plugin.yaml` (or a
+   folder of such folders).
+4. Open a table of one of its kinds: the plugin's columns are there (hover a
    header for its description). Open an object: its sections are on the
-   Overview tab, its actions in the inspector header.
-4. Edit `plugin.yaml` and save. Tables and open panels update within a
+   Overview tab, and its actions are in the inspector header, the row menu
+   and the command palette. Its alerts show on the Overview and in the
+   dock's Issues tab.
+5. Edit `plugin.yaml` and save. Tables and open panels update within a
    moment. A mistake shows inline in Settings ▸ Integrations ▸ Plugins as
    `plugin.yaml:42:21: undeclared reference to 'objet'` with the line and a
    caret, and the previous version keeps running until the file loads again.
    A failing expression shows its error (with its line) in its cell, field or
-   block; the rest still renders.
-5. Check it without the app, e.g. in CI:
-   `k8sman-server plugin validate ./my-plugin` (exit 1 on errors).
+   block; the rest still renders. Editors that use the YAML language server
+   (VS Code and others) complete and document fields from the JSON Schema
+   named on the file's first line.
+6. Add fixtures, and check the plugin without the app, e.g. in CI:
+   `k8sman-server plugin validate ./my-plugin` and
+   `k8sman-server plugin test ./my-plugin` (both exit 1 on problems).
 
 The Plugins settings also list, per plugin, its kinds (active where the
-cluster serves them), its permissions, consent (Allow… / Revoke), and load,
-compile and evaluation timings (p50/p95/max per contribution type).
+cluster serves them) with what each adds, its permissions, consent (Allow…
+/ Revoke), and load, compile and evaluation timings (p50/p95/max per
+contribution type).
 
-Shell actions run on your computer in a dock tab: the first run asks you to
-allow the plugin's permissions, and every run shows the full command and asks
-first. They are hidden on read-only contexts.
+Shell actions run on your computer in a dock tab (or, with `background:
+true`, without one: the app reports the exit status and the last lines of
+output). The first action of a plugin asks you to allow its permissions;
+every run shows the full command or the change and asks first. Plugin
+actions are hidden on read-only contexts. Differences from the design below
+(notably `ns` instead of `namespace`) are in [§13](#13-as-built).
 
-What Milestone 1 reads: `apiVersion`, `id`, `name`, `version`,
-`description`, `authors`, `homepage`, `minAppVersion`, `permissions.read` and
-`.commands`, `nav`, and per kind `version`, `icon`, `variables`, `columns`,
-`hideColumns`, `panel` and shell `actions`. `related`, `metrics`, `alerts`
-and patch actions are accepted with a warning and ignored until Milestone 2.
-Differences from the design below (notably `ns` instead of `namespace`) are
-in [§13](#13-as-built-milestone-1).
+### Related objects and metrics
+
+A kind's `related` names the objects its panels and actions read, served
+from the app's shared watch cache. Their kinds must be in
+`permissions.read`:
+
+```yaml
+permissions:
+  read: [cert-manager.io/Certificate, cert-manager.io/CertificateRequest, /Secret, /Pod]
+kinds:
+  cert-manager.io/Certificate:
+    related:
+      secret:                        # related.secret: the object, absent until found
+        kind: /Secret
+        name: object.spec.secretName # in the object's namespace (or set `namespace:`)
+      requests:                      # related.requests: a list, possibly empty
+        kind: cert-manager.io/CertificateRequest
+        owner: true                  # their ownerReferences include this object (≤ 200)
+      pods:
+        kind: /Pod
+        selector: '{"app": object.metadata.name}'   # matchLabels, or a LabelSelector
+        when: has(object.spec.app)                  # otherwise skip the lookup
+```
+
+Read them as `related.secret` (test with `has(related.secret)` or use
+`related.?secret`) and `related.requests` (a list, e.g. a `table` block's
+`rows`). Only the relations that a panel's (or an action's) expressions
+mention are looked up. Secrets show their keys with `""` values: plugins
+never see Secret values. While a panel that reads related objects is open,
+it renders again every 5 seconds from the warm cache, so a Secret that
+appears shows up. A kind the cluster doesn't serve, or a list you aren't
+allowed to read, leaves the relation empty and says so above the plugin's
+sections; the rest renders.
+
+Columns and alerts see the object only: `related` there (also through a
+variable) is a load error at the expression, so tables and overview polls
+stay cheap.
+
+`metrics` are instant PromQL queries through the Prometheus integration,
+for panels only. They need `permissions.prometheus: true`:
+
+```yaml
+    metrics:
+      expiry:
+        query: '"certmanager_certificate_expiration_timestamp_seconds{namespace=" + promQuote(ns) + ", name=" + promQuote(object.metadata.name) + "}"'
+```
+
+`metrics.expiry` is a list of `{labels, value}`, cached for 15 seconds per
+query, and empty (with a note) without Prometheus. Lookup expressions
+(`name`, `selector`, `namespace`, `when`, `query`) can't read `now`,
+`related` or `metrics`. Map keys come out in no particular order: sort a
+list made from them (`related.secret.?data.orValue({}).map(k, k).sort()`).
+
+### Patch actions
+
+A patch action changes the object it is offered for, through the app's own
+action path: never on read-only contexts, only for kinds in
+`permissions.patch` (never Secrets), and only after a dry run whose change
+you confirm:
+
+```yaml
+permissions:
+  patch: [cert-manager.io/Certificate]
+…
+    actions:
+      - id: renew-before
+        label: Set renewal time…
+        icon: schedule
+        dangerous: false
+        inputs:
+          - name: renewBefore
+            label: Renew before
+            default: object.spec.?renewBefore.orValue("360h")
+            validate: input.renewBefore.matches("^([0-9]+h)?([0-9]+m)?([0-9]+s)?$") && input.renewBefore != ""
+            validateMessage: Enter a duration such as 360h or 720h30m.
+        patch:
+          type: merge                # or json: a list of {op, path, value}
+          body: '{"spec": {"renewBefore": input.renewBefore}}'
+```
+
+Inputs are `string`, `int`, `bool` or `enum` (with `options`). The app
+shows a form with the defaults. The backend checks each value (its type,
+the options, then `validate`, whose `validateMessage` shows in the form),
+builds the body from the object as it is now, and runs a dry run. The
+confirmation shows the patch, the object's diff and the context.
+
+An action's `shortcut` (one letter or digit, optionally `shift+`) runs it
+on the table's selected row once the inspector has loaded that row's
+actions. The table's own keys win; the loader warns about a clash or a
+shortcut it can't bind.
+
+### Alerts
+
+```yaml
+    alerts:
+      - id: expiring
+        label: Certificates expiring within 14 days   # the Overview's row
+        severity: warning                              # critical, warning or info
+        section: custom                                # or pods, workloads, jobs, nodes, storage, network
+        when: >-
+          variables.notAfter.hasValue() && timestamp(variables.notAfter.value()) >= now &&
+          until(variables.notAfter.value()) < duration("336h")
+        message: '"Expires in " + humanDuration(until(variables.notAfter.value()))'
+        since: variables.notAfter.value()             # optional
+```
+
+Each alert runs for every object of its kind on each overview poll (over
+the lists the overview reads from the watch cache, in its namespace scope)
+and raises an issue in category `plugin.<plugin>.<alert>`. Alerts in the
+`custom` section show under **Plugins** on the Overview; all of them show
+in the dock's Issues tab.
+
+### Fixtures and tests
+
+```
+my-plugin/
+  plugin.yaml
+  fixtures/
+    test.yaml                now, context, readOnly, metric answers
+    certificate-ready.yaml   first document: the object; the rest: what related lookups see
+    __snapshots__/
+      certificate-ready.yaml written by plugin test --update
+```
+
+`fixtures/test.yaml`:
+
+```yaml
+now: 2026-01-01T00:00:00Z     # what `now` is (default 2026-01-01T00:00:00Z)
+context: demo                 # the context's name (default demo)
+readOnly: false               # true: actions are hidden, as in the app
+metrics:                      # query string → samples; without it there is no Prometheus
+  'certmanager_certificate_expiration_timestamp_seconds{namespace="default", name="web-tls"}':
+    - {labels: {name: web-tls}, value: 1774915200}
+```
+
+Capture objects with **Copy YAML** or `kubectl get -o yaml`, and remove
+what shouldn't be committed. `k8sman-server plugin test <folder>` renders
+each fixture (the plugin's cells, the resolved panel, the actions offered
+with their argv or patch body built from the input defaults, and the
+alerts raised) and compares it with `fixtures/__snapshots__/<fixture>`,
+printing a diff when they differ; `--update` writes the snapshots. Review
+that diff before committing, as for any golden file.
+
+### Tooling without a cluster
+
+`k8sman-server plugin …` (linked as `k8sman` by the packages):
+
+| Command | What it does |
+|---|---|
+| `validate <folder>…` | load and compile; every error and warning with its line; exit 1 on errors |
+| `test [--update] <folder>…` | render the fixtures and compare them with (or write) the snapshots; exit 1 on a difference |
+| `render <folder> <fixture.yaml>` | print what one fixture renders to, without comparing |
+| `new <id> [<parent folder>]` | start a plugin, with one fixture and its snapshot |
+| `import-k9s [--id <id>] <plugins.yaml>` | convert k9s plugins into shell actions (to stdout; warnings to stderr) |
+| `schema` | print `plugin.yaml`'s JSON Schema, [`schema/plugin.v1.json`](../schema/plugin.v1.json) |
+
+`import-k9s` maps scopes to kind keys (`pods` → `/Pod`, `deploy` →
+`apps/Deployment`, `all` → `"*"`, and `certificates.cert-manager.io` →
+`cert-manager.io/Certificate` with a warning to check it). It keeps
+`shortCut`, `background` and `dangerous` (missing means `true`), renames
+`$RESOURCE_NAME`, `$RESOURCE_GROUP` and `$RESOURCE_VERSION`, and skips
+entries that use `$POD`, `$CONTAINER` or `$FILTER`. Validate the result
+before loading it.
 
 ## 1. Goals and non-goals
 
@@ -963,7 +1130,9 @@ Answered by the owner for Milestone 1 (the questions are kept below):
 9. **Whole pages** stay out of v1 as decided. If asked for, a filtered
    object list built from the same vocabulary would cover most cases.
 
-## 13. As built (Milestone 1)
+## 13. As built
+
+### Milestone 1
 
 **Where.** Backend: `internal/plugins` (`decode.go` and `exprpos.go`
 strict YAML with positions, `manifest.go`, `icons.go`, `celenv.go`,
@@ -996,7 +1165,8 @@ Frontend: `lib/plugins/` (`plugin_api.dart`, `plugin_host.dart`,
   `alerts`, patch actions and `inputs`, `permissions.patch` and
   `.prometheus`, `background`) are a warning and ignored, not an error, so
   a manifest written for the full v1 still loads. An expression that uses
-  `related` fails to compile (undeclared reference).
+  `related` fails to compile (undeclared reference). Milestone 2 builds
+  them all; none warns any more.
 - Unknown fields, wrong types, bad ids, icons, block fields and column
   types are errors at their `file:line:col`. CEL errors are mapped from the
   expression into the file, through quoting and block scalars.
@@ -1073,7 +1243,8 @@ Frontend: `lib/plugins/` (`plugin_api.dart`, `plugin_host.dart`,
 
 - Shell actions only (patch is Milestone 2). They appear in the inspector
   header (and in row menus once the inspector has loaded them for that
-  object); not in the palette yet. `shortcut` is read but not bound yet.
+  object); not in the palette yet. `shortcut` is read but not bound yet
+  (both are in Milestone 2).
 - Hidden and refused on read-only contexts, dangerous or not (question 3).
   `dangerous` styles the confirmation; `confirm: false` is ignored with a
   warning: every run is confirmed, showing the full argv.
@@ -1102,3 +1273,154 @@ never suspended in the design either), and the palette entries.
 **Size.** The backend grows by 5.1 MiB (68.3 → 73.7 MB, stripped,
 darwin/arm64), within the 6 MB budget; most of it is cel-go and its ANTLR
 runtime.
+
+### Milestone 2
+
+**Where.** Backend, `internal/plugins`: `related.go` (the `Lookup`
+interface, related objects and metrics), `actions.go` (input checks and
+patch bodies), `alerts.go`, `fixtures.go` (`plugin test` and `render`),
+`schema.go` (the JSON Schema), `scaffold.go` (`plugin new`) and `k9s.go`
+(`import-k9s`). `internal/server/plugins_data.go`: the lookup over `kcache`
+and the Prometheus module, the plugins module as `ActionSource` (patch
+actions) and `OverviewSource` (alerts), and `POST /api/plugins/run`
+(background shell actions). The schema is checked in as
+[`schema/plugin.v1.json`](../schema/plugin.v1.json). Frontend:
+`lib/plugins/plugin_actions.dart` (consent, the input form, the dry-run
+preview, background runs); `plugin_panel.dart` gains notes and refresh;
+plugin actions are in the palette (`ui/palette/palette_sources.dart`) and
+bound to their shortcuts in the table (`ui/resource_table.dart`).
+
+**Related objects and metrics.**
+
+- Served by `kcache.List`, which starts a stream (one LIST) or reads a warm
+  one and keeps it warm for its idle period (90 s), rather than subscribing
+  while the panel is open. Instead of a push when a related object changes,
+  the panel response carries `refresh` (5 s with related objects, 15 s with
+  metrics, 30 s with `now`) and the UI fetches again while the panel is
+  open; renders after the first come from memory.
+- A `name` relation is a `metadata.name=` field-selector key, which rides a
+  warm stream of the namespace when there is one; `owner` lists the
+  namespace (cluster-wide for a cluster-scoped subject without
+  `namespace`) and filters by uid; `selector` is a label-selector key.
+  Lists are sorted by namespace and name and capped at 200 (with a note).
+  An empty selector reads nothing rather than everything.
+- Only the relations and metrics that panel (or action) expressions name
+  are looked up; the names come from the parsed ASTs, through variables. A
+  use of the whole map (`related` passed to a function) looks up all of them.
+- Lookups run first, with their own budget (250 ms of CEL for their
+  expressions, 5 s for the lookups); the 250 ms render budget starts after
+  them.
+- Question 2 (related data in columns and alerts) is unchanged: columns
+  and alerts see the object only, as §5 has it. `related` or `metrics` in a
+  column or alert, also through a variable, is a load error at the
+  expression ("related isn't available in columns (only in panels and
+  actions); a variable it reads uses related"). Lookup expressions and
+  metric queries can't read `now`, `related` or `metrics` either.
+- Action expressions (`when`, input `default` and `validate`, `body`) may
+  read `related`, as §5 has it (not `metrics`). The panel endpoint looks up
+  the relations they name when it lists actions.
+- What couldn't be read is a `notes` line above the plugin's sections ("X
+  aren't served by this cluster", "not allowed to list secrets in demo",
+  "Prometheus isn't available: metrics are empty").
+- Metrics use the Prometheus module's `QueryVectorAt` (the default instance
+  or `instance`, an id or name) and need the module on; answers and errors
+  are cached 15 s per context, instance and query.
+
+**Patch actions.**
+
+- The plugins module is an `ActionSource`: each patch action is
+  `plugin.<id>.<action>` with the target `kind:<group>/<Kind>` (a new
+  target form, beside `group/resource`), so `handleAction` refuses it on
+  read-only contexts, checks availability and passes `dryRun` as for any
+  action. `RunAction` reads the object (a GET), checks consent (the same
+  permissions hash as shell actions), `when`, the inputs and
+  `permissions.patch`, builds the body and patches with field manager
+  `k8sman`.
+- Never Secrets: `/Secret` in `permissions.patch` is a load error and the
+  server refuses it too. A body may not change `apiVersion` or `kind`; a
+  merge body must be a non-empty map, a JSON patch a list of `{op, path}`
+  operations.
+- Inputs missing from the request take their default (or "", 0, false or
+  the first option); string inputs are at most 4,096 characters; unknown
+  inputs are refused.
+- The UI's flow: consent if needed, the form (**Preview** runs the dry run;
+  a refusal shows in the form), then the confirmation with the patch, a
+  diff of the object before and after (YAML without `managedFields`,
+  `resourceVersion` and `generation`) and the context, then the change. A
+  dry run answers `preview` in the action result. `dangerous` only styles
+  the confirmation (default true, as for shell actions).
+- `background` shell actions run through `POST /api/plugins/run` (the same
+  checks as a dock-tab run, at most 2 minutes, the last 20 lines of
+  output), reported in a snackbar with the output on request.
+- `shortcut` is bound in the table, on the selected row once the inspector
+  has loaded its actions: one letter or digit, optionally `shift+`. The
+  table's own keys win; other forms (`ctrl+`, `alt+`) and clashes are a
+  load warning. The palette lists the inspected object's plugin actions
+  (after its panel has loaded) as **Plugin Action** items.
+
+**Alerts.**
+
+- One overview source, `plugins`, evaluates every active plugin's alerts
+  (500 ms per plugin per poll) over `listCached` in the overview's scope
+  and adds `overview.Finding`s: category `plugin.<id>.<alert>`, label and
+  section from the alert, the issue's reason is the label. The pending
+  source is reported under the `custom` section, which the Overview titles
+  **Plugins**.
+- There is no 10 ms per-object timeout, as for cells: each expression is
+  bounded by the 100,000 cost limit, and the plugin by its 500 ms.
+- Results are memoised per object version (uid and resourceVersion) for 30
+  seconds, so a poll re-evaluates only changed objects, and alerts that
+  read `now` move on with the next 30 s bucket (as `now` columns do).
+- Evaluation errors (the first three per kind) are returned in the
+  overview's `errors`; the object is skipped.
+
+**CEL.** `ext.Lists()` is added (`sort`, `distinct`, `flatten`, `slice`,
+…), a compatible addition: CEL iterates maps in no particular order, so a
+list built from a map's keys needs `sort()` to be stable (in panels and in
+snapshots).
+
+**JSON Schema.** Generated from the manifest types and the loader's own
+lists (column and value types, block fields, icons, severities, sections,
+input and patch types) by `k8sman-server plugin schema`, and checked in at
+`schema/plugin.v1.json` in this repository (there is no plugins repository
+yet); its `$id` and the files' `yaml-language-server` comment point to
+`https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json`.
+A test fails when the file is stale, and checks that the cert-manager
+example passes it and that a typo doesn't. It describes fields, types,
+enums and per-block fields; rules across fields (exactly one of `name`,
+`owner` and `selector`, the permissions, CEL) are `plugin validate`'s.
+
+**Fixtures and the CLI.**
+
+- `fixtures/test.yaml` also takes `metrics` (query string → samples);
+  without it there is no Prometheus. Defaults: `now`
+  2026-01-01T00:00:00Z, `context` demo.
+- A snapshot has the object's key, the plugin's own cells (not the
+  default columns, which need a cluster), the resolved panel (with
+  `notes` and `refresh`), the actions (shell argv; patch inputs and the
+  body built from their defaults) and the alerts. `$RESOURCE` is the
+  kind's lower-case plural, and `$COL-<NAME>` covers the plugin's columns
+  only.
+- `plugin new <id> [<parent>]` writes the snapshot of its fixture, so a new
+  plugin passes `plugin test` at once. `plugin schema` is new.
+- `import-k9s` has no cluster to ask, so scopes are mapped with a table of
+  built-in kinds and their k9s aliases; a `plural.group` scope is guessed
+  (with a warning) and an unknown one skipped. Entries with `$POD`,
+  `$CONTAINER` or `$FILTER` are skipped, `confirm: false` and unknown fields
+  are dropped with a warning, and the plugin goes to stdout.
+
+**Numbers** (M1 Pro, `go test -bench`):
+
+- `BenchmarkPluginData` (cert-manager example): alerts over 1,000
+  Certificates, 11.5 ms when every object is new (once per 30 s bucket, or
+  for changed objects) and 0.13 ms on a poll that reuses the memo; the
+  Certificate panel with its related objects and metric warm, 0.16 ms
+  (budget 5 ms p95).
+- `BenchmarkTableSnapshot` is unchanged by Milestone 2 (related data stays
+  out of tables): plugin columns cost what they did in Milestone 1.
+- The backend grows by 0.27 MB (73.86 → 74.14 MB, stripped,
+  darwin/arm64).
+
+**Not built in Milestone 2:** distribution (Milestone 3), suspension after
+repeated limit hits, the IP, CIDR, Format and Semver CEL libraries, and
+`$POD`, `$CONTAINER` and `$FILTER` in shell actions.

@@ -156,13 +156,16 @@ packaging/ Homebrew cask template
 
 Integrations below are compiled in. For your own operators and CRDs you
 don't need to fork: write a plugin, a folder with a `plugin.yaml` that adds
-table columns, inspector sections and shell actions in YAML and CEL,
-evaluated by the backend over the shared watch cache. Turn on **Settings ▸
+table columns, inspector sections (with related objects and metrics),
+shell and patch actions and overview alerts in YAML and CEL, evaluated by
+the backend over the shared watch cache. Turn on **Settings ▸
 Integrations ▸ Plugins ▸ Developer mode**, **Load plugin folder…** (try
 [`examples/plugins/cert-manager`](../examples/plugins/cert-manager)), and
 edit: it hot reloads and shows errors with their line. Or run
 `make backend BACKEND_ARGS="--plugin-dev examples/plugins/cert-manager"`.
-`k8sman-server plugin validate <dir>` checks one without a cluster. See
+`k8sman-server plugin new <id>` starts one; `plugin validate <dir>` and
+`plugin test <dir>` (golden snapshots of its fixtures) check one without a
+cluster, e.g. in CI. See
 [PLUGINS.md ▸ Writing a plugin](PLUGINS.md#writing-a-plugin).
 
 ## Adding an integration

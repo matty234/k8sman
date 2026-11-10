@@ -233,7 +233,7 @@ Overrides are keyed kubectl-style (`pods`, `deployments.apps`,
 | PUT | `/api/object?name=[&dryRun=true][&subresource=status\|scale]` | replace an object from a YAML/JSON body (`kubectl edit` semantics). The body must keep `metadata.resourceVersion`, so a stale edit returns 409 `Conflict`. Validation failures return 422 with `causes:[{field,message}]`. Returns `{dryRun, resourceVersion, yaml, context}`. With `subresource=status` or `scale` (GET and PUT) the request goes to that subresource instead: `scale` reads/writes an `autoscaling/v1` Scale, and `status` replaces only `.status` (the rest of the body is ignored by the server). 400 if the type doesn't list the subresource in its `subresources` field (resource types carry `subresources: ["status","scale"]` when discovery shows them). Read-only mode and the context guard apply as for any PUT |
 | POST | `/api/apply[?namespace=][&dryRun=true][&mode=create\|apply]` | create objects from a YAML/JSON body of one or more documents (`---`; a v1 `List` expands to its items), in order, like `kubectl create -f`. Kinds resolve through discovery (CRs too). Namespaced objects without `metadata.namespace` go to `namespace` (else the context's default namespace, else `default`); cluster-scoped ones lose any namespace. `mode=apply` uses server-side apply instead (fieldManager `k8sman`, `force=false`), which also updates existing objects; fields owned by another manager come back as a per-document `Conflict`. Always 200 once the body parses: `{dryRun, mode, context, results:[{index, line, group, version, kind, namespace?, name, created, error?, reason?, causes?}]}`, one per object; `line` is the document's first line in the body, `reason` the Kubernetes StatusReason (e.g. `AlreadyExists`, `Invalid`) and `causes` as for `PUT /api/object`. Refused in read-only mode |
 | GET | `/api/actions` | actions supported for a type: `{actions:[...]}` |
-| POST | `/api/actions/{action}?name=` | run an action. Body: `{replicas?, revision?, gracePeriodSeconds?, propagation?, dryRun?}`. Returns `{message, dryRun, context, created?}` |
+| POST | `/api/actions/{action}?name=` | run an action. Body: `{replicas?, revision?, gracePeriodSeconds?, propagation?, dryRun?}` (plugin patch actions, `plugin.<id>.<action>`: `{inputs, dryRun?}`, see [Plugins](#plugins)). Returns `{message, dryRun, context, created?, preview?}` |
 
 **Node drain** uses kubectl's drain package (`kubectl drain --ignore-daemonsets`):
 
@@ -779,13 +779,14 @@ developer mode. The `plugins` module: while it is turned off these answer 404
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/plugins` | `{devMode, devModeSaved, devFolders, flagFolders, installedDir, generation, readOnly, icons, plugins: [{id, name, version, dir, source, status, loaded, disabled, diags: [{file, line, col, message, warning, snippet}], permissions, permissionsHash, consented, kinds: [{key, served, compiled, columns, sections, actions, errors}], nav, kindIcons, hasIcon, loadMs, compileMs, stats: {column\|panel\|action: {count, errors, limitHits, p50Us, p95Us, maxUs}}}]}` |
+| GET | `/api/plugins` | `{devMode, devModeSaved, devFolders, flagFolders, installedDir, generation, readOnly, icons, plugins: [{id, name, version, dir, source, status, loaded, disabled, diags: [{file, line, col, message, warning, snippet}], permissions, permissionsHash, consented, kinds: [{key, served, compiled, columns, sections, actions, alerts, related, metrics, errors}], nav, kindIcons, hasIcon, loadMs, compileMs, stats: {column\|panel\|action\|alert: {count, errors, limitHits, p50Us, p95Us, maxUs}}}]}` |
 | PUT | `/api/plugins/settings` | `{devMode?, devFolders?}` (absolute paths); reloads |
 | POST | `/api/plugins/reload` | reload every folder |
 | PUT | `/api/plugins/{id}/enabled` | `{enabled}` |
 | PUT/DELETE | `/api/plugins/{id}/consent` | PUT `{permissionsHash}` agrees to the permissions shown (400 if they changed since) |
 | GET | `/api/plugins/{id}/icon` | the plugin's `icon.png` (≤ 64 KB) |
-| GET | `/api/plugins/panel` | `?group&version&resource&namespace&name`: `{generation, resourceVersion, panels: [{plugin, name, sections: [{title, icon, collapsed, blocks: [{type, …}]}], errors}], actions: [{plugin, id, label, icon, message, dangerous, argv, consented}]}`; no actions on read-only contexts |
+| GET | `/api/plugins/panel` | `?group&version&resource&namespace&name`: `{generation, resourceVersion, panels: [{plugin, name, sections: [{title, icon, collapsed, blocks: [{type, …}]}], errors, notes, refresh}], actions: [{plugin, id, type, label, icon, shortcut, message, dangerous, argv, background, patchType, inputs: [{name, label, type, options, default, validateMessage}], consented}]}`; no actions on read-only contexts. `notes` say what related objects or metrics couldn't be read; `refresh` (seconds) asks the UI to fetch again while open (related objects 5, metrics 15, `now` 30) |
+| POST | `/api/plugins/run` | `?plugin&action&group&version&resource&namespace&name`: runs a `background` shell action (same checks as the dock tab; 403 on read-only contexts; at most 2 min) and answers `{argv, exitCode, output, timedOut}` with the last 20 lines of output |
 | WS | `/api/plugins/events` | `{generation}` now and after every change (load, hot reload, setting) |
 
 All but `/panel` work without a cluster connection. Blocks are resolved:
@@ -794,9 +795,22 @@ error}`; `table` carries `columns` and `rows` of `{value, link?}` cells,
 `total` and `limit`; an expression that fails gives `{type: "error",
 message: "plugin.yaml:12:5: …"}`. Links are `{group, kind, namespace, name}`.
 
-`k8sman-server plugin validate <dir>…` checks plugins without a cluster
-(exit 1 on errors). `--plugin-dev <dir>` (repeatable) turns developer mode on
-and loads that folder.
+**Patch actions** run through `POST /api/actions/plugin.<id>.<action>` like
+any action (403 on read-only contexts; offered only for the kinds in the
+plugin's `permissions.patch`, never Secrets). Body: `{inputs: {name: value},
+dryRun?}`; the backend checks the inputs (400 with the plugin's
+`validateMessage`), requires consent, and builds the patch from the object
+as it is. A dry run answers `preview: {patchType, patch, before, after}`
+(YAML without managedFields).
+
+**Alerts** feed `GET /api/overview` as issues in categories
+`plugin.<id>.<alert>` (section from the alert, default `custom`); the
+source is `plugins` in `pending` and `errors`.
+
+`k8sman-server plugin validate|test|render|new|import-k9s|schema` is the
+tooling, without a cluster (see docs/PLUGINS.md ▸ Writing a plugin).
+`--plugin-dev <dir>` (repeatable) turns developer mode on and loads that
+folder.
 
 ## CRD group icons
 
