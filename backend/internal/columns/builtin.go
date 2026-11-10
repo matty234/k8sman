@@ -90,14 +90,14 @@ else ([.status.initContainerStatuses[]? | select(((.state.terminated.exitCode //
 	},
 	"configmaps": {
 		{Name: "Keys", Type: "number", Query: `((.data // {}) | length) + ((.binaryData // {}) | length)`},
-		{Name: "Size", Type: "quantity", Query: `(([(.data // {})[] | utf8bytelength] | add // 0) + ([(.binaryData // {})[] | ` + base64Len + `] | add // 0)) | ` + humanBytes},
+		{Name: "Size", Type: "bytes", Query: `[(.data // {})[] | utf8bytelength] + [(.binaryData // {})[] | base64size] | add // 0`},
 		ageCol,
 	},
 	"secrets": {
 		{Name: "Type", Query: `.type`},
 		{Name: "Keys", Type: "number", Query: `(.data // {}) | length`},
 		// Only value lengths are computed; the values never reach a cell.
-		{Name: "Size", Type: "quantity", Query: `([(.data // {})[] | ` + base64Len + `] | add // 0) | ` + humanBytes},
+		{Name: "Size", Type: "bytes", Query: `[(.data // {})[] | base64size] | add // 0`},
 		ageCol,
 	},
 	"serviceaccounts": {
@@ -487,10 +487,3 @@ elif (.status.observedGeneration // 0) < (.metadata.generation // 0) or (.status
 elif $avail == 0 then "Unavailable"
 elif $avail < $want then "Degraded"
 else "Available" end`
-
-// jq snippets for byte sizes. base64Len is the decoded length of a base64
-// string (4 chars per 3 bytes, less padding), from its length alone.
-const (
-	base64Len  = `(((length / 4 | floor) * 3) - (if endswith("==") then 2 elif endswith("=") then 1 else 0 end))`
-	humanBytes = `(if . < 1024 then tostring elif . < 1048576 then "\((. / 102.4 | round) / 10)Ki" elif . < 1073741824 then "\((. / 104857.6 | round) / 10)Mi" else "\((. / 107374182.4 | round) / 10)Gi" end)`
-)

@@ -560,7 +560,8 @@
             "percent",
             "bool",
             "labels",
-            "quantity"
+            "quantity",
+            "bytes"
           ],
           "type": "string"
         },

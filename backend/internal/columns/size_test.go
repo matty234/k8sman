@@ -14,10 +14,10 @@ func TestConfigMapAndSecretSizes(t *testing.T) {
 		}
 		return cells
 	}
-	if c := row("configmaps", cm); c[0] != 2 || c[1] != "10" {
+	if c := row("configmaps", cm); c[0] != 2 || c[1] != 10 {
 		t.Fatalf("configmap keys/size = %v", c)
 	}
-	if c := row("secrets", sec); c[1] != 2 || c[2] != "7" {
+	if c := row("secrets", sec); c[1] != 2 || c[2] != 7 {
 		t.Fatalf("secret keys/size = %v", c)
 	}
 }

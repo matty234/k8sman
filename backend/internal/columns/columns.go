@@ -25,6 +25,7 @@ type Column struct {
 	// Type is a rendering hint for the UI:
 	//   "string" (default), "number", "age" (RFC3339 timestamp → relative age),
 	//   "status" (coloured badge), "bool", "labels" (map → chips),
+	//   "bytes" (a number of bytes, shown as "1.5 KiB" and sorted by value),
 	//   "quantity" (a Kubernetes quantity or percentage such as "250m",
 	//   "128Mi", "42%": right-aligned, sorted by value, "—" when empty),
 	//   "percent" (a number 0–100 drawn as a small bar, amber from 80 and
@@ -236,7 +237,7 @@ func compile(query string) (*gojq.Code, error) {
 	if err != nil {
 		return nil, err
 	}
-	code, err := gojq.Compile(q)
+	code, err := gojq.Compile(q, jqFunctions...)
 	if err != nil {
 		return nil, err
 	}
@@ -365,4 +366,25 @@ func run(code *gojq.Code, obj map[string]any) (any, error) {
 		// Multiple outputs (e.g. `.spec.containers[].image`) → treat as a list.
 		return out, nil
 	}
+}
+
+// jqFunctions are the helpers column queries can call besides jq's own:
+//
+//	base64size: a base64 string's decoded length in bytes, from its length
+//	alone (nothing is decoded), e.g. a Secret's `[.data[] | base64size] | add`.
+var jqFunctions = []gojq.CompilerOption{
+	gojq.WithFunction("base64size", 0, 0, func(v any, _ []any) any {
+		s, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("base64size: not a string: %T", v)
+		}
+		n := len(s) / 4 * 3
+		switch {
+		case strings.HasSuffix(s, "=="):
+			n -= 2
+		case strings.HasSuffix(s, "="):
+			n--
+		}
+		return n
+	}),
 }

@@ -307,7 +307,7 @@ var (
 // "" skips the check).
 var AppVersion = ""
 
-var columnTypes = []string{"string", "number", "age", "until", "status", "percent", "bool", "labels", "quantity"}
+var columnTypes = []string{"string", "number", "age", "until", "status", "percent", "bool", "labels", "quantity", "bytes"}
 var valueTypes = []string{"text", "number", "bool", "status", "age", "until", "timestamp", "quantity", "labels", "url", "code"}
 
 // Enumerations of other fields (the JSON Schema is built from the same

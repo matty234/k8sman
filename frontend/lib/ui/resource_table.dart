@@ -686,6 +686,7 @@ class _TableBodyState extends State<_TableBody> {
         return 72;
       case 'number':
       case 'quantity':
+      case 'bytes':
         return 90;
       case 'percent':
         return 120;
@@ -1113,7 +1114,7 @@ class _HeaderState extends State<_Header> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: Row(
-        mainAxisAlignment: const {'number', 'quantity', 'usage', 'ratio'}.contains(c.type) ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: const {'number', 'quantity', 'bytes', 'usage', 'ratio'}.contains(c.type) ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           Flexible(child: () {
             final name = Text(
@@ -1503,6 +1504,13 @@ class TableCellView extends StatelessWidget {
         return Text(
           _text(v),
           textAlign: TextAlign.right,
+          style: base?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+        );
+      case 'bytes':
+        return Text(
+          v is num ? formatBytes(v) : _text(v),
+          textAlign: TextAlign.right,
+          maxLines: 1,
           style: base?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
         );
       case 'ratio':
