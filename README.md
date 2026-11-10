@@ -82,6 +82,8 @@ machine.
 
 ### Workloads and the inspector
 
+![The pod inspector: namespace, age and labels up front, then containers](docs/images/inspector.png)
+
 - Select any row to open the **inspector**: a kind-specific overview, YAML and
   events, plus actions in the header.
 - The Pod panel explains why a pod isn't ready. It also shows containers,
@@ -158,6 +160,9 @@ machine.
   **images** and **best practices**.
 - RBAC analysis flags cluster-admin-equivalent grants, secret readers, and
   privileged ServiceAccounts that no pod uses.
+
+  ![The Access Explorer: what a ServiceAccount can do, and which bindings grant it](docs/images/access.png)
+
 - Image CVEs come from Trivy Operator reports, or from on-demand scans with a
   local `trivy` CLI.
 - **Copy for AI** puts a Markdown brief of the findings on your clipboard.
