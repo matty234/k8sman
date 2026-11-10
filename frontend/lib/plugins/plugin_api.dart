@@ -65,6 +65,13 @@ class PluginKind {
   final int related;
   final int metrics;
   final int errors;
+
+  /// What becomes of the generic panel's sections for this kind (when it
+  /// has no compiled-in panel): keep, collapse or replace.
+  final String generic;
+
+  /// Whether the kind adds to the plugin's status line.
+  final bool status;
   const PluginKind({
     required this.key,
     this.served = false,
@@ -76,6 +83,8 @@ class PluginKind {
     this.related = 0,
     this.metrics = 0,
     this.errors = 0,
+    this.generic = 'keep',
+    this.status = false,
   });
 
   factory PluginKind.fromJson(Json j) => PluginKind(
@@ -89,6 +98,24 @@ class PluginKind {
         related: (j['related'] as num?)?.toInt() ?? 0,
         metrics: (j['metrics'] as num?)?.toInt() ?? 0,
         errors: (j['errors'] as num?)?.toInt() ?? 0,
+        generic: '${j['generic'] ?? 'keep'}',
+        status: j['status'] == true,
+      );
+}
+
+/// A plugin's status line (`GET /api/plugins/status`): e.g.
+/// "ExternalSecrets: 12 · not synced: 2", with the severity of the most
+/// severe count that isn't zero (critical, warning, info; "" = none).
+class PluginStatusLine {
+  final String text;
+  final String severity;
+  final List<String> errors;
+  const PluginStatusLine({this.text = '', this.severity = '', this.errors = const []});
+
+  factory PluginStatusLine.fromJson(Json j) => PluginStatusLine(
+        text: '${j['text'] ?? ''}',
+        severity: '${j['severity'] ?? ''}',
+        errors: [for (final e in (j['errors'] as List? ?? const [])) '$e'],
       );
 }
 

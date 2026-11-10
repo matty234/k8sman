@@ -453,6 +453,10 @@ class ApiClient {
   Future<Json> pluginPanel(ResourceRef r, {String? namespace, required String name}) async =>
       Map<String, dynamic>.from(await _get('plugins/panel', {...r.toQuery(), 'namespace': namespace, 'name': name}) as Map);
 
+  /// The active plugins' status lines (their Integrations rows), over every
+  /// namespace: {plugins: {id: {text, severity, kinds, errors}}}.
+  Future<Json> pluginStatus() async => Map<String, dynamic>.from(await _get('plugins/status') as Map);
+
   /// Runs a plugin's background shell action on one object: the backend
   /// builds the command. Returns {argv, exitCode, output, timedOut}.
   Future<Json> runPluginBackground(ResourceRef r, {String? namespace, required String name, required String plugin, required String action}) async =>

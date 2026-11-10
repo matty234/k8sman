@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../api/models.dart';
 import '../metrics/quantity_cell.dart' show UsageBar;
+import '../ui/inspector/callout.dart' show Callout;
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
@@ -51,8 +52,10 @@ class PluginBlock extends StatelessWidget {
         final items = asMapList(b['items']);
         return KeyValueTable([
           for (final it in items)
-            ('${it['label'] ?? ''}', it['error'] != null ? PluginErrorText('${it['error']}') : pluginValue(context, it['value'], type: it['type'] as String?, link: it['link'], copy: it['copy'] == true)),
+            ('${it['label'] ?? ''}', it['error'] != null ? PluginErrorText('${it['error']}') : pluginValue(context, it['value'], type: it['type'] as String?, link: it['link'], copy: it['copy'] == true, mono: it['mono'] == true)),
         ]);
+      case 'settings':
+        return PluginSettingsRows(b);
       case 'badges':
         final items = asMapList(b['items']);
         if (items.isEmpty) return hint(empty);
@@ -84,7 +87,7 @@ class PluginBlock extends StatelessWidget {
       case 'json':
         return JsonTree(b['value']);
       case 'message':
-        return PluginMessage('${b['text'] ?? ''}', severity: '${b['severity'] ?? 'info'}');
+        return PluginMessage('${b['text'] ?? ''}', severity: '${b['severity'] ?? 'info'}', title: b['title'] as String?);
       case 'error':
         return PluginErrorText('${b['message'] ?? ''}');
     }
@@ -119,10 +122,11 @@ String _text(Object? v) => switch (v) {
       _ => '$v',
     };
 
-/// A value drawn by its value type (fields and table cells).
-Widget pluginValue(BuildContext context, Object? v, {String? type, Object? link, bool copy = false, bool dense = false}) {
+/// A value drawn by its value type (fields and table cells); [mono] in the
+/// monospace font.
+Widget pluginValue(BuildContext context, Object? v, {String? type, Object? link, bool copy = false, bool dense = false, bool mono = false}) {
   final theme = Theme.of(context);
-  final style = theme.textTheme.bodySmall;
+  final style = mono ? monoStyle(context, size: 11) : theme.textTheme.bodySmall;
   final text = _text(v);
   Widget w;
   switch (type) {
@@ -207,16 +211,20 @@ class _UntilTextState extends State<UntilText> {
   }
 }
 
-/// A message block: info quiet, warnings and errors in their colour.
+/// A message block: info quiet, warnings and errors in their colour; with
+/// a [title], a warning or error is a [Callout] titled with it.
 class PluginMessage extends StatelessWidget {
   final String text;
   final String severity;
-  const PluginMessage(this.text, {super.key, this.severity = 'info'});
+  final String? title;
+  const PluginMessage(this.text, {super.key, this.severity = 'info', this.title});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final sev = severityNamed(severity) ?? Severity.info;
+    final title = this.title;
+    if (title != null && title.isNotEmpty && sev != Severity.info) return Callout(severity: sev, title: title, body: text);
     if (sev == Severity.info) return InlineMessage(text);
     final c = severityColor(context, sev);
     return Container(
@@ -244,6 +252,28 @@ class PluginErrorText extends StatelessWidget {
       Padding(padding: const EdgeInsets.only(top: 1), child: Icon(Icons.bug_report_outlined, size: 13, color: c)),
       const SizedBox(width: 5),
       Expanded(child: Text(message, style: monoStyle(context, size: 11, color: c))),
+    ]);
+  }
+}
+
+/// A settings block: an object flattened by the backend into `path →
+/// value` rows, references as links (their name and key: never a value).
+class PluginSettingsRows extends StatelessWidget {
+  final Json block;
+  const PluginSettingsRows(this.block, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    final rows = asMapList(block['rows']);
+    final total = (block['total'] as num?)?.toInt() ?? rows.length;
+    if (rows.isEmpty) return Text('${block['empty'] ?? 'None'}', style: hint);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      KeyValueTable([
+        for (final r in rows) ('${r['label'] ?? ''}', pluginValue(context, r['value'], link: r['link'])),
+      ], keyWidth: 150),
+      if (total > rows.length) Padding(padding: const EdgeInsets.only(top: 4), child: Text('and ${total - rows.length} more (YAML tab)', style: hint)),
     ]);
   }
 }
@@ -287,7 +317,7 @@ class _PluginTableState extends State<PluginTable> {
                   child: () {
                     final cell = i < (r as List).length ? asMap(r[i]) : const <String, dynamic>{};
                     if (cell['error'] != null) return PluginErrorText('${cell['error']}');
-                    return pluginValue(context, cell['value'], type: cols[i]['type'] as String?, link: cell['link'], dense: true);
+                    return pluginValue(context, cell['value'], type: cols[i]['type'] as String?, link: cell['link'], dense: true, mono: cols[i]['mono'] == true);
                   }(),
                 ),
             ]),

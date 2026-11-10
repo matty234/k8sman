@@ -25,8 +25,12 @@ const _sectionIcons = <String, IconData>{
 /// Fallback for custom resources and built-ins without a dedicated panel:
 /// health summary, conditions, then schema-aware smart views of spec,
 /// status and every other top-level field.
+///
+/// [collapsed]: every section starts collapsed (a plugin's
+/// `panel.generic: collapse`, docs/PLUGINS.md §4).
 class GenericPanel extends ResourcePanel {
-  const GenericPanel();
+  final bool collapsed;
+  const GenericPanel({this.collapsed = false});
 
   @override
   Set<String> get kinds => const {};
@@ -71,25 +75,27 @@ class GenericPanel extends ResourcePanel {
 
     final sections = <Widget>[
       if (HealthSummary.hasContent(obj))
-        DetailSection(title: 'Health', icon: Icons.monitor_heart_outlined, trailing: crdLink, child: HealthSummary(obj)),
-      if (conds.isNotEmpty) DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(conds)),
+        DetailSection(title: 'Health', icon: Icons.monitor_heart_outlined, initiallyExpanded: !collapsed, trailing: crdLink, child: HealthSummary(obj)),
+      if (conds.isNotEmpty) DetailSection(title: 'Conditions', icon: Icons.checklist, initiallyExpanded: !collapsed, child: ConditionsTable(conds)),
       if (ctx.spec.isNotEmpty || obj['spec'] is Map)
         DetailSection(
           title: 'Spec',
+          initiallyExpanded: !collapsed,
           icon: Icons.tune,
           trailing: HealthSummary.hasContent(obj) ? null : crdLink,
           child: smart('spec', ctx.spec),
         ),
-      if (scalars.isNotEmpty) DetailSection(title: 'Properties', icon: Icons.list_alt, child: smart('', scalars)),
+      if (scalars.isNotEmpty) DetailSection(title: 'Properties', icon: Icons.list_alt, initiallyExpanded: !collapsed, child: smart('', scalars)),
       for (final e in containers.entries)
         DetailSection(
           title: humanize(e.key),
+          initiallyExpanded: !collapsed,
           icon: _sectionIcons[e.key] ?? Icons.data_object,
           trailing: _count(context, e.value),
           child: smart(e.key, e.value),
         ),
       if (statusRest.isNotEmpty)
-        DetailSection(title: 'Status', icon: Icons.insights_outlined, child: smart('status', statusRest)),
+        DetailSection(title: 'Status', icon: Icons.insights_outlined, initiallyExpanded: !collapsed, child: smart('status', statusRest)),
     ];
     if (sections.isEmpty) {
       sections.add(const DetailSection(

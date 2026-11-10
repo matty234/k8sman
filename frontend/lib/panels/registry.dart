@@ -10,6 +10,7 @@ import 'admission/admission_panels.dart';
 import 'batch/index.dart';
 import 'cluster/index.dart';
 import 'config/index.dart';
+import 'custom/generic_panel.dart' show GenericPanel;
 import 'custom/index.dart';
 import 'network/index.dart';
 import 'pod/index.dart';
@@ -53,9 +54,15 @@ ResourcePanel panelFor(ResourceType t, [AppState? app]) {
   if (app == null) return panel;
   pluginHost.attach(app.api);
   if (!pluginHost.contributesTo(t.gk)) return panel;
+  if (on) return PluginComposedPanel(panel);
   // Without a dedicated panel, the plugin's sections lead and the generic
-  // summary follows.
-  return PluginComposedPanel(panel, pluginFirst: !on);
+  // ones follow, collapsed or left out if the plugin says so
+  // (`panel.generic`, docs/PLUGINS.md §4).
+  return switch (pluginHost.genericFor(t.gk)) {
+    'replace' => PluginComposedPanel(panel, pluginFirst: true, replaceBase: true),
+    'collapse' => PluginComposedPanel(panel is GenericPanel ? const GenericPanel(collapsed: true) : panel, pluginFirst: true),
+    _ => PluginComposedPanel(panel, pluginFirst: true),
+  };
 }
 
 /// Minimal fallback: spec + status trees and conditions.

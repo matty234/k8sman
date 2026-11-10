@@ -37,6 +37,10 @@ enum ModuleState {
   /// Found and working.
   connected,
 
+  /// Found and working, with something to look at (e.g. a plugin's status
+  /// count of severity warning).
+  warning,
+
   /// Found, but not working (unreachable, forbidden, …).
   error,
 }

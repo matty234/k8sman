@@ -150,17 +150,29 @@ class _BundledPluginTileState extends State<BundledPluginTile> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: pluginHost, builder: (context, _) => _row(context));
+
+  Widget _row(BuildContext context) {
     final p = widget.plugin;
     final kinds = [for (final k in p.kinds) if (k.key != '*') k];
     final served = kinds.where((k) => k.served).length;
+    // The plugin's own status line (its kinds' `status`), when it has one.
+    final line = p.disabled || served == 0 || !kinds.any((k) => k.status) ? null : pluginHost.statusOf(p.id, context.read<AppState>().currentContext);
     final status = p.disabled
         ? null
         : served == 0
             ? const ModuleStatus(ModuleState.notInstalled)
             : kinds.any((k) => k.errors > 0)
                 ? ModuleStatus(ModuleState.error, '${kinds.where((k) => k.errors > 0).length} kinds have plugin errors')
-                : ModuleStatus(ModuleState.connected, served == kinds.length ? 'all ${kinds.length} kinds served' : '$served of ${kinds.length} kinds served');
+                : line != null && line.text.isNotEmpty
+                    ? ModuleStatus(switch (line.severity) {
+                        'critical' => ModuleState.error,
+                        'warning' => ModuleState.warning,
+                        _ => line.errors.isNotEmpty ? ModuleState.error : ModuleState.connected,
+                      }, line.text)
+                    : line != null && line.errors.isNotEmpty
+                        ? ModuleStatus(ModuleState.error, line.errors.first)
+                        : ModuleStatus(ModuleState.connected, served == kinds.length ? 'all ${kinds.length} kinds served' : '$served of ${kinds.length} kinds served');
     return IntegrationRow(
       id: p.id,
       name: p.name,
@@ -296,6 +308,7 @@ class _StatusLine extends StatelessWidget {
       ModuleState.checking => (Severity.info, 'checking…'),
       ModuleState.notInstalled => (Severity.neutral, 'not on this cluster'),
       ModuleState.connected => (Severity.ok, 'connected'),
+      ModuleState.warning => (Severity.warn, 'connected'),
       ModuleState.error => (Severity.error, 'error'),
     };
     final text = [label, if (s.message != null && s.message!.isNotEmpty && s.state != ModuleState.notInstalled) s.message!].join(' · ');
@@ -315,7 +328,7 @@ class _StatusLine extends StatelessWidget {
             text,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(color: sev == Severity.error ? c : theme.hintColor, fontSize: 11.5),
+            style: theme.textTheme.bodySmall?.copyWith(color: sev == Severity.error || sev == Severity.warn ? c : theme.hintColor, fontSize: 11.5),
           ),
         ),
       ]),

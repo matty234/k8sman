@@ -23,10 +23,14 @@ export 'plugin_actions.dart' show pluginActions, runPluginAction, showPluginCons
 /// [base] with the plugins' sections after its own (before them with
 /// [pluginFirst]: for kinds whose base is the generic panel, as
 /// docs/PLUGINS.md §4 places them), and their actions after its actions.
+/// With [replaceBase] (a plugin's `panel.generic: replace`) the base's
+/// sections are left out: the plugin's are the panel. Its tabs and
+/// actions stay, and so do the shell's own sections (Owns, Metadata).
 class PluginComposedPanel extends ResourcePanel {
   final ResourcePanel base;
   final bool pluginFirst;
-  const PluginComposedPanel(this.base, {this.pluginFirst = false});
+  final bool replaceBase;
+  const PluginComposedPanel(this.base, {this.pluginFirst = false, this.replaceBase = false});
 
   @override
   Set<String> get kinds => base.kinds;
@@ -43,7 +47,7 @@ class PluginComposedPanel extends ResourcePanel {
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
         if (pluginFirst) PluginSections(key: ValueKey('plugin-sections-${ctx.uid}'), ctx: ctx),
-        ...base.buildSections(context, ctx),
+        if (!replaceBase) ...base.buildSections(context, ctx),
         if (!pluginFirst) PluginSections(key: ValueKey('plugin-sections-${ctx.uid}'), ctx: ctx),
       ];
 

@@ -15,6 +15,7 @@ import '../actions/actions.dart' show ResourceAction;
 import '../api/client.dart';
 import '../modules/module.dart' show NavGroup;
 import '../state/startup_gate.dart';
+import '../util/k8s.dart' show asMap;
 import 'plugin_api.dart';
 import 'plugin_icons.dart';
 
@@ -46,6 +47,8 @@ class PluginHost extends ChangeNotifier {
     _icons.clear();
     _actions.clear();
     _bound.clear();
+    _status.clear();
+    _statusKey = null;
     StartupGate.ready.then((_) {
       if (identical(_api, api)) refresh();
     });
@@ -123,6 +126,50 @@ class PluginHost extends ChangeNotifier {
 
   /// Whether a plugin adds panel sections or actions to kind [gk].
   bool contributesTo(String gk) => active.any((p) => p.kinds.any((k) => (k.key == gk && (k.sections > 0 || k.actions > 0)) || (k.key == '*' && k.actions > 0)));
+
+  /// What becomes of the generic panel's sections for kind [gk] when it
+  /// has no compiled-in panel: `replace` if a plugin with sections for it
+  /// says so, else `collapse` if one says that, else `keep`.
+  String genericFor(String gk) {
+    final modes = {
+      for (final p in active)
+        for (final k in p.kinds)
+          if (k.key == gk && k.sections > 0) k.generic,
+    };
+    return modes.contains('replace') ? 'replace' : (modes.contains('collapse') ? 'collapse' : 'keep');
+  }
+
+  final Map<String, PluginStatusLine> _status = {};
+  String? _statusKey;
+  DateTime _statusAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _statusBusy = false;
+
+  /// Plugin [id]'s status line on context [contextName] (null until
+  /// fetched, or when it has none). Fetched again after 30 seconds, or when
+  /// the context or the plugins change; listeners hear when it lands.
+  PluginStatusLine? statusOf(String id, String contextName) {
+    final key = '$contextName@$generation';
+    if (!_statusBusy && (key != _statusKey || DateTime.now().difference(_statusAt) > const Duration(seconds: 30))) {
+      final api = _api;
+      if (api != null) {
+        if (key != _statusKey) _status.clear();
+        _statusKey = key;
+        _statusBusy = true;
+        _statusAt = DateTime.now();
+        // Never synchronously: this is called from build methods.
+        Future(() => api.pluginStatus()).then((j) {
+          if (!identical(api, _api) || key != _statusKey) return;
+          _status
+            ..clear()
+            ..addAll({for (final e in asMap(j['plugins']).entries) e.key: PluginStatusLine.fromJson(asMap(e.value))});
+        }, onError: (Object _) {}).whenComplete(() {
+          _statusBusy = false;
+          notifyListeners();
+        });
+      }
+    }
+    return _status[id];
+  }
 
   /// The plugins' sidebar sections.
   List<NavGroup> get navGroups => [
