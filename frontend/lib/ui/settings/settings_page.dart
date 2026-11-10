@@ -34,7 +34,7 @@ enum SettingsSection {
   views('Views', Icons.bookmark_outline, 'Saved views: order, names, contexts, import and export.'),
   integrations('Integrations', Icons.extension_outlined,
       'Turn off what you don\'t use: its pages, panels and checks go away on every cluster. Status is for the current cluster.'),
-  addons('Add-ons', Icons.extension_outlined, 'Cluster tools k8sman builds on (metrics-server, Prometheus, Trivy, …), installed with Helm on the current cluster.'),
+  addons('Add-ons', Icons.inventory_2_outlined, 'Cluster tools k8sman builds on (metrics-server, Prometheus, Trivy, …), installed with Helm on the current cluster.'),
   tables('Tables', Icons.table_rows_outlined, 'Each kind\'s table remembers its sort, column widths and filter.'),
   keyboard('Keyboard', Icons.keyboard_outlined, 'Shortcuts. Press ? outside a text field for this list anywhere.'),
   about('About', Icons.info_outline, 'Version and updates.');
