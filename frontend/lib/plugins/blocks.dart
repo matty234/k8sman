@@ -35,12 +35,27 @@ class PluginSectionView extends StatelessWidget {
       if (blocks.isEmpty) Text('—', style: TextStyle(color: Theme.of(context).hintColor)),
     ]);
     final id = inspectorId;
+    // The header: the badge (a coloured state), then the summary.
+    final badge = section['badge'] is Map ? asMap(section['badge']) : null;
+    Widget? trailing(Widget Function(String) text) {
+      final b = badge == null
+          ? null
+          : badge['error'] != null
+              ? Flexible(child: PluginErrorText('${badge['error']}'))
+              : StatusBadge('${badge['text'] ?? ''}', severity: severityNamed(badge['severity'] as String?), dense: true);
+      if (b == null) return summary.isEmpty ? null : text(summary);
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        b,
+        if (summary.isNotEmpty) ...[const SizedBox(width: 8), Flexible(child: text(summary))],
+      ]);
+    }
+
     if (id != null) {
       return InspectorSection(
         id: id,
         title: '${section['title'] ?? ''}',
         initiallyExpanded: section['collapsed'] != true,
-        trailing: summary.isEmpty ? null : SectionSummary(summary),
+        trailing: trailing(SectionSummary.new),
         child: child,
       );
     }
@@ -48,7 +63,7 @@ class PluginSectionView extends StatelessWidget {
       title: '${section['title'] ?? ''}',
       icon: pluginIcon(section['icon'] as String?) ?? Icons.extension_outlined,
       initiallyExpanded: section['collapsed'] != true,
-      trailing: summary.isEmpty ? null : HintText(summary),
+      trailing: trailing(HintText.new),
       child: child,
     );
   }
@@ -70,7 +85,7 @@ class PluginBlock extends StatelessWidget {
         final items = asMapList(b['items']);
         return KeyValueTable([
           for (final it in items)
-            ('${it['label'] ?? ''}', it['error'] != null ? PluginErrorText('${it['error']}') : pluginValue(context, it['value'], type: it['type'] as String?, link: it['link'], copy: it['copy'] == true, mono: it['mono'] == true)),
+            ('${it['label'] ?? ''}', it['error'] != null ? PluginErrorText('${it['error']}') : pluginValue(context, it['value'], type: it['type'] as String?, link: it['link'], copy: it['copy'] == true, mono: it['mono'] == true, severity: severityNamed(it['severity'] as String?))),
         ]);
       case 'settings':
         return PluginSettingsRows(b);
@@ -113,11 +128,12 @@ class PluginBlock extends StatelessWidget {
   }
 }
 
-/// [name] (info, warning, error, ok, …) as a [Severity]; null = infer.
+/// [name] (error, warning, ok, info, neutral: the backend maps the old
+/// aliases) as a [Severity]; null = infer.
 Severity? severityNamed(String? name) => switch (name) {
-      'error' || 'critical' => Severity.error,
-      'warning' || 'warn' => Severity.warn,
-      'ok' || 'success' => Severity.ok,
+      'error' => Severity.error,
+      'warning' => Severity.warn,
+      'ok' => Severity.ok,
       'info' => Severity.info,
       'neutral' => Severity.neutral,
       _ => null,
@@ -141,15 +157,19 @@ String _text(Object? v) => switch (v) {
     };
 
 /// A value drawn by its value type (fields and table cells); [mono] in the
-/// monospace font.
-Widget pluginValue(BuildContext context, Object? v, {String? type, Object? link, bool copy = false, bool dense = false, bool mono = false}) {
+/// monospace font. A [severity] (the plugin's) colours a status badge, or
+/// the text of other values (neutral: quiet).
+Widget pluginValue(BuildContext context, Object? v, {String? type, Object? link, bool copy = false, bool dense = false, bool mono = false, Severity? severity}) {
   final theme = Theme.of(context);
-  final style = mono ? monoStyle(context, size: 11) : theme.textTheme.bodySmall;
+  var style = mono ? monoStyle(context, size: 11) : theme.textTheme.bodySmall;
+  if (severity != null && type != 'status') {
+    style = style?.copyWith(color: severity == Severity.neutral ? theme.hintColor : severityColor(context, severity));
+  }
   final text = _text(v);
   Widget w;
   switch (type) {
     case 'status':
-      w = Align(alignment: Alignment.centerLeft, child: StatusBadge(text, dense: dense));
+      w = Align(alignment: Alignment.centerLeft, child: StatusBadge(text, dense: dense, severity: severity));
     case 'bool':
       w = Text(v == true ? 'Yes' : (v == false ? 'No' : text), style: style);
     case 'age':
@@ -327,7 +347,7 @@ class _PluginTableState extends State<PluginTable> {
     Widget cell(Object? r, int i) {
       final c = cellOf(r, i);
       if (c['error'] != null) return PluginErrorText('${c['error']}');
-      return pluginValue(context, c['value'], type: cols[i]['type'] as String?, link: c['link'], dense: true, mono: cols[i]['mono'] == true);
+      return pluginValue(context, c['value'], type: cols[i]['type'] as String?, link: c['link'], dense: true, mono: cols[i]['mono'] == true, severity: severityNamed(c['severity'] as String?));
     }
 
     final widths = {for (var j = 0; j < main.length; j++) j: const FlexColumnWidth()};
@@ -352,7 +372,8 @@ class _PluginTableState extends State<PluginTable> {
             if (cellOf(r, i)['error'] != null || '${cellOf(r, i)['value'] ?? ''}'.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4, right: 8),
-                child: cols[i]['type'] == null || cols[i]['type'] == 'text'
+                // Quiet text, unless the plugin gave the cell a severity.
+                child: (cols[i]['type'] == null || cols[i]['type'] == 'text') && cellOf(r, i)['severity'] == null
                     ? (cellOf(r, i)['error'] != null
                         ? PluginErrorText('${cellOf(r, i)['error']}')
                         : Text(_text(cellOf(r, i)['value']), style: cols[i]['mono'] == true ? monoStyle(context, size: 11, color: theme.hintColor) : quiet))

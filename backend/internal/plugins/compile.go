@@ -85,7 +85,9 @@ type colProg struct {
 type secProg struct {
 	sec           *Section
 	when, summary *program
-	blocks        []blockProg
+	// badge is the header badge's text, severity and when.
+	badgeText, badgeSeverity, badgeWhen *program
+	blocks                              []blockProg
 }
 
 type tabProg struct {
@@ -100,7 +102,7 @@ type blockProg struct {
 	// progs holds the block's expressions by role: "items", "from",
 	// "rows", "value", "max", "text"; fields and badges by index
 	// ("0.value", "0.link", "0.when", "0.text", "0.severity"); table
-	// columns as "col.0.value", "col.0.link".
+	// columns as "col.0.value", "col.0.link", "col.0.severity".
 	progs map[string]*program
 }
 
@@ -500,6 +502,11 @@ func (c *compiler) compileSections(secs []Section) []secProg {
 	for i := range secs {
 		s := &secs[i]
 		sp := secProg{sec: s, when: c.compile(s.When, c.base, cel.BoolType, panelCostLimit), summary: c.compile(s.Summary, c.base, nil, panelCostLimit)}
+		if b := s.Badge; b != nil {
+			sp.badgeText = c.compile(b.Text, c.base, nil, panelCostLimit)
+			sp.badgeSeverity = c.compile(b.Severity, c.base, nil, panelCostLimit)
+			sp.badgeWhen = c.compile(b.When, c.base, cel.BoolType, panelCostLimit)
+		}
 		for j := range s.Blocks {
 			sp.blocks = append(sp.blocks, c.compileBlock(&s.Blocks[j]))
 		}
@@ -531,8 +538,9 @@ func (kp *kindProgs) needs() {
 	}
 	sections := func(secs []secProg) {
 		for _, sp := range secs {
-			panel(sp.when)
-			panel(sp.summary)
+			for _, p := range []*program{sp.when, sp.summary, sp.badgeText, sp.badgeSeverity, sp.badgeWhen} {
+				panel(p)
+			}
 			for _, bp := range sp.blocks {
 				panel(bp.when)
 				for _, p := range bp.progs {
@@ -600,6 +608,7 @@ func (c *compiler) compileBlock(b *Block) blockProg {
 			set(itoa(i)+".value", f.Value, c.base, nil)
 			set(itoa(i)+".link", f.Link, c.base, nil)
 			set(itoa(i)+".when", f.When, c.base, cel.BoolType)
+			set(itoa(i)+".severity", f.Severity, c.base, nil)
 		}
 	case "badges":
 		for i, x := range b.Badges {
@@ -619,7 +628,8 @@ func (c *compiler) compileBlock(b *Block) blockProg {
 		for i, col := range b.Columns {
 			set("col."+itoa(i)+".value", col.Value, c.row, nil)
 			set("col."+itoa(i)+".link", col.Link, c.row, nil)
-			for _, role := range []string{"value", "link"} {
+			set("col."+itoa(i)+".severity", col.Severity, c.row, nil)
+			for _, role := range []string{"value", "link", "severity"} {
 				if p := bp.progs["col."+itoa(i)+"."+role]; p != nil && p.usesRow {
 					c.diags = append(c.diags, c.d.diagAt(c.d.exprPos(p.expr, 1, 0), true, "`row` is deprecated: use `item` (the element being evaluated)"))
 				}

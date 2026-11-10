@@ -694,3 +694,75 @@ kinds:
 		t.Fatalf("lookups = %d, notes = %v, want %d lookups and one over-budget note", len(lookup.kinds), got[0].Notes, starMaxLookups)
 	}
 }
+
+// Severity names are canonical in what a panel renders (aliases mapped),
+// validate warns about aliases and unknown names where they are written,
+// and about an after that names no core section; a section's header
+// badge and after reach the UI.
+func TestSeverityAndPlacement(t *testing.T) {
+	src := `apiVersion: k8sman.dev/v1
+id: sev
+name: Sev
+version: 1.0.0
+permissions:
+  read: [/Pod]
+kinds:
+  /Pod:
+    panel:
+      sections:
+        - title: Claims
+          after: volumes
+          badge: {text: '"Pending"', severity: '"warn"'}
+          blocks:
+            - type: table
+              rows: object.spec.containers
+              columns:
+                - name: Name
+                  value: item.name
+                  severity: 'item.name == "web" ? "ok" : "bad"'
+        - title: Late
+          after: nope
+          blocks:
+            - type: fields
+              items:
+                - {label: Node, value: object.spec.nodeName, severity: '"critical"'}
+`
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, d := range Validate(dir) {
+		if !d.Warning {
+			t.Fatalf("error: %s %s", d.Pos, d.Message)
+		}
+		got = append(got, d.Pos.String()+" "+strings.SplitN(d.Message, " (", 2)[0])
+	}
+	want := []string{
+		`plugin.yaml:13:49 severity "warn" is an old name: write "warning"`,
+		`plugin.yaml:20:58 "bad" is not a severity`,
+		`plugin.yaml:22:18 after: "nope" is not a section of the /Pod panel`,
+		`plugin.yaml:26:73 severity "critical" is an old name: write "error"`,
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("warnings:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+
+	h := demoHost(t, src)
+	podType := cluster.ResourceType{Version: "v1", Resource: "pods", Kind: "Pod", Namespaced: true}
+	pod := map[string]any{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": "p", "namespace": "default"},
+		"spec": map[string]any{"nodeName": "n1", "containers": []any{map[string]any{"name": "web"}, map[string]any{"name": "side"}}}}
+	panels := h.Panels(Env{}, podType, pod)
+	if len(panels) != 1 || len(panels[0].Sections) != 2 {
+		t.Fatalf("panels = %+v", panels)
+	}
+	claims, late := panels[0].Sections[0], panels[0].Sections[1]
+	rows := claims.Blocks[0]["rows"].([][]map[string]any)
+	if claims.After != "volumes" || !reflect.DeepEqual(claims.Badge, map[string]any{"text": "Pending", "severity": "warning"}) ||
+		rows[0][0]["severity"] != "ok" || rows[1][0]["severity"] != nil {
+		t.Fatalf("claims = %+v", claims)
+	}
+	if items := late.Blocks[0]["items"].([]map[string]any); items[0]["severity"] != "error" {
+		t.Fatalf("late = %+v", late)
+	}
+}

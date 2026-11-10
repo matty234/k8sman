@@ -193,6 +193,34 @@
       ],
       "type": "object"
     },
+    "BadgeItem": {
+      "additionalProperties": false,
+      "properties": {
+        "severity": {
+          "description": "CEL expression. string: one of error, warning, ok, info, neutral ($defs/Severity), e.g. '\"error\"' or 'item.ready ? \"ok\" : \"error\"'. Without one the app colours a status value from its text.",
+          "examples": [
+            "\"error\"",
+            "\"warning\"",
+            "\"ok\"",
+            "\"info\"",
+            "\"neutral\""
+          ],
+          "type": "string"
+        },
+        "text": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
     "Block": {
       "additionalProperties": false,
       "allOf": [
@@ -982,6 +1010,18 @@
     "Section": {
       "additionalProperties": false,
       "properties": {
+        "after": {
+          "description": "On a kind with a compiled-in panel: the id of the core section this one follows (docs/PLUGINS.md §4); at the bottom when the panel doesn't show it.",
+          "type": "string"
+        },
+        "badge": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/BadgeItem"
+            }
+          ],
+          "description": "A coloured badge in the section's header, beside the summary (text and severity, as a badges block's items)."
+        },
         "blocks": {
           "items": {
             "$ref": "#/$defs/Block"
@@ -1074,6 +1114,14 @@
           ],
           "type": "string"
         },
+        "placement": {
+          "description": "On a kind with a compiled-in panel: the section goes at the top or the bottom (default) of the panel's sections.",
+          "enum": [
+            "top",
+            "bottom"
+          ],
+          "type": "string"
+        },
         "summary": {
           "description": "CEL expression. string: a short text at the right of the section's header (a count, a state).",
           "type": "string"
@@ -1090,6 +1138,16 @@
         "title"
       ],
       "type": "object"
+    },
+    "Severity": {
+      "description": "The names a severity expression returns.",
+      "enum": [
+        "error",
+        "warning",
+        "ok",
+        "info",
+        "neutral"
+      ]
     },
     "Shell": {
       "additionalProperties": false,
@@ -1299,6 +1357,17 @@
           "type": "boolean"
         },
         "name": {
+          "type": "string"
+        },
+        "severity": {
+          "description": "CEL expression. string: one of error, warning, ok, info, neutral ($defs/Severity), e.g. '\"error\"' or 'item.ready ? \"ok\" : \"error\"'. Without one the app colours a status value from its text.",
+          "examples": [
+            "\"error\"",
+            "\"warning\"",
+            "\"ok\"",
+            "\"info\"",
+            "\"neutral\""
+          ],
           "type": "string"
         },
         "type": {

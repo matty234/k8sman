@@ -43,6 +43,19 @@ var schemaRequired = map[string][]string{
 	"StatusCount": {"label", "when"},
 }
 
+// severitySchema is a severity expression's: CEL returning a name of
+// $defs/Severity, its literals offered as completions.
+var severitySchema = map[string]any{
+	"description": "string: one of " + strings.Join(severities, ", ") + " ($defs/Severity), e.g. '\"error\"' or 'item.ready ? \"ok\" : \"error\"'. Without one the app colours a status value from its text.",
+	"examples": func() []string {
+		var out []string
+		for _, s := range severities {
+			out = append(out, `"`+s+`"`)
+		}
+		return out
+	}(),
+}
+
 var kindKeyPattern = `^(\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$`
 
 // schemaField is extra schema for one field ("Type.field").
@@ -82,6 +95,12 @@ func schemaField() map[string]map[string]any {
 		"Related.namespace":      {"description": "string: where to look (default: the object's namespace; \"\" = every namespace)."},
 		"Section.summary":        {"description": "string: a short text at the right of the section's header (a count, a state)."},
 		"Tab.id":                 {"pattern": tabIDRe.String(), "description": "Identifies the tab (the app remembers the open tab by it, so the title can change): unique among the entry's tabs. Default: a slug of the title."},
+		"Section.badge":          {"description": "A coloured badge in the section's header, beside the summary (text and severity, as a badges block's items)."},
+		"Section.placement":      {"enum": placements, "description": "On a kind with a compiled-in panel: the section goes at the top or the bottom (default) of the panel's sections."},
+		"Section.after":          {"description": "On a kind with a compiled-in panel: the id of the core section this one follows (docs/PLUGINS.md §4); at the bottom when the panel doesn't show it."},
+		"BadgeItem.severity":     severitySchema,
+		"FieldItem.severity":     severitySchema,
+		"TableColumn.severity":   severitySchema,
 		"Tab.icon":               enum(Icons),
 		"Tab.when":               {"description": "bool: whether the tab shows for this object (may read related)."},
 		"Tab.into":               map[string]any{"enum": hostTabs, "description": "A tab of the app's own that these sections join on kinds that have it (security: the Security tab of Pods and workloads); elsewhere the tab is a tab of its own. More host tabs may be added in later versions."},
@@ -129,6 +148,7 @@ func JSONSchema() []byte {
 	root["$id"] = SchemaURL
 	root["title"] = "k8sman plugin (plugin.yaml, " + APIVersion + ")"
 	root["description"] = "A k8sman runtime plugin. See docs/PLUGINS.md. CEL fields are strings; `k8sman-server plugin validate` checks them."
+	g.defs["Severity"] = map[string]any{"enum": severities, "description": "The names a severity expression returns."}
 	root["$defs"] = g.defs
 	b, _ := json.MarshalIndent(root, "", "  ")
 	return append(b, '\n')

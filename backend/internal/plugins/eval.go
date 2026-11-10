@@ -175,10 +175,14 @@ type PanelOut struct {
 // SectionOut is a resolved section: blocks are plain JSON objects with a
 // "type" (the block type, or "error" with "message").
 type SectionOut struct {
-	Title     string           `json:"title"`
-	Icon      string           `json:"icon,omitempty"`
-	Summary   string           `json:"summary,omitempty"`
+	Title   string `json:"title"`
+	Icon    string `json:"icon,omitempty"`
+	Summary string `json:"summary,omitempty"`
+	// Badge is the header badge: {text, severity}, or {error}.
+	Badge     map[string]any   `json:"badge,omitempty"`
 	Collapsed bool             `json:"collapsed,omitempty"`
+	Placement string           `json:"placement,omitempty"`
+	After     string           `json:"after,omitempty"`
 	Blocks    []map[string]any `json:"blocks"`
 }
 
@@ -243,7 +247,7 @@ func errBlock(err error) map[string]any {
 }
 
 func (r *renderer) section(sp secProg) (SectionOut, bool) {
-	out := SectionOut{Title: sp.sec.Title, Icon: sp.sec.Icon, Collapsed: sp.sec.Collapsed, Blocks: []map[string]any{}}
+	out := SectionOut{Title: sp.sec.Title, Icon: sp.sec.Icon, Collapsed: sp.sec.Collapsed, Placement: sp.sec.Placement, After: sp.sec.After, Blocks: []map[string]any{}}
 	show, err := r.cond(sp.when)
 	if err != nil {
 		out.Blocks = append(out.Blocks, errBlock(err))
@@ -261,12 +265,48 @@ func (r *renderer) section(sp secProg) (SectionOut, bool) {
 			out.Summary = fmt.Sprint(v)
 		}
 	}
+	if sp.badgeText != nil {
+		out.Badge = r.badge(sp.badgeText, sp.badgeSeverity, sp.badgeWhen)
+	}
 	for _, bp := range sp.blocks {
 		if b := r.block(bp); b != nil {
 			out.Blocks = append(out.Blocks, b)
 		}
 	}
 	return out, true
+}
+
+// badge is a badge ({text, severity}, or {error}), nil when its when
+// fails or its text is empty.
+func (r *renderer) badge(text, severity, when *program) map[string]any {
+	if when != nil {
+		if ok, err := r.cond(when); err != nil || !ok {
+			return nil
+		}
+	}
+	t, err := r.eval(text)
+	if err != nil {
+		return map[string]any{"error": err.Error()}
+	}
+	if t == nil || t == "" {
+		return nil
+	}
+	item := map[string]any{"text": fmt.Sprint(t)}
+	r.severity(item, severity)
+	return item
+}
+
+// severity sets out's severity from p (a severity name; nothing when p
+// is unset, fails or names none).
+func (r *renderer) severity(out map[string]any, p *program) {
+	if p == nil {
+		return
+	}
+	if v, err := r.eval(p); err == nil {
+		if s := severityName(v); s != "" {
+			out["severity"] = s
+		}
+	}
 }
 
 func (r *renderer) block(bp blockProg) map[string]any {
@@ -320,6 +360,7 @@ func (r *renderer) block(bp blockProg) map[string]any {
 			if f.Mono {
 				item["mono"] = true
 			}
+			r.severity(item, bp.progs[k+".severity"])
 			if p := bp.progs[k+".link"]; p != nil {
 				if l, err := r.eval(p); err == nil && l != nil {
 					item["link"] = l
@@ -332,24 +373,9 @@ func (r *renderer) block(bp blockProg) map[string]any {
 		var items []map[string]any
 		for i := range b.Badges {
 			k := itoa(i)
-			if p := bp.progs[k+".when"]; p != nil {
-				if ok, err := r.cond(p); err != nil || !ok {
-					continue
-				}
+			if item := r.badge(bp.progs[k+".text"], bp.progs[k+".severity"], bp.progs[k+".when"]); item != nil {
+				items = append(items, item)
 			}
-			t, err := r.eval(bp.progs[k+".text"])
-			if err != nil {
-				items = append(items, map[string]any{"error": err.Error()})
-				continue
-			}
-			if t == nil || t == "" {
-				continue
-			}
-			item := map[string]any{"text": fmt.Sprint(t)}
-			if s, _ := r.eval(bp.progs[k+".severity"]); s != nil {
-				item["severity"] = fmt.Sprint(s)
-			}
-			items = append(items, item)
 		}
 		out["items"] = orEmpty(items)
 	case "chips", "links":
@@ -469,10 +495,13 @@ func (r *renderer) table(bp blockProg, out map[string]any, firstErr *error) {
 			cell := map[string]any{"value": v}
 			if err != nil {
 				cell = map[string]any{"error": err.Error()}
-			} else if p := bp.progs[k+".link"]; p != nil {
-				if l, err := r.eval(p); err == nil && l != nil {
-					cell["link"] = l
+			} else {
+				if p := bp.progs[k+".link"]; p != nil {
+					if l, err := r.eval(p); err == nil && l != nil {
+						cell["link"] = l
+					}
 				}
+				r.severity(cell, bp.progs[k+".severity"])
 			}
 			line[i] = cell
 		}

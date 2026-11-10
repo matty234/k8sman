@@ -8,6 +8,7 @@ import 'package:k8sman/plugins/plugin_host.dart';
 import 'package:k8sman/plugins/plugin_panel.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/ui/theme.dart';
+import 'package:k8sman/ui/widgets/common.dart' show DetailSection;
 import 'package:provider/provider.dart';
 
 import '../support/harness.dart';
@@ -192,7 +193,69 @@ class _SecurityPanel extends ResourcePanel {
       ];
 }
 
+/// A compiled-in panel with two named sections.
+class _CorePanel extends ResourcePanel {
+  const _CorePanel();
+
+  @override
+  Set<String> get kinds => const {'/Pod'};
+
+  @override
+  List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
+        CoreSection('containers', DetailSection(title: 'Containers', child: const SizedBox(height: 10))),
+        CoreSection('conditions', DetailSection(title: 'Conditions', child: const SizedBox(height: 10))),
+      ];
+}
+
+/// Plugin sections placed at the top, after a core section, after one the
+/// panel doesn't have and (by default) at the bottom; one with a badge.
+class _PlacedApi extends FakeApiClient {
+  @override
+  Future<Json> pluginPanel(ResourceRef r, {String? namespace, required String name}) async => {
+        'panels': [
+          {
+            'plugin': 'demo',
+            'name': 'Demo',
+            'sections': [
+              {'title': 'Last', 'blocks': []},
+              {'title': 'Lost', 'after': 'nope', 'blocks': []},
+              {'title': 'Claims', 'after': 'containers', 'badge': {'text': 'Pending', 'severity': 'warning'}, 'summary': '2', 'blocks': []},
+              {'title': 'First', 'placement': 'top', 'blocks': []},
+            ],
+          },
+        ],
+        'actions': [],
+      };
+}
+
 void main() {
+  testWidgets('plugin sections go where placement and after say among a compiled panel’s sections', (tester) async {
+    final api = _PlacedApi();
+    final app = AppState(api)..types = testTypes;
+    pluginPanels.debugClear();
+    final ctx = PanelContext(
+      object: {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {'name': 'web', 'namespace': 'demo', 'uid': 'u-5', 'resourceVersion': '1'}},
+      type: testType('', 'Pod'),
+      api: api,
+      app: app,
+    );
+    const panel = PluginComposedPanel(_CorePanel());
+    tester.view.physicalSize = const Size(600, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+      child: MaterialApp(theme: buildTheme(Brightness.dark), home: Scaffold(body: Builder(builder: (context) => ListView(children: panel.buildSections(context, ctx))))),
+    ));
+    await tester.pumpAndSettle();
+
+    final order = ['First', 'Containers', 'Claims', 'Conditions', 'Last', 'Lost'];
+    final ys = [for (final t in order) tester.getTopLeft(find.text(t)).dy];
+    expect([...ys]..sort(), ys, reason: 'drawn in the order $order');
+    expect(find.text('Pending'), findsOneWidget, reason: 'the header badge');
+    expect(find.text('2'), findsOneWidget, reason: 'the summary beside it');
+  });
+
   testWidgets('a plugin tab on any kind is a tab of its own, or sections of the Security tab where the kind has one', (tester) async {
     final api = _TabApi();
     final app = AppState(api)..types = testTypes;

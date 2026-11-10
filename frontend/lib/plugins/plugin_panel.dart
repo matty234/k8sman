@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../actions/actions.dart';
+import '../api/models.dart' show Json;
 import '../panels/panel.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
@@ -71,12 +72,22 @@ class PluginComposedPanel extends ResourcePanel {
     ];
   }
 
+  /// With [pluginFirst] the plugins' sections lead, in their order. Else
+  /// each goes where its `placement` or `after` says among the base's
+  /// [CoreSection]s: a slot at the top, one after each core section and
+  /// one at the bottom (also for an `after` the base doesn't show).
   @override
-  List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
-        if (pluginFirst) PluginSections(key: ValueKey('plugin-sections-${ctx.uid}'), ctx: ctx),
-        if (!replaceBase) ...base.buildSections(context, ctx),
-        if (!pluginFirst) PluginSections(key: ValueKey('plugin-sections-${ctx.uid}'), ctx: ctx),
-      ];
+  List<Widget> buildSections(BuildContext context, PanelContext ctx) {
+    final own = replaceBase ? const <Widget>[] : base.buildSections(context, ctx);
+    if (pluginFirst) return [PluginSections(key: ValueKey('plugin-sections-${ctx.uid}'), ctx: ctx), ...own];
+    final known = {for (final w in own) if (w is CoreSection) w.id};
+    Widget slot(String s) => PluginSections(key: ValueKey('plugin-sections-${ctx.uid}-$s'), ctx: ctx, slot: s, known: known);
+    return [
+      slot('top'),
+      for (final w in own) ...[w, if (w is CoreSection) slot('after:${w.id}')],
+      slot('bottom'),
+    ];
+  }
 
   @override
   List<ResourceAction> actions(PanelContext ctx) => [...base.actions(ctx), ...pluginActions(ctx)];
@@ -258,22 +269,37 @@ class _PanelWatchState extends State<_PanelWatch> {
   Widget build(BuildContext context) => widget.builder(context, pluginPanels.of(widget.ctx), pluginPanels.errorOf(widget.ctx));
 }
 
-/// The plugins' sections for one object (the Overview tab).
+/// Where [section] goes among a compiled-in panel's sections whose ids are
+/// [known]: `top`, `after:<id>` or `bottom`.
+String pluginSectionSlot(Json section, Set<String> known) {
+  final after = '${section['after'] ?? ''}';
+  if (after.isNotEmpty) return known.contains(after) ? 'after:$after' : 'bottom';
+  return section['placement'] == 'top' ? 'top' : 'bottom';
+}
+
+/// The plugins' sections for one object (the Overview tab): all of them,
+/// or with [slot] those [pluginSectionSlot] puts there. A plugin's errors
+/// and notes go with its first section (at the bottom when it has none).
 class PluginSections extends StatelessWidget {
   final PanelContext ctx;
-  const PluginSections({super.key, required this.ctx});
+  final String? slot;
+  final Set<String> known;
+  const PluginSections({super.key, required this.ctx, this.slot, this.known = const {}});
 
   @override
   Widget build(BuildContext context) => _PanelWatch(
         ctx: ctx,
         builder: (context, d, error) {
+          final slot = this.slot;
+          bool here(Json s) => slot == null || pluginSectionSlot(s, known) == slot;
+          bool head(PluginPanelOut p) => slot == null || (p.sections.isEmpty ? slot == 'bottom' : here(p.sections.first));
           if (d == null) {
-            if (error == null) return const SizedBox.shrink();
+            if (error == null || (slot != null && slot != 'bottom')) return const SizedBox.shrink();
             return DetailSection(title: 'Plugins', icon: Icons.extension_outlined, child: PluginErrorText('$error'));
           }
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final p in d.panels) ...[
-              if (p.errors.isNotEmpty)
+              if (p.errors.isNotEmpty && head(p))
                 DetailSection(
                   title: p.name,
                   icon: Icons.extension_outlined,
@@ -283,8 +309,9 @@ class PluginSections extends StatelessWidget {
                 ),
               // What couldn't be read, where the plugin shows something
               // (a "*" entry that shows nothing here stays quiet).
-              if (p.notes.isNotEmpty && p.sections.isNotEmpty) PluginNotes(p.notes),
-              for (final s in p.sections) PluginSectionView(s),
+              if (p.notes.isNotEmpty && p.sections.isNotEmpty && head(p)) PluginNotes(p.notes),
+              for (final s in p.sections)
+                if (here(s)) PluginSectionView(s),
             ],
           ]);
         },

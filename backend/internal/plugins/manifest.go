@@ -241,9 +241,18 @@ type Section struct {
 	When  Expr   `yaml:"when"`
 	// Summary is a short text at the right of the section's header (a
 	// count, a state); empty shows nothing.
-	Summary   Expr    `yaml:"summary"`
-	Collapsed bool    `yaml:"collapsed"`
-	Blocks    []Block `yaml:"blocks"`
+	Summary Expr `yaml:"summary"`
+	// Badge is a coloured state in the header, beside the summary.
+	Badge     *BadgeItem `yaml:"badge"`
+	Collapsed bool       `yaml:"collapsed"`
+	Blocks    []Block    `yaml:"blocks"`
+	// Placement puts the section at the top or the bottom (default) of a
+	// compiled-in panel's sections; After puts it after the core section
+	// with that id (coreSections), at the bottom when the panel doesn't
+	// show one. Sections of kinds without a compiled-in panel, and of
+	// tabs, keep their order.
+	Placement string `yaml:"placement"`
+	After     string `yaml:"after"`
 	pos       Pos
 }
 
@@ -292,6 +301,8 @@ type FieldItem struct {
 	When  Expr   `yaml:"when"`
 	// Mono draws the value in the monospace font (versions, keys, ids).
 	Mono bool `yaml:"mono"`
+	// Severity (CEL: a severity name) colours the value.
+	Severity Expr `yaml:"severity"`
 }
 
 // BadgeItem is one badge of a badges block.
@@ -312,6 +323,8 @@ type TableColumn struct {
 	// cells, across the table, in a quieter style (a message, a
 	// description). An empty one draws nothing.
 	Detail bool `yaml:"detail"`
+	// Severity (CEL over item: a severity name) colours the cell.
+	Severity Expr `yaml:"severity"`
 }
 
 // Action is a kind's action: a shell command run on this computer, or a
@@ -396,6 +409,12 @@ var (
 	inputTypes      = []string{"string", "int", "bool", "enum"}
 	patchTypes      = []string{"merge", "json"}
 	messageSeverity = []string{"info", "warning", "error"}
+	// severities are what a severity expression returns (badges, section
+	// badges, field and cell values). severityAliases were accepted before
+	// v1 was frozen: they still work, and validate warns.
+	severities      = []string{"error", "warning", "ok", "info", "neutral"}
+	severityAliases = map[string]string{"critical": "error", "warn": "warning", "success": "ok"}
+	placements      = []string{"top", "bottom"}
 	barFormats      = []string{"number", "quantity", "percent"}
 	codeLanguages   = []string{"text", "yaml", "json", "shell"}
 	genericModes    = []string{"keep", "collapse", "replace"}
@@ -742,7 +761,7 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 		if k.Panel.Generic != "" && !slices.Contains(genericModes, k.Panel.Generic) {
 			d.errAt(resolve(field(pn, "generic")), "panel.generic must be one of %s", strings.Join(genericModes, ", "))
 		}
-		validateSections(d, k.Panel.Sections, resolve(field(pn, "sections")))
+		validateSections(d, k.Panel.Sections, resolve(field(pn, "sections")), key, false)
 		tabsNode := resolve(field(pn, "tabs"))
 		titles := map[string]bool{}
 		tabIDs := map[string]bool{}
@@ -776,7 +795,7 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 			if len(t.Sections) == 0 {
 				d.errAt(orNode(tn, pn), "tab %q needs sections", t.Title)
 			}
-			validateSections(d, t.Sections, resolve(field(tn, "sections")))
+			validateSections(d, t.Sections, resolve(field(tn, "sections")), key, true)
 		}
 	}
 	ids := map[string]bool{}
@@ -834,9 +853,9 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 	}
 }
 
-// validateSections checks sections (of a panel or a tab); secs is their
-// YAML list.
-func validateSections(d *decoder, sections []Section, secs *yaml.Node) {
+// validateSections checks sections (of kind key's panel, or of a tab);
+// secs is their YAML list.
+func validateSections(d *decoder, sections []Section, secs *yaml.Node, key string, inTab bool) {
 	for i := range sections {
 		s := &sections[i]
 		var sn *yaml.Node
@@ -848,6 +867,14 @@ func validateSections(d *decoder, sections []Section, secs *yaml.Node) {
 		}
 		if s.Icon != "" && !IconAllowed(s.Icon) {
 			d.errAt(resolve(field(sn, "icon")), "unknown icon %q", s.Icon)
+		}
+		validatePlacement(d, s, sn, key, inTab)
+		if s.Badge != nil {
+			bn := resolve(field(sn, "badge"))
+			if !s.Badge.Text.IsSet() {
+				d.errAt(bn, "a badge needs text")
+			}
+			checkSeverity(d, s.Badge.Severity)
 		}
 		blocks := resolve(field(sn, "blocks"))
 		for j := range s.Blocks {
@@ -976,6 +1003,7 @@ func (b *Block) validate(d *decoder, n *yaml.Node) {
 				if f.Type != "" && !slices.Contains(valueTypes, f.Type) {
 					d.errAt(resolve(in.Content[i]), "value type %q: use one of %s", f.Type, strings.Join(valueTypes, ", "))
 				}
+				checkSeverity(d, f.Severity)
 			}
 		} else {
 			d.decode(in, &b.Badges)
@@ -983,6 +1011,7 @@ func (b *Block) validate(d *decoder, n *yaml.Node) {
 				if !x.Text.IsSet() {
 					d.errAt(resolve(in.Content[i]), "a badge needs text")
 				}
+				checkSeverity(d, x.Severity)
 			}
 		}
 	case "chips", "links":
@@ -1000,6 +1029,7 @@ func (b *Block) validate(d *decoder, n *yaml.Node) {
 			if c.Type != "" && !slices.Contains(valueTypes, c.Type) {
 				d.errAt(n, "value type %q: use one of %s", c.Type, strings.Join(valueTypes, ", "))
 			}
+			checkSeverity(d, c.Severity)
 		}
 		if b.SortBy != "" && !slices.ContainsFunc(b.Columns, func(c TableColumn) bool { return c.Name == b.SortBy }) {
 			d.errAt(resolve(field(n, "sortBy")), "sortBy %q names no column", b.SortBy)
