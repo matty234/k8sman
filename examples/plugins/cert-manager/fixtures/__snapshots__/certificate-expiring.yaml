@@ -66,6 +66,7 @@ panel:
             - api.example.com
           type: chips
       icon: dns
+      summary: "1"
       title: DNS names
     - blocks:
         - items:

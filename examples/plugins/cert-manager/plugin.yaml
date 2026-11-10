@@ -170,6 +170,7 @@ kinds:
         - title: Requests
           icon: history
           when: size(related.requests) > 0
+          summary: string(size(related.requests))   # at the right of the header
           blocks:
             - type: table
               rows: related.requests
@@ -192,6 +193,7 @@ kinds:
         - title: DNS names
           icon: dns
           when: object.spec.?dnsNames.orValue([]).size() > 0
+          summary: string(size(object.spec.dnsNames))
           blocks:
             - type: chips
               items: object.spec.dnsNames

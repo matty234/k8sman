@@ -117,6 +117,7 @@ panel:
           total: 2
           type: table
       icon: history
+      summary: "2"
       title: Requests
     - blocks:
         - items:
@@ -124,6 +125,7 @@ panel:
             - example.com
           type: chips
       icon: dns
+      summary: "2"
       title: DNS names
     - blocks:
         - items:
