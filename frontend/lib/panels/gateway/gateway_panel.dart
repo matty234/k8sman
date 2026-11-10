@@ -42,24 +42,39 @@ List<BackendRef> certRefs(Json listener, String gwNamespace) => [
 
 /// Groups attachments by listener name. Routes without a sectionName/port
 /// appear under every listener that would accept them; '' collects routes
-/// that match no listener.
+/// that match no listener. A route that reaches one listener through
+/// several parentRefs is listed once, by its worst attachment.
 Map<String, List<Attachment>> groupByListener(Json gateway, List<Attachment> attachments, {Map<String, Json>? nsLabels}) {
   final listeners = asMapList(dig(gateway, ['spec', 'listeners']));
   final out = <String, List<Attachment>>{for (final l in listeners) '${l['name']}': []};
+  int rank(Attachment a) => !a.isAccepted ? 2 : (a.unresolved ? 1 : 0);
+  void add(String listener, Attachment a) {
+    final list = out.putIfAbsent(listener, () => []);
+    final i = list.indexWhere((b) => routeKey(b.route) == routeKey(a.route));
+    if (i < 0) {
+      list.add(a);
+    } else if (rank(a) > rank(list[i])) {
+      list[i] = a;
+    }
+  }
+
   for (final a in attachments) {
     final names = a.ref.sectionName != null
         ? [if (out.containsKey(a.ref.sectionName)) a.ref.sectionName!]
         : [for (final l in listenersFor(gateway, a.ref, a.route, nsLabels: nsLabels)) '${l['name']}'];
     if (names.isEmpty) {
-      out.putIfAbsent('', () => []).add(a);
+      add('', a);
     } else {
       for (final n in names) {
-        out[n]!.add(a);
+        add(n, a);
       }
     }
   }
   return out;
 }
+
+/// A route's identity: kind, namespace and name.
+String routeKey(RouteObj r) => '${r.kind.kind}/${r.namespace}/${r.name}';
 
 class GatewayPanel extends ResourcePanel {
   const GatewayPanel();
@@ -339,7 +354,7 @@ class _GatewayView extends StatelessWidget {
     final theme = Theme.of(context);
     final bad = sev != Severity.ok;
     return InspectorRow(
-      key: ValueKey('gw-route-$group/${a.route.namespace}/${a.route.name}'),
+      key: ValueKey('gw-route-$group/${routeKey(a.route)}'),
       dot: sev,
       dotTooltip: text,
       title: routeLink(a.route, showKind: true),

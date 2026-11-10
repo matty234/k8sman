@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:k8sman/panels/gateway/gateway_panel.dart' show Attachment, groupByListener;
 import 'package:k8sman/panels/gateway/gw_model.dart';
 import 'package:k8sman/panels/gateway/routed_by.dart';
 
@@ -8,6 +9,29 @@ RouteObj route(String fixture) => RouteObj(routeKindOf('${gwFixture(fixture)['ki
 
 void main() {
   group('model', () {
+    test('a route reaching one listener through two parentRefs is listed once', () {
+      final gw = {
+        'metadata': {'name': 'gw', 'namespace': 'demo'},
+        'spec': {
+          'listeners': [
+            {'name': 'https', 'protocol': 'HTTPS', 'port': 443},
+          ],
+        },
+      };
+      final r = RouteObj(routeKindOf('HTTPRoute')!, {
+        'kind': 'HTTPRoute',
+        'metadata': {'name': 'web', 'namespace': 'demo'},
+        'spec': {
+          'parentRefs': [
+            {'name': 'gw'},
+            {'name': 'gw', 'port': 443},
+          ],
+        },
+      });
+      final grouped = groupByListener(gw, [for (final p in r.parentRefs) Attachment(r, p)]);
+      expect(grouped['https'], hasLength(1));
+    });
+
 
     test('grantPermits honours from kind, namespace and to name', () {
       final grant = gwFixture('referencegrant-allow-gateway-demo-to-web');
