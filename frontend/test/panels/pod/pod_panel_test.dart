@@ -108,7 +108,10 @@ void main() {
     expect(find.text('HTTP :http/ · 5s · fails after 3'), findsOneWidget); // readiness, one line
     expect(find.text('Burstable'), findsOneWidget);
     expect(find.text('metadata.name'), findsOneWidget); // POD_NAME, resolved
-    expect(find.textContaining('heartbeat'), findsOneWidget); // command CodeBlock
+    expect(find.textContaining('heartbeat'), findsNothing); // the long command is collapsed to three lines
+    await tester.tap(find.textContaining('Show all'));
+    await tester.pump();
+    expect(find.textContaining('heartbeat'), findsOneWidget);
   });
 
   testWidgets('healthy containers start collapsed, troubled ones open; reference sections summarise when collapsed', (tester) async {

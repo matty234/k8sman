@@ -8,6 +8,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import 'pod_logic.dart';
 import '../../ui/inspector/inspector.dart';
+import '../../util/command_format.dart';
 import '../../util/text.dart';
 import '../../ui/widgets/atoms.dart';
 import '../../ui/widgets/editorial.dart' show HairlineBar;
@@ -169,7 +170,7 @@ class ContainerRow extends StatelessWidget {
       ],
       actions: actions,
       details: (_) => ContainerDetails(c,
-          namespace: namespace, volumes: volumes, portAction: live ? portAction : null, template: template, pod: pod, showResources: showResources),
+          namespace: namespace, volumes: volumes, portAction: live ? portAction : null, template: template, pod: pod, showResources: showResources, memoryId: 'container:$podUid/${c.name}'),
     );
   }
 
@@ -366,7 +367,10 @@ class ContainerDetails extends StatelessWidget {
   /// False while the pod's history charts show CPU and memory requests
   /// and limits: then only other resources (storage, GPUs) show here.
   final bool showResources;
-  const ContainerDetails(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, this.template = false, this.pod, this.showResources = true});
+
+  /// Remembers which long commands are expanded (with the container).
+  final String? memoryId;
+  const ContainerDetails(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, this.template = false, this.pod, this.showResources = true, this.memoryId});
 
   @override
   Widget build(BuildContext context) {
@@ -407,7 +411,7 @@ class ContainerDetails extends StatelessWidget {
         if (!template && c.lastTerminated.isNotEmpty) _Field('Last state', _lastStateWidget(context)),
         if (c.kind == ContainerKind.ephemeral && spec['targetContainerName'] != null) _Field('Target', Text('${spec['targetContainerName']}', style: small)),
         _Field('Image', _imageWidget(context)),
-        if (cmd.isNotEmpty) _Field('Command', _Copyable(shellJoin(cmd))),
+        if (cmd.isNotEmpty) _Field('Command', _CommandBlock(cmd, memoryId: memoryId == null ? null : '$memoryId/command')),
         if (spec['workingDir'] != null) _Field('Workdir', _Copyable('${spec['workingDir']}')),
       ]),
       if (ports.isNotEmpty) QuietGroup(key: const ValueKey('container-group-network'), 'Network', [_portsWidget(context, ports)]),
@@ -416,13 +420,25 @@ class ContainerDetails extends StatelessWidget {
           for (final (label, p) in probes)
             _Field(
               label,
-              Tooltip(
-                message: '${probeSentence(p).split(' every ').first}\n${probeTiming(p)}',
-                waitDuration: const Duration(milliseconds: 400),
-                child: Text(probeShort(p), maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
-              ),
+              _longExec(p) != null
+                  ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('exec · ${p['periodSeconds'] ?? 10}s · fails after ${p['failureThreshold'] ?? 3}', style: small),
+                      const SizedBox(height: 3),
+                      _CommandBlock(_longExec(p)!, memoryId: memoryId == null ? null : '$memoryId/$label'),
+                    ])
+                  : Tooltip(
+                      message: '${probeSentence(p).split(' every ').first}\n${probeTiming(p)}',
+                      waitDuration: const Duration(milliseconds: 400),
+                      child: Text(probeShort(p), maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
+                    ),
             ),
-          for (final e in hooks.entries) _Field(e.key, Text(_hookText(asMap(e.value)), style: small)),
+          for (final e in hooks.entries)
+            _Field(
+              e.key,
+              _longExec(asMap(e.value)) != null
+                  ? _CommandBlock(_longExec(asMap(e.value))!, memoryId: memoryId == null ? null : '$memoryId/${e.key}')
+                  : Text(_hookText(asMap(e.value)), style: small),
+            ),
         ]),
       if (config.isNotEmpty) QuietGroup(key: const ValueKey('container-group-config'), 'Config', config, gap: 10),
     ];
@@ -567,6 +583,13 @@ class ContainerDetails extends StatelessWidget {
           tooltip: k,
         ),
     ]);
+  }
+
+  /// An exec probe's or hook's command when it formats over several lines.
+  static List<String>? _longExec(Json h) {
+    if (h['exec'] is! Map) return null;
+    final argv = [for (final x in (dig<List>(h, ['exec', 'command']) ?? const [])) '$x'];
+    return formatCommand(argv).contains('\n') ? argv : null;
   }
 
   static String _hookText(Json h) {
@@ -739,6 +762,60 @@ class _Field extends StatelessWidget {
       SizedBox(width: 72, child: Padding(padding: const EdgeInsets.only(right: 8), child: tooltip == null ? text : Tooltip(message: tooltip!, child: text))),
       Expanded(child: DefaultTextStyle.merge(style: small, child: child)),
     ]);
+  }
+}
+
+/// A container command: a short one is plain mono text (copy on hover); a
+/// long one is formatted by [formatCommand] in a faint code block, showing
+/// its first three lines until expanded, with an always-visible copy button.
+/// Copying gives the exact one-line command.
+class _CommandBlock extends StatefulWidget {
+  final List<String> argv;
+  final String? memoryId;
+  const _CommandBlock(this.argv, {this.memoryId});
+
+  @override
+  State<_CommandBlock> createState() => _CommandBlockState();
+}
+
+class _CommandBlockState extends State<_CommandBlock> {
+  static const _collapsedLines = 3;
+  late bool _open = widget.memoryId != null && SectionMemory.isOpen(widget.memoryId!, fallback: false);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final exact = shellJoin(widget.argv);
+    final text = formatCommand(widget.argv);
+    final lines = text.split('\n');
+    if (lines.length == 1) return _Copyable(text);
+    final long = lines.length > _collapsedLines;
+    final shown = long && !_open ? lines.take(_collapsedLines).join('\n') : text;
+    return Container(
+      key: const ValueKey('command-block'),
+      padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+      decoration: BoxDecoration(color: chipFill(context), borderRadius: BorderRadius.circular(6)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Text(shown, style: monoStyle(context, size: 11))),
+          _HoverIcon(icon: Icons.copy, tooltip: 'Copy', onTap: () => copyToClipboard(context, exact)),
+        ]),
+        if (long)
+          Hoverable(
+            onTap: () {
+              setState(() => _open = !_open);
+              if (widget.memoryId != null) SectionMemory.set(widget.memoryId!, _open);
+            },
+            builder: (h) => Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                _open ? 'Show less' : 'Show all · ${lines.length} lines',
+                style: theme.textTheme.bodySmall?.copyWith(color: h ? theme.colorScheme.onSurface : theme.hintColor, fontSize: 11),
+              ),
+            ),
+          ),
+      ]),
+    );
   }
 }
 
