@@ -1,0 +1,489 @@
+package plugins
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// dataManifest has related objects of every sort, a patch action with
+// inputs and alerts.
+const dataManifest = `apiVersion: k8sman.dev/v1
+id: data
+name: Data
+version: 1.0.0
+permissions:
+  read: [example.com/Widget, /Secret, /Pod, example.com/Part]
+  patch: [example.com/Widget]
+kinds:
+  example.com/Widget:
+    related:
+      secret: {kind: /Secret, name: object.spec.secretName}
+      parts: {kind: example.com/Part, owner: true}
+      pods:
+        kind: /Pod
+        selector: '{"app": object.metadata.name}'
+      never:
+        kind: /Pod
+        when: "false"
+        name: '"x"'
+    panel:
+      sections:
+        - title: Data
+          blocks:
+            - type: fields
+              items:
+                - label: Secret keys
+                  value: related.?secret.?data.orValue({}).map(k, k + "=" + related.secret.data[k]).sort().join(",")
+                - label: Parts
+                  value: related.parts.map(p, p.metadata.name).join(",")
+                - label: Pods
+                  value: related.pods.map(p, p.metadata.name).join(",")
+                - label: Never
+                  value: string(has(related.never))
+    actions:
+      - id: resize
+        label: Resize
+        when: has(related.secret)
+        inputs:
+          - {name: size, label: Size, type: int, default: object.spec.size, validate: input.size > 0 && input.size <= 10, validateMessage: From 1 to 10.}
+          - {name: mode, type: enum, options: [fast, safe]}
+        patch:
+          type: merge
+          body: '{"spec": {"size": input.size, "mode": input.mode}}'
+    alerts:
+      - id: too-big
+        label: Widgets too big
+        severity: critical
+        when: object.spec.size > 5
+        message: '"size " + string(object.spec.size)'
+        since: object.metadata.creationTimestamp
+`
+
+func widgetObj(name string, size int64) map[string]any {
+	return map[string]any{
+		"apiVersion": "example.com/v1", "kind": "Widget",
+		"metadata": map[string]any{"name": name, "namespace": "default", "uid": "uid-" + name, "creationTimestamp": "2025-12-01T00:00:00Z"},
+		"spec":     map[string]any{"size": size, "secretName": name + "-creds"},
+	}
+}
+
+// countingLookup records which kinds were looked up.
+type countingLookup struct {
+	fixtureLookup
+	kinds []string
+}
+
+func (c *countingLookup) List(ctx context.Context, kindKey, ns, sel, name string) ([]map[string]any, error) {
+	c.kinds = append(c.kinds, kindKey)
+	return c.fixtureLookup.List(ctx, kindKey, ns, sel, name)
+}
+
+func TestRelatedObjects(t *testing.T) {
+	h := demoHost(t, dataManifest)
+	cluster := []map[string]any{
+		{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": "w1-creds", "namespace": "default"},
+			"data": map[string]any{"password": "c2VjcmV0"}},
+		{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": "w1-creds", "namespace": "other"}},
+		{"apiVersion": "example.com/v1", "kind": "Part", "metadata": map[string]any{"name": "p2", "namespace": "default",
+			"ownerReferences": []any{map[string]any{"uid": "uid-w1"}}}},
+		{"apiVersion": "example.com/v1", "kind": "Part", "metadata": map[string]any{"name": "p1", "namespace": "default",
+			"ownerReferences": []any{map[string]any{"uid": "uid-w1"}}}},
+		{"apiVersion": "example.com/v1", "kind": "Part", "metadata": map[string]any{"name": "p3", "namespace": "default",
+			"ownerReferences": []any{map[string]any{"uid": "uid-other"}}}},
+		{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": "w1-a", "namespace": "default", "labels": map[string]any{"app": "w1"}}},
+		{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": "web", "namespace": "default", "labels": map[string]any{"app": "web"}}},
+	}
+	lk := &countingLookup{fixtureLookup: fixtureLookup{objs: cluster}}
+	env := Env{Context: "demo", Lookup: lk}
+	panels := h.Panels(env, widgetType, widgetObj("w1", 3))
+	if len(panels) != 1 || len(panels[0].Errors) > 0 || len(panels[0].Notes) > 0 {
+		t.Fatalf("panels = %+v", panels)
+	}
+	got := map[string]any{}
+	for _, it := range panels[0].Sections[0].Blocks[0]["items"].([]map[string]any) {
+		got[it["label"].(string)] = it["value"]
+	}
+	// By name in the object's namespace, with the Secret's values blanked;
+	// owned parts in name order; pods by label; a skipped lookup absent.
+	want := map[string]any{"Secret keys": "password=", "Parts": "p1,p2", "Pods": "w1-a", "Never": "false"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("fields = %v, want %v", got, want)
+	}
+	if strings.Join(lk.kinds, " ") != "example.com/Part /Pod /Secret" {
+		t.Fatalf("lookups = %v, want one per relation used (not the skipped one)", lk.kinds)
+	}
+
+	// Without a lookup (or a kind the cluster doesn't serve) relations are
+	// empty and the panel says so; the panel still renders.
+	panels = h.Panels(Env{Context: "demo"}, widgetType, widgetObj("w1", 3))
+	if len(panels[0].Notes) != 1 || panels[0].Sections[0].Blocks[0]["type"] != "fields" {
+		t.Fatalf("no lookup: %+v", panels[0])
+	}
+
+	// Related data stays out of columns and alerts: a compile error at the
+	// expression, also through a variable.
+	for _, bad := range []string{
+		"    columns:\n      - name: N\n        value: size(related.parts)\n",
+		"    variables:\n      n: size(related.parts)\n    columns:\n      - {name: N, value: variables.n}\n",
+	} {
+		src := strings.Replace(dataManifest, "    panel:\n", bad+"    panel:\n", 1)
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, ManifestFile), []byte(src), 0o644)
+		diags := Validate(dir)
+		if len(diags) != 1 || !strings.Contains(diags[0].Message, "related isn't available in") {
+			t.Fatalf("related in a column or alert: %v", diags)
+		}
+	}
+}
+
+func TestPatchActionInputs(t *testing.T) {
+	h := demoHost(t, dataManifest)
+	p := h.Get("data")
+	kp := p.kind("example.com/Widget")
+	env := Env{Context: "demo", Lookup: &fixtureLookup{objs: []map[string]any{
+		{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": "w1-creds", "namespace": "default"}},
+	}}}
+	run := func(inputs map[string]any) (string, error) {
+		acts, r, _ := offered(p, kp, widgetObj("w1", 3), env)
+		if len(acts) != 1 {
+			t.Fatalf("offered = %d actions, want resize (its when reads related)", len(acts))
+		}
+		out, err := patchBody(acts[0], r, inputs)
+		if err != nil {
+			return "", err
+		}
+		return out.Type + " " + string(out.Body), nil
+	}
+	// Defaults: the object's size, the enum's first option. JSON numbers
+	// arrive as float64.
+	if got, err := run(nil); err != nil || got != `merge {"spec":{"mode":"fast","size":3}}` {
+		t.Fatalf("defaults: %q %v", got, err)
+	}
+	if got, err := run(map[string]any{"size": float64(7), "mode": "safe"}); err != nil || got != `merge {"spec":{"mode":"safe","size":7}}` {
+		t.Fatalf("given: %q %v", got, err)
+	}
+	for _, tc := range []struct {
+		in   map[string]any
+		want string
+	}{
+		{map[string]any{"size": float64(11)}, "From 1 to 10."},
+		{map[string]any{"size": 2.5}, "Size must be a whole number"},
+		{map[string]any{"size": "two"}, "Size must be a whole number"},
+		{map[string]any{"mode": "reckless"}, "mode must be one of fast, safe"},
+		{map[string]any{"color": "red"}, `no input "color"`},
+	} {
+		_, err := run(tc.in)
+		var ie *InputError
+		if !errors.As(err, &ie) || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%v: err = %v, want an InputError with %q", tc.in, err, tc.want)
+		}
+	}
+	// Without the Secret, `when` is false: not offered, and refused.
+	if acts, _, _ := offered(p, kp, widgetObj("w2", 3), env); len(acts) != 0 {
+		t.Fatalf("offered without the secret: %d", len(acts))
+	}
+	// Without consent, the host refuses to build the patch.
+	if _, err := h.PatchAction(env, widgetType, widgetObj("w1", 3), "data", "resize", nil); !errors.Is(err, ErrNoConsent) {
+		t.Fatalf("PatchAction without consent: %v", err)
+	}
+
+	// The loader keeps patches to declared kinds, and never Secrets.
+	for patch, want := range map[string]string{
+		"": "is not in permissions.patch",
+		"  patch: [example.com/Widget, /Secret]\n": "plugins can't change Secrets",
+	} {
+		src := strings.Replace(dataManifest, "  patch: [example.com/Widget]\n", patch, 1)
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, ManifestFile), []byte(src), 0o644)
+		var msgs []string
+		for _, d := range Validate(dir) {
+			msgs = append(msgs, d.Message)
+		}
+		if !strings.Contains(strings.Join(msgs, "\n"), want) {
+			t.Errorf("want %q, got %v", want, msgs)
+		}
+	}
+}
+
+func TestAlertsEvaluate(t *testing.T) {
+	h := demoHost(t, dataManifest)
+	listed := 0
+	hits, errs := h.Alerts(Env{Context: "demo", Now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, func(key, version string) ([]map[string]any, error) {
+		listed++
+		if key != "example.com/Widget" {
+			return nil, ErrNotServed
+		}
+		bad := widgetObj("w3", 1)
+		delete(bad["spec"].(map[string]any), "size") // its when fails: skipped, error returned
+		return []map[string]any{widgetObj("w1", 3), widgetObj("w2", 9), bad}, nil
+	})
+	if listed != 1 || len(hits) != 1 || len(errs) != 1 {
+		t.Fatalf("hits = %+v, errs = %v", hits, errs)
+	}
+	want := AlertHit{Plugin: "data", ID: "too-big", Category: "plugin.data.too-big", Label: "Widgets too big", Severity: "critical",
+		Section: "custom", Group: "example.com", Kind: "Widget", Namespace: "default", Name: "w2", Message: "size 9",
+		Since: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)}
+	if hits[0] != want {
+		t.Fatalf("hit = %+v\nwant  %+v", hits[0], want)
+	}
+	if !strings.HasPrefix(errs[0].Error(), "plugin data: plugin.yaml:") {
+		t.Fatalf("error = %v, want it placed in plugin.yaml", errs[0])
+	}
+}
+
+// TestSchemaMatchesLoader checks that schema/plugin.v1.json is what the
+// loader's types generate (run `k8sman-server plugin schema >
+// schema/plugin.v1.json` after changing them), and that the example
+// plugin passes it while a typo doesn't.
+func TestSchemaMatchesLoader(t *testing.T) {
+	gen := JSONSchema()
+	checked, err := os.ReadFile("../../../schema/plugin.v1.json")
+	if err != nil || string(checked) != string(gen) {
+		t.Fatalf("schema/plugin.v1.json is stale (or missing: %v); regenerate it with k8sman-server plugin schema", err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(gen, &schema); err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile("../../../examples/plugins/cert-manager/plugin.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc any
+	if err := yaml.Unmarshal(src, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc = plain(doc)
+	if errs := validateSchema(schema, schema, doc, ""); len(errs) > 0 {
+		t.Fatalf("the example doesn't match the schema:\n%s", strings.Join(errs, "\n"))
+	}
+	m := doc.(map[string]any)
+	cert := m["kinds"].(map[string]any)["cert-manager.io/Certificate"].(map[string]any)
+	cert["colums"] = []any{}
+	cert["columns"].([]any)[0].(map[string]any)["type"] = "colour"
+	cert["panel"].(map[string]any)["sections"].([]any)[0].(map[string]any)["blocks"].([]any)[0].(map[string]any)["rows"] = "x"
+	errs := validateSchema(schema, schema, doc, "")
+	want := []string{"colums: not allowed", "columns/0/type: not one of", "blocks/0: rows: not allowed for this type"}
+	for _, w := range want {
+		if !strings.Contains(strings.Join(errs, "\n"), w) {
+			t.Errorf("want an error with %q, got:\n%s", w, strings.Join(errs, "\n"))
+		}
+	}
+}
+
+// validateSchema checks v against the subset of JSON Schema the generated
+// schema uses.
+func validateSchema(root, s map[string]any, v any, at string) []string {
+	var errs []string
+	fail := func(format string, args ...any) {
+		errs = append(errs, at+": "+fmt.Sprintf(format, args...))
+	}
+	if ref, ok := s["$ref"].(string); ok {
+		def := root["$defs"].(map[string]any)[strings.TrimPrefix(ref, "#/$defs/")].(map[string]any)
+		return validateSchema(root, def, v, at)
+	}
+	for _, sub := range asList(s["allOf"]) {
+		sm := sub.(map[string]any)
+		if cond, ok := sm["if"].(map[string]any); ok {
+			if len(validateSchema(root, cond, v, at)) == 0 {
+				errs = append(errs, validateSchema(root, sm["then"].(map[string]any), v, at)...)
+			}
+			continue
+		}
+		errs = append(errs, validateSchema(root, sm, v, at)...)
+	}
+	if one := asList(s["oneOf"]); one != nil {
+		n := 0
+		for _, sub := range one {
+			if len(validateSchema(root, sub.(map[string]any), v, at)) == 0 {
+				n++
+			}
+		}
+		if n != 1 {
+			fail("matches %d of oneOf", n)
+		}
+	}
+	if c, ok := s["const"]; ok && !reflect.DeepEqual(c, v) {
+		fail("must be %v", c)
+	}
+	if e := asList(s["enum"]); e != nil && !containsValue(e, v) {
+		fail("not one of %v", e)
+	}
+	// Object keywords apply to any map (an `if` or `then` has no type).
+	if m, ok := v.(map[string]any); ok {
+		for _, r := range asList(s["required"]) {
+			if _, ok := m[r.(string)]; !ok {
+				fail("%s is required", r)
+			}
+		}
+		props, _ := s["properties"].(map[string]any)
+		for k, val := range m {
+			if pn, ok := s["propertyNames"].(map[string]any); ok {
+				if e := asList(pn["enum"]); e != nil && !containsValue(e, k) {
+					fail("%s: not allowed for this type", k)
+				}
+			}
+			if ps, ok := props[k].(map[string]any); ok {
+				errs = append(errs, validateSchema(root, ps, val, at+"/"+k)...)
+			} else if ap, ok := s["additionalProperties"].(map[string]any); ok {
+				errs = append(errs, validateSchema(root, ap, val, at+"/"+k)...)
+			} else if s["additionalProperties"] == false {
+				errs = append(errs, at+"/"+k+": not allowed")
+			}
+		}
+	}
+	switch s["type"] {
+	case "object":
+		if _, ok := v.(map[string]any); !ok {
+			fail("not an object")
+		}
+	case "array":
+		l, ok := v.([]any)
+		if !ok {
+			fail("not a list")
+			return errs
+		}
+		if is, ok := s["items"].(map[string]any); ok {
+			for i, x := range l {
+				errs = append(errs, validateSchema(root, is, x, at+"/"+itoa(i))...)
+			}
+		}
+	case "string":
+		if _, ok := v.(string); !ok {
+			fail("not a string")
+		}
+	case "boolean":
+		if _, ok := v.(bool); !ok {
+			fail("not a boolean")
+		}
+	case "integer":
+		if f, ok := v.(float64); !ok || f != float64(int64(f)) {
+			fail("not an integer")
+		}
+	}
+	return errs
+}
+
+func asList(v any) []any {
+	l, _ := v.([]any)
+	return l
+}
+
+func containsValue(l []any, v any) bool {
+	for _, x := range l {
+		if reflect.DeepEqual(x, v) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestPluginTestGolden runs the example's fixtures against their checked-in
+// snapshots, then the flow on a new plugin: scaffold (snapshots written),
+// pass, change a fixture (fail with a diff), --update, pass.
+func TestPluginTestGolden(t *testing.T) {
+	res, err := RunFixtures("../../../examples/plugins/cert-manager", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range res {
+		if r.Status != "pass" {
+			t.Errorf("examples/plugins/cert-manager %s: %s %v\n%s", r.Fixture, r.Status, r.Err, r.Diff)
+		}
+	}
+
+	dir, err := Scaffold(t.TempDir(), "demo-widgets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := func(update bool) (string, string) {
+		res, err := RunFixtures(dir, update)
+		if err != nil || len(res) != 1 {
+			t.Fatalf("run: %v %v", res, err)
+		}
+		return res[0].Status, res[0].Diff
+	}
+	if s, _ := status(false); s != "pass" {
+		t.Fatalf("new plugin: %s", s)
+	}
+	fixture := filepath.Join(dir, FixtureDir, "widget.yaml")
+	b, _ := os.ReadFile(fixture)
+	os.WriteFile(fixture, []byte(strings.Replace(string(b), "size: 3", "size: 4", 1)), 0o644)
+	if s, diff := status(false); s != "fail" || !strings.Contains(diff, "-    value: 3\n+    value: 4\n") {
+		t.Fatalf("changed fixture: %s\n%s", s, diff)
+	}
+	if s, _ := status(true); s != "updated" {
+		t.Fatalf("--update: %s", s)
+	}
+	if s, _ := status(false); s != "pass" {
+		t.Fatalf("after --update: %s", s)
+	}
+}
+
+// BenchmarkPluginData measures the cert-manager example against the
+// budgets of docs/PLUGINS.md §8: its alerts over 1,000 Certificates (one
+// overview poll; budget +5 ms p50 for five typical plugins) and its
+// Certificate panel with related objects and metrics warm (5 ms p95).
+func BenchmarkPluginData(b *testing.B) {
+	const dir = "../../../examples/plugins/cert-manager"
+	p, cfg, err := loadForFixtures(dir)
+	if err != nil {
+		b.Fatal(err)
+	}
+	h := &Host{plugins: []*Plugin{p}, opts: Options{FlagDirs: []string{dir}}}
+	objs, err := readFixture(dir + "/fixtures/certificate-ready.yaml")
+	if err != nil {
+		b.Fatal(err)
+	}
+	env := Env{Context: "demo", Now: cfg.Now, Lookup: &fixtureLookup{objs: objs, metrics: cfg.Metrics}}
+	certs := make([]map[string]any, 1000)
+	for i := range certs {
+		c := plain(objs[0]).(map[string]any)
+		md := c["metadata"].(map[string]any)
+		md["name"], md["uid"], md["resourceVersion"] = "cert-"+itoa(i), "uid-"+itoa(i), "1"
+		if i%10 == 0 {
+			c["status"].(map[string]any)["notAfter"] = "2026-01-05T00:00:00Z" // expiring
+		}
+		certs[i] = c
+	}
+	kp := p.kind("cert-manager.io/Certificate")
+	for _, cold := range []bool{true, false} {
+		name := map[bool]string{true: "alerts-1000/cold", false: "alerts-1000/warm"}[cold]
+		b.Run(name, func(b *testing.B) {
+			for b.Loop() {
+				if cold { // a new object version (or a new 30 s bucket) for every object
+					kp.alertMemo.mu.Lock()
+					kp.alertMemo.bucket = -1
+					kp.alertMemo.mu.Unlock()
+				}
+				hits, _ := h.Alerts(env, func(key, _ string) ([]map[string]any, error) {
+					if key == "cert-manager.io/Certificate" {
+						return certs, nil
+					}
+					return nil, nil
+				})
+				if len(hits) != 100 {
+					b.Fatalf("hits = %d", len(hits))
+				}
+			}
+		})
+	}
+	rt := fixtureType(objs[0])
+	b.Run("panel-related", func(b *testing.B) {
+		for b.Loop() {
+			if _, ok := p.panel(env, rt, objs[0]); !ok {
+				b.Fatal("no panel")
+			}
+		}
+	})
+}

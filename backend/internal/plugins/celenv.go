@@ -21,13 +21,14 @@ import (
 	"github.com/matty234/k8sman/backend/internal/plugins/k8scel"
 )
 
-// The CEL environment of k8sman.dev/v1 (docs/PLUGINS.md §5), without
-// `related` and `metrics` (Milestone 2).
+// The CEL environment of k8sman.dev/v1 (docs/PLUGINS.md §5).
 //
 // Variables: object, variables.<name> (each declared with its own type
 // when the kind entry is compiled, and evaluated lazily), now, context, ns
-// (the object's namespace; `namespace` is a reserved word in CEL), and
-// row in table block columns.
+// (the object's namespace; `namespace` is a reserved word in CEL),
+// related and metrics (declared everywhere so they type-check; the
+// compiler refuses them where they aren't available, see refs), row in
+// table block columns, and input in patch bodies and input checks.
 //
 // age(t) and until(t) are macros for _age(t, now) and _until(t, now), and
 // ref(group, kind, name) for ref(group, kind, ns, name), so functions
@@ -40,25 +41,23 @@ const (
 	varContext   = "context"
 	varNS        = "ns"
 	varRow       = "row"
+	varRelated   = "related"
+	varMetrics   = "metrics"
+	varInput     = "input"
 )
 
 var (
 	envOnce sync.Once
 	baseEnv *cel.Env
-	rowEnv  *cel.Env
 	envErr  error
 )
 
-// envs returns the shared environments: base, and base plus `row` for
-// table block columns.
-func envs() (*cel.Env, *cel.Env, error) {
+// envs returns the shared base environment.
+func envs() (*cel.Env, error) {
 	envOnce.Do(func() {
 		baseEnv, envErr = cel.NewEnv(envOptions()...)
-		if envErr == nil {
-			rowEnv, envErr = baseEnv.Extend(cel.Variable(varRow, cel.DynType))
-		}
 	})
-	return baseEnv, rowEnv, envErr
+	return baseEnv, envErr
 }
 
 var refType = cel.MapType(cel.StringType, cel.StringType)
@@ -70,6 +69,7 @@ func envOptions() []cel.EnvOption {
 		cel.CrossTypeNumericComparisons(true),
 		ext.Strings(),
 		ext.Sets(),
+		ext.Lists(),
 		k8scel.Lists(),
 		k8scel.Regex(),
 		k8scel.URLs(),
@@ -78,6 +78,8 @@ func envOptions() []cel.EnvOption {
 		cel.Variable(varNow, cel.TimestampType),
 		cel.Variable(varContext, cel.StringType),
 		cel.Variable(varNS, cel.StringType),
+		cel.Variable(varRelated, cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable(varMetrics, cel.MapType(cel.StringType, cel.ListType(cel.DynType))),
 		cel.Macros(
 			parser.NewGlobalMacro("age", 1, nowMacro("_age")),
 			parser.NewGlobalMacro("until", 1, nowMacro("_until")),
@@ -282,6 +284,11 @@ type activation struct {
 	namespace string
 	row       any
 	hasRow    bool
+	// related and metrics are set for panels and actions (nil elsewhere:
+	// the compiler keeps them out of columns and alerts).
+	related map[string]any
+	metrics map[string]any
+	input   map[string]any
 }
 
 func (a *activation) ResolveName(name string) (any, bool) {
@@ -296,6 +303,12 @@ func (a *activation) ResolveName(name string) (any, bool) {
 		return a.namespace, true
 	case varRow:
 		return a.row, a.hasRow
+	case varRelated:
+		return a.related, a.related != nil
+	case varMetrics:
+		return a.metrics, a.metrics != nil
+	case varInput:
+		return a.input, a.input != nil
 	}
 	if v, ok := strings.CutPrefix(name, varVariables+"."); ok {
 		return a.vars.get(v)

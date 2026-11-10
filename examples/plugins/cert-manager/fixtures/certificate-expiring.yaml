@@ -1,0 +1,26 @@
+# A Certificate that expires in 5 days and is failing to renew: its
+# ClusterIssuer and its Secret don't exist (nothing else in this fixture).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-tls
+  namespace: demo
+  uid: 22222222-0000-0000-0000-000000000001
+  creationTimestamp: "2025-01-01T00:00:00Z"
+spec:
+  secretName: api-tls
+  dnsNames: [api.example.com]
+  renewBefore: 720h
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+status:
+  notAfter: "2026-01-06T00:00:00Z"
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: Failed
+      message: 'Issuer "internal-ca" not found'
+      lastTransitionTime: "2025-12-30T12:00:00Z"
+    - type: Issuing
+      status: "True"

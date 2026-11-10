@@ -1,0 +1,216 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: cert-manager.io/Certificate default/web-tls
+columns:
+  - name: Ready
+    value: Ready
+  - name: Issuer
+    value: Issuer/letsencrypt
+  - name: Expires
+    value: "2026-03-31T00:00:00Z"
+panel:
+  refresh: 5
+  sections:
+    - blocks:
+        - items:
+            - text: Ready
+          type: badges
+        - items:
+            - copy: true
+              label: Secret
+              link:
+                group: ""
+                kind: Secret
+                name: web-tls
+                namespace: default
+              type: text
+              value: web-tls
+            - label: Issuer
+              link:
+                group: cert-manager.io
+                kind: Issuer
+                name: letsencrypt
+                namespace: default
+              type: text
+              value: Issuer/letsencrypt
+            - label: Issuer status
+              type: status
+              value: Ready
+            - label: Common name
+              type: text
+              value: www.example.com
+            - label: Expires
+              type: until
+              value: "2026-03-31T00:00:00Z"
+            - label: Not after
+              type: timestamp
+              value: "2026-03-31T00:00:00Z"
+            - label: Renews
+              type: until
+              value: "2026-03-01T00:00:00Z"
+            - label: Duration
+              type: text
+              value: 2160h (default)
+            - label: Revision
+              type: number
+              value: 3
+            - label: Expiry (Prometheus)
+              type: timestamp
+              value: "2026-03-31T00:00:00Z"
+          type: fields
+      icon: verified
+      title: Certificate
+    - blocks:
+        - items:
+            - label: Name
+              link:
+                group: ""
+                kind: Secret
+                name: web-tls
+                namespace: default
+              type: text
+              value: web-tls
+            - label: Type
+              type: text
+              value: kubernetes.io/tls
+            - label: Created
+              type: age
+              value: "2025-06-01T00:01:00Z"
+          type: fields
+        - empty: No keys.
+          items:
+            - ca.crt
+            - tls.crt
+            - tls.key
+          type: chips
+      icon: key
+      title: Secret
+    - blocks:
+        - columns:
+            - name: Name
+              type: text
+            - name: Approved
+              type: status
+            - name: Ready
+              type: status
+            - name: Created
+              type: age
+          limit: 5
+          rows:
+            - - link:
+                  group: cert-manager.io
+                  kind: CertificateRequest
+                  name: web-tls-3
+                  namespace: default
+                value: web-tls-3
+              - value: Approved
+              - value: Ready
+              - value: "2025-12-31T00:00:00Z"
+            - - link:
+                  group: cert-manager.io
+                  kind: CertificateRequest
+                  name: web-tls-2
+                  namespace: default
+                value: web-tls-2
+              - value: Approved
+              - value: Ready
+              - value: "2025-09-01T00:00:00Z"
+          total: 2
+          type: table
+      icon: history
+      title: Requests
+    - blocks:
+        - items:
+            - www.example.com
+            - example.com
+          type: chips
+      icon: dns
+      title: DNS names
+    - blocks:
+        - items:
+            - label: Algorithm
+              type: text
+              value: ECDSA
+            - label: Size
+              type: number
+              value: 256
+            - label: Rotation
+              type: text
+              value: Always
+          type: fields
+      collapsed: true
+      icon: key
+      title: Private key
+    - blocks:
+        - conditions:
+            - lastTransitionTime: "2025-12-31T00:00:00Z"
+              message: Certificate is up to date and has not expired
+              reason: Ready
+              status: "True"
+              type: Ready
+          type: conditions
+      icon: checklist
+      title: Conditions
+actions:
+  - argv:
+      - cmctl
+      - renew
+      - --context
+      - demo
+      - -n
+      - default
+      - web-tls
+    dangerous: true
+    icon: refresh
+    id: renew
+    label: Renew
+    message: cmctl marks the certificate for renewal; cert-manager issues a new one now.
+    shortcut: shift+R
+    type: shell
+  - argv:
+      - cmctl
+      - status
+      - certificate
+      - --context
+      - demo
+      - -n
+      - default
+      - web-tls
+    dangerous: false
+    icon: terminal
+    id: status
+    label: cmctl status
+    type: shell
+  - body:
+      spec:
+        renewBefore: 360h
+    dangerous: false
+    icon: schedule
+    id: renew-before
+    inputs:
+      - default: 360h
+        label: Renew before
+        name: renewBefore
+        type: string
+        validateMessage: Enter a duration such as 360h or 720h30m.
+    label: Set renewal time…
+    message: cert-manager renews the certificate this long before it expires.
+    patchType: merge
+    type: patch
+  - body:
+      spec:
+        privateKey:
+          rotationPolicy: Always
+    dangerous: true
+    icon: vpn_key
+    id: key-rotation
+    inputs:
+      - default: Always
+        label: Rotation policy
+        name: policy
+        options:
+          - Never
+          - Always
+        type: enum
+    label: Private key rotation…
+    patchType: merge
+    type: patch

@@ -43,6 +43,8 @@ type ActionResult struct {
 	Context string `json:"context"`
 	// Created names any object the action created (e.g. a Job from trigger).
 	Created *ObjectRefJSON `json:"created,omitempty"`
+	// Preview is a dry run's change (plugin patch actions).
+	Preview *ActionPreview `json:"preview,omitempty"`
 }
 
 // ObjectRefJSON identifies an object created by an action.
@@ -119,7 +121,8 @@ func (s *Server) availableActions(c *cluster.Clients, rt cluster.ResourceType) [
 			ok := t == gr ||
 				(t == "*" && slices.Contains(rt.Verbs, "delete")) ||
 				(t == "*patch" && slices.Contains(rt.Verbs, "patch")) ||
-				(t == "*scale" && rt.Custom && hasScaleSubresource(c, rt))
+				(t == "*scale" && rt.Custom && hasScaleSubresource(c, rt)) ||
+				t == "kind:"+rt.Group+"/"+rt.Kind
 			if ok {
 				out = append(out, action)
 				break

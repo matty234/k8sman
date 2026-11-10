@@ -33,9 +33,12 @@ import (
 //	GET    /api/plugins/{id}/icon       the plugin's icon.png
 //	GET    /api/plugins/panel           ?group&version&resource&namespace&name: sections and actions for an object
 //	GET    /api/plugins/events          WebSocket: {"generation": n} on every change
+//	POST   /api/plugins/run             ?plugin&action&group&version&resource&namespace&name: a background shell action
 //
 // Shell actions run through GET /api/local-shell?plugin=&action=&… (see
-// localshell.go): the backend builds the command, the UI can't send one.
+// localshell.go), or POST /api/plugins/run in the background: the backend
+// builds the command, the UI can't send one. Patch actions run through
+// POST /api/actions/plugin.<id>.<action> (plugins_data.go).
 type pluginsModule struct {
 	s *Server
 }
@@ -55,6 +58,7 @@ func (m *pluginsModule) Routes(r httpx.Router, d Deps) {
 	r.HandleFunc("GET /api/plugins/{id}/icon", s.handlePluginIcon)
 	r.HandleFunc("GET /api/plugins/panel", s.handlePluginPanel)
 	r.HandleFunc("GET /api/plugins/events", s.handlePluginEvents)
+	r.HandleFunc("POST /api/plugins/run", s.handlePluginRun)
 }
 
 // pluginsOn reports whether plugin contributions apply: the module is on
@@ -305,7 +309,7 @@ func (s *Server) handlePluginPanel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if panels := s.plugins.Panels(c.Context, rq.Type, u.Object); panels != nil {
+	if panels := s.plugins.Panels(s.pluginEnv(c), rq.Type, u.Object); panels != nil {
 		out["panels"] = panels
 	}
 	if !s.isReadOnly() {
@@ -314,7 +318,7 @@ func (s *Server) handlePluginPanel(w http.ResponseWriter, r *http.Request) {
 		vars := func() plugins.ShellVars {
 			return s.shellVars(r.Context(), c, rq, u, kubeconfigChain(s.mgr.Kubeconfig(), os.Getenv("KUBECONFIG"), home))
 		}
-		if acts := s.plugins.Actions(c.Context, rq.Type, u.Object, vars); acts != nil {
+		if acts := s.plugins.Actions(s.pluginEnv(c), rq.Type, u.Object, vars); acts != nil {
 			out["actions"] = acts
 		}
 	}

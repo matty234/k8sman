@@ -183,7 +183,7 @@ func TestPluginColumnsEvaluate(t *testing.T) {
 	}
 
 	// The panel resolves to plain blocks; the message shows only near expiry.
-	p := h.Panels("demo-context", widgetType, widget(true, "2030-01-02T03:04:05Z"))
+	p := h.Panels(Env{Context: "demo-context"}, widgetType, widget(true, "2030-01-02T03:04:05Z"))
 	if len(p) != 1 || len(p[0].Sections) != 1 || len(p[0].Sections[0].Blocks) != 1 {
 		t.Fatalf("panel = %+v", p)
 	}
@@ -196,7 +196,7 @@ func TestPluginColumnsEvaluate(t *testing.T) {
 func TestShellActionExpandsVariables(t *testing.T) {
 	h := demoHost(t, demoManifest)
 	vars := ShellVars{"NAME": "w1", "NAMESPACE": "default", "CONTEXT": "demo-context", ColumnVar("Ready"): "Ready", ColumnVar("Not After"): "soon"}
-	acts := h.Actions("demo-context", widgetType, widget(true, ""), func() ShellVars { return vars })
+	acts := h.Actions(Env{Context: "demo-context"}, widgetType, widget(true, ""), func() ShellVars { return vars })
 	if len(acts) != 1 {
 		t.Fatalf("actions = %+v", acts)
 	}
@@ -217,7 +217,7 @@ func TestShellActionExpandsVariables(t *testing.T) {
 			t.Errorf("Expand(%q) = %q, want %q", in, got, out)
 		}
 	}
-	if _, err := h.ShellAction("demo-context", widgetType, widget(true, ""), "demo", "poke"); err != ErrNoConsent {
+	if _, err := h.ShellAction(Env{Context: "demo-context"}, widgetType, widget(true, ""), "demo", "poke"); err != ErrNoConsent {
 		t.Fatalf("ShellAction without consent: %v", err)
 	}
 }

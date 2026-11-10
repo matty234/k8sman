@@ -1,16 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json
+#
 # A k8sman plugin for cert-manager (https://cert-manager.io): columns,
-# inspector sections and a Renew action for Certificates, Issuers and
-# ClusterIssuers. See docs/PLUGINS.md ("Writing a plugin").
+# inspector sections with the certificate's Secret, issuer and requests,
+# expiry alerts, two patch actions and two cmctl actions for Certificates,
+# Issuers and ClusterIssuers. See docs/PLUGINS.md ("Writing a plugin").
 #
 # Try it: Settings ▸ Integrations ▸ Plugins ▸ Developer mode ▸
 # Load plugin folder… and pick this folder (or start the backend with
 # --plugin-dev examples/plugins/cert-manager). Edit and save: tables and
 # panels update in place, and errors show with their line.
+# Without a cluster: k8sman-server plugin test examples/plugins/cert-manager
 apiVersion: k8sman.dev/v1
 id: cert-manager
 name: cert-manager
-version: 1.0.0
-description: Expiry, issuer and readiness columns, certificate panels and Renew (cmctl) for cert-manager.
+version: 1.1.0
+description: Expiry, issuer and readiness columns, certificate panels, expiry alerts, renewal settings and Renew (cmctl) for cert-manager.
 authors: [k8sman]
 homepage: https://cert-manager.io
 
@@ -20,7 +24,11 @@ permissions:
     - cert-manager.io/CertificateRequest
     - cert-manager.io/Issuer
     - cert-manager.io/ClusterIssuer
+    - /Secret                 # names and keys only: plugins never see Secret values
+  patch:
+    - cert-manager.io/Certificate
   commands: [cmctl]
+  prometheus: true            # the expiry metric cert-manager exports
 
 # A sidebar section for the plugin's kinds (instead of Custom Resources).
 nav:
@@ -39,6 +47,30 @@ kinds:
       notAfter: object.?status.?notAfter                  # optional(string)
       issuerKind: object.spec.issuerRef.?kind.orValue("Issuer")
       issuerGroup: object.spec.issuerRef.?group.orValue("cert-manager.io")
+      # Reads related, so panels and actions only (not columns or alerts).
+      issuer: related.?issuer.or(related.?clusterIssuer)
+
+    # Read from the watch cache while the panel is open (permissions.read).
+    related:
+      secret:                 # one object, by name: related.secret, absent until found
+        kind: /Secret
+        name: object.spec.secretName
+      issuer:
+        kind: cert-manager.io/Issuer
+        when: variables.issuerGroup == "cert-manager.io" && variables.issuerKind == "Issuer"
+        name: object.spec.issuerRef.name
+      clusterIssuer:
+        kind: cert-manager.io/ClusterIssuer
+        when: variables.issuerGroup == "cert-manager.io" && variables.issuerKind == "ClusterIssuer"
+        name: object.spec.issuerRef.name
+      requests:               # a list: the CertificateRequests this Certificate owns
+        kind: cert-manager.io/CertificateRequest
+        owner: true
+
+    # Instant PromQL through the Prometheus integration (panels only).
+    metrics:
+      expiry:
+        query: '"certmanager_certificate_expiration_timestamp_seconds{namespace=" + promQuote(ns) + ", name=" + promQuote(object.metadata.name) + "}"'
 
     hideColumns: [Status]     # a printer column some versions add; Ready says the same
     columns:
@@ -82,6 +114,12 @@ kinds:
                 - label: Issuer
                   value: variables.issuerKind + "/" + object.spec.issuerRef.name
                   link: ref(variables.issuerGroup, variables.issuerKind, object.spec.issuerRef.name)
+                - label: Issuer status
+                  type: status
+                  when: variables.issuerGroup == "cert-manager.io"
+                  value: >-
+                    !variables.issuer.hasValue() ? "Not found" :
+                    conditionTrue(variables.issuer.value(), "Ready") ? "Ready" : "Not ready"
                 - label: Common name
                   value: object.spec.?commonName
                 - label: Expires
@@ -95,9 +133,59 @@ kinds:
                   value: object.?status.?renewalTime
                 - label: Duration
                   value: object.spec.?duration.orValue("2160h (default)")
+                - label: Renew before
+                  value: object.spec.?renewBefore
                 - label: Revision
                   type: number
                   value: object.?status.?revision
+                - label: Expiry (Prometheus)
+                  type: timestamp
+                  when: size(metrics.expiry) > 0
+                  value: timestamp(int(metrics.expiry[0].value))
+        - title: Secret
+          icon: key
+          blocks:
+            - type: message
+              severity: warning
+              when: '!has(related.secret)'
+              text: '"Secret " + object.spec.secretName + " doesn''t exist yet"'
+            - type: fields
+              when: has(related.secret)
+              items:
+                - label: Name
+                  value: related.secret.metadata.name
+                  link: ref(related.secret)
+                - label: Type
+                  value: related.secret.?type
+                - label: Created
+                  type: age
+                  value: related.secret.metadata.creationTimestamp
+            - type: chips              # keys only: plugins never see Secret values
+              when: has(related.secret)
+              items: related.secret.?data.orValue({}).map(k, k).sort()
+              empty: No keys.
+        - title: Requests
+          icon: history
+          when: size(related.requests) > 0
+          blocks:
+            - type: table
+              rows: related.requests
+              sortBy: Created
+              descending: true
+              limit: 5
+              columns:
+                - name: Name
+                  value: row.metadata.name
+                  link: ref(row)
+                - name: Approved
+                  type: status
+                  value: 'conditionTrue(row, "Approved") ? "Approved" : (conditionTrue(row, "Denied") ? "Denied" : "Pending")'
+                - name: Ready
+                  type: status
+                  value: 'conditionTrue(row, "Ready") ? "Ready" : condition(row, "Ready").?reason.orValue("Pending")'
+                - name: Created
+                  type: age
+                  value: row.metadata.creationTimestamp
         - title: DNS names
           icon: dns
           when: object.spec.?dnsNames.orValue([]).size() > 0
@@ -138,6 +226,57 @@ kinds:
         shell:
           command: cmctl
           args: [status, certificate, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+      # Patch actions go through the app's action path: a form, a dry run
+      # with the change shown, a confirmation, and never on read-only contexts.
+      - id: renew-before
+        label: Set renewal time…
+        icon: schedule
+        dangerous: false
+        message: cert-manager renews the certificate this long before it expires.
+        inputs:
+          - name: renewBefore
+            label: Renew before
+            default: object.spec.?renewBefore.orValue("360h")
+            validate: input.renewBefore.matches("^([0-9]+h)?([0-9]+m)?([0-9]+s)?$") && input.renewBefore != ""
+            validateMessage: Enter a duration such as 360h or 720h30m.
+        patch:
+          type: merge
+          body: '{"spec": {"renewBefore": input.renewBefore}}'
+      - id: key-rotation
+        label: Private key rotation…
+        icon: vpn_key
+        inputs:
+          - name: policy
+            label: Rotation policy
+            type: enum
+            options: [Never, Always]
+            default: object.spec.?privateKey.?rotationPolicy.orValue("Never")
+        patch:
+          type: merge
+          body: '{"spec": {"privateKey": {"rotationPolicy": input.policy}}}'
+
+    # Evaluated per Certificate on each overview poll (object only):
+    # issues on the Overview and in the dock's Issues tab.
+    alerts:
+      - id: expired
+        label: Certificates expired
+        severity: critical
+        when: variables.notAfter.hasValue() && timestamp(variables.notAfter.value()) < now
+        message: '"Expired " + humanDuration(age(variables.notAfter.value())) + " ago"'
+        since: variables.notAfter.value()
+      - id: expiring
+        label: Certificates expiring within 14 days
+        severity: warning
+        when: >-
+          variables.notAfter.hasValue() && timestamp(variables.notAfter.value()) >= now &&
+          until(variables.notAfter.value()) < duration("336h")
+        message: '"Expires in " + humanDuration(until(variables.notAfter.value()))'
+      - id: not-ready
+        label: Certificates not ready
+        severity: warning
+        when: condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")
+        message: condition(object, "Ready").?message.orValue("Not ready")
+        since: condition(object, "Ready").?lastTransitionTime.orValue(object.metadata.creationTimestamp)
 
   cert-manager.io/CertificateRequest:
     icon: receipt
@@ -207,4 +346,11 @@ kinds:
                 - name: Selector
                   value: 'row.?selector.?dnsZones.orValue([]).join(", ")'
             - type: conditions
+    alerts:
+      - id: issuer-not-ready
+        label: Issuers not ready
+        severity: warning
+        when: condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")
+        message: condition(object, "Ready").?message.orValue("Not ready")
+        since: condition(object, "Ready").?lastTransitionTime.orValue(object.metadata.creationTimestamp)
   cert-manager.io/ClusterIssuer: *issuer

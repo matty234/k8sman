@@ -26,9 +26,18 @@ var ErrNoPrometheus = &UpstreamError{Status: 404, Message: "no reachable Prometh
 // their queries bounded). It is for backend features built on Prometheus
 // data, e.g. GPU metrics.
 func QueryVector(ctx context.Context, c *cluster.Clients, query string) ([]Sample, *Instance, error) {
+	return QueryVectorAt(ctx, c, "", query)
+}
+
+// QueryVectorAt is QueryVector against Prometheus instance ("" = the
+// default; else its "<namespace>/<name>" or name).
+func QueryVectorAt(ctx context.Context, c *cluster.Clients, instance, query string) ([]Sample, *Instance, error) {
+	if err := validateQuery(query); err != nil {
+		return nil, nil, &UpstreamError{Status: 400, Message: err.Error()}
+	}
 	e := envFor(c)
 	s := shared.get(ctx, e, false)
-	p := s.Default(KindPrometheus, "")
+	p := s.Default(KindPrometheus, instance)
 	if p == nil || !p.Reachable {
 		return nil, nil, ErrNoPrometheus
 	}

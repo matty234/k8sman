@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/matty234/k8sman/backend/internal/plugins"
 )
 
 // Local shells: `GET /api/local-shell` (WebSocket) runs the user's login
@@ -128,35 +130,35 @@ func readOnlyShellNotice(contextName string) string {
 // `when`). The command must be in the plugin's permissions.commands (the
 // loader checks) and is run without a shell, one argument per entry, with
 // the object's variables also exported as K8SMAN_<NAME>.
-func (s *Server) pluginShellSpec(r *http.Request, spec *localShellSpec, kubeconfig string) error {
+func (s *Server) pluginShellSpec(r *http.Request, spec *localShellSpec, kubeconfig string) (*plugins.Action, error) {
 	q := r.URL.Query()
 	if !s.pluginsOn() {
-		return errors.New("plugins are turned off")
+		return nil, errors.New("plugins are turned off")
 	}
 	if s.isReadOnly() {
-		return errors.New("plugin actions are hidden and refused on read-only contexts")
+		return nil, errors.New("plugin actions are hidden and refused on read-only contexts")
 	}
 	c, rq, err := s.parseResource(r.Context(), r)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	u, err := s.pluginObject(r.Context(), c, rq, q.Get("name"))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	a, err := s.plugins.ShellAction(c.Context, rq.Type, u.Object, q.Get("plugin"), q.Get("action"))
+	a, err := s.plugins.ShellAction(s.pluginEnv(c), rq.Type, u.Object, q.Get("plugin"), q.Get("action"))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	vars := s.shellVars(r.Context(), c, rq, u, kubeconfig)
 	argv := a.Argv(vars)
 	path, err := exec.LookPath(argv[0])
 	if err != nil {
-		return fmt.Errorf("%s isn't installed on this computer (or not on the PATH): %w", argv[0], err)
+		return nil, fmt.Errorf("%s isn't installed on this computer (or not on the PATH): %w", argv[0], err)
 	}
 	spec.Shell, spec.Args = path, argv[1:]
 	spec.Env = append(append(spec.Env, vars.Env()...), a.ExtraEnv(vars)...)
-	return nil
+	return a, nil
 }
 
 func (s *Server) handleLocalShell(w http.ResponseWriter, r *http.Request) {
@@ -194,7 +196,7 @@ func (s *Server) handleLocalShell(w http.ResponseWriter, r *http.Request) {
 	if q.Get("plugin") != "" {
 		// A plugin's shell action: the command comes from the loaded
 		// plugin, never from the request.
-		if err := s.pluginShellSpec(r, &spec, chain); err != nil {
+		if _, err := s.pluginShellSpec(r, &spec, chain); err != nil {
 			fail(err)
 			return
 		}

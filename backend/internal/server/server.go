@@ -50,6 +50,8 @@ type Server struct {
 	securityRuns runRegistry[*securityLists]
 	// plugins are the runtime plugins (nil = none; see plugins.go).
 	plugins *plugins.Host
+	// pluginMetrics caches plugin metric queries (15 s per query).
+	pluginMetrics pluginMetricCache
 }
 
 // Options configures optional server behaviour.

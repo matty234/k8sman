@@ -1,12 +1,13 @@
 // Package plugins loads runtime plugins: a folder with a plugin.yaml that
-// adds table columns, inspector panel sections and shell actions for
-// kinds, written in YAML and CEL. CEL is compiled once and evaluated here,
+// adds table columns, inspector panel sections, actions (shell commands
+// and patches) and overview alerts for kinds, written in YAML and CEL. CEL is compiled once and evaluated here,
 // in the backend, over the shared watch cache; the UI only draws the
 // results with its own widgets. See docs/PLUGINS.md.
 package plugins
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -62,16 +63,51 @@ type Kind struct {
 	Version string `yaml:"version"`
 	// Icon is the kind's sidebar glyph: a name from the icon list, or
 	// "icon.png" for the plugin's own icon.
-	Icon        string          `yaml:"icon"`
-	Variables   map[string]Expr `yaml:"variables"`
-	Related     unsupported     `yaml:"related"`
-	Metrics     unsupported     `yaml:"metrics"`
-	Columns     []Column        `yaml:"columns"`
-	HideColumns []string        `yaml:"hideColumns"`
-	Panel       *Panel          `yaml:"panel"`
-	Actions     []Action        `yaml:"actions"`
-	Alerts      unsupported     `yaml:"alerts"`
+	Icon        string             `yaml:"icon"`
+	Variables   map[string]Expr    `yaml:"variables"`
+	Related     map[string]Related `yaml:"related"`
+	Metrics     map[string]Metric  `yaml:"metrics"`
+	Columns     []Column           `yaml:"columns"`
+	HideColumns []string           `yaml:"hideColumns"`
+	Panel       *Panel             `yaml:"panel"`
+	Actions     []Action           `yaml:"actions"`
+	Alerts      []Alert            `yaml:"alerts"`
 	pos         Pos
+}
+
+// Related is an object (name) or objects (owner, selector) that a kind's
+// panels and actions read as related.<name>, from the watch cache. Its
+// kind must be in permissions.read.
+type Related struct {
+	Kind      string `yaml:"kind"`
+	Name      Expr   `yaml:"name"`
+	Owner     bool   `yaml:"owner"`
+	Selector  Expr   `yaml:"selector"`
+	Namespace Expr   `yaml:"namespace"`
+	When      Expr   `yaml:"when"`
+}
+
+// IsList is whether related.<name> is a list (owner and selector
+// relations) rather than one object.
+func (r *Related) IsList() bool { return !r.Name.IsSet() }
+
+// Metric is an instant PromQL query for panels (metrics.<name>), run
+// through the Prometheus module; it needs permissions.prometheus.
+type Metric struct {
+	Query    Expr   `yaml:"query"`
+	Instance string `yaml:"instance"`
+}
+
+// Alert is a per-object rule evaluated on each overview poll; a hit is an
+// issue on the Overview and in the dock's Issues tab.
+type Alert struct {
+	ID       string `yaml:"id"`
+	Label    string `yaml:"label"`
+	Severity string `yaml:"severity"`
+	Section  string `yaml:"section"`
+	When     Expr   `yaml:"when"`
+	Message  Expr   `yaml:"message"`
+	Since    Expr   `yaml:"since"`
 }
 
 func (k *Kind) setPos(p Pos) { k.pos = p }
@@ -159,22 +195,45 @@ type TableColumn struct {
 	Link  Expr   `yaml:"link"`
 }
 
-// Action is a kind's action. v1 builds shell actions; patch actions are
-// read but not offered yet (Milestone 2).
+// Action is a kind's action: a shell command run on this computer, or a
+// patch of the object through the app's action path
+// (POST /api/actions/plugin.<id>.<action>).
 type Action struct {
-	ID        string      `yaml:"id"`
-	Label     string      `yaml:"label"`
-	Icon      string      `yaml:"icon"`
-	When      Expr        `yaml:"when"`
-	Shortcut  string      `yaml:"shortcut"`
-	Dangerous *bool       `yaml:"dangerous"`
-	Confirm   *bool       `yaml:"confirm"`
-	Message   string      `yaml:"message"`
-	Shell     *Shell      `yaml:"shell"`
-	Patch     unsupported `yaml:"patch"`
-	Inputs    unsupported `yaml:"inputs"`
+	ID        string  `yaml:"id"`
+	Label     string  `yaml:"label"`
+	Icon      string  `yaml:"icon"`
+	When      Expr    `yaml:"when"`
+	Shortcut  string  `yaml:"shortcut"`
+	Dangerous *bool   `yaml:"dangerous"`
+	Confirm   *bool   `yaml:"confirm"`
+	Message   string  `yaml:"message"`
+	Shell     *Shell  `yaml:"shell"`
+	Patch     *Patch  `yaml:"patch"`
+	Inputs    []Input `yaml:"inputs"`
 	pos       Pos
 }
+
+// Patch is a patch action's change to the object.
+type Patch struct {
+	// Type is merge (a JSON merge patch) or json (a JSON patch).
+	Type string `yaml:"type"`
+	// Body is a map (merge) or a list of operations (json); it sees input.
+	Body Expr `yaml:"body"`
+}
+
+// Input is a form field of a patch action, checked by the backend.
+type Input struct {
+	Name            string   `yaml:"name"`
+	Label           string   `yaml:"label"`
+	Type            string   `yaml:"type"`
+	Options         []string `yaml:"options"`
+	Default         Expr     `yaml:"default"`
+	Validate        Expr     `yaml:"validate"`
+	ValidateMessage string   `yaml:"validateMessage"`
+}
+
+// InputType is the input's type (default string).
+func (in *Input) InputType() string { return orDefault(in.Type, "string") }
 
 func (a *Action) setPos(p Pos) { a.pos = p }
 
@@ -196,14 +255,6 @@ type items struct {
 
 func (it *items) decodeNode(_ *decoder, n *yaml.Node) { it.node = n }
 
-// unsupported accepts a v1 field that this build doesn't implement yet; the
-// loader warns that it is ignored.
-type unsupported struct {
-	node *yaml.Node
-}
-
-func (u *unsupported) decodeNode(_ *decoder, n *yaml.Node) { u.node = n }
-
 var (
 	idRe       = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$`)
 	actionIDRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$`)
@@ -216,6 +267,33 @@ var AppVersion = ""
 
 var columnTypes = []string{"string", "number", "age", "until", "status", "percent", "bool", "labels", "quantity"}
 var valueTypes = []string{"text", "number", "bool", "status", "age", "until", "timestamp", "quantity", "labels", "url", "code"}
+
+// Enumerations of other fields (the JSON Schema is built from the same
+// lists, see schema.go).
+var (
+	alertSeverities = []string{"critical", "warning", "info"}
+	alertSections   = []string{"pods", "workloads", "jobs", "nodes", "storage", "network", "custom"}
+	inputTypes      = []string{"string", "int", "bool", "enum"}
+	patchTypes      = []string{"merge", "json"}
+	messageSeverity = []string{"info", "warning", "error"}
+	barFormats      = []string{"number", "quantity", "percent"}
+	codeLanguages   = []string{"text", "yaml", "json", "shell"}
+	jsonPatchOps    = []string{"add", "remove", "replace", "move", "copy", "test"}
+)
+
+// secretKind is the kind key of Secrets: plugins see their keys, never
+// their values, and can't change them.
+const secretKind = "/Secret"
+
+// relatedLimit caps the objects of an owner or selector relation.
+const relatedLimit = 200
+
+// usage is what the kinds use of the permissions (checked both ways).
+type usage struct {
+	read, patch map[string]bool
+	commands    map[string]bool
+	prometheus  bool
+}
 
 // blockFields lists the fields each block type takes (besides type, when).
 var blockFields = map[string][]string{
@@ -317,18 +395,20 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 			d.errAt(permAt("read"), "permissions.read: %q is not a kind key such as cert-manager.io/Certificate or /Pod", k)
 		}
 	}
-	if len(m.Permissions.Patch) > 0 {
-		d.warnAt(permAt("patch"), "permissions.patch: patch actions aren't supported by this version yet")
-	}
-	if m.Permissions.Prometheus {
-		d.warnAt(permAt("prometheus"), "permissions.prometheus: metrics aren't supported by this version yet")
+	for _, k := range m.Permissions.Patch {
+		switch {
+		case !kindKeyRe.MatchString(k):
+			d.errAt(permAt("patch"), "permissions.patch: %q is not a kind key such as karpenter.sh/NodePool", k)
+		case k == secretKind:
+			d.errAt(permAt("patch"), "permissions.patch: plugins can't change Secrets")
+		}
 	}
 	if len(m.Kinds) == 0 {
 		d.errAt(at("kinds"), "kinds is empty: a plugin contributes to at least one kind")
 	}
 	kindsNode := resolve(field(doc, "kinds"))
 	_, keyNodes := mapKeys(kindsNode)
-	usedCommands := map[string]bool{}
+	used := &usage{read: map[string]bool{}, patch: map[string]bool{}, commands: map[string]bool{}}
 	for _, key := range m.KindOrder {
 		k := m.Kinds[key]
 		kn := keyNodes[key]
@@ -340,23 +420,33 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 			continue
 		}
 		if key == "*" {
-			if len(k.Columns) > 0 || k.Panel != nil || len(k.HideColumns) > 0 || len(k.Variables) > 0 {
+			if len(k.Columns) > 0 || k.Panel != nil || len(k.HideColumns) > 0 || len(k.Variables) > 0 ||
+				len(k.Related) > 0 || len(k.Metrics) > 0 || len(k.Alerts) > 0 {
 				d.errAt(kn, `the "*" kind may only hold actions`)
 			}
 		} else if !slices.Contains(m.Permissions.Read, key) {
 			d.errAt(kn, "%s is not in permissions.read", key)
 		}
-		k.validate(d, m, key, resolve(field(kindsNode, key)), usedCommands)
+		used.read[key] = true
+		k.validate(d, m, key, resolve(field(kindsNode, key)), used)
 	}
 	for _, k := range m.Permissions.Read {
-		if _, ok := m.Kinds[k]; !ok {
-			d.warnAt(permAt("read"), "permissions.read: %s is declared but no kind uses it (related objects come in a later version)", k)
+		if !used.read[k] {
+			d.warnAt(permAt("read"), "permissions.read: %s is declared but neither a kind nor a related object uses it", k)
+		}
+	}
+	for _, k := range m.Permissions.Patch {
+		if !used.patch[k] {
+			d.warnAt(permAt("patch"), "permissions.patch: %s is declared but no patch action changes it", k)
 		}
 	}
 	for _, c := range m.Permissions.Commands {
-		if !usedCommands[c] {
+		if !used.commands[c] {
 			d.warnAt(permAt("commands"), "permissions.commands: %s is declared but no action runs it", c)
 		}
+	}
+	if m.Permissions.Prometheus && !used.prometheus {
+		d.warnAt(permAt("prometheus"), "permissions.prometheus is declared but no kind has metrics")
 	}
 	if m.Nav != nil {
 		n := resolve(field(doc, "nav"))
@@ -378,13 +468,72 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 	}
 }
 
-func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, usedCommands map[string]bool) {
-	for _, f := range []struct {
-		name string
-		u    unsupported
-	}{{"related", k.Related}, {"metrics", k.Metrics}, {"alerts", k.Alerts}} {
-		if f.u.node != nil {
-			d.warnAt(resolve(f.u.node), "%s isn't supported by this version yet and is ignored", f.name)
+func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used *usage) {
+	relNode := resolve(field(n, "related"))
+	for _, name := range slices.Sorted(maps.Keys(k.Related)) {
+		r := k.Related[name]
+		rn := orNode(resolve(field(relNode, name)), relNode)
+		if !identRe.MatchString(name) {
+			d.errAt(rn, "related name %q must be a CEL identifier", name)
+		}
+		switch {
+		case !kindKeyRe.MatchString(r.Kind):
+			d.errAt(orNode(resolve(field(rn, "kind")), rn), "related.%s: kind must be a kind key such as /Secret or cert-manager.io/CertificateRequest", name)
+		case !slices.Contains(m.Permissions.Read, r.Kind):
+			d.errAt(orNode(resolve(field(rn, "kind")), rn), "related.%s: %s is not in permissions.read", name, r.Kind)
+		default:
+			used.read[r.Kind] = true
+		}
+		ways := 0
+		for _, set := range []bool{r.Name.IsSet(), r.Owner, r.Selector.IsSet()} {
+			if set {
+				ways++
+			}
+		}
+		if ways != 1 {
+			d.errAt(rn, "related.%s needs exactly one of name, owner and selector", name)
+		}
+	}
+	metNode := resolve(field(n, "metrics"))
+	for _, name := range slices.Sorted(maps.Keys(k.Metrics)) {
+		mn := orNode(resolve(field(metNode, name)), metNode)
+		if !identRe.MatchString(name) {
+			d.errAt(mn, "metric name %q must be a CEL identifier", name)
+		}
+		if !k.Metrics[name].Query.IsSet() {
+			d.errAt(mn, "metrics.%s needs a query", name)
+		}
+		if !m.Permissions.Prometheus {
+			d.errAt(mn, "metrics.%s: metrics need permissions.prometheus: true", name)
+		}
+		used.prometheus = true
+	}
+	alertsNode := resolve(field(n, "alerts"))
+	alertIDs := map[string]bool{}
+	for i := range k.Alerts {
+		a := &k.Alerts[i]
+		var an *yaml.Node
+		if alertsNode != nil && i < len(alertsNode.Content) {
+			an = resolve(alertsNode.Content[i])
+		}
+		if !actionIDRe.MatchString(a.ID) {
+			d.errAt(an, "an alert needs an id (lower-case letters, digits and dashes)")
+		}
+		if alertIDs[a.ID] {
+			d.errAt(an, "alert %q is listed twice", a.ID)
+		}
+		alertIDs[a.ID] = true
+		if a.Label == "" {
+			d.errAt(an, "alert %q needs a label", a.ID)
+		}
+		if !a.When.IsSet() {
+			d.errAt(an, "alert %q needs when", a.ID)
+		}
+		if a.Severity != "" && !slices.Contains(alertSeverities, a.Severity) {
+			d.errAt(resolve(field(an, "severity")), "severity must be one of %s", strings.Join(alertSeverities, ", "))
+		}
+		if a.Section != "" && !slices.Contains(alertSections, a.Section) {
+			d.errAt(resolve(field(an, "section")), "section must be one of %s", strings.Join(alertSections, ", "))
 		}
 	}
 	if k.Icon != "" && k.Icon != "icon.png" && !IconAllowed(k.Icon) {
@@ -462,25 +611,25 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, usedC
 		if a.Icon != "" && !IconAllowed(a.Icon) {
 			d.errAt(resolve(field(an, "icon")), "unknown icon %q", a.Icon)
 		}
-		if a.Patch.node != nil || a.Inputs.node != nil {
-			d.warnAt(an, "action %q: patch actions aren't supported by this version yet; it is not offered", a.ID)
+		if (a.Shell == nil) == (a.Patch == nil) {
+			d.errAt(an, "action %q needs exactly one of shell and patch", a.ID)
 			continue
 		}
-		if a.Shell == nil {
-			d.errAt(an, "action %q needs a shell command", a.ID)
+		if a.Patch != nil {
+			a.validatePatch(d, m, key, an, used)
 			continue
+		}
+		if len(a.Inputs) > 0 {
+			d.errAt(resolve(field(an, "inputs")), "action %q: inputs are for patch actions only", a.ID)
 		}
 		sn := resolve(field(an, "shell"))
 		if a.Shell.Command == "" {
 			d.errAt(sn, "shell.command is required")
 			continue
 		}
-		usedCommands[a.Shell.Command] = true
+		used.commands[a.Shell.Command] = true
 		if !slices.Contains(m.Permissions.Commands, a.Shell.Command) {
 			d.errAt(resolve(field(sn, "command")), "%s is not in permissions.commands", a.Shell.Command)
-		}
-		if a.Shell.Background {
-			d.warnAt(resolve(field(sn, "background")), "background isn't supported by this version yet; the command runs in a dock tab")
 		}
 		for j, arg := range a.Shell.Args {
 			if j > 0 && a.Shell.Args[j-1] == "-c" && strings.Contains(arg, "$COL-") {
@@ -491,7 +640,52 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, usedC
 			d.warnAt(resolve(field(an, "confirm")), "plugin shell actions are always confirmed in this version")
 		}
 	}
-	_ = key
+}
+
+// validatePatch checks a patch action of kind key.
+func (a *Action) validatePatch(d *decoder, m *Manifest, key string, an *yaml.Node, used *usage) {
+	pn := resolve(field(an, "patch"))
+	switch {
+	case key == "*":
+		d.errAt(pn, `action %q: patch actions belong to a kind, not "*"`, a.ID)
+	case key == secretKind:
+		d.errAt(pn, "action %q: plugins can't change Secrets", a.ID)
+	case !slices.Contains(m.Permissions.Patch, key):
+		d.errAt(pn, "action %q: %s is not in permissions.patch", a.ID, key)
+	default:
+		used.patch[key] = true
+	}
+	if !slices.Contains(patchTypes, a.Patch.Type) {
+		d.errAt(orNode(resolve(field(pn, "type")), pn), "patch.type must be merge or json")
+	}
+	if !a.Patch.Body.IsSet() {
+		d.errAt(pn, "patch.body is required")
+	}
+	if a.Confirm != nil && !*a.Confirm {
+		d.warnAt(resolve(field(an, "confirm")), "patch actions are always confirmed; confirm is ignored")
+	}
+	insNode := resolve(field(an, "inputs"))
+	names := map[string]bool{}
+	for i := range a.Inputs {
+		in := &a.Inputs[i]
+		var inn *yaml.Node
+		if insNode != nil && i < len(insNode.Content) {
+			inn = resolve(insNode.Content[i])
+		}
+		if !identRe.MatchString(in.Name) {
+			d.errAt(inn, "an input needs a name that is a CEL identifier")
+		}
+		if names[in.Name] {
+			d.errAt(inn, "input %q is listed twice", in.Name)
+		}
+		names[in.Name] = true
+		if !slices.Contains(inputTypes, in.InputType()) {
+			d.errAt(resolve(field(inn, "type")), "input type must be one of %s", strings.Join(inputTypes, ", "))
+		}
+		if (in.InputType() == "enum") != (len(in.Options) > 0) {
+			d.errAt(inn, "input %q: options are required for an enum, and only for an enum", in.Name)
+		}
+	}
 }
 
 func (b *Block) validate(d *decoder, n *yaml.Node) {
@@ -562,19 +756,19 @@ func (b *Block) validate(d *decoder, n *yaml.Node) {
 		}
 	case "bar":
 		need(b.Value.IsSet() && b.Max.IsSet(), "value and max")
-		if b.Format != "" && !slices.Contains([]string{"number", "quantity", "percent"}, b.Format) {
+		if b.Format != "" && !slices.Contains(barFormats, b.Format) {
 			d.errAt(resolve(field(n, "format")), "format must be number, quantity or percent")
 		}
 	case "code":
 		need(b.Value.IsSet(), "value")
-		if b.Language != "" && !slices.Contains([]string{"text", "yaml", "json", "shell"}, b.Language) {
+		if b.Language != "" && !slices.Contains(codeLanguages, b.Language) {
 			d.errAt(resolve(field(n, "language")), "language must be text, yaml, json or shell")
 		}
 	case "json":
 		need(b.Value.IsSet(), "value")
 	case "message":
 		need(b.Text.IsSet(), "text")
-		if b.Severity != "" && !slices.Contains([]string{"info", "warning", "error"}, b.Severity) {
+		if b.Severity != "" && !slices.Contains(messageSeverity, b.Severity) {
 			d.errAt(resolve(field(n, "severity")), "severity must be info, warning or error")
 		}
 	}

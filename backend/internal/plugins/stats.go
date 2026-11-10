@@ -12,6 +12,7 @@ const (
 	statColumn = "column"
 	statPanel  = "panel"
 	statAction = "action"
+	statAlert  = "alert"
 )
 
 // stats records a plugin's evaluations: counts, errors, cost-limit hits

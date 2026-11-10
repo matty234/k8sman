@@ -1,0 +1,1092 @@
+{
+  "$defs": {
+    "Action": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "shell"
+          ]
+        },
+        {
+          "required": [
+            "patch"
+          ]
+        }
+      ],
+      "properties": {
+        "confirm": {
+          "description": "Shell actions are always confirmed in this version.",
+          "type": "boolean"
+        },
+        "dangerous": {
+          "description": "Default true. Dangerous actions are styled as such; every plugin action is hidden on read-only contexts.",
+          "type": "boolean"
+        },
+        "icon": {
+          "enum": [
+            "account_tree",
+            "analytics",
+            "apps",
+            "backup",
+            "badge",
+            "bolt",
+            "build",
+            "category",
+            "check_circle",
+            "checklist",
+            "cloud",
+            "code",
+            "dashboard",
+            "data_object",
+            "delete",
+            "description",
+            "dns",
+            "edit",
+            "error",
+            "event",
+            "extension",
+            "folder",
+            "group",
+            "history",
+            "hub",
+            "info",
+            "insights",
+            "inventory",
+            "key",
+            "label",
+            "lan",
+            "language",
+            "layers",
+            "link",
+            "lock",
+            "memory",
+            "notifications",
+            "open_in_new",
+            "person",
+            "play_arrow",
+            "policy",
+            "public",
+            "receipt",
+            "refresh",
+            "restart_alt",
+            "rocket_launch",
+            "router",
+            "schedule",
+            "security",
+            "settings",
+            "shield",
+            "speed",
+            "stop",
+            "storage",
+            "sync",
+            "task_alt",
+            "terminal",
+            "timer",
+            "tune",
+            "verified",
+            "vpn_key",
+            "warning"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "Form fields of a patch action, read as input.\u003cname\u003e.",
+          "items": {
+            "$ref": "#/$defs/Input"
+          },
+          "type": "array"
+        },
+        "label": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "patch": {
+          "$ref": "#/$defs/Patch"
+        },
+        "shell": {
+          "$ref": "#/$defs/Shell"
+        },
+        "shortcut": {
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "Alert": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$",
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "message": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "section": {
+          "enum": [
+            "pods",
+            "workloads",
+            "jobs",
+            "nodes",
+            "storage",
+            "network",
+            "custom"
+          ],
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "warning",
+            "info"
+          ],
+          "type": "string"
+        },
+        "since": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "when"
+      ],
+      "type": "object"
+    },
+    "Block": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "badges"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "items"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "bar"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "label",
+                "value",
+                "max",
+                "format"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "chips"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "items",
+                "empty"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "code"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "value",
+                "language"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "conditions"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "from"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "fields"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "items"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "json"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "links"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "items",
+                "empty"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "message"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "text",
+                "severity"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "table"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "rows",
+                "columns",
+                "sortBy",
+                "descending",
+                "limit",
+                "empty"
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/TableColumn"
+          },
+          "type": "array"
+        },
+        "descending": {
+          "type": "boolean"
+        },
+        "empty": {
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "number",
+            "quantity",
+            "percent"
+          ],
+          "type": "string"
+        },
+        "from": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "items": {
+          "description": "fields and badges: a list of items; chips and links: a CEL expression.",
+          "oneOf": [
+            {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "description": "CEL expression.",
+              "type": "string"
+            }
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "language": {
+          "enum": [
+            "text",
+            "yaml",
+            "json",
+            "shell"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "max": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "rows": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ],
+          "type": "string"
+        },
+        "sortBy": {
+          "type": "string"
+        },
+        "text": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "badges",
+            "bar",
+            "chips",
+            "code",
+            "conditions",
+            "fields",
+            "json",
+            "links",
+            "message",
+            "table"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "Column": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "number",
+            "age",
+            "until",
+            "status",
+            "percent",
+            "bool",
+            "labels",
+            "quantity"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "Input": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "options": {
+          "description": "The choices of an enum input.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "int",
+            "bool",
+            "enum"
+          ],
+          "type": "string"
+        },
+        "validate": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "validateMessage": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "Kind": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "type": "array"
+        },
+        "alerts": {
+          "items": {
+            "$ref": "#/$defs/Alert"
+          },
+          "type": "array"
+        },
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/Column"
+          },
+          "type": "array"
+        },
+        "hideColumns": {
+          "description": "Default columns to drop, by name.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "icon": {
+          "enum": [
+            "account_tree",
+            "analytics",
+            "apps",
+            "backup",
+            "badge",
+            "bolt",
+            "build",
+            "category",
+            "check_circle",
+            "checklist",
+            "cloud",
+            "code",
+            "dashboard",
+            "data_object",
+            "delete",
+            "description",
+            "dns",
+            "edit",
+            "error",
+            "event",
+            "extension",
+            "folder",
+            "group",
+            "history",
+            "hub",
+            "info",
+            "insights",
+            "inventory",
+            "key",
+            "label",
+            "lan",
+            "language",
+            "layers",
+            "link",
+            "lock",
+            "memory",
+            "notifications",
+            "open_in_new",
+            "person",
+            "play_arrow",
+            "policy",
+            "public",
+            "receipt",
+            "refresh",
+            "restart_alt",
+            "rocket_launch",
+            "router",
+            "schedule",
+            "security",
+            "settings",
+            "shield",
+            "speed",
+            "stop",
+            "storage",
+            "sync",
+            "task_alt",
+            "terminal",
+            "timer",
+            "tune",
+            "verified",
+            "vpn_key",
+            "warning",
+            "icon.png"
+          ],
+          "type": "string"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Metric"
+          },
+          "description": "Instant PromQL queries for panels, read as metrics.\u003cname\u003e.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "type": "object"
+        },
+        "panel": {
+          "$ref": "#/$defs/Panel"
+        },
+        "related": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Related"
+          },
+          "description": "Related objects for panels and actions, read as related.\u003cname\u003e.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "type": "object"
+        },
+        "variables": {
+          "additionalProperties": {
+            "description": "CEL expression.",
+            "type": "string"
+          },
+          "description": "Named CEL values, read as variables.\u003cname\u003e.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "type": "object"
+        },
+        "version": {
+          "description": "Pin the API version the entry applies to (default: any).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Metric": {
+      "additionalProperties": false,
+      "properties": {
+        "instance": {
+          "type": "string"
+        },
+        "query": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "Nav": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "type": "string"
+        },
+        "kinds": {
+          "items": {
+            "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "Panel": {
+      "additionalProperties": false,
+      "properties": {
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/Section"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Patch": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "merge",
+            "json"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "body"
+      ],
+      "type": "object"
+    },
+    "Permissions": {
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "description": "Executables shell actions may run on this computer.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "patch": {
+          "description": "Kinds patch actions may change (never Secrets).",
+          "items": {
+            "not": {
+              "const": "/Secret"
+            },
+            "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "prometheus": {
+          "description": "PromQL queries through the Prometheus integration (metrics).",
+          "type": "boolean"
+        },
+        "read": {
+          "description": "Kinds the plugin reads: its own and related ones. Secrets: names and keys only.",
+          "items": {
+            "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Related": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "description": "Kind key; must be in permissions.read.",
+          "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
+          "type": "string"
+        },
+        "name": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "namespace": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "Objects whose ownerReferences include this object (at most 200).",
+          "type": "boolean"
+        },
+        "selector": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Section": {
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "type": "array"
+        },
+        "collapsed": {
+          "type": "boolean"
+        },
+        "icon": {
+          "enum": [
+            "account_tree",
+            "analytics",
+            "apps",
+            "backup",
+            "badge",
+            "bolt",
+            "build",
+            "category",
+            "check_circle",
+            "checklist",
+            "cloud",
+            "code",
+            "dashboard",
+            "data_object",
+            "delete",
+            "description",
+            "dns",
+            "edit",
+            "error",
+            "event",
+            "extension",
+            "folder",
+            "group",
+            "history",
+            "hub",
+            "info",
+            "insights",
+            "inventory",
+            "key",
+            "label",
+            "lan",
+            "language",
+            "layers",
+            "link",
+            "lock",
+            "memory",
+            "notifications",
+            "open_in_new",
+            "person",
+            "play_arrow",
+            "policy",
+            "public",
+            "receipt",
+            "refresh",
+            "restart_alt",
+            "rocket_launch",
+            "router",
+            "schedule",
+            "security",
+            "settings",
+            "shield",
+            "speed",
+            "stop",
+            "storage",
+            "sync",
+            "task_alt",
+            "terminal",
+            "timer",
+            "tune",
+            "verified",
+            "vpn_key",
+            "warning"
+          ],
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "Shell": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "description": "Arguments; $NAME, $NAMESPACE, $CONTEXT, $COL-\u003cNAME\u003e, … are expanded per argument.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "background": {
+          "description": "Run without a dock tab and report the exit status and the last lines of output.",
+          "type": "boolean"
+        },
+        "command": {
+          "description": "Must be in permissions.commands. Runs without a shell.",
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "TableColumn": {
+      "additionalProperties": false,
+      "properties": {
+        "link": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "text",
+            "number",
+            "bool",
+            "status",
+            "age",
+            "until",
+            "timestamp",
+            "quantity",
+            "labels",
+            "url",
+            "code"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A k8sman runtime plugin. See docs/PLUGINS.md. CEL fields are strings; `k8sman-server plugin validate` checks them.",
+  "properties": {
+    "apiVersion": {
+      "const": "k8sman.dev/v1",
+      "type": "string"
+    },
+    "authors": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "description": {
+      "maxLength": 200,
+      "type": "string"
+    },
+    "homepage": {
+      "type": "string"
+    },
+    "id": {
+      "description": "Lower-case letters, digits and dashes; unique in the index.",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$",
+      "type": "string"
+    },
+    "kinds": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Kind"
+      },
+      "description": "Kind key (group/Kind, e.g. cert-manager.io/Certificate or /Pod; \"*\" for actions on any kind) → what the plugin adds to it.",
+      "propertyNames": {
+        "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$"
+      },
+      "type": "object"
+    },
+    "minAppVersion": {
+      "description": "The oldest k8sman that can load this plugin; older apps say so instead of failing.",
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "nav": {
+      "$ref": "#/$defs/Nav"
+    },
+    "permissions": {
+      "$ref": "#/$defs/Permissions"
+    },
+    "version": {
+      "description": "Semantic version, e.g. 1.0.0.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "id",
+    "name",
+    "version",
+    "kinds"
+  ],
+  "title": "k8sman plugin (plugin.yaml, k8sman.dev/v1)",
+  "type": "object"
+}

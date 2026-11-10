@@ -7,24 +7,49 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/ast"
+	"github.com/google/cel-go/common/operators"
+	"github.com/google/cel-go/common/types"
 )
 
 // Cost limits per evaluation (docs/PLUGINS.md §8).
 const (
 	columnCostLimit = 100_000
+	alertCostLimit  = 100_000
 	panelCostLimit  = 1_000_000
 	panelTotalCost  = 5_000_000
 	actionCostLimit = 1_000_000
 )
 
+// refSet is which names of a map variable (related, metrics) an
+// expression reads; all when it uses the map as a whole.
+type refSet struct {
+	all   bool
+	names []string
+}
+
+func (r *refSet) add(o refSet) {
+	r.all = r.all || o.all
+	for _, n := range o.names {
+		if !slices.Contains(r.names, n) {
+			r.names = append(r.names, n)
+		}
+	}
+}
+
+func (r refSet) has(name string) bool { return r.all || slices.Contains(r.names, name) }
+func (r refSet) empty() bool          { return !r.all && len(r.names) == 0 }
+
 // program is one compiled expression.
 type program struct {
 	prg  cel.Program
 	expr Expr
-	// usesNow is true when the expression (or a variable it reads) reads
-	// `now`.
+	// usesNow is true when the expression itself reads `now`.
 	usesNow bool
+	// vars are the variables it reads; related and metrics the names of
+	// those it reads directly (see kindProgs.refs for the transitive ones).
 	vars    []string
+	related refSet
+	metrics refSet
 	out     *cel.Type
 }
 
@@ -33,9 +58,19 @@ type kindProgs struct {
 	key      string
 	kind     *Kind
 	vars     map[string]*program
+	related  []relProg // by name
+	metrics  []metricProg
 	columns  []colProg
 	sections []secProg
 	actions  []actProg
+	alerts   []alertProg
+	// panelNeeds and actionNeeds are the related objects (and, for
+	// panels, metrics) their expressions read, so only those are looked up.
+	panelRelated, panelMetrics, actionRelated refSet
+	// panelNow is whether any panel expression reads `now`.
+	panelNow bool
+	// alertMemo reuses alert results per object version (alerts.go).
+	alertMemo alertMemo
 }
 
 type colProg struct {
@@ -62,6 +97,32 @@ type blockProg struct {
 type actProg struct {
 	a    *Action
 	when *program
+	// body and inputs are a patch action's.
+	body   *program
+	inputs []inputProg
+}
+
+type inputProg struct {
+	in       *Input
+	def      *program
+	validate *program
+}
+
+type relProg struct {
+	name                       string
+	rel                        *Related
+	when, nameP, selector, nsP *program
+}
+
+type metricProg struct {
+	name   string
+	metric *Metric
+	query  *program
+}
+
+type alertProg struct {
+	a                    *Alert
+	when, message, since *program
 }
 
 // compiler compiles a kind entry's expressions, collecting diags with
@@ -70,8 +131,10 @@ type compiler struct {
 	d     *decoder
 	base  *cel.Env
 	row   *cel.Env
+	input *cel.Env
 	diags []Diag
 	known map[string]bool // variable names of the kind entry
+	kp    *kindProgs
 }
 
 func (c *compiler) errAt(e Expr, line, col int, msg string) {
@@ -113,6 +176,46 @@ func (c *compiler) parse(e Expr, env *cel.Env) (*cel.Ast, []string, bool) {
 	return a, vars, ok
 }
 
+// scanRefs finds which names of map variable ident expression x reads:
+// ident.name, ident.?name, has(ident.name), ident["name"] and
+// ident[?"name"]; any other use reads all of it.
+func scanRefs(x ast.Expr, ident string) refSet {
+	var out refSet
+	idents, named := 0, 0
+	isIdent := func(e ast.Expr) bool { return e.Kind() == ast.IdentKind && e.AsIdent() == ident }
+	ast.PreOrderVisit(x, ast.NewExprVisitor(func(e ast.Expr) {
+		switch e.Kind() {
+		case ast.IdentKind:
+			if e.AsIdent() == ident {
+				idents++
+			}
+		case ast.SelectKind:
+			if s := e.AsSelect(); isIdent(s.Operand()) {
+				named++
+				out.add(refSet{names: []string{s.FieldName()}})
+			}
+		case ast.CallKind:
+			call := e.AsCall()
+			fn := call.FunctionName()
+			if fn != operators.OptSelect && fn != operators.Index && fn != operators.OptIndex {
+				return
+			}
+			args := call.Args()
+			if len(args) != 2 || !isIdent(args[0]) || args[1].Kind() != ast.LiteralKind {
+				return
+			}
+			if s, ok := args[1].AsLiteral().(types.String); ok {
+				named++
+				out.add(refSet{names: []string{string(s)}})
+			}
+		}
+	}))
+	if idents > named {
+		out.all = true
+	}
+	return out
+}
+
 func (c *compiler) issues(e Expr, iss *cel.Issues) {
 	for _, err := range iss.Errors() {
 		line, col := 1, 0
@@ -143,7 +246,8 @@ func (c *compiler) compile(e Expr, env *cel.Env, want *cel.Type, limit uint64) *
 		c.errAt(e, 1, 0, "expected a "+want.String()+", but this is a "+out.String())
 		return nil
 	}
-	p := &program{expr: e, vars: vars, out: out}
+	root := parsed.NativeRep().Expr()
+	p := &program{expr: e, vars: vars, out: out, related: scanRefs(root, varRelated), metrics: scanRefs(root, varMetrics)}
 	ast.PreOrderVisit(a.NativeRep().Expr(), ast.NewExprVisitor(func(x ast.Expr) {
 		if x.Kind() == ast.IdentKind && x.AsIdent() == varNow {
 			p.usesNow = true
@@ -156,6 +260,52 @@ func (c *compiler) compile(e Expr, env *cel.Env, want *cel.Type, limit uint64) *
 	}
 	p.prg = prg
 	return p
+}
+
+// restrict compiles e for a place where related and metrics (and, with
+// noNow, `now`) aren't available, reporting a use at e (also through
+// variables). where names the place in the message.
+func (c *compiler) restrict(e Expr, env *cel.Env, want *cel.Type, limit uint64, where string, allowRelated, allowMetrics, noNow bool) *program {
+	p := c.compile(e, env, want, limit)
+	if p == nil {
+		return nil
+	}
+	rel, met, now := c.kp.refs(p)
+	bad := ""
+	switch {
+	case !allowRelated && !rel.empty():
+		bad = "related"
+	case !allowMetrics && !met.empty():
+		bad = "metrics"
+	case noNow && now:
+		bad = "now"
+	}
+	if bad == "" {
+		return p
+	}
+	msg := bad + " isn't available in " + where
+	if bad == "now" {
+		msg += " (it would change the lookup on every evaluation)"
+	} else if bad == varRelated {
+		msg += " (only in panels and actions)"
+	} else {
+		msg += " (only in panels)"
+	}
+	if !directly(p, bad) {
+		msg += "; a variable it reads uses " + bad
+	}
+	c.errAt(e, 1, 0, msg)
+	return nil
+}
+
+func directly(p *program, what string) bool {
+	switch what {
+	case varRelated:
+		return !p.related.empty()
+	case varMetrics:
+		return !p.metrics.empty()
+	}
+	return p.usesNow
 }
 
 // compileVars compiles the kind's variables in dependency order: each is
@@ -238,24 +388,43 @@ func (c *compiler) compileVars(kp *kindProgs, k *Kind) *cel.Env {
 // compileKind compiles every expression of kind entry k. Errors leave the
 // entry unusable (activation is atomic per kind entry).
 func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
-	base, _, err := envs()
+	base, err := envs()
 	if err != nil {
 		return nil, []Diag{d.diagAt(k.pos, false, "CEL environment: %v", err)}
 	}
-	c := &compiler{d: d, base: base, known: map[string]bool{}}
+	kp := &kindProgs{key: key, kind: k, vars: map[string]*program{}}
+	c := &compiler{d: d, base: base, known: map[string]bool{}, kp: kp}
 	for name := range k.Variables {
 		c.known[name] = true
 	}
-	kp := &kindProgs{key: key, kind: k, vars: map[string]*program{}}
 	env := c.compileVars(kp, k)
 	c.base = env
-	if c.row, err = env.Extend(cel.Variable(varRow, cel.DynType)); err != nil {
+	if c.row, err = env.Extend(cel.Variable(varRow, cel.DynType)); err == nil {
+		c.input, err = env.Extend(cel.Variable(varInput, cel.MapType(cel.StringType, cel.DynType)))
+	}
+	if err != nil {
 		return nil, []Diag{d.diagAt(k.pos, false, "CEL environment: %v", err)}
+	}
+	for _, name := range sortedKeys(k.Related) {
+		r := k.Related[name]
+		rp := relProg{name: name, rel: &r}
+		lookup := func(e Expr, want *cel.Type) *program {
+			return c.restrict(e, env, want, panelCostLimit, "related lookups", false, false, true)
+		}
+		rp.when = lookup(r.When, cel.BoolType)
+		rp.nameP = lookup(r.Name, cel.StringType)
+		rp.selector = lookup(r.Selector, nil)
+		rp.nsP = lookup(r.Namespace, cel.StringType)
+		kp.related = append(kp.related, rp)
+	}
+	for _, name := range sortedKeys(k.Metrics) {
+		m := k.Metrics[name]
+		kp.metrics = append(kp.metrics, metricProg{name: name, metric: &m,
+			query: c.restrict(m.Query, env, cel.StringType, panelCostLimit, "metric queries", false, false, true)})
 	}
 	for i := range k.Columns {
 		col := &k.Columns[i]
-		p := c.compile(col.Value, env, nil, columnCostLimit)
-		if p != nil {
+		if p := c.restrict(col.Value, env, nil, columnCostLimit, "columns", false, false, false); p != nil {
 			p.usesNow = kp.readsNow(p, nil)
 			kp.columns = append(kp.columns, colProg{col: col, prog: p})
 		}
@@ -272,12 +441,99 @@ func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
 	}
 	for i := range k.Actions {
 		a := &k.Actions[i]
-		if a.Shell == nil {
-			continue
+		act := func(e Expr, env *cel.Env, want *cel.Type) *program {
+			return c.restrict(e, env, want, actionCostLimit, "actions", true, false, false)
 		}
-		kp.actions = append(kp.actions, actProg{a: a, when: c.compile(a.When, env, cel.BoolType, actionCostLimit)})
+		ap := actProg{a: a, when: act(a.When, env, cel.BoolType)}
+		if a.Patch != nil {
+			ap.body = act(a.Patch.Body, c.input, nil)
+			for j := range a.Inputs {
+				in := &a.Inputs[j]
+				ap.inputs = append(ap.inputs, inputProg{in: in, def: act(in.Default, env, nil), validate: act(in.Validate, c.input, cel.BoolType)})
+			}
+		}
+		kp.actions = append(kp.actions, ap)
 	}
+	for i := range k.Alerts {
+		a := &k.Alerts[i]
+		al := func(e Expr, want *cel.Type) *program {
+			return c.restrict(e, env, want, alertCostLimit, "alerts", false, false, false)
+		}
+		kp.alerts = append(kp.alerts, alertProg{a: a, when: al(a.When, cel.BoolType), message: al(a.Message, nil), since: al(a.Since, nil)})
+	}
+	kp.needs()
 	return kp, c.diags
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// needs works out which related objects and metrics panels and actions
+// read, so a render looks up only those.
+func (kp *kindProgs) needs() {
+	panel := func(p *program) {
+		if p == nil {
+			return
+		}
+		rel, met, now := kp.refs(p)
+		kp.panelRelated.add(rel)
+		kp.panelMetrics.add(met)
+		kp.panelNow = kp.panelNow || now
+	}
+	for _, sp := range kp.sections {
+		panel(sp.when)
+		for _, bp := range sp.blocks {
+			panel(bp.when)
+			for _, p := range bp.progs {
+				panel(p)
+			}
+		}
+	}
+	for _, ap := range kp.actions {
+		for _, p := range []*program{ap.when, ap.body} {
+			if p != nil {
+				rel, _, _ := kp.refs(p)
+				kp.actionRelated.add(rel)
+			}
+		}
+		for _, ip := range ap.inputs {
+			for _, p := range []*program{ip.def, ip.validate} {
+				if p != nil {
+					rel, _, _ := kp.refs(p)
+					kp.actionRelated.add(rel)
+				}
+			}
+		}
+	}
+}
+
+// refs is what p reads of related and metrics, and whether it reads now,
+// directly or through variables.
+func (kp *kindProgs) refs(p *program) (rel, met refSet, now bool) {
+	seen := map[string]bool{}
+	var walk func(p *program)
+	walk = func(p *program) {
+		rel.add(p.related)
+		met.add(p.metrics)
+		now = now || p.usesNow
+		for _, v := range p.vars {
+			if seen[v] {
+				continue
+			}
+			seen[v] = true
+			if vp := kp.vars[v]; vp != nil {
+				walk(vp)
+			}
+		}
+	}
+	walk(p)
+	return rel, met, now
 }
 
 func (c *compiler) compileBlock(b *Block) blockProg {

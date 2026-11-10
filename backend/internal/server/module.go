@@ -67,7 +67,7 @@ type OverviewSource interface {
 // POST /api/actions/{action}.
 type ActionSource interface {
 	// ActionTargets maps action name → the "group/resource" targets it
-	// applies to (see actionTargets). Naming a core action (e.g. "suspend")
+	// applies to (see actionTargets), or "kind:group/Kind". Naming a core action (e.g. "suspend")
 	// only adds targets: the core still runs it.
 	ActionTargets() map[string][]string
 	// RunAction runs one of the module's own actions.
@@ -313,6 +313,7 @@ var overviewSourceLabels = map[string]string{
 	"tcproutes":                "gateway",
 	"tlsroutes":                "gateway",
 	"udproutes":                "gateway",
+	"plugins":                  "custom",
 }
 
 func overviewLabel(name string) string {

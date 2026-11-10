@@ -97,9 +97,11 @@ type ColumnProgram struct {
 }
 
 // Eval is the cell for obj.
-func (c *ColumnProgram) Eval(obj map[string]any) (any, error) {
+func (c *ColumnProgram) Eval(obj map[string]any) (any, error) { return c.evalAt(obj, time.Now()) }
+
+func (c *ColumnProgram) evalAt(obj map[string]any, now time.Time) (any, error) {
 	start := time.Now()
-	a := newActivation(c.kp, prepareObject(c.kp.key, obj), c.context, start)
+	a := newActivation(c.kp, prepareObject(c.kp.key, obj), c.context, now)
 	v, _, err := c.prog.prg.Eval(a)
 	var out any
 	if err == nil {
@@ -126,6 +128,13 @@ type PanelOut struct {
 	// Errors are the kind entry's compile errors (then there are no
 	// sections) or a budget the render ran out of.
 	Errors []Diag `json:"errors,omitempty"`
+	// Notes say what related objects or metrics couldn't be read (a kind
+	// the cluster doesn't serve, a forbidden list, no Prometheus).
+	Notes []string `json:"notes,omitempty"`
+	// Refresh is how often (seconds) the UI should render the panel again
+	// while it is open, when it reads related objects (5), metrics (15) or
+	// now (30); 0 = only when the object changes.
+	Refresh int `json:"refresh,omitempty"`
 }
 
 // SectionOut is a resolved section: blocks are plain JSON objects with a
@@ -435,12 +444,30 @@ func orEmpty(items []map[string]any) []map[string]any {
 }
 
 // renderPanel renders kind entry kp's sections for obj.
-func renderPanel(p *Plugin, kp *kindProgs, obj map[string]any, contextName string) PanelOut {
+func renderPanel(p *Plugin, kp *kindProgs, obj map[string]any, env Env) PanelOut {
 	start := time.Now()
 	out := PanelOut{Plugin: p.ID(), Name: p.Name(), Sections: []SectionOut{}}
+	r := &renderer{act: newActivation(kp, prepareObject(kp.key, obj), env.Context, env.now())}
+	// Lookups first, with their own budget (a cold related kind costs a
+	// LIST), then the sections with the render's.
+	var ns notes
+	lctx, lcancel := context.WithTimeout(context.Background(), panelTimeout)
+	r.ctx = lctx
+	r.resolveRelated(kp, kp.panelRelated, env, &ns)
+	r.resolveMetrics(kp, kp.panelMetrics, env, &ns)
+	lcancel()
+	out.Notes = ns
+	for _, need := range []struct {
+		on   bool
+		secs int
+	}{{kp.panelNow, 30}, {!kp.panelMetrics.empty(), 15}, {!kp.panelRelated.empty(), 5}} {
+		if need.on {
+			out.Refresh = need.secs
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), panelTimeout)
 	defer cancel()
-	r := &renderer{ctx: ctx, act: newActivation(kp, prepareObject(kp.key, obj), contextName, start)}
+	r.ctx = ctx
 	for _, sp := range kp.sections {
 		if s, ok := r.section(sp); ok {
 			out.Sections = append(out.Sections, s)
@@ -462,31 +489,63 @@ func renderPanel(p *Plugin, kp *kindProgs, obj map[string]any, contextName strin
 
 // ActionOut is an action offered for an object.
 type ActionOut struct {
-	Plugin    string `json:"plugin"`
-	ID        string `json:"id"`
+	Plugin string `json:"plugin"`
+	ID     string `json:"id"`
+	// Type is shell (a command on this computer) or patch (a change to
+	// the object through POST /api/actions/plugin.<plugin>.<id>).
+	Type      string `json:"type"`
 	Label     string `json:"label"`
 	Icon      string `json:"icon,omitempty"`
 	Shortcut  string `json:"shortcut,omitempty"`
 	Message   string `json:"message,omitempty"`
 	Dangerous bool   `json:"dangerous"`
-	// Argv is the command as it will run (shown in the confirmation).
-	Argv []string `json:"argv"`
+	// Argv is a shell action's command as it will run (shown in the
+	// confirmation).
+	Argv []string `json:"argv,omitempty"`
+	// Background shell actions run without a dock tab.
+	Background bool `json:"background,omitempty"`
+	// PatchType and Inputs are a patch action's (inputs with their
+	// defaults evaluated for the object).
+	PatchType string     `json:"patchType,omitempty"`
+	Inputs    []InputOut `json:"inputs,omitempty"`
 	// Consented is whether the user has agreed to the plugin's current
 	// permissions; the UI asks first when not.
 	Consented bool `json:"consented"`
 }
 
-// offered evaluates `when` of kp's actions for obj.
-func offered(p *Plugin, kp *kindProgs, obj map[string]any, contextName string) ([]*Action, []error) {
-	var out []*Action
-	var errs []error
+// InputOut is a patch action's form field.
+type InputOut struct {
+	Name    string   `json:"name"`
+	Label   string   `json:"label"`
+	Type    string   `json:"type"`
+	Options []string `json:"options,omitempty"`
+	Default any      `json:"default"`
+	// ValidateMessage is shown when the backend refuses the value.
+	ValidateMessage string `json:"validateMessage,omitempty"`
+}
+
+// actionTimeout bounds one action evaluation (docs/PLUGINS.md §8).
+const actionTimeout = 50 * time.Millisecond
+
+// offered evaluates `when` of kp's actions for obj, after looking up the
+// related objects action expressions read. The renderer is returned for
+// further expressions of the same object (input defaults, patch bodies).
+func offered(p *Plugin, kp *kindProgs, obj map[string]any, env Env) ([]actProg, *renderer, []error) {
 	if len(kp.actions) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
+	var out []actProg
+	var errs []error
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	r := &renderer{act: newActivation(kp, prepareObject(kp.key, obj), env.Context, env.now())}
+	lctx, lcancel := context.WithTimeout(context.Background(), actionTimeout)
+	r.ctx = lctx
+	var ns notes
+	r.resolveRelated(kp, kp.actionRelated, env, &ns)
+	lcancel()
+	ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
 	defer cancel()
-	r := &renderer{ctx: ctx, act: newActivation(kp, prepareObject(kp.key, obj), contextName, start)}
+	r.ctx = ctx
 	for _, ap := range kp.actions {
 		ok, err := r.cond(ap.when)
 		if err != nil {
@@ -494,9 +553,36 @@ func offered(p *Plugin, kp *kindProgs, obj map[string]any, contextName string) (
 			continue
 		}
 		if ok {
-			out = append(out, ap.a)
+			out = append(out, ap)
 		}
 	}
 	p.stats.record(statAction, time.Since(start), errors.Join(errs...))
-	return out, errs
+	r.ctx = context.Background()
+	return out, r, errs
+}
+
+// actionOut describes offered action ap, evaluating its inputs' defaults.
+func actionOut(p *Plugin, ap actProg, r *renderer, vars func() ShellVars, consented bool) ActionOut {
+	a := ap.a
+	out := ActionOut{Plugin: p.ID(), ID: a.ID, Label: a.Label, Icon: a.Icon, Shortcut: a.Shortcut, Message: a.Message,
+		Dangerous: a.IsDangerous(), Consented: consented}
+	if a.Shell != nil {
+		out.Type, out.Argv, out.Background = "shell", a.Argv(vars()), a.Shell.Background
+		return out
+	}
+	out.Type, out.PatchType = "patch", a.Patch.Type
+	ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
+	defer cancel()
+	r.ctx = ctx
+	for _, ip := range ap.inputs {
+		in := ip.in
+		io := InputOut{Name: in.Name, Label: orDefault(in.Label, in.Name), Type: in.InputType(), Options: in.Options, ValidateMessage: in.ValidateMessage}
+		if v, err := r.eval(ip.def); err == nil && v != nil {
+			io.Default = v
+		} else {
+			io.Default = zeroInput(in)
+		}
+		out.Inputs = append(out.Inputs, io)
+	}
+	return out
 }

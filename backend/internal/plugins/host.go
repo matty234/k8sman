@@ -548,33 +548,56 @@ func (h *Host) Resolve(contextName string, rt cluster.ResourceType, cols []colum
 
 // Panels renders the active plugins' sections for obj, in plugin id order.
 // A kind entry that failed to compile shows its errors instead.
-func (h *Host) Panels(contextName string, rt cluster.ResourceType, obj map[string]any) []PanelOut {
-	key := KindKey(rt)
+func (h *Host) Panels(env Env, rt cluster.ResourceType, obj map[string]any) []PanelOut {
 	var out []PanelOut
 	for _, p := range h.active() {
-		k := p.m.Kinds[key]
-		if k == nil || (k.Version != "" && k.Version != rt.Version) {
-			continue
+		if po, ok := p.panel(env, rt, obj); ok {
+			out = append(out, po)
 		}
-		kp := p.kind(key)
-		if kp == nil {
-			p.mu.Lock()
-			errs := p.kindErrs[key]
-			p.mu.Unlock()
-			out = append(out, PanelOut{Plugin: p.ID(), Name: p.Name(), Sections: []SectionOut{}, Errors: errs})
-			continue
-		}
-		if len(kp.sections) == 0 {
-			continue
-		}
-		out = append(out, renderPanel(p, kp, obj, contextName))
 	}
 	return out
 }
 
-// Actions are the shell actions offered for obj (its kind's and "*"),
-// with their argv expanded by vars.
-func (h *Host) Actions(contextName string, rt cluster.ResourceType, obj map[string]any, vars func() ShellVars) []ActionOut {
+// panel renders p's sections for obj (ok false when p has none for its
+// kind). A kind entry that failed to compile shows its errors instead.
+func (p *Plugin) panel(env Env, rt cluster.ResourceType, obj map[string]any) (PanelOut, bool) {
+	key := KindKey(rt)
+	k := p.m.Kinds[key]
+	if k == nil || (k.Version != "" && k.Version != rt.Version) {
+		return PanelOut{}, false
+	}
+	kp := p.kind(key)
+	if kp == nil {
+		p.mu.Lock()
+		errs := p.kindErrs[key]
+		p.mu.Unlock()
+		return PanelOut{Plugin: p.ID(), Name: p.Name(), Sections: []SectionOut{}, Errors: errs}, true
+	}
+	if len(kp.sections) == 0 {
+		return PanelOut{}, false
+	}
+	return renderPanel(p, kp, obj, env), true
+}
+
+// entriesFor are p's compiled kind entries that apply to rt: its kind's
+// and "*".
+func (p *Plugin) entriesFor(rt cluster.ResourceType) []*kindProgs {
+	var out []*kindProgs
+	for _, key := range []string{KindKey(rt), "*"} {
+		k := p.m.Kinds[key]
+		if k == nil || (k.Version != "" && k.Version != rt.Version) {
+			continue
+		}
+		if kp := p.kind(key); kp != nil {
+			out = append(out, kp)
+		}
+	}
+	return out
+}
+
+// Actions are the actions offered for obj (its kind's and "*"): shell ones
+// with their argv expanded by vars, patch ones with their inputs.
+func (h *Host) Actions(env Env, rt cluster.ResourceType, obj map[string]any, vars func() ShellVars) []ActionOut {
 	var memo ShellVars
 	get := func() ShellVars {
 		if memo == nil {
@@ -585,22 +608,17 @@ func (h *Host) Actions(contextName string, rt cluster.ResourceType, obj map[stri
 	var out []ActionOut
 	consent := h.settings().Consent
 	for _, p := range h.active() {
-		for _, key := range []string{KindKey(rt), "*"} {
-			k := p.m.Kinds[key]
-			if k == nil || (k.Version != "" && k.Version != rt.Version) {
-				continue
-			}
-			kp := p.kind(key)
-			if kp == nil {
-				continue
-			}
-			acts, _ := offered(p, kp, obj, contextName)
-			for _, a := range acts {
-				out = append(out, ActionOut{
-					Plugin: p.ID(), ID: a.ID, Label: a.Label, Icon: a.Icon, Shortcut: a.Shortcut, Message: a.Message,
-					Dangerous: a.IsDangerous(), Argv: a.Argv(get()), Consented: consent[p.ID()] == p.PermissionsHash(),
-				})
-			}
+		out = append(out, p.actions(env, rt, obj, get, consent[p.ID()] == p.PermissionsHash())...)
+	}
+	return out
+}
+
+func (p *Plugin) actions(env Env, rt cluster.ResourceType, obj map[string]any, vars func() ShellVars, consented bool) []ActionOut {
+	var out []ActionOut
+	for _, kp := range p.entriesFor(rt) {
+		acts, r, _ := offered(p, kp, obj, env)
+		for _, ap := range acts {
+			out = append(out, actionOut(p, ap, r, vars, consented))
 		}
 	}
 	return out
@@ -612,33 +630,86 @@ var ErrNoAction = errors.New("the plugin action isn't available for this object"
 // ErrNoConsent means the user hasn't agreed to the plugin's permissions.
 var ErrNoConsent = errors.New("the plugin's permissions haven't been agreed to")
 
-// ShellAction finds action actionID of plugin pluginID for obj, checking
-// that it is offered (`when`) and consented to.
-func (h *Host) ShellAction(contextName string, rt cluster.ResourceType, obj map[string]any, pluginID, actionID string) (*Action, error) {
+// action finds action actionID of plugin pluginID offered for obj
+// (`when`), checking consent.
+func (h *Host) action(env Env, rt cluster.ResourceType, obj map[string]any, pluginID, actionID string) (*Plugin, actProg, *renderer, error) {
 	p := h.Get(pluginID)
 	if p == nil {
-		return nil, fmt.Errorf("plugin %q isn't loaded", pluginID)
+		return nil, actProg{}, nil, fmt.Errorf("plugin %q isn't loaded", pluginID)
 	}
 	if h.settings().Consent[p.ID()] != p.PermissionsHash() {
-		return nil, ErrNoConsent
+		return nil, actProg{}, nil, ErrNoConsent
 	}
-	for _, key := range []string{KindKey(rt), "*"} {
-		k := p.m.Kinds[key]
-		if k == nil || (k.Version != "" && k.Version != rt.Version) {
-			continue
-		}
-		kp := p.kind(key)
-		if kp == nil {
-			continue
-		}
-		acts, _ := offered(p, kp, obj, contextName)
-		for _, a := range acts {
-			if a.ID == actionID {
-				return a, nil
+	for _, kp := range p.entriesFor(rt) {
+		acts, r, _ := offered(p, kp, obj, env)
+		for _, ap := range acts {
+			if ap.a.ID == actionID {
+				return p, ap, r, nil
 			}
 		}
 	}
-	return nil, ErrNoAction
+	return nil, actProg{}, nil, ErrNoAction
+}
+
+// ShellAction finds shell action actionID of plugin pluginID for obj,
+// checking that it is offered (`when`) and consented to.
+func (h *Host) ShellAction(env Env, rt cluster.ResourceType, obj map[string]any, pluginID, actionID string) (*Action, error) {
+	_, ap, _, err := h.action(env, rt, obj, pluginID, actionID)
+	if err != nil {
+		return nil, err
+	}
+	if ap.a.Shell == nil {
+		return nil, ErrNoAction
+	}
+	return ap.a, nil
+}
+
+// PatchAction builds patch action actionID of plugin pluginID for obj
+// from the user's inputs: it checks that the action is offered and
+// consented to, that the plugin may patch the kind (never Secrets), and
+// the inputs (an *InputError names a bad one).
+func (h *Host) PatchAction(env Env, rt cluster.ResourceType, obj map[string]any, pluginID, actionID string, inputs map[string]any) (*PatchOut, error) {
+	p, ap, r, err := h.action(env, rt, obj, pluginID, actionID)
+	if err != nil {
+		return nil, err
+	}
+	key := KindKey(rt)
+	if ap.a.Patch == nil || key == secretKind || !slices.Contains(p.m.Permissions.Patch, key) {
+		return nil, ErrNoAction
+	}
+	start := time.Now()
+	out, err := patchBody(ap, r, inputs)
+	p.stats.record(statAction, time.Since(start), err)
+	return out, err
+}
+
+// PatchTargets are the patch actions of the active plugins, as action
+// names (plugin.<id>.<action>) and the kind keys they apply to.
+func (h *Host) PatchTargets() map[string][]string {
+	out := map[string][]string{}
+	for _, p := range h.active() {
+		for _, key := range p.m.KindOrder {
+			for _, a := range p.m.Kinds[key].Actions {
+				if a.Patch != nil && key != secretKind && slices.Contains(p.m.Permissions.Patch, key) {
+					out[ActionName(p.ID(), a.ID)] = append(out[ActionName(p.ID(), a.ID)], key)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// ActionName is a plugin action's name on POST /api/actions/{action}.
+func ActionName(pluginID, actionID string) string { return "plugin." + pluginID + "." + actionID }
+
+// SplitActionName is ActionName's inverse (ok false for other names).
+func SplitActionName(name string) (pluginID, actionID string, ok bool) {
+	rest, found := strings.CutPrefix(name, "plugin.")
+	if !found {
+		return "", "", false
+	}
+	pluginID, actionID, ok = strings.Cut(rest, ".")
+	return pluginID, actionID, ok && pluginID != "" && actionID != ""
 }
 
 // Icon returns plugin id's icon.png (at most 64 KB).
@@ -702,6 +773,9 @@ type KindInfo struct {
 	Columns  int  `json:"columns"`
 	Sections int  `json:"sections"`
 	Actions  int  `json:"actions"`
+	Alerts   int  `json:"alerts"`
+	Related  int  `json:"related"`
+	Metrics  int  `json:"metrics"`
 	Errors   int  `json:"errors"`
 }
 
@@ -742,7 +816,8 @@ func (h *Host) List(served func(key string) bool) []Info {
 			p.mu.Lock()
 			for _, key := range m.KindOrder {
 				k := m.Kinds[key]
-				ki := KindInfo{Key: key, Served: key == "*" || (served != nil && served(key)), Columns: len(k.Columns), Actions: len(k.Actions)}
+				ki := KindInfo{Key: key, Served: key == "*" || (served != nil && served(key)), Columns: len(k.Columns), Actions: len(k.Actions),
+					Alerts: len(k.Alerts), Related: len(k.Related), Metrics: len(k.Metrics)}
 				if k.Panel != nil {
 					ki.Sections = len(k.Panel.Sections)
 				}
