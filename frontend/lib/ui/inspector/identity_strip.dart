@@ -8,15 +8,13 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/context_menu.dart';
 
-/// The quiet line under the inspector's title, for every kind: the
-/// namespace (opens it; none for cluster-scoped objects), the age (ticking,
-/// the creation time in its tooltip) and the labels as faint `key=value`
-/// chips, as many as fit on two lines, then "+N", which shows the rest
-/// inline. Bookkeeping labels ([isNoisyLabel]) sort last and stay under +N
-/// unless there are no others. Right-click a label: filter the table by it,
-/// or copy it. The full metadata stays in the Overview's Metadata section.
-///
-/// Key it by the object's uid: "+N" open is per object.
+/// The quiet line under the inspector's title, for every kind, on one
+/// line: the namespace (opens it; none for cluster-scoped objects), the age
+/// (ticking, the creation time in its tooltip), then the values of the few
+/// labels that name the object (app, component, version…; the key in the
+/// tooltip) and "+N" / "N labels", which lists every label (click one to
+/// filter the table by it). The full metadata stays in the Overview's
+/// Metadata section.
 class IdentityStrip extends StatefulWidget {
   final ResourceType type;
   final String? namespace;
@@ -62,10 +60,7 @@ String shortLabel(String k, String v, {int max = 36}) {
 }
 
 class _IdentityStripState extends State<IdentityStrip> {
-  bool _all = false;
-
-  static const _gap = 6.0;
-  static const _chipPad = 10.0;
+  static const _sep = 14.0; // " · " between items
   static const _iconW = 16.0; // 12px icon + 4px gap
 
   @override
@@ -73,95 +68,135 @@ class _IdentityStripState extends State<IdentityStrip> {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
-    final mono = monoStyle(context, size: 11);
     final meta = asMap(dig(widget.object, ['metadata']));
     final ns = widget.namespace ?? meta['namespace'] as String?;
     final created = parseTime(meta['creationTimestamp']);
     final labels = [for (final e in asMap(meta['labels']).entries) (k: e.key, v: '${e.value}')];
     final quiet = [for (final l in labels) if (!isNoisyLabel(l.k)) l];
     final noisy = [for (final l in labels) if (isNoisyLabel(l.k)) l];
-    final ordered = [...quiet, ...noisy];
     if (ns == null && created == null && labels.isEmpty) return const SizedBox.shrink();
+
+    // Up front: the values of the few labels that name the thing (app,
+    // component, version…), at most three, deduplicated. The rest are one
+    // click away in a list.
+    final named = <({String k, String v})>[];
+    for (final key in _nameKeys) {
+      final l = quiet.where((l) => l.k == key).firstOrNull;
+      if (l != null && l.v.isNotEmpty && !named.any((n) => n.v == l.v)) named.add(l);
+      if (named.length == 3) break;
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 12, 8),
       child: LayoutBuilder(builder: (context, box) {
         final scale = MediaQuery.textScalerOf(context);
-        double textW(String s, TextStyle? style) =>
-            (TextPainter(text: TextSpan(text: s, style: style), textDirection: TextDirection.ltr, maxLines: 1, textScaler: scale)..layout()).width;
-        final maxW = box.maxWidth - 2;
-        final lead = [
-          if (ns != null) _iconW + textW(ns, hint),
-          if (created != null) _iconW + textW(formatAge(created), hint),
-        ];
-        double chipW(({String k, String v}) l) => textW(shortLabel(l.k, l.v), mono) + _chipPad;
-
-        // Collapsed: the quiet labels (or, with none, the rest) that fit on
-        // two lines with "+N" after them.
-        var shown = ordered;
-        if (!_all) {
-          final candidates = quiet.isNotEmpty ? quiet : noisy;
-          var n = candidates.length;
-          while (n > 0) {
-            final hidden = labels.length - n;
-            final widths = [...lead, for (final l in candidates.take(n)) chipW(l), if (hidden > 0) textW('+$hidden', hint) + 8];
-            if (_lines(widths, maxW) <= 2) break;
-            n--;
+        double textW(String s) =>
+            (TextPainter(text: TextSpan(text: s, style: hint), textDirection: TextDirection.ltr, maxLines: 1, textScaler: scale)..layout()).width;
+        String countText(int shown) => shown == 0 ? (labels.length == 1 ? '1 label' : '${labels.length} labels') : '+${labels.length - shown}';
+        var used = (ns == null ? 0 : _iconW + textW(ns)) + (created == null ? 0 : _sep + _iconW + textW(formatAge(created)));
+        var n = 0;
+        if (labels.isNotEmpty) {
+          used += _sep + _iconW;
+          while (n < named.length) {
+            final rest = labels.length - (n + 1);
+            final w = textW(named[n].v) + (n > 0 ? _sep : 0) + (rest > 0 ? 6 + textW('+$rest') : 0);
+            if (used + w > box.maxWidth) break;
+            used += textW(named[n].v) + (n > 0 ? _sep : 0);
+            n++;
           }
-          shown = candidates.take(n).toList();
         }
-        final hidden = labels.length - shown.length;
+        final shown = named.take(n).toList();
+        final more = labels.length - shown.length;
+        Widget dot() => Padding(padding: const EdgeInsets.symmetric(horizontal: 5), child: Text('·', style: hint?.copyWith(color: colors.faint)));
 
-        final strip = Wrap(spacing: _gap, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        return Row(children: [
           if (ns != null)
-            _Lead(
-              key: const ValueKey('identity-namespace'),
-              icon: Icons.folder_outlined,
-              tooltip: 'Open namespace $ns',
-              onTap: () => context.read<AppState>().openRef(ObjectRef(kind: 'Namespace', name: ns)),
-              child: Text(ns, maxLines: 1, overflow: TextOverflow.ellipsis, style: hint),
-            ),
-          if (created != null)
-            _Lead(
-              key: const ValueKey('identity-age'),
-              icon: Icons.schedule,
-              child: AgeText(meta['creationTimestamp'], style: hint),
-            ),
-          for (final l in shown) _LabelChip(type: widget.type, k: l.k, v: l.v, dim: isNoisyLabel(l.k), maxWidth: maxW, max: _all ? 72 : 36),
-          if (hidden > 0 || _all)
-            Hoverable(
-              key: const ValueKey('identity-more'),
-              onTap: () => setState(() => _all = !_all),
-              builder: (h) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                child: Text(_all ? 'less' : '+$hidden', style: hint?.copyWith(color: h ? theme.colorScheme.primary : colors.faint)),
+            Flexible(
+              child: _Lead(
+                key: const ValueKey('identity-namespace'),
+                icon: Icons.folder_outlined,
+                tooltip: 'Open namespace $ns',
+                onTap: () => context.read<AppState>().openRef(ObjectRef(kind: 'Namespace', name: ns)),
+                child: Text(ns, maxLines: 1, overflow: TextOverflow.ellipsis, style: hint),
               ),
             ),
+          if (created != null) ...[
+            if (ns != null) dot(),
+            _Lead(key: const ValueKey('identity-age'), icon: Icons.schedule, child: AgeText(meta['creationTimestamp'], style: hint)),
+          ],
+          if (labels.isNotEmpty) ...[
+            if (ns != null || created != null) dot(),
+            Icon(Icons.sell_outlined, size: 12, color: colors.faint),
+            const SizedBox(width: 4),
+            for (final (i, l) in shown.indexed) ...[
+              if (i > 0) dot(),
+              Flexible(child: _LabelValue(type: widget.type, k: l.k, v: l.v)),
+            ],
+            if (more > 0)
+              Builder(
+                builder: (anchor) => Hoverable(
+                  key: const ValueKey('identity-more'),
+                  onTap: () => _showAll(anchor, [...quiet, ...noisy]),
+                  builder: (h) => Padding(
+                    padding: EdgeInsets.only(left: shown.isEmpty ? 0 : 6),
+                    child: Text(countText(shown.length), style: hint?.copyWith(color: h ? theme.colorScheme.primary : colors.faint)),
+                  ),
+                ),
+              ),
+          ],
         ]);
-        // Open, a long list scrolls rather than push the tabs off screen.
-        return !_all ? strip : ConstrainedBox(constraints: const BoxConstraints(maxHeight: 132), child: SingleChildScrollView(child: strip));
       }),
     );
   }
 
-  /// How many lines [widths] take in a Wrap of [maxW] with [_gap] spacing.
-  static int _lines(List<double> widths, double maxW) {
-    var lines = 1;
-    var x = 0.0;
-    for (final raw in widths) {
-      final w = raw > maxW ? maxW : raw;
-      if (x == 0) {
-        x = w;
-      } else if (x + _gap + w <= maxW) {
-        x += _gap + w;
-      } else {
-        lines++;
-        x = w;
-      }
-    }
-    return lines;
+  /// Every label in a list under [anchor]: click one to filter the table
+  /// by it; the last row copies them all.
+  Future<void> _showAll(BuildContext anchor, List<({String k, String v})> all) async {
+    final app = context.read<AppState>();
+    final box = anchor.findRenderObject() as RenderBox;
+    final at = box.localToGlobal(Offset(0, box.size.height + 4));
+    final colors = AppColors.of(context);
+    final theme = Theme.of(context);
+    final mono = monoStyle(context, size: 11.5);
+    final chosen = await showContextMenuAt<VoidCallback>(anchor, at, [
+      for (final l in all)
+        PopupMenuItem<VoidCallback>(
+          height: 28,
+          value: () => app.filterTable(widget.type, '${l.k}=${l.v}'),
+          child: Tooltip(
+            message: 'Filter by ${l.k}=${l.v}',
+            waitDuration: const Duration(milliseconds: 600),
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: '${l.k}=', style: TextStyle(color: colors.faint)),
+                TextSpan(text: l.v, style: TextStyle(color: isNoisyLabel(l.k) ? colors.faint : theme.textTheme.bodyMedium?.color)),
+              ]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: mono,
+            ),
+          ),
+        ),
+      const PopupMenuDivider(height: 8),
+      menuItem(() => copyToClipboard(context, [for (final l in all) '${l.k}=${l.v}'].join('\n')), Icons.content_copy, 'Copy all labels'),
+    ], constraints: const BoxConstraints(minWidth: 200, maxWidth: 420));
+    if (chosen != null && mounted) chosen();
   }
 }
+
+/// Label keys whose values name the object, in the order they're shown.
+const _nameKeys = [
+  'app.kubernetes.io/name',
+  'app',
+  'k8s-app',
+  'app.kubernetes.io/component',
+  'component',
+  'tier',
+  'app.kubernetes.io/version',
+  'version',
+  'app.kubernetes.io/part-of',
+  'team',
+];
 
 /// A small hint-coloured icon and its value (namespace, age).
 class _Lead extends StatelessWidget {
@@ -189,44 +224,30 @@ class _Lead extends StatelessWidget {
   }
 }
 
-/// One label as a borderless, softly filled chip; click copies it,
-/// right-click offers "Filter by this label" and "Copy".
-class _LabelChip extends StatelessWidget {
+/// One label's value, plain hint text; the key is in the tooltip. Click
+/// copies `key=value`; right-click offers "Filter by this label" and "Copy".
+class _LabelValue extends StatelessWidget {
   final ResourceType type;
   final String k;
   final String v;
-  final bool dim;
-  final double maxWidth;
-  final int max;
-  const _LabelChip({required this.type, required this.k, required this.v, required this.dim, required this.maxWidth, required this.max});
+  const _LabelValue({required this.type, required this.k, required this.v});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = AppColors.of(context);
     final full = '$k=$v';
-    final text = shortLabel(k, v, max: max);
-    final eq = text.indexOf('=');
-    final chip = Hoverable(
-      onTap: () => copyToClipboard(context, full),
-      onSecondaryTapUp: (d) => _menu(context, d.globalPosition, full),
-      builder: (h) => Container(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-        decoration: BoxDecoration(color: chipFill(context, hovered: h), borderRadius: BorderRadius.circular(4)),
-        child: Text.rich(
-          TextSpan(children: [
-            TextSpan(text: text.substring(0, eq + 1), style: TextStyle(color: colors.faint)),
-            TextSpan(text: text.substring(eq + 1), style: TextStyle(color: dim ? colors.faint : theme.hintColor)),
-          ]),
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.ellipsis,
-          style: monoStyle(context, size: 11),
-        ),
+    return Tooltip(
+      message: full,
+      waitDuration: const Duration(milliseconds: 500),
+      child: Hoverable(
+        onTap: () => copyToClipboard(context, full),
+        onSecondaryTapUp: (d) => _menu(context, d.globalPosition, full),
+        builder: (h) => Text(v,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(color: h ? theme.textTheme.bodyMedium?.color : theme.hintColor)),
       ),
     );
-    return Tooltip(message: full, waitDuration: const Duration(milliseconds: 600), child: chip);
   }
 
   Future<void> _menu(BuildContext context, Offset at, String full) async {

@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 import 'support/harness.dart';
 
 void main() {
-  testWidgets('identity strip: namespace, age, quiet labels first, the rest under +N', (tester) async {
+  testWidgets('identity strip: namespace, age, the naming label value, every label in a list', (tester) async {
     final api = FakeApiClient();
     final app = AppState(api)..types = testTypes;
     final created = DateTime.now().toUtc().subtract(const Duration(days: 5)).toIso8601String();
@@ -36,17 +36,16 @@ void main() {
 
     expect(find.text('shop'), findsOneWidget);
     expect(find.text('5d'), findsOneWidget);
-    expect(find.text('app=web', findRichText: true), findsOneWidget);
-    // The hash is bookkeeping: folded under +N, not shown up front.
+    // Up front: the value of the label that names it; the rest in a list.
+    expect(find.text('web'), findsOneWidget);
     expect(find.text('pod-template-hash=5d8f7c9b6', findRichText: true), findsNothing);
     final more = find.byKey(const ValueKey('identity-more'));
-    expect(more, findsOneWidget);
-    expect(find.descendant(of: more, matching: find.textContaining(RegExp(r'^\+\d+$'))), findsOneWidget);
+    expect(find.descendant(of: more, matching: find.text('+13')), findsOneWidget);
 
     await tester.tap(more);
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('pod-template-hash=5d8f7c9b6', findRichText: true), findsOneWidget);
     expect(find.text('team-11=value-11', findRichText: true), findsOneWidget);
-    expect(find.text('less'), findsOneWidget);
+    expect(find.text('Copy all labels'), findsOneWidget);
   });
 }
