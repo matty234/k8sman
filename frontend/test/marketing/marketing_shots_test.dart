@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -1061,7 +1062,14 @@ Future<void> capture(WidgetTester tester, String name) async {
 void shot(String name, Future<void> Function(WidgetTester tester) body) {
   testWidgets(name, (tester) async {
     await loadRealFonts();
-    await http.runWithClient(() => body(tester), () => MockClient(restHandler));
+    // The app's macOS chrome: the sidebar leaves room for the frame's
+    // traffic lights instead of drawing the context picker under them.
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      await http.runWithClient(() => body(tester), () => MockClient(restHandler));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
     if (unhandled.isNotEmpty) {
       // ignore: avoid_print
       print('unhandled in $name:\n  ${unhandled.join('\n  ')}');
