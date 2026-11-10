@@ -404,6 +404,32 @@ class _StateBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final s = session;
+    // A finished session is routine: a slim pill, not a card.
+    if (s.phase == TerminalPhase.exited) {
+      final ok = s.exitCode == 0;
+      final color = severityColor(context, ok ? Severity.ok : Severity.warn);
+      return Align(alignment: Alignment.centerLeft, child: Material(
+        key: const ValueKey('terminal-state-banner'),
+        color: theme.colorScheme.surfaceContainerHigh,
+        elevation: 2,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 2, 4, 2),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(ok ? Icons.check_circle_outline : Icons.error_outline, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(ok ? 'Session ended' : 'Exited with code ${s.exitCode}', style: theme.textTheme.bodySmall),
+            const SizedBox(width: 2),
+            TextButton(
+              key: const ValueKey('terminal-restart-session'),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8), textStyle: theme.textTheme.bodySmall),
+              onPressed: onRestart,
+              child: const Text('Restart'),
+            ),
+          ]),
+        ),
+      ));
+    }
     final (sev, title) = switch (s.phase) {
       TerminalPhase.exited => (s.exitCode == 0 ? Severity.ok : Severity.warn, 'Session ended · exit code ${s.exitCode}'),
       TerminalPhase.startingDebug => (Severity.info, 'Starting debug container…'),

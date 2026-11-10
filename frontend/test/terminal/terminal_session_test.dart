@@ -44,7 +44,7 @@ void main() {
       ..emit(const ExecExit(3));
     await flush(tester);
     expect(tab.phase, TerminalPhase.exited);
-    expect(find.text('Session ended · exit code 3'), findsOneWidget);
+    expect(find.text('Exited with code 3'), findsOneWidget);
     expect(screenText(tab), contains('[process exited with code 3]'));
     expect(transport.last.closed, isTrue);
 
