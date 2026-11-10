@@ -85,6 +85,9 @@ kinds:
         value: variables.notAfter
 
     panel:
+      # These sections cover the whole object (Conditions included), so the
+      # generic panel's sections are left out.
+      generic: replace
       sections:
         - title: Certificate
           icon: verified
@@ -316,6 +319,8 @@ kinds:
       - name: Server
         value: object.spec.?acme.?server
     panel:
+      # The full spec (solvers, auth) stays below, collapsed.
+      generic: collapse
       sections:
         - title: Issuer
           icon: policy

@@ -62,6 +62,10 @@ kinds:
       ownerCES: >-
         object.metadata.?ownerReferences.orValue([]).exists(o, o.kind == "ClusterExternalSecret")
           ? string(object.metadata.ownerReferences.filter(o, o.kind == "ClusterExternalSecret")[0].name) : ""
+      # Ready is False (SecretSyncedError, …), and since when.
+      notSynced: variables.ready.hasValue() && variables.ready.value().status == "False"
+      failingSince: 'variables.notSynced ? string(variables.ready.value().?lastTransitionTime.orValue("")) : ""'
+      failingLong: variables.failingSince != "" && age(variables.failingSince) >= duration("24h")
       # Panels only (they read related).
       store: related.?store.or(related.?clusterStore)
 
@@ -98,7 +102,10 @@ kinds:
       - name: Target
         value: variables.target
 
+    # The plugin's sections are the whole panel: no generic Health,
+    # Conditions, Spec and Status after them (the YAML tab has it all).
     panel:
+      generic: replace
       sections:
         - title: Sync status
           icon: sync
@@ -112,20 +119,23 @@ kinds:
               severity: info
               when: '!variables.ready.hasValue()'
               text: '"No Ready condition yet: the operator has not reconciled this object."'
+            # Not ready: a callout titled with the reason, the message under it.
             - &notReadyWarning
               type: message
               severity: warning
               when: >-
                 variables.ready.hasValue() && variables.ready.value().status != "True" &&
                 variables.reason.lowerAscii() in ["pending", "progressing", "unknown", "waiting"]
-              text: variables.readyText
+              title: variables.reason
+              text: variables.readyMessage
             - &notReadyError
               type: message
               severity: error
               when: >-
                 variables.ready.hasValue() && variables.ready.value().status != "True" &&
                 !(variables.reason.lowerAscii() in ["pending", "progressing", "unknown", "waiting"])
-              text: variables.readyText
+              title: variables.reason
+              text: variables.readyMessage
             - &readyMessage
               type: message
               severity: info
@@ -140,6 +150,7 @@ kinds:
                   value: variables.refresh
                 - label: Synced version
                   value: object.?status.?syncedResourceVersion
+                  mono: true
         - title: Store and target
           icon: link
           blocks:
@@ -188,12 +199,16 @@ kinds:
               columns:
                 - name: Secret key
                   value: row.?secretKey.orValue("")
+                  mono: true
                 - name: Remote key
                   value: row.?remoteRef.?key.orValue("")
+                  mono: true
                 - name: Property
                   value: row.?remoteRef.?property
+                  mono: true
                 - name: Version
                   value: row.?remoteRef.?version
+                  mono: true
             - type: table
               when: size(object.spec.?dataFrom.orValue([])) > 0
               rows: object.spec.dataFrom
@@ -201,6 +216,7 @@ kinds:
                 # One dataFrom entry on a line: extract, find, rewrite, a
                 # generator or another store.
                 - name: dataFrom
+                  mono: true
                   value: >-
                     ((has(row.extract) ? ["extract " + string(row.extract.?key.orValue(""))
                         + (has(row.extract.property) ? " · " + string(row.extract.property) : "")
@@ -238,6 +254,30 @@ kinds:
           type: merge
           body: '{"metadata": {"annotations": {"force-sync": string(int(now))}}}'
 
+    # On the Overview (under Plugins) and in the dock's Issues tab. A
+    # failure older than a day is critical: by then it isn't a blip.
+    alerts:
+      - id: not-synced
+        label: ExternalSecrets not synced
+        severity: warning
+        when: variables.notSynced && !variables.failingLong
+        message: variables.readyText
+        since: 'variables.failingSince != "" ? dyn(variables.failingSince) : dyn(null)'
+      - id: not-synced-day
+        label: ExternalSecrets not synced for over a day
+        severity: critical
+        when: variables.failingLong
+        message: '"Failing for " + humanDuration(age(variables.failingSince)) + ": " + variables.readyText'
+        since: variables.failingSince
+
+    # Settings ▸ Integrations: "ExternalSecrets: 12 · not synced: 2".
+    status:
+      label: ExternalSecrets
+      counts:
+        - label: not synced
+          severity: warning
+          when: variables.notSynced
+
   external-secrets.io/ClusterExternalSecret:
     icon: vpn_key
     variables:
@@ -271,6 +311,7 @@ kinds:
         type: status
         value: variables.reason
     panel:
+      generic: replace
       sections:
         - title: Cluster external secret
           icon: hub
@@ -297,9 +338,13 @@ kinds:
               severity: info
               when: size(variables.selectors) == 0 && size(variables.namespaces) == 0
               text: '"No namespaceSelector or namespaces set"'
-            - type: chips
+            - type: table
               when: size(variables.selectors) > 0
-              items: variables.selectors
+              rows: variables.selectors
+              columns:
+                - name: Selector
+                  value: row
+                  mono: true
             - type: chips
               when: size(variables.namespaces) > 0
               items: variables.namespaces
@@ -349,6 +394,7 @@ kinds:
       - name: Capabilities
         value: object.?status.?capabilities.orValue("")
     panel: &storePanel
+      generic: replace
       sections:
         - title: Provider
           icon: vpn_key
@@ -368,11 +414,18 @@ kinds:
                   value: object.spec.?refreshInterval
                 - label: Controller
                   value: object.spec.?controller
-            # The provider's settings as a tree (auth Secret references show
-            # their names and keys; values are never read from Secrets).
-            - type: json
+            # The provider's settings as path → value rows; Secret and
+            # ServiceAccount references (auth.secretRef.…SecretRef,
+            # serviceAccountRef) are links showing the name and key, never a
+            # value.
+            - type: settings
               when: variables.provider != ""
               value: object.spec.provider[variables.provider]
+        - title: Conditions
+          icon: checklist
+          when: size(object.?status.?conditions.orValue([])) > 0
+          blocks:
+            - type: conditions
         - title: ExternalSecrets using this store
           icon: link
           blocks:
