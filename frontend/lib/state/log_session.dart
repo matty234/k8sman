@@ -94,6 +94,13 @@ abstract class LogSession extends DockTab {
   /// Text for "Copy all".
   String copyText() => lines.join('\n');
 
+  /// The buffer is full, so older lines of the chosen range were dropped.
+  bool get truncated => lines.length >= kMaxLogLines;
+
+  /// Every line of the chosen range, fetched again without the buffer's
+  /// cap (for downloads), or null where a session can't.
+  Future<List<String>?> fetchFull() async => null;
+
   /// Text to save to a file: the rows being shown (only-matching), else
   /// every buffered line, oldest first.
   String exportText({bool all = false}) {

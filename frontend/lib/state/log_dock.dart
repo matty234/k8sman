@@ -71,6 +71,20 @@ class LogStream extends LogSession {
     return (c?.restarts ?? 0) > 0 || (c?.lastTerminated.isNotEmpty ?? false);
   }
 
+  @override
+  Future<List<String>?> fetchFull() async {
+    final c = current;
+    if (c == null) return null;
+    final out = <String>[];
+    // The same range and options, read to the end rather than followed.
+    await for (final m in api.logs(namespace: namespace, pod: pod, container: c.name, tailLines: tail, sinceSeconds: since, previous: previous, follow: false, timestamps: timestamps)) {
+      if (m.error != null) throw StateError(m.error!);
+      if (m.line != null) out.add(m.line!);
+      if (m.eof) break;
+    }
+    return out;
+  }
+
   /// Change subscription options and reconnect.
   void setOptions({bool? follow, bool? previous, bool? timestamps, LogRange? range}) {
     if (follow != null) this.follow = follow;

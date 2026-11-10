@@ -645,15 +645,26 @@ class _MoreMenu extends StatelessWidget {
   }
 }
 
-/// Saves the lines being shown (every buffered line unless only-matching is
+/// Saves the lines being shown (every line of the range unless only-matching is
 /// on) to a file the user chooses; where there is no save panel, copies them.
 Future<void> _download(BuildContext context, LogSession s) async {
   final t = DateTime.now();
   String two(int n) => n.toString().padLeft(2, '0');
   final stamp = '${t.year}${two(t.month)}${two(t.day)}-${two(t.hour)}${two(t.minute)}${two(t.second)}';
   final name = '${s.downloadBase}-$stamp.log'.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-  final text = '${s.exportText()}\n';
   final messenger = ScaffoldMessenger.maybeOf(context);
+  var text = '${s.exportText()}\n';
+  // The viewer keeps the last 10,000 lines; when that dropped some of the
+  // chosen range (and every line is wanted), read the range again in full.
+  if (s.truncated && s.visibleRows == null) {
+    messenger?.showSnackBar(const SnackBar(content: Text('Fetching the full log…'), duration: Duration(seconds: 2)));
+    try {
+      final all = await s.fetchFull();
+      if (all != null) text = '${all.join('\n')}\n';
+    } catch (e) {
+      messenger?.showSnackBar(SnackBar(content: Text('Could not fetch the full log ($e); saving the last ${s.lines.length} lines')));
+    }
+  }
   try {
     final path = await NativeFiles.saveText(name, text, extensions: const ['log', 'txt'], label: 'Log', confirm: 'Save');
     if (path != null) messenger?.showSnackBar(SnackBar(content: Text('Saved logs to $path')));
