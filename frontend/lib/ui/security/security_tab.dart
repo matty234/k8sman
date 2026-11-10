@@ -1,7 +1,8 @@
 /// The inspector's Security tab for Pods and pod controllers: the object's
 /// findings (from `GET /api/security/object`, the Security page's analysis),
-/// its images' vulnerabilities (Trivy), its effective security context and,
-/// when Kyverno is connected, its policy results. Also the tab's count badge
+/// its images' vulnerabilities (Trivy), its effective security context and
+/// what plugins add to it (a policy engine's results: a plugin tab with
+/// `into: security`). Also the tab's count badge
 /// and the one Overview insight kept for critical settings.
 library;
 
@@ -13,10 +14,9 @@ import 'package:provider/provider.dart';
 import '../../addons/addons.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
-import '../../modules/kyverno_module.dart' show kyvernoConnected;
 import '../../modules/modules.dart' show moduleInspectorTabs;
-import '../../panels/kyverno/index.dart' show ObjectPolicyResults, policyReportResource;
 import '../../panels/registry.dart';
+import '../../plugins/plugin_panel.dart' show PluginSlotSections;
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../inspector/inspector.dart';
@@ -33,9 +33,14 @@ const securityTabKinds = {'/Pod', 'apps/Deployment', 'apps/StatefulSet', 'apps/D
 
 const _tabLabel = 'Security';
 
+/// The Security tab's slot: plugin tabs with `into: security` are drawn in
+/// it ([PluginSlotSections]) on the kinds that have it.
+const securitySlot = 'security';
+
 /// The Security tab for [ctx]'s object.
 PanelTab securityTab(PanelContext ctx) => PanelTab(
       label: _tabLabel,
+      slot: securitySlot,
       badge: (context, ctx) => SecurityBadge(key: ValueKey('security-badge-${ctx.uid}'), ctx: ctx),
       builder: (context, ctx) => SecurityTabView(key: ValueKey('security-${ctx.uid}'), ctx: ctx),
     );
@@ -238,7 +243,6 @@ class SecurityTabView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final kyverno = kyvernoConnected(ctx) ? policyReportResource(ctx) : null;
     return SelectionArea(
       child: SingleChildScrollView(
         key: PageStorageKey('security-${ctx.uid}'),
@@ -267,13 +271,8 @@ class SecurityTabView extends StatelessWidget {
             },
           ),
           InspectorSection(id: 'security-context', title: 'Security context', child: SecurityContextTable(ctx)),
-          if (kyverno != null)
-            ObjectPolicyResults(
-              key: ValueKey('security-kyverno-${ctx.uid}'),
-              ctx: ctx,
-              resource: kyverno,
-              wrap: (content, reload) => InspectorSection(id: 'security-policy', title: 'Policy results', trailing: RefreshButton(reload), child: content),
-            ),
+          // Plugins' sections for this tab (Kyverno's policy results).
+          PluginSlotSections(key: ValueKey('security-plugins-${ctx.uid}'), ctx: ctx, slot: securitySlot),
         ]),
       ),
     );

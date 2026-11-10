@@ -96,9 +96,9 @@ type StatusCount struct {
 	Severity string `yaml:"severity"`
 }
 
-// Related is an object (name) or objects (owner, selector) that a kind's
-// panels and actions read as related.<name>, from the watch cache. Its
-// kind must be in permissions.read.
+// Related is an object (name) or objects (owner, selector, filter) that a
+// kind's panels and actions read as related.<name>, from the watch cache.
+// Its kind must be in permissions.read.
 type Related struct {
 	Kind      string `yaml:"kind"`
 	Name      Expr   `yaml:"name"`
@@ -106,9 +106,14 @@ type Related struct {
 	Selector  Expr   `yaml:"selector"`
 	Namespace Expr   `yaml:"namespace"`
 	When      Expr   `yaml:"when"`
+	// Filter keeps the candidates for which it is true (it sees each as
+	// `item`), evaluated by the host before the list is capped. Alone (no
+	// name, owner or selector) the candidates are every object of the kind
+	// in the namespace.
+	Filter Expr `yaml:"filter"`
 }
 
-// IsList is whether related.<name> is a list (owner and selector
+// IsList is whether related.<name> is a list (owner, selector and filter
 // relations) rather than one object.
 func (r *Related) IsList() bool { return !r.Name.IsSet() }
 
@@ -154,6 +159,23 @@ type Panel struct {
 	// Kinds with a compiled-in panel ignore it.
 	Generic  string    `yaml:"generic"`
 	Sections []Section `yaml:"sections"`
+	// Tabs are inspector tabs of the plugin's own, after the kind's (or,
+	// with into, sections of a host tab the kind has).
+	Tabs []Tab `yaml:"tabs"`
+}
+
+// Tab is an inspector tab a plugin adds: its sections, shown while When
+// holds (When may read related, so the tab appears once the panel has
+// rendered). Into names a host tab (hostTabs): on kinds that have it, the
+// sections go into that tab instead of a tab of their own. A policy
+// engine's results go into the Security tab of Pods and workloads, and
+// are a tab of their own on other kinds.
+type Tab struct {
+	Title    string    `yaml:"title"`
+	Icon     string    `yaml:"icon"`
+	When     Expr      `yaml:"when"`
+	Into     string    `yaml:"into"`
+	Sections []Section `yaml:"sections"`
 }
 
 // GenericMode is Generic with its default.
@@ -166,9 +188,12 @@ func (p *Panel) GenericMode() string {
 
 // Section is one DetailSection.
 type Section struct {
-	Title     string  `yaml:"title"`
-	Icon      string  `yaml:"icon"`
-	When      Expr    `yaml:"when"`
+	Title string `yaml:"title"`
+	Icon  string `yaml:"icon"`
+	When  Expr   `yaml:"when"`
+	// Summary is a short text at the right of the section's header (a
+	// count, a state); empty shows nothing.
+	Summary   Expr    `yaml:"summary"`
 	Collapsed bool    `yaml:"collapsed"`
 	Blocks    []Block `yaml:"blocks"`
 	pos       Pos
@@ -235,6 +260,10 @@ type TableColumn struct {
 	Type  string `yaml:"type"`
 	Link  Expr   `yaml:"link"`
 	Mono  bool   `yaml:"mono"`
+	// Detail draws the column on a line of its own under the row's other
+	// cells, across the table, in a quieter style (a message, a
+	// description). An empty one draws nothing.
+	Detail bool `yaml:"detail"`
 }
 
 // Action is a kind's action: a shell command run on this computer, or a
@@ -321,7 +350,10 @@ var (
 	barFormats      = []string{"number", "quantity", "percent"}
 	codeLanguages   = []string{"text", "yaml", "json", "shell"}
 	genericModes    = []string{"keep", "collapse", "replace"}
-	jsonPatchOps    = []string{"add", "remove", "replace", "move", "copy", "test"}
+	// hostTabs are the app's own tabs a plugin tab can go into (Tab.Into):
+	// security is the Security tab of Pods and workloads.
+	hostTabs     = []string{"security"}
+	jsonPatchOps = []string{"add", "remove", "replace", "move", "copy", "test"}
 )
 
 // secretKind is the kind key of Secrets: plugins see their keys, never
@@ -464,9 +496,12 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 			continue
 		}
 		if key == "*" {
-			if len(k.Columns) > 0 || k.Panel != nil || len(k.HideColumns) > 0 || len(k.Variables) > 0 ||
-				len(k.Related) > 0 || len(k.Metrics) > 0 || len(k.Alerts) > 0 || k.Status != nil {
-				d.errAt(kn, `the "*" kind may only hold actions`)
+			// Any kind: what an inspected object shows and offers. Tables,
+			// overview polls and the status line stay per kind, so they
+			// never evaluate a plugin for every object of every kind.
+			if len(k.Columns) > 0 || len(k.HideColumns) > 0 || len(k.Alerts) > 0 || k.Status != nil || k.Icon != "" || k.Version != "" ||
+				(k.Panel != nil && k.Panel.Generic != "") {
+				d.errAt(kn, `the "*" kind may hold variables, related, metrics, panel sections and tabs, and actions (not columns, hideColumns, alerts, status, icon, version or panel.generic)`)
 			}
 		} else if !slices.Contains(m.Permissions.Read, key) {
 			d.errAt(kn, "%s is not in permissions.read", key)
@@ -534,8 +569,11 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 				ways++
 			}
 		}
-		if ways != 1 {
-			d.errAt(rn, "related.%s needs exactly one of name, owner and selector", name)
+		switch {
+		case ways > 1:
+			d.errAt(rn, "related.%s takes one of name, owner and selector", name)
+		case ways == 0 && !r.Filter.IsSet():
+			d.errAt(rn, "related.%s needs one of name, owner, selector and filter", name)
 		}
 	}
 	metNode := resolve(field(n, "metrics"))
@@ -634,27 +672,34 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 		if k.Panel.Generic != "" && !slices.Contains(genericModes, k.Panel.Generic) {
 			d.errAt(resolve(field(pn, "generic")), "panel.generic must be one of %s", strings.Join(genericModes, ", "))
 		}
-		secs := resolve(field(pn, "sections"))
-		for i := range k.Panel.Sections {
-			s := &k.Panel.Sections[i]
-			var sn *yaml.Node
-			if secs != nil && i < len(secs.Content) {
-				sn = resolve(secs.Content[i])
+		validateSections(d, k.Panel.Sections, resolve(field(pn, "sections")))
+		tabsNode := resolve(field(pn, "tabs"))
+		titles := map[string]bool{}
+		for i := range k.Panel.Tabs {
+			t := &k.Panel.Tabs[i]
+			var tn *yaml.Node
+			if tabsNode != nil && i < len(tabsNode.Content) {
+				tn = resolve(tabsNode.Content[i])
 			}
-			if s.Title == "" {
-				d.errAt(sn, "a section needs a title")
+			switch {
+			case t.Title == "":
+				d.errAt(orNode(tn, pn), "a tab needs a title")
+			case titles[t.Title]:
+				d.errAt(orNode(tn, pn), "tab %q is listed twice", t.Title)
+			case slices.Contains([]string{"Overview", "YAML", "Events"}, t.Title):
+				d.errAt(orNode(tn, pn), "tab %q has the name of one of the inspector's own tabs", t.Title)
 			}
-			if s.Icon != "" && !IconAllowed(s.Icon) {
-				d.errAt(resolve(field(sn, "icon")), "unknown icon %q", s.Icon)
+			titles[t.Title] = true
+			if t.Icon != "" && !IconAllowed(t.Icon) {
+				d.errAt(resolve(field(tn, "icon")), "unknown icon %q", t.Icon)
 			}
-			blocks := resolve(field(sn, "blocks"))
-			for j := range s.Blocks {
-				var bn *yaml.Node
-				if blocks != nil && j < len(blocks.Content) {
-					bn = resolve(blocks.Content[j])
-				}
-				s.Blocks[j].validate(d, bn)
+			if t.Into != "" && !slices.Contains(hostTabs, t.Into) {
+				d.errAt(resolve(field(tn, "into")), "into must be one of %s", strings.Join(hostTabs, ", "))
 			}
+			if len(t.Sections) == 0 {
+				d.errAt(orNode(tn, pn), "tab %q needs sections", t.Title)
+			}
+			validateSections(d, t.Sections, resolve(field(tn, "sections")))
 		}
 	}
 	ids := map[string]bool{}
@@ -708,6 +753,32 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 		}
 		if a.Confirm != nil && !*a.Confirm {
 			d.warnAt(resolve(field(an, "confirm")), "plugin shell actions are always confirmed in this version")
+		}
+	}
+}
+
+// validateSections checks sections (of a panel or a tab); secs is their
+// YAML list.
+func validateSections(d *decoder, sections []Section, secs *yaml.Node) {
+	for i := range sections {
+		s := &sections[i]
+		var sn *yaml.Node
+		if secs != nil && i < len(secs.Content) {
+			sn = resolve(secs.Content[i])
+		}
+		if s.Title == "" {
+			d.errAt(sn, "a section needs a title")
+		}
+		if s.Icon != "" && !IconAllowed(s.Icon) {
+			d.errAt(resolve(field(sn, "icon")), "unknown icon %q", s.Icon)
+		}
+		blocks := resolve(field(sn, "blocks"))
+		for j := range s.Blocks {
+			var bn *yaml.Node
+			if blocks != nil && j < len(blocks.Content) {
+				bn = resolve(blocks.Content[j])
+			}
+			s.Blocks[j].validate(d, bn)
 		}
 	}
 }

@@ -32,7 +32,11 @@ class PanelTab {
 
   /// A small widget after the label (e.g. a count); it may draw nothing.
   final Widget Function(BuildContext context, PanelContext ctx)? badge;
-  const PanelTab({required this.label, this.icon, required this.builder, this.badge});
+
+  /// The tab's role for plugins: a plugin tab whose `into` names it
+  /// (`security`) is drawn inside this tab rather than as a tab of its own.
+  final String? slot;
+  const PanelTab({required this.label, this.icon, required this.builder, this.badge, this.slot});
 }
 
 /// Renders kind-specific detail sections. The shell renders a quiet owner

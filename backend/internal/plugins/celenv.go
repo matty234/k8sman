@@ -45,6 +45,7 @@ const (
 	varRelated   = "related"
 	varMetrics   = "metrics"
 	varInput     = "input"
+	varItem      = "item"
 )
 
 var (
@@ -149,7 +150,36 @@ func envOptions() []cel.EnvOption {
 			cel.MemberOverload("list_sort", []*cel.Type{cel.ListType(cel.DynType)}, cel.ListType(cel.DynType),
 				cel.UnaryBinding(sortList)),
 		),
+		// list.flatten(): the lists in a list joined into one (one level),
+		// e.g. the results of several reports. CEL's macros can map and
+		// filter but not concatenate a list of lists.
+		cel.Function("flatten",
+			cel.MemberOverload("list_flatten", []*cel.Type{cel.ListType(cel.DynType)}, cel.ListType(cel.DynType),
+				cel.UnaryBinding(flattenList)),
+		),
 	}
+}
+
+// flattenList joins the lists in a list; other elements are kept as they
+// are.
+func flattenList(v ref.Val) ref.Val {
+	l, ok := v.(traits.Lister)
+	if !ok {
+		return types.NewErr("flatten: expected a list")
+	}
+	var items []ref.Val
+	for it := l.Iterator(); it.HasNext() == types.True; {
+		e := it.Next()
+		inner, ok := e.(traits.Lister)
+		if !ok {
+			items = append(items, e)
+			continue
+		}
+		for jt := inner.Iterator(); jt.HasNext() == types.True; {
+			items = append(items, jt.Next())
+		}
+	}
+	return types.DefaultTypeAdapter.NativeToValue(items)
 }
 
 // sortList sorts a list of strings, numbers, booleans or timestamps.
@@ -321,6 +351,9 @@ type activation struct {
 	namespace string
 	row       any
 	hasRow    bool
+	// item is the candidate a related filter is looking at.
+	item    any
+	hasItem bool
 	// related and metrics are set for panels and actions (nil elsewhere:
 	// the compiler keeps them out of columns and alerts).
 	related map[string]any
@@ -340,6 +373,8 @@ func (a *activation) ResolveName(name string) (any, bool) {
 		return a.namespace, true
 	case varRow:
 		return a.row, a.hasRow
+	case varItem:
+		return a.item, a.hasItem
 	case varRelated:
 		return a.related, a.related != nil
 	case varMetrics:

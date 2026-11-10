@@ -383,12 +383,14 @@ kinds:
       providers: object.spec.?provider.orValue({}).map(k, string(k)).sort()
       provider: 'size(variables.providers) > 0 ? variables.providers[0] : ""'
     related: &storeRelated
-      # Every ExternalSecret in the store's namespace (every namespace for a
-      # ClusterSecretStore): there is no "all objects" relation, so this is a
-      # selector no object fails. The panel keeps those that use the store.
+      # The ExternalSecrets in the store's namespace (every namespace for a
+      # ClusterSecretStore) that use this store: the host keeps those the
+      # filter accepts, before the list is capped.
       externalSecrets:
         kind: external-secrets.io/ExternalSecret
-        selector: '{"matchExpressions": [{"key": "k8sman.dev/none", "operator": "DoesNotExist"}]}'
+        filter: >-
+          string(item.spec.?secretStoreRef.?kind.orValue("SecretStore")) == object.kind &&
+          string(item.spec.?secretStoreRef.?name.orValue("")) == object.metadata.name
     hideColumns: &storeHide [Capabilities, Ready]   # Capabilities: ours, before Age
     columns: &storeColumns
       - name: Provider
@@ -435,10 +437,7 @@ kinds:
           icon: link
           blocks:
             - type: table
-              rows: >-
-                related.externalSecrets.filter(es,
-                  string(es.spec.?secretStoreRef.?kind.orValue("SecretStore")) == object.kind &&
-                  string(es.spec.?secretStoreRef.?name.orValue("")) == object.metadata.name)
+              rows: related.externalSecrets
               limit: 50
               empty: None
               columns:

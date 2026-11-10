@@ -11,27 +11,45 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../metrics/quantity_cell.dart' show UsageBar;
 import '../ui/inspector/callout.dart' show Callout;
+import '../ui/inspector/section.dart' show InspectorSection, SectionSummary;
 import '../ui/theme.dart';
+import '../ui/widgets/atoms.dart' show HintText;
 import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
 import 'plugin_icons.dart';
 
-/// One plugin section as a [DetailSection].
+/// One plugin section as a [DetailSection] (the Overview and plugin tabs),
+/// or, with [inspectorId], as an [InspectorSection] (inside a host tab
+/// such as Security, whose sections are drawn that way).
 class PluginSectionView extends StatelessWidget {
   final Json section;
-  const PluginSectionView(this.section, {super.key});
+  final String? inspectorId;
+  const PluginSectionView(this.section, {super.key, this.inspectorId});
 
   @override
   Widget build(BuildContext context) {
     final blocks = asMapList(section['blocks']);
+    final summary = '${section['summary'] ?? ''}';
+    final child = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final (i, b) in blocks.indexed) Padding(padding: EdgeInsets.only(top: i == 0 ? 0 : 10), child: PluginBlock(b)),
+      if (blocks.isEmpty) Text('—', style: TextStyle(color: Theme.of(context).hintColor)),
+    ]);
+    final id = inspectorId;
+    if (id != null) {
+      return InspectorSection(
+        id: id,
+        title: '${section['title'] ?? ''}',
+        initiallyExpanded: section['collapsed'] != true,
+        trailing: summary.isEmpty ? null : SectionSummary(summary),
+        child: child,
+      );
+    }
     return DetailSection(
       title: '${section['title'] ?? ''}',
       icon: pluginIcon(section['icon'] as String?) ?? Icons.extension_outlined,
       initiallyExpanded: section['collapsed'] != true,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (final (i, b) in blocks.indexed) Padding(padding: EdgeInsets.only(top: i == 0 ? 0 : 10), child: PluginBlock(b)),
-        if (blocks.isEmpty) Text('—', style: TextStyle(color: Theme.of(context).hintColor)),
-      ]),
+      trailing: summary.isEmpty ? null : HintText(summary),
+      child: child,
     );
   }
 }
@@ -301,28 +319,50 @@ class _PluginTableState extends State<PluginTable> {
     if (rows.isEmpty) return Text('${b['empty'] ?? 'None'}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor));
     final shown = _all ? rows : rows.take(limit).toList();
     final head = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w500);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Table(
-        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-        columnWidths: {for (var i = 0; i < cols.length; i++) i: const FlexColumnWidth()},
-        children: [
-          TableRow(children: [
-            for (final c in cols) Padding(padding: const EdgeInsets.only(bottom: 4, right: 8), child: Text('${c['name'] ?? ''}', style: head)),
-          ]),
-          for (final r in shown)
-            TableRow(children: [
-              for (var i = 0; i < cols.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(top: 3, bottom: 3, right: 8),
-                  child: () {
-                    final cell = i < (r as List).length ? asMap(r[i]) : const <String, dynamic>{};
-                    if (cell['error'] != null) return PluginErrorText('${cell['error']}');
-                    return pluginValue(context, cell['value'], type: cols[i]['type'] as String?, link: cell['link'], dense: true, mono: cols[i]['mono'] == true);
-                  }(),
-                ),
-            ]),
+    // Detail columns are drawn under their row's other cells, across the
+    // table; the rest are the table's columns.
+    final main = [for (var i = 0; i < cols.length; i++) if (cols[i]['detail'] != true) i];
+    final detail = [for (var i = 0; i < cols.length; i++) if (cols[i]['detail'] == true) i];
+    Json cellOf(Object? r, int i) => r is List && i < r.length ? asMap(r[i]) : const <String, dynamic>{};
+    Widget cell(Object? r, int i) {
+      final c = cellOf(r, i);
+      if (c['error'] != null) return PluginErrorText('${c['error']}');
+      return pluginValue(context, c['value'], type: cols[i]['type'] as String?, link: c['link'], dense: true, mono: cols[i]['mono'] == true);
+    }
+
+    final widths = {for (var j = 0; j < main.length; j++) j: const FlexColumnWidth()};
+    TableRow line(Object? r) => TableRow(children: [
+          for (final i in main) Padding(padding: const EdgeInsets.only(top: 3, bottom: 3, right: 8), child: cell(r, i)),
+        ]);
+    final header = TableRow(children: [
+      for (final i in main) Padding(padding: const EdgeInsets.only(bottom: 4, right: 8), child: Text('${cols[i]['name'] ?? ''}', style: head)),
+    ]);
+    final Widget body;
+    if (detail.isEmpty) {
+      body = Table(defaultVerticalAlignment: TableCellVerticalAlignment.middle, columnWidths: widths, children: [header, for (final r in shown) line(r)]);
+    } else {
+      // One table per row (the same flex widths, so columns line up), each
+      // followed by its detail lines.
+      final quiet = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+      body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (main.isNotEmpty) Table(columnWidths: widths, children: [header]),
+        for (final r in shown) ...[
+          if (main.isNotEmpty) Table(defaultVerticalAlignment: TableCellVerticalAlignment.middle, columnWidths: widths, children: [line(r)]),
+          for (final i in detail)
+            if (cellOf(r, i)['error'] != null || '${cellOf(r, i)['value'] ?? ''}'.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4, right: 8),
+                child: cols[i]['type'] == null || cols[i]['type'] == 'text'
+                    ? (cellOf(r, i)['error'] != null
+                        ? PluginErrorText('${cellOf(r, i)['error']}')
+                        : Text(_text(cellOf(r, i)['value']), style: cols[i]['mono'] == true ? monoStyle(context, size: 11, color: theme.hintColor) : quiet))
+                    : cell(r, i),
+              ),
         ],
-      ),
+      ]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      body,
       if (rows.length > limit || total > rows.length)
         Align(
           alignment: Alignment.centerLeft,

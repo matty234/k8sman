@@ -28,25 +28,35 @@
             "account_tree",
             "analytics",
             "apps",
+            "auto_awesome",
             "backup",
             "badge",
+            "block",
             "bolt",
             "build",
             "category",
             "check_circle",
             "checklist",
+            "cleaning_services",
             "cloud",
             "code",
+            "content_copy",
             "dashboard",
             "data_object",
             "delete",
+            "delete_sweep",
             "description",
+            "developer_board",
             "dns",
             "edit",
+            "edit_note",
             "error",
             "event",
             "extension",
+            "fact_check",
+            "filter_alt",
             "folder",
+            "gpp_maybe",
             "group",
             "history",
             "hub",
@@ -59,9 +69,12 @@
             "language",
             "layers",
             "link",
+            "list_alt",
             "lock",
             "memory",
+            "monitor_heart",
             "notifications",
+            "numbers",
             "open_in_new",
             "person",
             "play_arrow",
@@ -72,6 +85,7 @@
             "restart_alt",
             "rocket_launch",
             "router",
+            "rule",
             "schedule",
             "security",
             "settings",
@@ -80,6 +94,7 @@
             "stop",
             "storage",
             "sync",
+            "sync_alt",
             "task_alt",
             "terminal",
             "timer",
@@ -528,7 +543,7 @@
           "type": "string"
         },
         "value": {
-          "description": "CEL expression. bar: a number; code: a string; json: any value; settings: a map, flattened into path → value rows (references become links).",
+          "description": "CEL expression. bar: a number; code: a string, or any value (shown as YAML, or JSON with language json); json: any value; settings: a map, flattened into path → value rows (references become links).",
           "type": "string"
         },
         "when": {
@@ -652,25 +667,35 @@
             "account_tree",
             "analytics",
             "apps",
+            "auto_awesome",
             "backup",
             "badge",
+            "block",
             "bolt",
             "build",
             "category",
             "check_circle",
             "checklist",
+            "cleaning_services",
             "cloud",
             "code",
+            "content_copy",
             "dashboard",
             "data_object",
             "delete",
+            "delete_sweep",
             "description",
+            "developer_board",
             "dns",
             "edit",
+            "edit_note",
             "error",
             "event",
             "extension",
+            "fact_check",
+            "filter_alt",
             "folder",
+            "gpp_maybe",
             "group",
             "history",
             "hub",
@@ -683,9 +708,12 @@
             "language",
             "layers",
             "link",
+            "list_alt",
             "lock",
             "memory",
+            "monitor_heart",
             "notifications",
+            "numbers",
             "open_in_new",
             "person",
             "play_arrow",
@@ -696,6 +724,7 @@
             "restart_alt",
             "rocket_launch",
             "router",
+            "rule",
             "schedule",
             "security",
             "settings",
@@ -704,6 +733,7 @@
             "stop",
             "storage",
             "sync",
+            "sync_alt",
             "task_alt",
             "terminal",
             "timer",
@@ -820,6 +850,13 @@
             "$ref": "#/$defs/Section"
           },
           "type": "array"
+        },
+        "tabs": {
+          "description": "Inspector tabs of the plugin's own, after the kind's tabs.",
+          "items": {
+            "$ref": "#/$defs/Tab"
+          },
+          "type": "array"
         }
       },
       "type": "object"
@@ -884,6 +921,10 @@
     "Related": {
       "additionalProperties": false,
       "properties": {
+        "filter": {
+          "description": "CEL expression. bool, sees each candidate as item: keep those for which it is true, before the list is capped at 200. Alone, the candidates are every object of the kind in the namespace.",
+          "type": "string"
+        },
         "kind": {
           "description": "Kind key; must be in permissions.read.",
           "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
@@ -894,7 +935,7 @@
           "type": "string"
         },
         "namespace": {
-          "description": "CEL expression.",
+          "description": "CEL expression. string: where to look (default: the object's namespace; \"\" = every namespace).",
           "type": "string"
         },
         "owner": {
@@ -932,25 +973,35 @@
             "account_tree",
             "analytics",
             "apps",
+            "auto_awesome",
             "backup",
             "badge",
+            "block",
             "bolt",
             "build",
             "category",
             "check_circle",
             "checklist",
+            "cleaning_services",
             "cloud",
             "code",
+            "content_copy",
             "dashboard",
             "data_object",
             "delete",
+            "delete_sweep",
             "description",
+            "developer_board",
             "dns",
             "edit",
+            "edit_note",
             "error",
             "event",
             "extension",
+            "fact_check",
+            "filter_alt",
             "folder",
+            "gpp_maybe",
             "group",
             "history",
             "hub",
@@ -963,9 +1014,12 @@
             "language",
             "layers",
             "link",
+            "list_alt",
             "lock",
             "memory",
+            "monitor_heart",
             "notifications",
+            "numbers",
             "open_in_new",
             "person",
             "play_arrow",
@@ -976,6 +1030,7 @@
             "restart_alt",
             "rocket_launch",
             "router",
+            "rule",
             "schedule",
             "security",
             "settings",
@@ -984,6 +1039,7 @@
             "stop",
             "storage",
             "sync",
+            "sync_alt",
             "task_alt",
             "terminal",
             "timer",
@@ -993,6 +1049,10 @@
             "vpn_key",
             "warning"
           ],
+          "type": "string"
+        },
+        "summary": {
+          "description": "CEL expression. string: a short text at the right of the section's header (a count, a state).",
           "type": "string"
         },
         "title": {
@@ -1082,9 +1142,126 @@
       ],
       "type": "object"
     },
+    "Tab": {
+      "additionalProperties": false,
+      "properties": {
+        "icon": {
+          "enum": [
+            "account_tree",
+            "analytics",
+            "apps",
+            "auto_awesome",
+            "backup",
+            "badge",
+            "block",
+            "bolt",
+            "build",
+            "category",
+            "check_circle",
+            "checklist",
+            "cleaning_services",
+            "cloud",
+            "code",
+            "content_copy",
+            "dashboard",
+            "data_object",
+            "delete",
+            "delete_sweep",
+            "description",
+            "developer_board",
+            "dns",
+            "edit",
+            "edit_note",
+            "error",
+            "event",
+            "extension",
+            "fact_check",
+            "filter_alt",
+            "folder",
+            "gpp_maybe",
+            "group",
+            "history",
+            "hub",
+            "info",
+            "insights",
+            "inventory",
+            "key",
+            "label",
+            "lan",
+            "language",
+            "layers",
+            "link",
+            "list_alt",
+            "lock",
+            "memory",
+            "monitor_heart",
+            "notifications",
+            "numbers",
+            "open_in_new",
+            "person",
+            "play_arrow",
+            "policy",
+            "public",
+            "receipt",
+            "refresh",
+            "restart_alt",
+            "rocket_launch",
+            "router",
+            "rule",
+            "schedule",
+            "security",
+            "settings",
+            "shield",
+            "speed",
+            "stop",
+            "storage",
+            "sync",
+            "sync_alt",
+            "task_alt",
+            "terminal",
+            "timer",
+            "tune",
+            "upload",
+            "verified",
+            "vpn_key",
+            "warning"
+          ],
+          "type": "string"
+        },
+        "into": {
+          "description": "A tab of the app's own that these sections join on kinds that have it (security: the Security tab of Pods and workloads); elsewhere the tab is a tab of its own.",
+          "enum": [
+            "security"
+          ],
+          "type": "string"
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/Section"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression. bool: whether the tab shows for this object (may read related).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "sections"
+      ],
+      "type": "object"
+    },
     "TableColumn": {
       "additionalProperties": false,
       "properties": {
+        "detail": {
+          "description": "Draw the column on a line of its own under the row, across the table (a message, a description).",
+          "type": "boolean"
+        },
         "link": {
           "description": "CEL expression.",
           "type": "string"
@@ -1155,7 +1332,7 @@
       "additionalProperties": {
         "$ref": "#/$defs/Kind"
       },
-      "description": "Kind key (group/Kind, e.g. cert-manager.io/Certificate or /Pod; \"*\" for actions on any kind) → what the plugin adds to it.",
+      "description": "Kind key (group/Kind, e.g. cert-manager.io/Certificate or /Pod; \"*\" for any kind: variables, related, metrics, panel sections and tabs, actions) → what the plugin adds to it.",
       "propertyNames": {
         "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$"
       },

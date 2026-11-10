@@ -134,7 +134,7 @@ func (r *renderer) resolveRelated(kp *kindProgs, need refSet, env Env, ns *notes
 			}
 			items, err = env.Lookup.List(ctx, rel.Kind, namespace, "", "")
 			items = slices.DeleteFunc(slices.Clone(items), func(o map[string]any) bool { return !ownedBy(o, uid) })
-		default:
+		case rel.Selector.IsSet():
 			var v any
 			var sel string
 			if v, err = r.eval(rp.selector); err == nil {
@@ -142,6 +142,12 @@ func (r *renderer) resolveRelated(kp *kindProgs, need refSet, env Env, ns *notes
 					items, err = env.Lookup.List(ctx, rel.Kind, namespace, sel, "")
 				}
 			}
+		default:
+			// filter alone: every object of the kind in the namespace.
+			items, err = env.Lookup.List(ctx, rel.Kind, namespace, "", "")
+		}
+		if err == nil && rp.filter != nil && len(items) > 0 {
+			items, err = r.filter(rp, items)
 		}
 		if err != nil {
 			switch {
@@ -169,6 +175,25 @@ func (r *renderer) resolveRelated(kp *kindProgs, need refSet, env Env, ns *notes
 		}
 		out[rp.name] = list
 	}
+}
+
+// filter keeps the candidates for which rp's filter is true, each seen
+// as `item` (never modifying the shared list).
+func (r *renderer) filter(rp relProg, items []map[string]any) ([]map[string]any, error) {
+	var out []map[string]any
+	r.act.hasItem = true
+	defer func() { r.act.item, r.act.hasItem = nil, false }()
+	for _, o := range items {
+		r.act.item = prepareObject(rp.rel.Kind, o)
+		ok, err := r.cond(rp.filter)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, o)
+		}
+	}
+	return out, nil
 }
 
 // resolveMetrics fills r.act.metrics with the metrics need names.

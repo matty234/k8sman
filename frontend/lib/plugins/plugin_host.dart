@@ -124,8 +124,9 @@ class PluginHost extends ChangeNotifier {
   /// The bundled plugins (shown in Settings ▸ Integrations like modules).
   Iterable<PluginInfo> get bundled => _state.plugins.where((p) => p.bundled);
 
-  /// Whether a plugin adds panel sections or actions to kind [gk].
-  bool contributesTo(String gk) => active.any((p) => p.kinds.any((k) => (k.key == gk && (k.sections > 0 || k.actions > 0)) || (k.key == '*' && k.actions > 0)));
+  /// Whether a plugin adds panel sections, tabs or actions to kind [gk]
+  /// (its own entry, or one for any kind, "*").
+  bool contributesTo(String gk) => active.any((p) => p.kinds.any((k) => (k.key == gk || k.key == '*') && (k.sections > 0 || k.tabs > 0 || k.actions > 0)));
 
   /// What becomes of the generic panel's sections for kind [gk] when it
   /// has no compiled-in panel: `replace` if a plugin with sections for it

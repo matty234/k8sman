@@ -1,7 +1,9 @@
 package plugins
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -9,6 +11,9 @@ import (
 	"time"
 
 	"github.com/google/cel-go/common/types"
+	"gopkg.in/yaml.v3"
+
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 // panelTimeout bounds one panel render (docs/PLUGINS.md §8).
@@ -21,8 +26,11 @@ const tableRowLimit = 500
 // stringData value replaced with "" and the last-applied annotation
 // dropped (it holds the data too). Other objects are passed as they are:
 // CEL never writes to its input, so shared cache objects need no copy.
+//
+// kindKey is the entry's kind; for "*" entries the object's own kind
+// decides, so a Secret seen through "*" is blanked too.
 func prepareObject(kindKey string, obj map[string]any) map[string]any {
-	if kindKey != "/Secret" {
+	if kindKey != secretKind && !isSecretObject(obj) {
 		return obj
 	}
 	out := make(map[string]any, len(obj))
@@ -56,6 +64,26 @@ func prepareObject(kindKey string, obj map[string]any) map[string]any {
 			}
 		}
 	}
+	return out
+}
+
+// isSecretObject is whether obj says it is a core Secret.
+func isSecretObject(obj map[string]any) bool {
+	return obj["kind"] == "Secret" && obj["apiVersion"] == "v1"
+}
+
+// withKind is obj with apiVersion and kind set from rt when it lacks
+// them (a shallow copy), so "*" entries can tell what it is.
+func withKind(rt cluster.ResourceType, obj map[string]any) map[string]any {
+	if _, ok := obj["kind"].(string); ok {
+		return obj
+	}
+	out := make(map[string]any, len(obj)+2)
+	for k, v := range obj {
+		out[k] = v
+	}
+	out["kind"] = rt.Kind
+	out["apiVersion"] = strings.TrimPrefix(rt.Group+"/"+rt.Version, "/")
 	return out
 }
 
@@ -130,6 +158,8 @@ type PanelOut struct {
 	Plugin   string       `json:"plugin"`
 	Name     string       `json:"name"`
 	Sections []SectionOut `json:"sections"`
+	// Tabs are the plugin's tabs whose when holds, with their sections.
+	Tabs []TabOut `json:"tabs,omitempty"`
 	// Errors are the kind entry's compile errors (then there are no
 	// sections) or a budget the render ran out of.
 	Errors []Diag `json:"errors,omitempty"`
@@ -147,8 +177,18 @@ type PanelOut struct {
 type SectionOut struct {
 	Title     string           `json:"title"`
 	Icon      string           `json:"icon,omitempty"`
+	Summary   string           `json:"summary,omitempty"`
 	Collapsed bool             `json:"collapsed,omitempty"`
 	Blocks    []map[string]any `json:"blocks"`
+}
+
+// TabOut is a resolved tab: its sections, and the host tab it goes into
+// on kinds that have one.
+type TabOut struct {
+	Title    string       `json:"title"`
+	Icon     string       `json:"icon,omitempty"`
+	Into     string       `json:"into,omitempty"`
+	Sections []SectionOut `json:"sections"`
 }
 
 type renderer struct {
@@ -209,6 +249,15 @@ func (r *renderer) section(sp secProg) (SectionOut, bool) {
 	if !show {
 		return out, false
 	}
+	if sp.summary != nil {
+		v, err := r.eval(sp.summary)
+		switch {
+		case err != nil:
+			out.Blocks = append(out.Blocks, errBlock(err))
+		case v != nil:
+			out.Summary = fmt.Sprint(v)
+		}
+	}
 	for _, bp := range sp.blocks {
 		if b := r.block(bp); b != nil {
 			out.Blocks = append(out.Blocks, b)
@@ -257,6 +306,9 @@ func (r *renderer) block(bp blockProg) map[string]any {
 			}
 			if v == nil || v == "" {
 				continue
+			}
+			if f.Type == "code" {
+				v = codeText(v, "yaml")
 			}
 			item := map[string]any{"label": f.Label, "value": v, "type": orDefault(f.Type, "text")}
 			if f.Copy {
@@ -326,8 +378,13 @@ func (r *renderer) block(bp blockProg) map[string]any {
 		out["max"] = get("max")
 		out["format"] = orDefault(b.Format, "number")
 	case "code":
-		out["value"] = get("value")
-		out["language"] = orDefault(b.Language, "text")
+		v := get("value")
+		lang := b.Language
+		if _, isText := v.(string); !isText && v != nil && lang == "" {
+			lang = "yaml"
+		}
+		out["value"] = codeText(v, lang)
+		out["language"] = orDefault(lang, "text")
 	case "json":
 		out["value"] = get("value")
 	case "settings":
@@ -382,6 +439,9 @@ func (r *renderer) table(bp blockProg, out map[string]any, firstErr *error) {
 		if c.Mono {
 			cols[i]["mono"] = true
 		}
+		if c.Detail {
+			cols[i]["detail"] = true
+		}
 		if c.Name == b.SortBy {
 			sortCol = i
 		}
@@ -400,6 +460,9 @@ func (r *renderer) table(bp blockProg, out map[string]any, firstErr *error) {
 		for i := range b.Columns {
 			k := "col." + itoa(i)
 			v, err := r.eval(bp.progs[k+".value"])
+			if b.Columns[i].Type == "code" {
+				v = codeText(v, "yaml")
+			}
 			cell := map[string]any{"value": v}
 			if err != nil {
 				cell = map[string]any{"error": err.Error()}
@@ -432,6 +495,31 @@ func (r *renderer) table(bp blockProg, out map[string]any, firstErr *error) {
 	if b.Empty != "" {
 		out["empty"] = b.Empty
 	}
+}
+
+// codeText is a code value as text: a string as it is, anything else as
+// YAML (or indented JSON for language json), keys sorted, so a plugin can
+// show part of an object as the YAML tab would.
+func codeText(v any, language string) any {
+	switch v.(type) {
+	case nil, string:
+		return v
+	}
+	if language == "json" {
+		b, err := json.MarshalIndent(v, "", "  ")
+		if err != nil {
+			return fmt.Sprint(v)
+		}
+		return string(b)
+	}
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(v); err != nil {
+		return fmt.Sprint(v)
+	}
+	_ = enc.Close()
+	return strings.TrimSuffix(buf.String(), "\n")
 }
 
 func lessValue(a, b any) bool {
@@ -506,6 +594,25 @@ func renderPanel(p *Plugin, kp *kindProgs, obj map[string]any, env Env) PanelOut
 		if s, ok := r.section(sp); ok {
 			out.Sections = append(out.Sections, s)
 		}
+	}
+	for _, tp := range kp.tabs {
+		t := tp.tab
+		to := TabOut{Title: t.Title, Icon: t.Icon, Into: t.Into, Sections: []SectionOut{}}
+		show, err := r.cond(tp.when)
+		if err != nil {
+			to.Sections = append(to.Sections, SectionOut{Title: t.Title, Blocks: []map[string]any{errBlock(err)}})
+			out.Tabs = append(out.Tabs, to)
+			continue
+		}
+		if !show {
+			continue
+		}
+		for _, sp := range tp.sections {
+			if s, ok := r.section(sp); ok {
+				to.Sections = append(to.Sections, s)
+			}
+		}
+		out.Tabs = append(out.Tabs, to)
 	}
 	var err error
 	if r.errs > 0 {

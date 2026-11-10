@@ -108,7 +108,149 @@ class _ReplaceApi extends FakeApiClient {
       };
 }
 
+/// A plugin with a tab on any kind ("*") that goes into the Security tab
+/// where there is one (`into: security`).
+class _TabApi extends FakeApiClient {
+  int calls = 0;
+
+  @override
+  Future<Json> plugins() async => {
+        'generation': 1,
+        'plugins': [
+          {
+            'id': 'policies',
+            'name': 'Policies',
+            'source': 'bundled',
+            'active': true,
+            'loaded': true,
+            'kinds': [
+              {'key': '*', 'served': true, 'tabs': 1},
+            ],
+          },
+        ],
+      };
+
+  @override
+  Future<Json> pluginPanel(ResourceRef r, {String? namespace, required String name}) async {
+    calls++;
+    return {
+      'panels': [
+        {
+          'plugin': 'policies',
+          'name': 'Policies',
+          'sections': [],
+          'notes': ['Reports aren’t served by this cluster.'],
+          'tabs': [
+            {
+              'title': 'Policy results',
+              'icon': 'policy',
+              'into': 'security',
+              'sections': [
+                {
+                  'title': 'Results',
+                  'summary': '1 fail',
+                  'blocks': [
+                    {
+                      'type': 'table',
+                      'columns': [
+                        {'name': 'Result', 'type': 'status'},
+                        {'name': 'Policy', 'type': 'text'},
+                        {'name': 'Message', 'type': 'text', 'detail': true},
+                      ],
+                      'rows': [
+                        [{'value': 'fail'}, {'value': 'require-labels'}, {'value': 'label app is required'}],
+                      ],
+                      'total': 1,
+                      'limit': 20,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      'actions': [],
+    };
+  }
+}
+
+/// A kind's own panel with a Security tab (its slot).
+class _SecurityPanel extends ResourcePanel {
+  const _SecurityPanel();
+
+  @override
+  Set<String> get kinds => const {'/Pod'};
+
+  @override
+  List<Widget> buildSections(BuildContext context, PanelContext ctx) => const [];
+
+  @override
+  List<PanelTab> tabs(PanelContext ctx) => [
+        PanelTab(label: 'Security', slot: 'security', builder: (context, ctx) => PluginSlotSections(ctx: ctx, slot: 'security')),
+      ];
+}
+
 void main() {
+  testWidgets('a plugin tab on any kind is a tab of its own, or sections of the Security tab where the kind has one', (tester) async {
+    final api = _TabApi();
+    final app = AppState(api)..types = testTypes;
+    pluginHost.attach(api);
+    await pluginHost.refresh();
+    pluginPanels.debugClear();
+    final widgetType = testType('example.k8sman.dev', 'Widget');
+    final widget = PanelContext(
+      object: {'apiVersion': 'example.k8sman.dev/v1alpha1', 'kind': 'Widget', 'metadata': {'name': 'sprocket', 'namespace': 'demo', 'uid': 'u-3', 'resourceVersion': '1'}},
+      type: widgetType,
+      api: api,
+      app: app,
+    );
+    final generic = panelFor(widgetType, app);
+    expect(generic, isA<PluginComposedPanel>(), reason: 'a "*" tab composes every kind');
+    expect([for (final t in generic.tabs(widget)) t.label], isEmpty, reason: 'not before the panel is fetched');
+    await tester.pumpAndSettle();
+    final tabs = generic.tabs(widget);
+    expect([for (final t in tabs) t.label], ['Policy results']);
+
+    // Drawn as its own tab: the summary in the header, the detail column
+    // on a line of its own; the not-served note stays out of the Overview.
+    tester.view.physicalSize = const Size(600, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Future<void> show(Widget Function(BuildContext) child) async {
+      await tester.pumpWidget(MultiProvider(
+        providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+        child: MaterialApp(theme: buildTheme(Brightness.dark), home: Scaffold(body: Builder(builder: child))),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    await show((context) => tabs.single.builder(context, widget));
+    expect(find.text('1 fail'), findsOneWidget);
+    expect(find.text('require-labels'), findsOneWidget);
+    expect(find.text('label app is required'), findsOneWidget);
+    await show((context) => ListView(children: generic.buildSections(context, widget)));
+    expect(find.textContaining('aren’t served'), findsNothing, reason: 'notes show only beside sections');
+
+    // A kind whose panel has the Security slot: no tab of its own; the
+    // sections are in the Security tab.
+    final pod = PanelContext(
+      object: {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {'name': 'web', 'namespace': 'demo', 'uid': 'u-4', 'resourceVersion': '1'}},
+      type: testType('', 'Pod'),
+      api: api,
+      app: app,
+    );
+    const podPanel = PluginComposedPanel(_SecurityPanel());
+    podPanel.tabs(pod);
+    await tester.pumpAndSettle();
+    final podTabs = podPanel.tabs(pod);
+    expect([for (final t in podTabs) t.label], ['Security']);
+    await show((context) => podTabs.single.builder(context, pod));
+    expect(find.text('Results'), findsOneWidget);
+    expect(find.text('label app is required'), findsOneWidget);
+    expect(api.calls, 2, reason: 'one fetch per object, shared by the tab bar and the views');
+  });
+
   testWidgets('panel.generic replace: the plugin sections are the panel, without the generic ones', (tester) async {
     final api = _ReplaceApi();
     final type = testType('example.k8sman.dev', 'Widget');

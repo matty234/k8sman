@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
 // dataManifest has related objects of every sort, a patch action with
@@ -143,6 +145,64 @@ func TestRelatedObjects(t *testing.T) {
 		if len(diags) != 1 || !strings.Contains(diags[0].Message, "related isn't available in") {
 			t.Fatalf("related in a column or alert: %v", diags)
 		}
+	}
+}
+
+// A "*" entry adds a tab to any kind, shown where its when holds (here:
+// some report owned by the object passes the host-side filter), with a
+// section summary; a Secret seen through "*" has its values blanked.
+func TestAnyKindTab(t *testing.T) {
+	h := demoHost(t, `apiVersion: k8sman.dev/v1
+id: reports
+name: Reports
+version: 1.0.0
+permissions:
+  read: [example.com/Report]
+kinds:
+  "*":
+    related:
+      reports:
+        kind: example.com/Report
+        owner: true
+        filter: item.?status.orValue("") != "stale"
+    panel:
+      tabs:
+        - title: Results
+          into: security
+          when: size(related.reports) > 0 || has(object.data)
+          sections:
+            - title: Results
+              summary: string(size(related.reports))
+              blocks:
+                - type: chips
+                  items: related.reports.map(r, r.metadata.name) + object.?data.orValue({}).map(k, k + "=" + object.data[k])
+`)
+	report := func(name, owner, status string) map[string]any {
+		return map[string]any{"apiVersion": "example.com/v1", "kind": "Report", "status": status,
+			"metadata": map[string]any{"name": name, "namespace": "default", "ownerReferences": []any{map[string]any{"uid": owner}}}}
+	}
+	env := Env{Context: "demo", Lookup: &fixtureLookup{objs: []map[string]any{
+		report("r1", "uid-w1", "ok"), report("r2", "uid-w1", "stale"), report("r3", "uid-other", "ok"),
+	}}}
+	tabs := func(rt cluster.ResourceType, obj map[string]any) []TabOut {
+		panels := h.Panels(env, rt, obj)
+		if len(panels) != 1 || len(panels[0].Errors) > 0 {
+			t.Fatalf("panels = %+v", panels)
+		}
+		return panels[0].Tabs
+	}
+	got := tabs(widgetType, widgetObj("w1", 1))
+	if len(got) != 1 || got[0].Into != "security" || got[0].Sections[0].Summary != "1" ||
+		!reflect.DeepEqual(got[0].Sections[0].Blocks[0]["items"], []any{"r1"}) {
+		t.Fatalf("tabs = %+v, want r1 only (r2 filtered out, r3 not owned)", got)
+	}
+	if got := tabs(widgetType, widgetObj("w2", 1)); len(got) != 0 {
+		t.Fatalf("no reports: tabs = %+v, want none", got)
+	}
+	secret := map[string]any{"metadata": map[string]any{"name": "s", "namespace": "default", "uid": "uid-s"}, "data": map[string]any{"password": "c2VjcmV0"}}
+	secretType := cluster.ResourceType{Version: "v1", Resource: "secrets", Kind: "Secret", Namespaced: true}
+	if got := tabs(secretType, secret); len(got) != 1 || !reflect.DeepEqual(got[0].Sections[0].Blocks[0]["items"], []any{"password="}) {
+		t.Fatalf("secret through *: tabs = %+v, want its values blanked", got)
 	}
 }
 

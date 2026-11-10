@@ -60,6 +60,9 @@ class PluginKind {
   final bool compiled;
   final int columns;
   final int sections;
+
+  /// Inspector tabs the entry declares (shown where their `when` holds).
+  final int tabs;
   final int actions;
   final int alerts;
   final int related;
@@ -78,6 +81,7 @@ class PluginKind {
     this.compiled = false,
     this.columns = 0,
     this.sections = 0,
+    this.tabs = 0,
     this.actions = 0,
     this.alerts = 0,
     this.related = 0,
@@ -93,6 +97,7 @@ class PluginKind {
         compiled: j['compiled'] == true,
         columns: (j['columns'] as num?)?.toInt() ?? 0,
         sections: (j['sections'] as num?)?.toInt() ?? 0,
+        tabs: (j['tabs'] as num?)?.toInt() ?? 0,
         actions: (j['actions'] as num?)?.toInt() ?? 0,
         alerts: (j['alerts'] as num?)?.toInt() ?? 0,
         related: (j['related'] as num?)?.toInt() ?? 0,
@@ -391,8 +396,11 @@ class PluginPanelOut {
   final String plugin;
   final String name;
 
-  /// Sections: {title, icon?, collapsed?, blocks: [{type, …}]}.
+  /// Sections: {title, icon?, summary?, collapsed?, blocks: [{type, …}]}.
   final List<Json> sections;
+
+  /// Tabs whose `when` held for the object.
+  final List<PluginTabOut> tabs;
   final List<PluginDiag> errors;
 
   /// What related objects or metrics couldn't be read.
@@ -401,15 +409,33 @@ class PluginPanelOut {
   /// Seconds after which to render again while open (0 = only when the
   /// object changes): the panel reads related objects, metrics or `now`.
   final int refresh;
-  const PluginPanelOut({required this.plugin, required this.name, this.sections = const [], this.errors = const [], this.notes = const [], this.refresh = 0});
+  const PluginPanelOut({required this.plugin, required this.name, this.sections = const [], this.tabs = const [], this.errors = const [], this.notes = const [], this.refresh = 0});
 
   factory PluginPanelOut.fromJson(Json j) => PluginPanelOut(
         plugin: '${j['plugin'] ?? ''}',
         name: '${j['name'] ?? ''}',
         sections: asMapList(j['sections']),
+        tabs: [for (final t in asMapList(j['tabs'])) PluginTabOut.fromJson(t)],
         errors: [for (final d in asMapList(j['errors'])) PluginDiag.fromJson(d)],
         notes: [for (final n in (j['notes'] as List? ?? const [])) '$n'],
         refresh: (j['refresh'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// A plugin tab for an object: a tab of its own, or, on kinds with the
+/// host tab named by [into] (`security`), sections of that tab.
+class PluginTabOut {
+  final String title;
+  final String? icon;
+  final String? into;
+  final List<Json> sections;
+  const PluginTabOut({required this.title, this.icon, this.into, this.sections = const []});
+
+  factory PluginTabOut.fromJson(Json j) => PluginTabOut(
+        title: '${j['title'] ?? ''}',
+        icon: j['icon'] as String?,
+        into: j['into'] as String?,
+        sections: asMapList(j['sections']),
       );
 }
 

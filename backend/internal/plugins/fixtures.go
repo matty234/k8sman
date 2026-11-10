@@ -250,7 +250,7 @@ func renderFixture(p *Plugin, cfg FixtureConfig, path string) ([]byte, error) {
 	subject := objs[0]
 	rt := fixtureType(subject)
 	key := KindKey(rt)
-	if p.m.Kinds[key] == nil {
+	if p.m.Kinds[key] == nil && p.m.Kinds["*"] == nil {
 		return nil, fmt.Errorf("%s: the plugin has nothing for %s", filepath.Base(path), key)
 	}
 	env := Env{Context: cfg.Context, Now: cfg.Now, Lookup: &fixtureLookup{objs: objs, metrics: cfg.Metrics}}

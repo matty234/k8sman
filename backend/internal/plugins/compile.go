@@ -62,6 +62,7 @@ type kindProgs struct {
 	metrics  []metricProg
 	columns  []colProg
 	sections []secProg
+	tabs     []tabProg
 	actions  []actProg
 	alerts   []alertProg
 	status   []statusProg
@@ -80,9 +81,15 @@ type colProg struct {
 }
 
 type secProg struct {
-	sec    *Section
-	when   *program
-	blocks []blockProg
+	sec           *Section
+	when, summary *program
+	blocks        []blockProg
+}
+
+type tabProg struct {
+	tab      *Tab
+	when     *program
+	sections []secProg
 }
 
 type blockProg struct {
@@ -113,6 +120,8 @@ type relProg struct {
 	name                       string
 	rel                        *Related
 	when, nameP, selector, nsP *program
+	// filter sees `item`, each candidate.
+	filter *program
 }
 
 type metricProg struct {
@@ -137,6 +146,7 @@ type compiler struct {
 	d     *decoder
 	base  *cel.Env
 	row   *cel.Env
+	item  *cel.Env
 	input *cel.Env
 	diags []Diag
 	known map[string]bool // variable names of the kind entry
@@ -406,7 +416,9 @@ func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
 	env := c.compileVars(kp, k)
 	c.base = env
 	if c.row, err = env.Extend(cel.Variable(varRow, cel.DynType)); err == nil {
-		c.input, err = env.Extend(cel.Variable(varInput, cel.MapType(cel.StringType, cel.DynType)))
+		if c.input, err = env.Extend(cel.Variable(varInput, cel.MapType(cel.StringType, cel.DynType))); err == nil {
+			c.item, err = env.Extend(cel.Variable(varItem, cel.MapType(cel.StringType, cel.DynType)))
+		}
 	}
 	if err != nil {
 		return nil, []Diag{d.diagAt(k.pos, false, "CEL environment: %v", err)}
@@ -414,13 +426,15 @@ func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
 	for _, name := range sortedKeys(k.Related) {
 		r := k.Related[name]
 		rp := relProg{name: name, rel: &r}
-		lookup := func(e Expr, want *cel.Type) *program {
-			return c.restrict(e, env, want, panelCostLimit, "related lookups", false, false, true)
+		lookup := func(e Expr, env *cel.Env, want *cel.Type, limit uint64) *program {
+			return c.restrict(e, env, want, limit, "related lookups", false, false, true)
 		}
-		rp.when = lookup(r.When, cel.BoolType)
-		rp.nameP = lookup(r.Name, cel.StringType)
-		rp.selector = lookup(r.Selector, nil)
-		rp.nsP = lookup(r.Namespace, cel.StringType)
+		rp.when = lookup(r.When, env, cel.BoolType, panelCostLimit)
+		rp.nameP = lookup(r.Name, env, cel.StringType, panelCostLimit)
+		rp.selector = lookup(r.Selector, env, nil, panelCostLimit)
+		rp.nsP = lookup(r.Namespace, env, cel.StringType, panelCostLimit)
+		// Once per candidate: a cell's budget.
+		rp.filter = lookup(r.Filter, c.item, cel.BoolType, columnCostLimit)
 		kp.related = append(kp.related, rp)
 	}
 	for _, name := range sortedKeys(k.Metrics) {
@@ -436,13 +450,10 @@ func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
 		}
 	}
 	if k.Panel != nil {
-		for i := range k.Panel.Sections {
-			s := &k.Panel.Sections[i]
-			sp := secProg{sec: s, when: c.compile(s.When, env, cel.BoolType, panelCostLimit)}
-			for j := range s.Blocks {
-				sp.blocks = append(sp.blocks, c.compileBlock(&s.Blocks[j]))
-			}
-			kp.sections = append(kp.sections, sp)
+		kp.sections = c.compileSections(k.Panel.Sections)
+		for i := range k.Panel.Tabs {
+			t := &k.Panel.Tabs[i]
+			kp.tabs = append(kp.tabs, tabProg{tab: t, when: c.compile(t.When, env, cel.BoolType, panelCostLimit), sections: c.compileSections(t.Sections)})
 		}
 	}
 	for i := range k.Actions {
@@ -478,6 +489,20 @@ func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
 	return kp, c.diags
 }
 
+// compileSections compiles the sections of a panel or a tab.
+func (c *compiler) compileSections(secs []Section) []secProg {
+	var out []secProg
+	for i := range secs {
+		s := &secs[i]
+		sp := secProg{sec: s, when: c.compile(s.When, c.base, cel.BoolType, panelCostLimit), summary: c.compile(s.Summary, c.base, nil, panelCostLimit)}
+		for j := range s.Blocks {
+			sp.blocks = append(sp.blocks, c.compileBlock(&s.Blocks[j]))
+		}
+		out = append(out, sp)
+	}
+	return out
+}
+
 func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -499,14 +524,22 @@ func (kp *kindProgs) needs() {
 		kp.panelMetrics.add(met)
 		kp.panelNow = kp.panelNow || now
 	}
-	for _, sp := range kp.sections {
-		panel(sp.when)
-		for _, bp := range sp.blocks {
-			panel(bp.when)
-			for _, p := range bp.progs {
-				panel(p)
+	sections := func(secs []secProg) {
+		for _, sp := range secs {
+			panel(sp.when)
+			panel(sp.summary)
+			for _, bp := range sp.blocks {
+				panel(bp.when)
+				for _, p := range bp.progs {
+					panel(p)
+				}
 			}
 		}
+	}
+	sections(kp.sections)
+	for _, tp := range kp.tabs {
+		panel(tp.when)
+		sections(tp.sections)
 	}
 	for _, ap := range kp.actions {
 		for _, p := range []*program{ap.when, ap.body} {

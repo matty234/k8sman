@@ -692,23 +692,47 @@ func (h *Host) Panels(env Env, rt cluster.ResourceType, obj map[string]any) []Pa
 
 // panel renders p's sections for obj (ok false when p has none for its
 // kind). A kind entry that failed to compile shows its errors instead.
+//
+// Its kind's entry and its "*" entry are rendered into one PanelOut: the
+// kind's sections and tabs first.
 func (p *Plugin) panel(env Env, rt cluster.ResourceType, obj map[string]any) (PanelOut, bool) {
-	key := KindKey(rt)
-	k := p.m.Kinds[key]
-	if k == nil || (k.Version != "" && k.Version != rt.Version) {
-		return PanelOut{}, false
+	out := PanelOut{Plugin: p.ID(), Name: p.Name(), Sections: []SectionOut{}}
+	found := false
+	for _, key := range []string{KindKey(rt), "*"} {
+		k := p.m.Kinds[key]
+		if k == nil || (k.Version != "" && k.Version != rt.Version) {
+			continue
+		}
+		kp := p.kind(key)
+		if kp == nil {
+			p.mu.Lock()
+			out.Errors = append(out.Errors, p.kindErrs[key]...)
+			p.mu.Unlock()
+			found = true
+			continue
+		}
+		if len(kp.sections) == 0 && len(kp.tabs) == 0 {
+			continue
+		}
+		o := obj
+		if key == "*" {
+			o = withKind(rt, obj)
+		}
+		po := renderPanel(p, kp, o, env)
+		found = true
+		out.Sections = append(out.Sections, po.Sections...)
+		out.Tabs = append(out.Tabs, po.Tabs...)
+		out.Errors = append(out.Errors, po.Errors...)
+		for _, n := range po.Notes {
+			if !slices.Contains(out.Notes, n) {
+				out.Notes = append(out.Notes, n)
+			}
+		}
+		if po.Refresh > 0 && (out.Refresh == 0 || po.Refresh < out.Refresh) {
+			out.Refresh = po.Refresh
+		}
 	}
-	kp := p.kind(key)
-	if kp == nil {
-		p.mu.Lock()
-		errs := p.kindErrs[key]
-		p.mu.Unlock()
-		return PanelOut{Plugin: p.ID(), Name: p.Name(), Sections: []SectionOut{}, Errors: errs}, true
-	}
-	if len(kp.sections) == 0 {
-		return PanelOut{}, false
-	}
-	return renderPanel(p, kp, obj, env), true
+	return out, found
 }
 
 // entriesFor are p's compiled kind entries that apply to rt: its kind's
@@ -748,7 +772,7 @@ func (h *Host) Actions(env Env, rt cluster.ResourceType, obj map[string]any, var
 func (p *Plugin) actions(env Env, rt cluster.ResourceType, obj map[string]any, vars func() ShellVars, consented bool) []ActionOut {
 	var out []ActionOut
 	for _, kp := range p.entriesFor(rt) {
-		acts, r, _ := offered(p, kp, obj, env)
+		acts, r, _ := offered(p, kp, withKind(rt, obj), env)
 		for _, ap := range acts {
 			out = append(out, actionOut(p, ap, r, vars, consented))
 		}
@@ -773,7 +797,7 @@ func (h *Host) action(env Env, rt cluster.ResourceType, obj map[string]any, plug
 		return nil, actProg{}, nil, ErrNoConsent
 	}
 	for _, kp := range p.entriesFor(rt) {
-		acts, r, _ := offered(p, kp, obj, env)
+		acts, r, _ := offered(p, kp, withKind(rt, obj), env)
 		for _, ap := range acts {
 			if ap.a.ID == actionID {
 				return p, ap, r, nil
@@ -916,11 +940,14 @@ type KindInfo struct {
 	Compiled bool `json:"compiled"`
 	Columns  int  `json:"columns"`
 	Sections int  `json:"sections"`
-	Actions  int  `json:"actions"`
-	Alerts   int  `json:"alerts"`
-	Related  int  `json:"related"`
-	Metrics  int  `json:"metrics"`
-	Errors   int  `json:"errors"`
+	// Tabs is how many inspector tabs the entry declares (shown where their
+	// when holds).
+	Tabs    int `json:"tabs,omitempty"`
+	Actions int `json:"actions"`
+	Alerts  int `json:"alerts"`
+	Related int `json:"related"`
+	Metrics int `json:"metrics"`
+	Errors  int `json:"errors"`
 	// Generic is the panel's generic mode (keep, collapse or replace):
 	// what the UI does with the generic panel's sections for this kind.
 	Generic string `json:"generic"`
@@ -988,7 +1015,7 @@ func (h *Host) List(served func(key string) bool) []Info {
 				ki := KindInfo{Key: key, Served: key == "*" || (served != nil && served(key)), Columns: len(k.Columns), Actions: len(k.Actions),
 					Alerts: len(k.Alerts), Related: len(k.Related), Metrics: len(k.Metrics), Generic: k.Panel.GenericMode(), Status: k.Status != nil}
 				if k.Panel != nil {
-					ki.Sections = len(k.Panel.Sections)
+					ki.Sections, ki.Tabs = len(k.Panel.Sections), len(k.Panel.Tabs)
 				}
 				_, ki.Compiled = p.kinds[key]
 				ki.Errors = len(p.kindErrs[key])
