@@ -305,41 +305,9 @@ var builtin = map[string][]Column{
 	"tlsroutes.gateway.networking.k8s.io":  {gwRouteHostnames, gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
 	"tcproutes.gateway.networking.k8s.io":  {gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
 	"udproutes.gateway.networking.k8s.io":  {gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
-	// Dynamic Resource Allocation (resource.k8s.io). Requests read both the
-	// v1 shape (requests[].exactly.deviceClassName) and the v1beta1/v1beta2
-	// flat one, plus firstAvailable sub-requests.
-	"resourceclaims.resource.k8s.io": {
-		{Name: "State", Type: "status", Query: `(.status.reservedFor // [] | length) as $n
-| if .status.allocation == null then "Pending"
-  elif $n > 0 then "Reserved: \($n)"
-  else "Allocated" end`},
-		{Name: "Device Classes", Query: draClasses(`.spec.devices.requests[]?`)},
-		{Name: "Devices", Type: "number", Query: `.status.allocation.devices.results // [] | length`},
-		{Name: "Node", Query: `[.status.allocation.nodeSelector.nodeSelectorTerms[]? | (.matchFields[]?, .matchExpressions[]?) | select(.operator == "In") | .values[]?] | unique | join(",")`},
-		ageCol,
-	},
-	"resourceclaimtemplates.resource.k8s.io": {
-		{Name: "Device Classes", Query: draClasses(`.spec.spec.devices.requests[]?`)},
-		ageCol,
-	},
-	"deviceclasses.resource.k8s.io": {
-		{Name: "Selectors", Query: `[.spec.selectors[]? | .cel.expression // empty] | join(" && ")`},
-		ageCol,
-	},
-	"resourceslices.resource.k8s.io": {
-		{Name: "Node", Query: `.spec.nodeName // (if .spec.allNodes then "(all nodes)" elif .spec.nodeSelector then "(selector)" else "" end)`},
-		{Name: "Driver", Query: `.spec.driver`},
-		{Name: "Pool", Query: `.spec.pool.name`},
-		{Name: "Devices", Type: "number", Query: `.spec.devices // [] | length`},
-		ageCol,
-	},
-	"devicetaintrules.resource.k8s.io": {
-		{Name: "Driver", Query: `.spec.deviceSelector.driver // ""`},
-		{Name: "Taint", Query: `"\(.spec.taint.key // ""):\(.spec.taint.effect // "")"`},
-		ageCol,
-	},
-	// External Secrets Operator kinds have no built-in columns: the bundled
-	// external-secrets plugin supplies them (plugins/bundled).
+	// External Secrets Operator and Dynamic Resource Allocation
+	// (resource.k8s.io) kinds have no built-in columns: the bundled
+	// external-secrets and dra plugins supply them (plugins/bundled).
 	// Admission policies and webhook configurations (admissionregistration.k8s.io).
 	"validatingadmissionpolicies.admissionregistration.k8s.io": {
 		{Name: "Failure Policy", Query: `.spec.failurePolicy // "Fail"`},
@@ -385,12 +353,6 @@ var (
 	admissionWebhookCount  = Column{Name: "Webhooks", Type: "number", Query: `.webhooks // [] | length`}
 	admissionWebhookTarget = Column{Name: "First Target", Query: `.webhooks[0]?.clientConfig | if . == null then "" elif .service then "\(.service.namespace)/\(.service.name)" else .url // "" end`}
 )
-
-// draClasses lists the distinct device classes of the requests [reqs]
-// selects.
-func draClasses(reqs string) string {
-	return `[` + reqs + ` | (.deviceClassName // .exactly.deviceClassName // .firstAvailable[]?.deviceClassName)] | unique | join(",")`
-}
 
 // argoWFPhase is a Workflow's phase, "Suspended" while running but
 // suspended (spec.suspend or a waiting suspend step), "Pending" before the

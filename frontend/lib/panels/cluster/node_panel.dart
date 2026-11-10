@@ -13,7 +13,6 @@ import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../../util/text.dart';
-import '../dra/dra_sections.dart';
 import '../../ui/inspector/inspector.dart';
 import '../panel.dart';
 import 'logic.dart';
@@ -47,7 +46,6 @@ class NodePanel extends ResourcePanel {
       // Is this node OK? Status, pods and usage (one fetch of its pods).
       _NodeView(key: ValueKey(ctx.uid), ctx: ctx),
       gpuNodeSection(ctx),
-      draNodeSection(ctx),
       // Reference detail, collapsed behind a one-line summary.
       InspectorSection(
         id: 'node-capacity',

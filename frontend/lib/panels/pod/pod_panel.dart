@@ -14,7 +14,6 @@ import '../../ui/terminal/open_terminal.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
-import '../dra/dra_sections.dart';
 import '../panel.dart';
 import 'pod_containers.dart';
 import 'pod_logic.dart';
@@ -150,7 +149,6 @@ class PodPanel extends ResourcePanel {
         trailing: SectionSummary(_configSummary(ctx)),
         child: _Configuration(ctx),
       ),
-      draPodSection(ctx),
       // CPU / memory history (hidden when Prometheus isn't available).
       podHistory(ctx),
       // Live network from the kubelet when there is no Prometheus.
