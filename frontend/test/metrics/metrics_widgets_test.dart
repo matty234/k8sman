@@ -76,13 +76,12 @@ void main() {
     });
   });
 
-  testWidgets('Pod panel: per-container usage and pod total', (tester) async {
+  testWidgets('Pod panel: per-container usage', (tester) async {
     final pod = _fixture('test/metrics/fixtures/pod-web.json');
     await pumpPanel(tester, pod, api: MetricsFakeApi(), size: const Size(560, 2600));
     await tester.pumpAndSettle();
     // Per-container usage: mini-bars in each row, figures in their tooltip.
     Finder tip(String s) => find.byWidgetPredicate((w) => w is Tooltip && (w.message ?? '').contains(s));
-    expect(find.text('Usage'), findsOneWidget, reason: 'the status row');
     // nginx has a limit: shown against it, with the request.
     expect(tip('of 200m limit · 50m request'), findsOneWidget);
     expect(tip('of 5m request'), findsOneWidget, reason: 'log-sidecar has only a request');

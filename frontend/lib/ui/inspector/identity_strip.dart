@@ -117,7 +117,8 @@ class _IdentityStripState extends State<IdentityStrip> {
                 icon: Icons.folder_outlined,
                 tooltip: 'Open namespace $ns',
                 onTap: () => context.read<AppState>().openRef(ObjectRef(kind: 'Namespace', name: ns)),
-                child: Text(ns, maxLines: 1, overflow: TextOverflow.ellipsis, style: hint),
+                // A touch stronger than the rest of the line: it's part of the name.
+                child: Text(ns, maxLines: 1, overflow: TextOverflow.ellipsis, style: hint?.copyWith(color: Color.lerp(theme.hintColor, theme.textTheme.bodyMedium?.color, 0.35), fontWeight: FontWeight.w500)),
               ),
             ),
           if (created != null) ...[

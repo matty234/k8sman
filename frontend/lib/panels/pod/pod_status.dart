@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
-import '../../metrics/pod_usage.dart';
 import '../../ui/inspector/inspector.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
@@ -104,7 +103,6 @@ class PodStatusHeader extends StatelessWidget {
         ),
       if (sa != null) ('Account', ResourceLink(ObjectRef(kind: 'ServiceAccount', name: sa, namespace: ctx.namespace), label: sa)),
       if (hostNs.isNotEmpty) ('Host', InlineWrap([for (final h in hostNs) Chipish(text: h, color: warn)])),
-      ('Usage', PodUsageSummary(pod: ctx.object)),
     ];
   }
 }
