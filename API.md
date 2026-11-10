@@ -206,14 +206,22 @@ form still open, matched by context name.
 A column is `{name, query, type}`. `query` is a [jq](https://jqlang.org)
 expression (evaluated by [gojq](https://github.com/itchyny/gojq)) that runs
 against the full object. The first output becomes the cell. Multiple outputs
-become a list. `type` is a rendering hint: `string`, `number`, `quantity`, `age`, `status`,
-`bool` or `labels`.
+become a list. `type` is a rendering hint: `string`, `number`, `quantity`, `age`,
+`until` (a future timestamp shown as time left, red once passed), `status`,
+`bool` or `labels`. Plugin columns (see [Plugins](#plugins)) have
+`plugin: <id>` (and `description`) instead of a query: the backend evaluates
+their CEL; a saved column set keeps them by plugin and name.
 
 Columns resolve in this order:
 1. the user override in `~/.config/k8sman/columns.json`
 2. the built-ins in `backend/internal/columns/builtin.go`
 3. CRD `additionalPrinterColumns`, converted from simple JSONPath to jq
 4. Name/Namespace/Age
+
+Plugin columns are added to the defaults (2–4): one named like a default
+column replaces it in place, others go before Age, and a plugin's
+`hideColumns` drops defaults by name. An open watch re-sends its snapshot when
+a plugin reload changes its columns.
 
 Overrides are keyed kubectl-style (`pods`, `deployments.apps`,
 `widgets.example.k8sman.dev`), so they apply across API versions.
@@ -306,6 +314,14 @@ refuse it, since the shell uses the user's own credentials either way; on a
 read-only context it starts with a yellow notice saying so. Closing the socket
 hangs up the shell's process group (SIGHUP, then SIGKILL after 2s). Not yet
 available on Windows (`error`, `execFailed`).
+
+**Plugin shell actions** use the same socket with
+`?plugin=<id>&action=<id>&group=&version=&resource=&namespace=&name=`: the
+backend builds the command from the loaded plugin (the request can't carry
+one), runs it without a shell (argv, `$VAR`s expanded per argument, also
+exported as `K8SMAN_<NAME>`), and answers `error` instead when the context is
+read-only, the user hasn't agreed to the plugin's permissions, or the action
+isn't offered for the object. See [Plugins](#plugins).
 
 Debug containers are exec'd into (`/api/exec?container=debugger`), not attached.
 They are created with `stdin`+`tty` so the image's default shell stays alive, which
@@ -753,6 +769,34 @@ destination pod's namespace, else the source's). Both come from cached
 results refreshed in the background (status 30s, drops 1 min), so an
 overview poll never waits on the relay and the first one after starting has
 none.
+
+## Plugins
+
+Runtime plugins: folders with a `plugin.yaml` (see
+[docs/PLUGINS.md](docs/PLUGINS.md)). In this version they load only in
+developer mode. The `plugins` module: while it is turned off these answer 404
+(`ModuleDisabled`) and plugins add nothing.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/plugins` | `{devMode, devModeSaved, devFolders, flagFolders, installedDir, generation, readOnly, icons, plugins: [{id, name, version, dir, source, status, loaded, disabled, diags: [{file, line, col, message, warning, snippet}], permissions, permissionsHash, consented, kinds: [{key, served, compiled, columns, sections, actions, errors}], nav, kindIcons, hasIcon, loadMs, compileMs, stats: {column\|panel\|action: {count, errors, limitHits, p50Us, p95Us, maxUs}}}]}` |
+| PUT | `/api/plugins/settings` | `{devMode?, devFolders?}` (absolute paths); reloads |
+| POST | `/api/plugins/reload` | reload every folder |
+| PUT | `/api/plugins/{id}/enabled` | `{enabled}` |
+| PUT/DELETE | `/api/plugins/{id}/consent` | PUT `{permissionsHash}` agrees to the permissions shown (400 if they changed since) |
+| GET | `/api/plugins/{id}/icon` | the plugin's `icon.png` (≤ 64 KB) |
+| GET | `/api/plugins/panel` | `?group&version&resource&namespace&name`: `{generation, resourceVersion, panels: [{plugin, name, sections: [{title, icon, collapsed, blocks: [{type, …}]}], errors}], actions: [{plugin, id, label, icon, message, dangerous, argv, consented}]}`; no actions on read-only contexts |
+| WS | `/api/plugins/events` | `{generation}` now and after every change (load, hot reload, setting) |
+
+All but `/panel` work without a cluster connection. Blocks are resolved:
+`fields` items carry `{label, value, type, link?, copy?}` or `{label,
+error}`; `table` carries `columns` and `rows` of `{value, link?}` cells,
+`total` and `limit`; an expression that fails gives `{type: "error",
+message: "plugin.yaml:12:5: …"}`. Links are `{group, kind, namespace, name}`.
+
+`k8sman-server plugin validate <dir>…` checks plugins without a cluster
+(exit 1 on errors). `--plugin-dev <dir>` (repeatable) turns developer mode on
+and loads that folder.
 
 ## CRD group icons
 

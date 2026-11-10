@@ -36,6 +36,8 @@ More documentation:
 - [METRICS.md](METRICS.md): metrics-server, custom and external metrics.
 - [PROMETHEUS.md](PROMETHEUS.md): Prometheus, Alertmanager and monitor panels.
 - [UPDATES.md](UPDATES.md): Sparkle updates, signing and releases.
+- [PLUGINS.md](PLUGINS.md): runtime plugins (`plugin.yaml` + CEL), and
+  [writing one](PLUGINS.md#writing-a-plugin).
 
 ## Architecture
 
@@ -140,12 +142,28 @@ packaging/ Homebrew cask template
     integrations' own settings (`moduleSettings`).
   - `columns.json`: custom columns.
   - `portforwards.json`: saved forwards.
+  - `plugins/`: installed plugins (loaded in developer mode; see
+    [PLUGINS.md](PLUGINS.md)). Developer mode, plugin folders, turned-off
+    plugins and consent are `plugins` in `settings.json`.
 - **Integrations** (Argo CD, Argo Workflows, Helm, GPUs, Prometheus,
   Gateway API, Cilium Hubble, Metrics, Add-ons) are compile-time modules; see
   [Adding an integration](#adding-an-integration).
 - **CRD icons** come from Helm chart metadata, icons bundled with the app, or
   the group's website favicon (fetched directly, never through a third-party
   favicon service). See [API.md](../API.md#crd-group-icons).
+
+## Plugins
+
+Integrations below are compiled in. For your own operators and CRDs you
+don't need to fork: write a plugin, a folder with a `plugin.yaml` that adds
+table columns, inspector sections and shell actions in YAML and CEL,
+evaluated by the backend over the shared watch cache. Turn on **Settings ▸
+Integrations ▸ Plugins ▸ Developer mode**, **Load plugin folder…** (try
+[`examples/plugins/cert-manager`](../examples/plugins/cert-manager)), and
+edit: it hot reloads and shows errors with their line. Or run
+`make backend BACKEND_ARGS="--plugin-dev examples/plugins/cert-manager"`.
+`k8sman-server plugin validate <dir>` checks one without a cluster. See
+[PLUGINS.md ▸ Writing a plugin](PLUGINS.md#writing-a-plugin).
 
 ## Adding an integration
 

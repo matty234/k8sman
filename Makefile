@@ -39,7 +39,7 @@ backend-build:
 ## Unless K8SMAN_AUTH_TOKEN is set it generates a bearer token, prints it on
 ## stderr and writes it to ~/.config/k8sman/dev-token (0600) for app-dev/curl.
 backend: backend-build
-	./backend/bin/k8sman-server --kubeconfig $(KCFG)
+	./backend/bin/k8sman-server --kubeconfig $(KCFG) $(BACKEND_ARGS)
 
 backend-test:
 	cd backend && go vet ./... && go test ./...

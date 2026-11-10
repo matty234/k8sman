@@ -1,11 +1,57 @@
-# Plugins (design)
+# Plugins
 
-Status: design for review. Nothing here is built yet.
+Status: **Milestone 1 implemented** (dev mode only). Sections 1–12 are the
+design; [§13 As built](#13-as-built-milestone-1) says where Milestone 1
+differs from it, and [Writing a plugin](#writing-a-plugin) is how to use it.
 
 Deep integrations (Argo CD, Helm, Gateway API, …) are compile-time modules
 (see [DEVELOPMENT.md](DEVELOPMENT.md#adding-an-integration)). Plugins cover
 the long tail of CRDs (cert-manager, Karpenter, Crossplane, …): a folder
 with a `plugin.yaml`, in YAML and [CEL](https://cel.dev), loaded at runtime.
+
+## Writing a plugin
+
+In Milestone 1 plugins load only in **developer mode**, from folders on your
+computer, and reload as you save.
+
+1. Turn it on: **Settings ▸ Integrations ▸ Plugins ▸ Developer mode** (or
+   the palette's **Integrations…**). Or start the backend with
+   `--plugin-dev <folder>` (repeatable), e.g.
+   `make backend BACKEND_ARGS="--plugin-dev examples/plugins/cert-manager"`
+   with `make app-dev`, or for the packaged macOS app
+   `defaults write dev.k8sman.app BackendArgs -array --plugin-dev /path/to/plugin`.
+2. **Load plugin folder…** and pick a folder with a `plugin.yaml` (or a
+   folder of such folders). Start from
+   [`examples/plugins/cert-manager`](../examples/plugins/cert-manager): it
+   has columns, every common panel block, a sidebar section with kind icons,
+   and two `cmctl` shell actions.
+3. Open a table of one of its kinds: the plugin's columns are there (hover a
+   header for its description). Open an object: its sections are on the
+   Overview tab, its actions in the inspector header.
+4. Edit `plugin.yaml` and save. Tables and open panels update within a
+   moment. A mistake shows inline in Settings ▸ Integrations ▸ Plugins as
+   `plugin.yaml:42:21: undeclared reference to 'objet'` with the line and a
+   caret, and the previous version keeps running until the file loads again.
+   A failing expression shows its error (with its line) in its cell, field or
+   block; the rest still renders.
+5. Check it without the app, e.g. in CI:
+   `k8sman-server plugin validate ./my-plugin` (exit 1 on errors).
+
+The Plugins settings also list, per plugin, its kinds (active where the
+cluster serves them), its permissions, consent (Allow… / Revoke), and load,
+compile and evaluation timings (p50/p95/max per contribution type).
+
+Shell actions run on your computer in a dock tab: the first run asks you to
+allow the plugin's permissions, and every run shows the full command and asks
+first. They are hidden on read-only contexts.
+
+What Milestone 1 reads: `apiVersion`, `id`, `name`, `version`,
+`description`, `authors`, `homepage`, `minAppVersion`, `permissions.read` and
+`.commands`, `nav`, and per kind `version`, `icon`, `variables`, `columns`,
+`hideColumns`, `panel` and shell `actions`. `related`, `metrics`, `alerts`
+and patch actions are accepted with a warning and ignored until Milestone 2.
+Differences from the design below (notably `ns` instead of `namespace`) are
+in [§13](#13-as-built-milestone-1).
 
 ## 1. Goals and non-goals
 
@@ -23,8 +69,9 @@ Goals:
 
 Non-goals for v1:
 
-- Whole pages, sidebar sections, custom widgets, or any code other than CEL
-  (no rfw, WebAssembly or native code).
+- Whole pages, custom widgets, or any code other than CEL (no rfw,
+  WebAssembly or native code). (Sidebar sections and kind icons are in v1:
+  see §12, question 7.)
 - Network access from plugins, other than PromQL through the existing
   Prometheus module.
 - Replacing compiled-in modules. Argo CD, Helm, Hubble and the like stay
@@ -57,10 +104,9 @@ cert-manager/
     __snapshots__/     golden output, written by `k8sman plugin test --update`
 ```
 
-Installed plugins live in `<os.UserConfigDir()>/k8sman/plugins/<id>/`
-(`~/Library/Application Support/k8sman/plugins` on macOS,
-`~/.config/k8sman/plugins` on Linux, `%AppData%\k8sman\plugins` on Windows).
-Dev plugins are loaded from wherever they are.
+Installed plugins live next to the settings, in
+`~/.config/k8sman/plugins/<id>/` on every platform (decided in §12, question
+1). Dev plugins are loaded from wherever they are.
 
 ## 3. `plugin.yaml` reference
 
@@ -868,6 +914,26 @@ the Sparkle feed.
 
 ## 12. Open questions
 
+Answered by the owner for Milestone 1 (the questions are kept below):
+
+1. **Install location:** follow the settings directory
+   (`~/.config/k8sman/plugins`), not `os.UserConfigDir()`.
+2. **Related data in columns and alerts:** out of scope for Milestone 1
+   (related data itself is Milestone 2).
+3. **Shell actions on read-only contexts:** hide (and refuse) all plugin
+   shell actions there, dangerous or not.
+4. **Kubernetes CEL libraries:** implementer's call; prefer copying if the
+   import is large. Copied (see §13).
+5. **Panel transport:** implementer's call, simplest is fine. HTTP per object
+   version (see §13).
+6. **CLI:** `k8sman-server plugin …` subcommands; Milestone 1 has
+   `plugin validate <dir>`, the rest is Milestone 2.
+7. **Navigation:** yes: plugins may add a sidebar section (`NavGroup`) and
+   kind icons in v1, icons by name from the fixed list or the plugin's
+   `icon.png`.
+8. **Certificate details:** out of scope.
+9. **Whole pages:** out of scope.
+
 1. **Install location.** Using `os.UserConfigDir()` puts plugins in
    Application Support on macOS while settings live in `~/.config/k8sman`.
    Should plugins follow settings instead, for consistency?
@@ -896,3 +962,143 @@ the Sparkle feed.
    under its own permission.
 9. **Whole pages** stay out of v1 as decided. If asked for, a filtered
    object list built from the same vocabulary would cover most cases.
+
+## 13. As built (Milestone 1)
+
+**Where.** Backend: `internal/plugins` (`decode.go` and `exprpos.go`
+strict YAML with positions, `manifest.go`, `icons.go`, `celenv.go`,
+`compile.go`, `eval.go`, `shell.go`, `stats.go`, `host.go` for loading, dev
+folders, fsnotify and lookups, `k8scel/` the copied Kubernetes libraries),
+`internal/server/plugins.go` (the `plugins` module and its routes),
+`internal/server/localshell.go` (plugin actions), `columns.Column`
+(`Plugin`, `Program`, `Rev`, `Description`) and `settings.PluginSettings`.
+Frontend: `lib/plugins/` (`plugin_api.dart`, `plugin_host.dart`,
+`blocks.dart`, `plugin_panel.dart`, `plugins_settings.dart`,
+`plugin_icons.dart`) and `lib/modules/plugins_module.dart`.
+
+**Loading and settings.**
+
+- Plugins load only in developer mode: Settings ▸ Integrations ▸ Plugins ▸
+  Developer mode, or `--plugin-dev <dir>` (repeatable; turns dev mode on).
+  A dev folder is a plugin folder or a folder of them. In dev mode the
+  installed folder (`~/.config/k8sman/plugins/*`) loads too. There is no
+  install, index or signing yet; every plugin is "Unpacked".
+- settings.json keeps them under one key, `plugins: {devMode, devFolders,
+  disabled, consent}`, instead of `devPlugins`, `disabledPlugins` and
+  `pluginConsent`.
+- Discovery runs in a goroutine at start. Dev plugins compile every kind at
+  load, so errors show on save; plugins from the installed folder compile a
+  kind entry on first use. A kind entry is *active* where the current
+  cluster serves its kind (shown on the Plugins page); contributions only
+  ever apply to served kinds. A kind's `version` pin applies the entry only
+  when the table reads that version.
+- Fields of v1 that Milestone 1 doesn't build (`related`, `metrics`,
+  `alerts`, patch actions and `inputs`, `permissions.patch` and
+  `.prometheus`, `background`) are a warning and ignored, not an error, so
+  a manifest written for the full v1 still loads. An expression that uses
+  `related` fails to compile (undeclared reference).
+- Unknown fields, wrong types, bad ids, icons, block fields and column
+  types are errors at their `file:line:col`. CEL errors are mapped from the
+  expression into the file, through quoting and block scalars.
+- Hot reload: fsnotify on each plugin folder and on the folders of plugins,
+  debounced 150 ms. A good load replaces the plugin and bumps a generation;
+  a bad one keeps the previous version running, with the new errors shown.
+  Open tables resubscribe (a fresh snapshot with the new columns) when a
+  change alters their columns; the UI refetches panels and the plugin list
+  on `WS /api/plugins/events`.
+
+**CEL.**
+
+- cel-go v0.27.0, with the standard library, optional types,
+  `ext.Strings`, `ext.Sets`, UTC default time zone and cross-type numeric
+  comparisons; homogeneous aggregate literals off.
+- The Kubernetes Lists, Regex, URLs and Quantity libraries are copied from
+  `k8s.io/apiserver` v0.33.3 into `internal/plugins/k8scel` (Apache-2.0,
+  attribution in `doc.go` and each file). IP, CIDR, Format and Semver are
+  not included yet. Importing the apiserver package instead would have
+  pulled in most of its module.
+- `namespace` is a reserved word in CEL (cel-go refuses it as a variable),
+  so the object's namespace is **`ns`**; `ref(group, kind, name)` uses it.
+- `variables` is not a map: each variable is declared as
+  `variables.<name>` with the type its expression checks to, compiled in
+  dependency order, and evaluated lazily at most once per evaluation. So
+  `variables.notAfter.value()` type-checks like the expression it names (a
+  `map(string, dyn)` made `timestamp(variables.x.value())` fail at run
+  time). `variables.?x` and `has(variables.x)` aren't available (every
+  variable is declared); an unknown name is an error at its position, a
+  cycle an error naming the path.
+- `age(t)`, `until(t)` and `ref(group, kind, name)` are macros for
+  functions that take `now` / `ns`, so functions stay pure and a use of
+  `now` is visible in the AST.
+- Results are plain JSON: an empty optional is null, timestamps RFC3339,
+  durations seconds, quantities and URLs strings. A Ref is
+  `{group, kind, namespace, name}`.
+- Secrets: plugins see `data` and `stringData` keys with `""` values, and
+  no `last-applied-configuration` annotation.
+
+**Columns.**
+
+- `columns.Column` gains `Plugin` (the plugin id, serialised), `Program`
+  (an interface the plugin package implements, so no import cycle) and
+  `Rev`. The table builder's row-memo tag includes plugin revisions; a row
+  without jq columns skips `PrivateCopy` (CEL doesn't write to its input).
+- A column reading `now` puts a 30 s bucket in its memo key: it is
+  re-evaluated on the next snapshot or event after the bucket turns, not on
+  a timer. `type: until` columns don't need `now` and count down in the UI.
+- Cells are bounded by the cost limit (100,000) only; there is no 10 ms
+  per-cell timeout, since a timer per cell would cost more than the cell.
+- A saved column set (an override or a view) keeps plugin columns by
+  plugin and name; if the plugin isn't loaded the cell says so.
+- Measured on an M1 Pro (`go test ./internal/server -bench
+  TableSnapshot`), 1,500 pods: defaults 36.0 ms cold / 0.48 ms warm; three
+  jq columns 45.3 / 0.49 ms; three plugin columns 41.4 / 0.50 ms. Plugin
+  columns: +5.4 ms cold (budget 10), +0 warm, about 1.2 µs per cell, and
+  cheaper than jq doing the same. The cert-manager example loads in about
+  1.3 ms and compiles (4 kinds, about 45 expressions) in about 9 ms.
+
+**Panels.**
+
+- Transport (question 5): plain HTTP, `GET /api/plugins/panel` for the
+  object, refetched when its resourceVersion or the plugin generation
+  changes; the backend reads the object from the inspector's warm watch
+  (or its namespace's) before falling back to a GET.
+- Placement: after the kind's own sections and before Owns and Metadata,
+  for compiled-in and generic panels alike (the generic summary isn't
+  replaced). `collapsed: true` sections start collapsed. Several plugins:
+  plugin id order.
+- Budgets as designed: 1,000,000 per expression, 5,000,000 and 250 ms per
+  render.
+
+**Shell actions.**
+
+- Shell actions only (patch is Milestone 2). They appear in the inspector
+  header (and in row menus once the inspector has loaded them for that
+  object); not in the palette yet. `shortcut` is read but not bound yet.
+- Hidden and refused on read-only contexts, dangerous or not (question 3).
+  `dangerous` styles the confirmation; `confirm: false` is ignored with a
+  warning: every run is confirmed, showing the full argv.
+- First-use consent per plugin, stored as a hash of its permissions
+  (re-asked when they change); also Allow… / Revoke in the Plugins
+  settings.
+- `GET /api/local-shell?plugin=&action=&group=&version=&resource=&namespace=&name=`:
+  the backend re-checks the module, read-only, consent and the action's
+  `when` on every run, expands the k9s variables (including `$COL-<NAME>`
+  from the object's table row), looks the command up on the PATH and runs
+  it without a shell in the dock, with `K8SMAN_<NAME>` exported. The dock
+  tab's Restart doesn't re-run it (each run is confirmed).
+
+**Navigation (question 7).** New top-level `nav: {title, after?, kinds?}`
+(a sidebar section; `kinds` defaults to the plugin's kinds in file order)
+and per-kind `icon` (a name from the icon list, or `icon.png`). The icon
+list is 62 Material names, in `internal/plugins/icons.go` and
+`lib/plugins/plugin_icons.dart`.
+
+**Not built in Milestone 1** (per the milestones): related objects,
+metrics, alerts, patch actions and inputs, the JSON Schema, fixtures and
+`plugin test`/`render`/`new`/`import-k9s`, distribution (index, signing,
+install, updates), suspension after repeated limit hits (dev plugins are
+never suspended in the design either), and the palette entries.
+
+**Size.** The backend grows by 5.1 MiB (68.3 → 73.7 MB, stripped,
+darwin/arm64), within the 6 MB budget; most of it is cel-go and its ANTLR
+runtime.

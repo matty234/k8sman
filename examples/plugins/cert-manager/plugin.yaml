@@ -1,0 +1,210 @@
+# A k8sman plugin for cert-manager (https://cert-manager.io): columns,
+# inspector sections and a Renew action for Certificates, Issuers and
+# ClusterIssuers. See docs/PLUGINS.md ("Writing a plugin").
+#
+# Try it: Settings ▸ Integrations ▸ Plugins ▸ Developer mode ▸
+# Load plugin folder… and pick this folder (or start the backend with
+# --plugin-dev examples/plugins/cert-manager). Edit and save: tables and
+# panels update in place, and errors show with their line.
+apiVersion: k8sman.dev/v1
+id: cert-manager
+name: cert-manager
+version: 1.0.0
+description: Expiry, issuer and readiness columns, certificate panels and Renew (cmctl) for cert-manager.
+authors: [k8sman]
+homepage: https://cert-manager.io
+
+permissions:
+  read:
+    - cert-manager.io/Certificate
+    - cert-manager.io/CertificateRequest
+    - cert-manager.io/Issuer
+    - cert-manager.io/ClusterIssuer
+  commands: [cmctl]
+
+# A sidebar section for the plugin's kinds (instead of Custom Resources).
+nav:
+  title: cert-manager
+  after: Network
+  kinds:
+    - cert-manager.io/Certificate
+    - cert-manager.io/CertificateRequest
+    - cert-manager.io/Issuer
+    - cert-manager.io/ClusterIssuer
+
+kinds:
+  cert-manager.io/Certificate:
+    icon: verified
+    variables:
+      notAfter: object.?status.?notAfter                  # optional(string)
+      issuerKind: object.spec.issuerRef.?kind.orValue("Issuer")
+      issuerGroup: object.spec.issuerRef.?group.orValue("cert-manager.io")
+
+    hideColumns: [Status]     # a printer column some versions add; Ready says the same
+    columns:
+      - name: Ready           # replaces the CRD's printer column of the same name
+        type: status
+        value: 'conditionTrue(object, "Ready") ? "Ready" : condition(object, "Ready").?reason.orValue("Pending")'
+      - name: Issuer
+        value: variables.issuerKind + "/" + object.spec.issuerRef.name
+      - name: Expires
+        type: until           # time left; the UI counts down, so no `now` here
+        description: When the current certificate expires (status.notAfter)
+        value: variables.notAfter
+
+    panel:
+      sections:
+        - title: Certificate
+          icon: verified
+          blocks:
+            - type: message
+              severity: error
+              when: variables.notAfter.hasValue() && timestamp(variables.notAfter.value()) < now
+              text: '"Expired " + humanDuration(age(variables.notAfter.value())) + " ago"'
+            - type: message
+              severity: warning
+              when: >-
+                variables.notAfter.hasValue() && timestamp(variables.notAfter.value()) >= now &&
+                until(variables.notAfter.value()) < duration("336h")
+              text: '"Expires in " + humanDuration(until(variables.notAfter.value()))'
+            - type: badges
+              items:
+                - text: 'conditionTrue(object, "Ready") ? "Ready" : "Not ready"'
+                - text: '"Issuing"'
+                  when: conditionTrue(object, "Issuing")
+                  severity: '"warning"'
+            - type: fields
+              items:
+                - label: Secret
+                  value: object.spec.secretName
+                  link: ref("", "Secret", object.spec.secretName)
+                  copy: true
+                - label: Issuer
+                  value: variables.issuerKind + "/" + object.spec.issuerRef.name
+                  link: ref(variables.issuerGroup, variables.issuerKind, object.spec.issuerRef.name)
+                - label: Common name
+                  value: object.spec.?commonName
+                - label: Expires
+                  type: until
+                  value: variables.notAfter
+                - label: Not after
+                  type: timestamp
+                  value: variables.notAfter
+                - label: Renews
+                  type: until
+                  value: object.?status.?renewalTime
+                - label: Duration
+                  value: object.spec.?duration.orValue("2160h (default)")
+                - label: Revision
+                  type: number
+                  value: object.?status.?revision
+        - title: DNS names
+          icon: dns
+          when: object.spec.?dnsNames.orValue([]).size() > 0
+          blocks:
+            - type: chips
+              items: object.spec.dnsNames
+        - title: Private key
+          icon: key
+          collapsed: true
+          blocks:
+            - type: fields
+              items:
+                - label: Algorithm
+                  value: object.spec.?privateKey.?algorithm.orValue("RSA")
+                - label: Size
+                  type: number
+                  value: object.spec.?privateKey.?size
+                - label: Rotation
+                  value: object.spec.?privateKey.?rotationPolicy.orValue("Never")
+        - title: Conditions
+          icon: checklist
+          blocks:
+            - type: conditions
+
+    actions:
+      - id: renew
+        label: Renew
+        icon: refresh
+        shortcut: shift+R
+        message: cmctl marks the certificate for renewal; cert-manager issues a new one now.
+        shell:
+          command: cmctl
+          args: [renew, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+      - id: status
+        label: cmctl status
+        icon: terminal
+        dangerous: false
+        shell:
+          command: cmctl
+          args: [status, certificate, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+
+  cert-manager.io/CertificateRequest:
+    icon: receipt
+    columns:
+      - name: Approved
+        type: status
+        value: 'conditionTrue(object, "Approved") ? "Approved" : (conditionTrue(object, "Denied") ? "Denied" : "Pending")'
+      - name: Ready
+        type: status
+        value: 'conditionTrue(object, "Ready") ? "Ready" : condition(object, "Ready").?reason.orValue("Pending")'
+    panel:
+      sections:
+        - title: Request
+          icon: receipt
+          blocks:
+            - type: fields
+              items:
+                - label: Issuer
+                  value: object.spec.issuerRef.?kind.orValue("Issuer") + "/" + object.spec.issuerRef.name
+                - label: Requested by
+                  value: object.spec.?username
+                - label: Usages
+                  value: object.spec.?usages.orValue([]).join(", ")
+            - type: links
+              items: 'object.metadata.?ownerReferences.orValue([]).map(o, ref(o.apiVersion.contains("/") ? o.apiVersion.split("/")[0] : "", o.kind, o.name))'
+              empty: No owner.
+            - type: conditions
+
+  cert-manager.io/Issuer: &issuer
+    icon: policy
+    columns:
+      - name: Type
+        value: >-
+          has(object.spec.acme) ? "ACME" : has(object.spec.ca) ? "CA" :
+          has(object.spec.vault) ? "Vault" : has(object.spec.venafi) ? "Venafi" :
+          has(object.spec.selfSigned) ? "SelfSigned" : "Other"
+      - name: Server
+        value: object.spec.?acme.?server
+    panel:
+      sections:
+        - title: Issuer
+          icon: policy
+          blocks:
+            - type: fields
+              items:
+                - label: ACME server
+                  type: url
+                  value: object.spec.?acme.?server
+                - label: ACME email
+                  value: object.spec.?acme.?email
+                - label: Solvers
+                  type: number
+                  value: object.spec.?acme.?solvers.orValue([]).size()
+                  when: has(object.spec.acme)
+                - label: CA secret
+                  value: object.spec.?ca.?secretName
+                - label: Vault server
+                  type: url
+                  value: object.spec.?vault.?server
+            - type: table
+              when: object.spec.?acme.?solvers.orValue([]).size() > 0
+              rows: object.spec.acme.solvers
+              empty: No solvers.
+              columns:
+                - name: Challenge
+                  value: 'has(row.http01) ? "HTTP-01" : (has(row.dns01) ? "DNS-01" : "?")'
+                - name: Selector
+                  value: 'row.?selector.?dnsZones.orValue([]).join(", ")'
+            - type: conditions
+  cert-manager.io/ClusterIssuer: *issuer
