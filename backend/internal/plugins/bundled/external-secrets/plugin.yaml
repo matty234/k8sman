@@ -202,16 +202,16 @@ kinds:
               limit: 50
               columns:
                 - name: Secret key
-                  value: row.?secretKey.orValue("")
+                  value: item.?secretKey.orValue("")
                   mono: true
                 - name: Remote key
-                  value: row.?remoteRef.?key.orValue("")
+                  value: item.?remoteRef.?key.orValue("")
                   mono: true
                 - name: Property
-                  value: row.?remoteRef.?property
+                  value: item.?remoteRef.?property
                   mono: true
                 - name: Version
-                  value: row.?remoteRef.?version
+                  value: item.?remoteRef.?version
                   mono: true
             - type: table
               when: size(object.spec.?dataFrom.orValue([])) > 0
@@ -222,22 +222,22 @@ kinds:
                 - name: dataFrom
                   mono: true
                   value: >-
-                    ((has(row.extract) ? ["extract " + string(row.extract.?key.orValue(""))
-                        + (has(row.extract.property) ? " · " + string(row.extract.property) : "")
-                        + (has(row.extract.version) ? " @ " + string(row.extract.version) : "")] : [])
-                    + (has(row.find) ? ["find " + (
-                          (has(row.find.name) && has(row.find.name.regexp) ? ["name ~ " + string(row.find.name.regexp)] : [])
-                        + (has(row.find.path) ? ["path " + string(row.find.path)] : [])
-                        + (size(row.find.?tags.orValue({})) > 0
-                            ? ["tags " + row.find.tags.map(k, string(k) + "=" + string(row.find.tags[k])).sort().join(",")] : [])
+                    ((has(item.extract) ? ["extract " + string(item.extract.?key.orValue(""))
+                        + (has(item.extract.property) ? " · " + string(item.extract.property) : "")
+                        + (has(item.extract.version) ? " @ " + string(item.extract.version) : "")] : [])
+                    + (has(item.find) ? ["find " + (
+                          (has(item.find.name) && has(item.find.name.regexp) ? ["name ~ " + string(item.find.name.regexp)] : [])
+                        + (has(item.find.path) ? ["path " + string(item.find.path)] : [])
+                        + (size(item.find.?tags.orValue({})) > 0
+                            ? ["tags " + item.find.tags.map(k, string(k) + "=" + string(item.find.tags[k])).sort().join(",")] : [])
                         ).join(" · ")] : [])
-                    + row.?rewrite.orValue([]).map(r, has(r.regexp)
+                    + item.?rewrite.orValue([]).map(r, has(r.regexp)
                         ? "rewrite " + string(r.regexp.source) + " → " + string(r.regexp.target)
                         : "rewrite " + r.map(k, string(k)).sort().join(","))
-                    + (has(row.sourceRef) && has(row.sourceRef.generatorRef)
-                        ? ["generator " + string(row.sourceRef.generatorRef.kind) + "/" + string(row.sourceRef.generatorRef.name)] : [])
-                    + (has(row.sourceRef) && has(row.sourceRef.storeRef)
-                        ? ["store " + string(row.sourceRef.storeRef.?kind.orValue("SecretStore")) + "/" + string(row.sourceRef.storeRef.name)] : [])
+                    + (has(item.sourceRef) && has(item.sourceRef.generatorRef)
+                        ? ["generator " + string(item.sourceRef.generatorRef.kind) + "/" + string(item.sourceRef.generatorRef.name)] : [])
+                    + (has(item.sourceRef) && has(item.sourceRef.storeRef)
+                        ? ["store " + string(item.sourceRef.storeRef.?kind.orValue("SecretStore")) + "/" + string(item.sourceRef.storeRef.name)] : [])
                     ).join("  |  ")
         - title: Template
           icon: description
@@ -348,7 +348,7 @@ kinds:
               rows: variables.selectors
               columns:
                 - name: Selector
-                  value: row
+                  value: item
                   mono: true
             - type: chips
               when: size(variables.namespaces) > 0
@@ -369,9 +369,9 @@ kinds:
               rows: object.status.failedNamespaces
               columns:
                 - name: Namespace
-                  value: row.?namespace.orValue("")
+                  value: item.?namespace.orValue("")
                 - name: Reason
-                  value: row.?reason.orValue("")
+                  value: item.?reason.orValue("")
 
   # ClusterSecretStore shares all of this but its icon (anchors per field:
   # merge keys aren't supported).
@@ -446,13 +446,13 @@ kinds:
               empty: None
               columns:
                 - name: ExternalSecret
-                  value: row.metadata.namespace + "/" + row.metadata.name
-                  link: ref(row)
+                  value: item.metadata.namespace + "/" + item.metadata.name
+                  link: ref(item)
                 - name: Status
                   type: status
                   value: >-
-                    condition(row, "Ready").hasValue()
-                      ? string(condition(row, "Ready").value().?reason.orValue(condition(row, "Ready").value().status)) : "Unknown"
+                    condition(item, "Ready").hasValue()
+                      ? string(condition(item, "Ready").value().?reason.orValue(condition(item, "Ready").value().status)) : "Unknown"
   external-secrets.io/ClusterSecretStore:
     icon: dns
     variables: *storeVariables

@@ -26,10 +26,12 @@ import (
 //
 // Variables: object, variables.<name> (each declared with its own type
 // when the kind entry is compiled, and evaluated lazily), now, context, ns
-// (the object's namespace; `namespace` is a reserved word in CEL),
+// (the object's namespace; `namespace` is a reserved word in CEL, so the
+// variable can't have that name),
 // related and metrics (declared everywhere so they type-check; the
-// compiler refuses them where they aren't available, see refs), row in
-// table block columns, and input in patch bodies and input checks.
+// compiler refuses them where they aren't available, see refs), item in
+// table block columns and related filters (row is a deprecated alias in
+// columns), and input in patch bodies and input checks.
 //
 // age(t) and until(t) are macros for _age(t, now) and _until(t, now), and
 // ref(group, kind, name) for ref(group, kind, ns, name), so functions

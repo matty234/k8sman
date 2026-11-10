@@ -181,17 +181,17 @@ kinds:
               limit: 5
               columns:
                 - name: Name
-                  value: row.metadata.name
-                  link: ref(row)
+                  value: item.metadata.name
+                  link: ref(item)
                 - name: Approved
                   type: status
-                  value: 'conditionTrue(row, "Approved") ? "Approved" : (conditionTrue(row, "Denied") ? "Denied" : "Pending")'
+                  value: 'conditionTrue(item, "Approved") ? "Approved" : (conditionTrue(item, "Denied") ? "Denied" : "Pending")'
                 - name: Ready
                   type: status
-                  value: 'conditionTrue(row, "Ready") ? "Ready" : condition(row, "Ready").?reason.orValue("Pending")'
+                  value: 'conditionTrue(item, "Ready") ? "Ready" : condition(item, "Ready").?reason.orValue("Pending")'
                 - name: Created
                   type: age
-                  value: row.metadata.creationTimestamp
+                  value: item.metadata.creationTimestamp
         - title: DNS names
           icon: dns
           when: object.spec.?dnsNames.orValue([]).size() > 0
@@ -359,9 +359,9 @@ kinds:
               empty: No solvers.
               columns:
                 - name: Challenge
-                  value: 'has(row.http01) ? "HTTP-01" : (has(row.dns01) ? "DNS-01" : "?")'
+                  value: 'has(item.http01) ? "HTTP-01" : (has(item.dns01) ? "DNS-01" : "?")'
                 - name: Selector
-                  value: 'row.?selector.?dnsZones.orValue([]).join(", ")'
+                  value: 'item.?selector.?dnsZones.orValue([]).join(", ")'
             - type: conditions
     alerts:
       - id: issuer-not-ready

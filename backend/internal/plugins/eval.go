@@ -452,10 +452,10 @@ func (r *renderer) table(bp blockProg, out map[string]any, firstErr *error) {
 	}
 	// The row's CEL value is converted from its JSON form.
 	cells := make([][]map[string]any, 0, len(rows))
-	r.act.hasRow = true
-	defer func() { r.act.row, r.act.hasRow = nil, false }()
+	r.act.hasRow, r.act.hasItem = true, true
+	defer func() { r.act.row, r.act.item, r.act.hasRow, r.act.hasItem = nil, nil, false, false }()
 	for _, row := range rows {
-		r.act.row = row
+		r.act.row, r.act.item = row, row
 		line := make([]map[string]any, len(b.Columns))
 		for i := range b.Columns {
 			k := "col." + itoa(i)

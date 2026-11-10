@@ -287,3 +287,33 @@ func TestShellActionExpandsVariables(t *testing.T) {
 		t.Fatalf("ShellAction without consent: %v", err)
 	}
 }
+
+// `row` still works in table columns, with a warning pointing at `item`.
+func TestRowAliasWarns(t *testing.T) {
+	dir := t.TempDir()
+	src := `apiVersion: k8sman.dev/v1
+id: old
+name: Old
+version: 1.0.0
+permissions:
+  read: [example.com/Widget]
+kinds:
+  example.com/Widget:
+    panel:
+      sections:
+        - title: T
+          blocks:
+            - type: table
+              rows: object.spec.items
+              columns:
+                - {name: A, value: row.name}
+                - {name: B, value: item.name}
+`
+	if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	diags := Validate(dir)
+	if len(diags) != 1 || !diags[0].Warning || !strings.Contains(diags[0].Message, "`row` is deprecated") {
+		t.Fatalf("diags = %+v, want one deprecation warning", diags)
+	}
+}

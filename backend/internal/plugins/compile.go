@@ -51,6 +51,8 @@ type program struct {
 	related refSet
 	metrics refSet
 	out     *cel.Type
+	// usesRow is true when the expression reads the deprecated alias `row`.
+	usesRow bool
 }
 
 // kindProgs is one kind entry of a plugin, compiled.
@@ -268,6 +270,9 @@ func (c *compiler) compile(e Expr, env *cel.Env, want *cel.Type, limit uint64) *
 		if x.Kind() == ast.IdentKind && x.AsIdent() == varNow {
 			p.usesNow = true
 		}
+		if x.Kind() == ast.IdentKind && x.AsIdent() == varRow {
+			p.usesRow = true
+		}
 	}))
 	prg, err := env.Program(a, cel.CostLimit(limit), cel.EvalOptions(cel.OptOptimize), cel.InterruptCheckFrequency(100))
 	if err != nil {
@@ -415,7 +420,7 @@ func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
 	}
 	env := c.compileVars(kp, k)
 	c.base = env
-	if c.row, err = env.Extend(cel.Variable(varRow, cel.DynType)); err == nil {
+	if c.row, err = env.Extend(cel.Variable(varItem, cel.DynType), cel.Variable(varRow, cel.DynType)); err == nil {
 		if c.input, err = env.Extend(cel.Variable(varInput, cel.MapType(cel.StringType, cel.DynType))); err == nil {
 			c.item, err = env.Extend(cel.Variable(varItem, cel.MapType(cel.StringType, cel.DynType)))
 		}
@@ -614,6 +619,11 @@ func (c *compiler) compileBlock(b *Block) blockProg {
 		for i, col := range b.Columns {
 			set("col."+itoa(i)+".value", col.Value, c.row, nil)
 			set("col."+itoa(i)+".link", col.Link, c.row, nil)
+			for _, role := range []string{"value", "link"} {
+				if p := bp.progs["col."+itoa(i)+"."+role]; p != nil && p.usesRow {
+					c.diags = append(c.diags, c.d.diagAt(c.d.exprPos(p.expr, 1, 0), true, "`row` is deprecated: use `item` (the element being evaluated)"))
+				}
+			}
 		}
 	case "bar":
 		set("value", b.Value, c.base, nil)
