@@ -156,7 +156,13 @@ class MenuSelect<T> extends StatelessWidget {
   /// Shown when [value] matches no option.
   final Widget? hint;
   final String? tooltip;
-  const MenuSelect({super.key, required this.value, required this.options, required this.onChanged, this.hint, this.tooltip});
+
+  /// Fill the width it's given, the arrow at the right end (inside a field).
+  final bool expand;
+
+  /// The control's height (26 by default).
+  final double height;
+  const MenuSelect({super.key, required this.value, required this.options, required this.onChanged, this.hint, this.tooltip, this.expand = false, this.height = 26});
 
   @override
   Widget build(BuildContext context) {
@@ -180,14 +186,14 @@ class MenuSelect<T> extends StatelessWidget {
           ),
       ],
       builder: (h) => Container(
-        height: 26,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        height: height,
+        padding: EdgeInsets.symmetric(horizontal: expand ? 8 : 6),
         decoration: BoxDecoration(
           color: h ? theme.colorScheme.onSurface.withValues(alpha: 0.06) : null,
           borderRadius: BorderRadius.circular(6),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Flexible(child: current ?? hint ?? const SizedBox.shrink()),
+        child: Row(mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min, children: [
+          if (expand) Expanded(child: current ?? hint ?? const SizedBox.shrink()) else Flexible(child: current ?? hint ?? const SizedBox.shrink()),
           const SizedBox(width: 4),
           Icon(Icons.unfold_more, size: 14, color: theme.hintColor),
         ]),

@@ -273,16 +273,14 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Same height and fill as the text fields beside it.
                 SizedBox(
                   width: 120,
-                  child: Container(
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: theme.inputDecorationTheme.fillColor,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    alignment: Alignment.centerLeft,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: theme.inputDecorationTheme.fillColor, borderRadius: BorderRadius.circular(6)),
                     child: MenuSelect<String>(
+                      expand: true,
+                      height: 24,
                       value: _types.contains(c.type) ? c.type : 'string',
                       options: [for (final t in _types) (t, Text(t, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium))],
                       onChanged: (v) => setState(() => c.type = v),
