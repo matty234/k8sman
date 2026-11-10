@@ -810,6 +810,7 @@ replaced with `""`.
 | `until(t)` | duration | `t - now` |
 | `humanDuration(d duration)` | string | kubectl style: `45s`, `3h12m`, `29d`, `1y20d`; negative gets `-` |
 | `promQuote(s string)` | string | `s` as an escaped PromQL string literal, for `metrics` queries |
+| `l.sort()` | list | `l` in order (strings, numbers, booleans or timestamps); added in Milestone 2 |
 
 CEL durations have no day unit: write `duration("336h")`, not `"14d"`.
 
@@ -1374,10 +1375,12 @@ bound to their shortcuts in the table (`ui/resource_table.dart`).
 - Evaluation errors (the first three per kind) are returned in the
   overview's `errors`; the object is skipped.
 
-**CEL.** `ext.Lists()` is added (`sort`, `distinct`, `flatten`, `slice`,
-…), a compatible addition: CEL iterates maps in no particular order, so a
-list built from a map's keys needs `sort()` to be stable (in panels and in
-snapshots).
+**CEL.** A `list.sort()` function is added (strings, numbers, booleans,
+timestamps), a compatible addition: CEL iterates maps in no particular
+order, so a list built from a map's keys needs sorting to be stable (in
+panels and in snapshots). cel-go's whole `ext.Lists()` was tried first and
+dropped: it made every plugin cell about 1 µs slower (+5 ms cold on the
+1,500-row benchmark).
 
 **JSON Schema.** Generated from the manifest types and the loader's own
 lists (column and value types, block fields, icons, severities, sections,
@@ -1412,12 +1415,14 @@ enums and per-block fields; rules across fields (exactly one of `name`,
 **Numbers** (M1 Pro, `go test -bench`):
 
 - `BenchmarkPluginData` (cert-manager example): alerts over 1,000
-  Certificates, 11.5 ms when every object is new (once per 30 s bucket, or
-  for changed objects) and 0.13 ms on a poll that reuses the memo; the
-  Certificate panel with its related objects and metric warm, 0.16 ms
-  (budget 5 ms p95).
-- `BenchmarkTableSnapshot` is unchanged by Milestone 2 (related data stays
-  out of tables): plugin columns cost what they did in Milestone 1.
+  Certificates, about 10 ms when every object is new (once per 30 s
+  bucket, or for changed objects) and about 0.2 ms on a poll that reuses
+  the memo; the Certificate panel with its related objects and metric
+  warm, about 0.15 ms (budget 5 ms p95).
+- `BenchmarkTableSnapshot` (1,500 pods, three plugin columns) is unchanged
+  by Milestone 2, as related data stays out of tables: measured back to
+  back on a busy machine, 41–44 ms cold and 1.9 ms warm, against 46–52 ms
+  and 1.9 ms for the Milestone 1 build in the same minutes.
 - The backend grows by 0.27 MB (73.86 → 74.14 MB, stripped,
   darwin/arm64).
 

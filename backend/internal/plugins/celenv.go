@@ -3,6 +3,7 @@ package plugins
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,7 +70,6 @@ func envOptions() []cel.EnvOption {
 		cel.CrossTypeNumericComparisons(true),
 		ext.Strings(),
 		ext.Sets(),
-		ext.Lists(),
 		k8scel.Lists(),
 		k8scel.Regex(),
 		k8scel.URLs(),
@@ -142,7 +142,44 @@ func envOptions() []cel.EnvOption {
 			cel.Overload("prom_quote_string", []*cel.Type{cel.StringType}, cel.StringType,
 				cel.UnaryBinding(func(s ref.Val) ref.Val { return types.String(strconv.Quote(str(s))) })),
 		),
+		// list.sort(): CEL iterates maps in no particular order, so a list
+		// made from a map's keys needs sorting to be stable. (Not all of
+		// ext.Lists: it slows every cell by about 1 µs.)
+		cel.Function("sort",
+			cel.MemberOverload("list_sort", []*cel.Type{cel.ListType(cel.DynType)}, cel.ListType(cel.DynType),
+				cel.UnaryBinding(sortList)),
+		),
 	}
+}
+
+// sortList sorts a list of strings, numbers, booleans or timestamps.
+func sortList(v ref.Val) ref.Val {
+	l, ok := v.(traits.Lister)
+	if !ok {
+		return types.NewErr("sort: expected a list")
+	}
+	var items []ref.Val
+	for it := l.Iterator(); it.HasNext() == types.True; {
+		items = append(items, it.Next())
+	}
+	var bad ref.Val
+	slices.SortStableFunc(items, func(a, b ref.Val) int {
+		c, ok := a.(traits.Comparer)
+		if !ok {
+			bad = a
+			return 0
+		}
+		r, ok := c.Compare(b).(types.Int)
+		if !ok {
+			bad = b
+			return 0
+		}
+		return int(r)
+	})
+	if bad != nil {
+		return types.NewErr("sort: can't order %s values", bad.Type().TypeName())
+	}
+	return types.DefaultTypeAdapter.NativeToValue(items)
 }
 
 func nowMacro(fn string) parser.MacroExpander {
