@@ -51,16 +51,18 @@ const _coreSections = [
   ]),
 ];
 
-/// Section title → kinds: the core sections plus the enabled modules'.
+/// Section title → kinds: the core sections plus the enabled modules' and
+/// the active plugins'.
 Map<String, List<String>> _curatedFor(AppState app) => {
-      for (final g in placeAfter(_coreSections, [for (final m in enabledModules(app)) ...m.navGroups], (g) => g.title, (g) => g.after)) g.title: g.kinds,
+      for (final g in placeAfter(_coreSections, [for (final m in enabledModules(app)) ...m.navGroups, ...pluginHost.navGroups], (g) => g.title, (g) => g.after))
+        g.title: g.kinds,
     };
 
 /// Source-list glyphs for well-known kinds (others get a generic one).
 /// The nav's icon for a kind (also used by the collapsed inspector tab).
 IconData kindIcon(ResourceType type) => _iconOf(type) ?? (type.custom ? Icons.extension_outlined : Icons.article_outlined);
 
-IconData? _iconOf(ResourceType type) => _kindIcons[type.gk] ?? moduleKindIcons[type.gk] ?? pluginHost.kindIcons[type.gk];
+IconData? _iconOf(ResourceType type) => _kindIcons[type.gk] ?? pluginHost.kindIcons[type.gk] ?? moduleKindIcons[type.gk];
 
 /// [kindIcon], except custom resources without a built-in glyph get their
 /// API group's app icon (or a plugin's icon.png).

@@ -870,24 +870,41 @@ class AppState extends ChangeNotifier {
   /// Ids of the integration modules the user turned off (lib/modules):
   /// their pages, panels, palette entries and sidebar sections are hidden,
   /// and the backend turns off their routes and overview checks.
+  /// Includes [supersededModules].
   Set<String> disabledModules = const {};
   Future<void> _moduleSaves = Future.value();
 
+  /// Modules a bundled plugin replaces (e.g. External Secrets): off, and
+  /// hidden in Settings ▸ Integrations, where the plugin has the row. The
+  /// backend decides (settings.json's plugins.useModule brings one back).
+  Set<String> supersededModules = const {};
+
+  /// What the user turned off themselves (what [setDisabledModules] saves).
+  Set<String> _userDisabledModules = const {};
+
   /// Loads [disabledModules] (an app setting, like the sidebar layout).
+  /// Again after the module/plugin choice changes.
   Future<void> loadDisabledModules() async {
     try {
-      disabledModules = await api.getDisabledModules();
+      final m = await api.getDisabledModules();
+      _userDisabledModules = Set.unmodifiable(m.disabled);
+      supersededModules = Set.unmodifiable(m.superseded);
+      disabledModules = Set.unmodifiable({...m.disabled, ...m.superseded});
       notifyListeners();
     } catch (e) {
       debugPrint('integrations: $e');
     }
   }
 
-  /// Applies [ids] now and saves them in the background.
+  /// Applies [ids] now and saves them in the background. Superseded
+  /// modules stay off whatever [ids] says; the user's own choice for them
+  /// is kept as it was.
   void setDisabledModules(Set<String> ids) {
-    disabledModules = Set.unmodifiable(ids);
+    final save = {...ids.difference(supersededModules), ..._userDisabledModules.intersection(supersededModules)};
+    _userDisabledModules = Set.unmodifiable(save);
+    disabledModules = Set.unmodifiable({...save, ...supersededModules});
     notifyListeners();
-    _moduleSaves = _moduleSaves.then((_) => api.putDisabledModules(ids)).catchError((Object e) => debugPrint('save integrations: $e'));
+    _moduleSaves = _moduleSaves.then((_) => api.putDisabledModules(save)).catchError((Object e) => debugPrint('save integrations: $e'));
   }
 
   /// The discovered type a pin points at (null: not on this cluster).

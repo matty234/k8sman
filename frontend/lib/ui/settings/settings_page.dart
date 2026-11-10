@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import '../../app/updates/update_controller.dart';
 import '../../app/updates/update_ui.dart';
 import '../../modules/modules.dart';
+import '../../plugins/plugin_host.dart';
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../addons/addons_view.dart';
@@ -101,6 +102,15 @@ class _SettingsPageState extends State<SettingsPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !textEntryFocused) _focus.requestFocus();
     });
+    // Bundled plugins have rows under Integrations; their status (the
+    // kinds the cluster serves) is fetched again for this cluster.
+    pluginHost.addListener(_onPlugins);
+    pluginHost.attach(context.read<AppState>().api);
+    pluginHost.refresh();
+  }
+
+  void _onPlugins() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -109,6 +119,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _searchFocus.dispose();
     _focus.dispose();
     _scroll.dispose();
+    pluginHost.removeListener(_onPlugins);
     _modules.dispose();
     super.dispose();
   }
@@ -174,7 +185,7 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsSection.clusters => clusterSettings(),
         SettingsSection.sidebar => sidebarSettings(),
         SettingsSection.views => viewSettings(),
-        SettingsSection.integrations => integrationSettings(_modules),
+        SettingsSection.integrations => integrationSettings(_modules, context.read<AppState>()),
         SettingsSection.addons => _addonsSettings(),
         SettingsSection.tables => tableSettings(),
         SettingsSection.keyboard => _keyboardSettings(),

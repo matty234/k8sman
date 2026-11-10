@@ -6,9 +6,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/columns"
+	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
 const demoManifest = `apiVersion: k8sman.dev/v1
@@ -84,6 +86,60 @@ func demoHost(t *testing.T, manifest string) *Host {
 }
 
 var widgetType = cluster.ResourceType{Group: "example.com", Version: "v1", Resource: "widgets", Kind: "Widget", Namespaced: true}
+
+// Bundled plugins apply without dev mode and need no consent; a dev folder
+// with the same id overrides one while user plugins are on; their switch
+// turns one off, and useModule hands it back to the module it replaces.
+func TestBundledPlugins(t *testing.T) {
+	st, err := settings.Open(filepath.Join(t.TempDir(), "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dev, ManifestFile), []byte(strings.Replace(demoManifest, "name: Demo", "name: Demo dev", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHost(Options{Settings: st, Bundled: fstest.MapFS{"demo/plugin.yaml": {Data: []byte(demoManifest)}}, Replaces: map[string]string{"demo": "demo_module"}})
+	update := func(fn func(p *settings.PluginSettings)) {
+		t.Helper()
+		if err := st.UpdatePlugins(fn); err != nil {
+			t.Fatal(err)
+		}
+		h.Reload()
+	}
+	check := func(want, superseded string) {
+		t.Helper()
+		var got []string
+		for _, p := range h.active() {
+			got = append(got, p.Name()+"@"+p.source)
+		}
+		if strings.Join(got, ",") != want || strings.Join(h.Superseded(), ",") != superseded {
+			t.Fatalf("active = %v, superseded = %v; want %q, %q", got, h.Superseded(), want, superseded)
+		}
+	}
+	h.Reload()
+	check("Demo@bundled", "demo_module")
+	acts := h.Actions(Env{}, widgetType, widget(true, ""), func() ShellVars { return ShellVars{} })
+	if len(acts) != 1 || !acts[0].Consented || !h.List(nil)[0].Consented {
+		t.Fatalf("bundled actions need no consent: %+v", acts)
+	}
+
+	update(func(p *settings.PluginSettings) { p.DevMode, p.DevFolders = true, []string{dev} })
+	check("Demo dev@dev", "demo_module")
+	if l := h.List(nil); len(l) != 2 || !l[0].Overrides || l[0].Status != "ok" || !l[1].Overridden || l[1].Source != SourceBundled {
+		t.Fatalf("list = %+v", l)
+	}
+	if err := st.SetDisabledModules([]string{HostModule}); err != nil {
+		t.Fatal(err)
+	}
+	check("Demo@bundled", "demo_module") // user plugins off: the bundled one is back
+	_ = st.SetDisabledModules(nil)
+
+	update(func(p *settings.PluginSettings) { p.Disabled = []string{"demo"} })
+	check("", "demo_module") // its switch: neither copy, and the module stays off
+	update(func(p *settings.PluginSettings) { p.Disabled, p.UseModule = nil, []string{"demo"} })
+	check("", "") // the module instead
+}
 
 func TestManifestErrorsCarryPositions(t *testing.T) {
 	src := `apiVersion: k8sman.dev/v1

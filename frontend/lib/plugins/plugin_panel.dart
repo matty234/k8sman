@@ -20,11 +20,13 @@ import 'plugin_host.dart';
 
 export 'plugin_actions.dart' show pluginActions, runPluginAction, showPluginConsent;
 
-/// [base] with the plugins' sections after its own, and their actions
-/// after its actions.
+/// [base] with the plugins' sections after its own (before them with
+/// [pluginFirst]: for kinds whose base is the generic panel, as
+/// docs/PLUGINS.md §4 places them), and their actions after its actions.
 class PluginComposedPanel extends ResourcePanel {
   final ResourcePanel base;
-  const PluginComposedPanel(this.base);
+  final bool pluginFirst;
+  const PluginComposedPanel(this.base, {this.pluginFirst = false});
 
   @override
   Set<String> get kinds => base.kinds;
@@ -40,8 +42,9 @@ class PluginComposedPanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
+        if (pluginFirst) PluginSections(key: ValueKey('plugin-sections-${ctx.uid}'), ctx: ctx),
         ...base.buildSections(context, ctx),
-        PluginSections(key: ValueKey('plugin-sections-${ctx.uid}'), ctx: ctx),
+        if (!pluginFirst) PluginSections(key: ValueKey('plugin-sections-${ctx.uid}'), ctx: ctx),
       ];
 
   @override

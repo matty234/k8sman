@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../app/kubeconfig_picker.dart' show NativeFiles;
+import '../state/app_state.dart';
 import '../ui/settings/settings_widgets.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
@@ -122,8 +123,11 @@ class _PluginsSettingsState extends State<PluginsSettings> {
               child: InlineMessage('This context is read-only: plugin shell actions are hidden.', icon: Icons.lock_outline),
             ),
           const SizedBox(height: 10),
-          if (s.devMode && s.plugins.isEmpty) Text('No plugins loaded. Load a folder with a plugin.yaml (see examples/plugins).', style: hint),
-          for (final p in s.plugins) _PluginCard(key: ValueKey('plugin-${p.dir}'), plugin: p, busy: _busy, call: _call),
+          if (s.devMode && !s.plugins.any((p) => !p.bundled)) Text('No plugins loaded. Load a folder with a plugin.yaml (see examples/plugins).', style: hint),
+          // Bundled plugins have their own rows under Integrations; here
+          // only in dev mode, with their timings and the module comparison.
+          for (final p in s.plugins)
+            if (s.devMode || !p.bundled) _PluginCard(key: ValueKey('plugin-${p.dir}'), plugin: p, state: s, busy: _busy, call: _call),
         ]);
       },
     );
@@ -155,9 +159,20 @@ Future<String?> _askPath(BuildContext context) {
 
 class _PluginCard extends StatelessWidget {
   final PluginInfo plugin;
+  final PluginsState state;
   final bool busy;
   final Future<void> Function(Future<Map<String, dynamic>> Function(ApiClient api) f) call;
-  const _PluginCard({super.key, required this.plugin, required this.busy, required this.call});
+  const _PluginCard({super.key, required this.plugin, required this.state, required this.busy, required this.call});
+
+  /// Switches a bundled plugin and the module it replaces (one or the
+  /// other, never both), then reloads the app's module switches.
+  Future<void> _useModule(BuildContext context, bool useModule) async {
+    final app = context.read<AppState>();
+    final ids = {for (final p in state.plugins) if (p.bundled && p.usingModule) p.id};
+    useModule ? ids.add(plugin.id) : ids.remove(plugin.id);
+    await call((api) => api.putPluginSettings(useModule: [...ids]..sort()));
+    await app.loadDisabledModules();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +194,7 @@ class _PluginCard extends StatelessWidget {
           const SizedBox(width: 6),
           if (p.version.isNotEmpty) Text(p.version, style: hint),
           const SizedBox(width: 8),
-          const Chipish(text: 'Unpacked'),
+          Chipish(text: p.bundled ? (p.overridden ? 'Bundled · overridden' : 'Bundled') : (p.overrides ? 'Unpacked · overrides bundled' : 'Unpacked')),
           const SizedBox(width: 8),
           StatusBadge(switch (p.status) { 'error' => p.loaded ? 'Reload failed' : 'Error', 'warning' => 'Warnings', _ => 'Loaded' }, severity: sev),
           const Spacer(),
@@ -194,6 +209,19 @@ class _PluginCard extends StatelessWidget {
         Padding(padding: const EdgeInsets.only(top: 4), child: Text(p.dir, style: monoStyle(context, size: 11, color: colors.faint))),
         if (p.loaded && p.status == 'error')
           Padding(padding: const EdgeInsets.only(top: 6), child: Text('The previous version keeps running until this loads.', style: hint)),
+        if (p.bundled && p.replacesModule != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: SettingRow(
+              label: 'Use the built-in module instead',
+              description: 'Compare: turns this plugin off and the ${p.replacesModule} module it replaces on (never both).',
+              trailing: SettingSwitch(
+                key: ValueKey('plugin-use-module-${p.id}'),
+                value: p.usingModule,
+                onChanged: busy ? null : (v) => _useModule(context, v),
+              ),
+            ),
+          ),
         if (p.diags.isNotEmpty) ...[
           const SizedBox(height: 8),
           for (final d in p.diags) _DiagView(d),

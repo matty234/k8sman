@@ -71,7 +71,7 @@ class FixtureApi extends ApiClient {
   Set<String> disabledModules = {};
 
   @override
-  Future<Set<String>> getDisabledModules() async => {...disabledModules};
+  Future<({Set<String> disabled, Set<String> superseded})> getDisabledModules() async => (disabled: {...disabledModules}, superseded: <String>{});
 
   @override
   Future<bool> getAppLinks() async => false;

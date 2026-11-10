@@ -114,13 +114,18 @@ type PluginSettings struct {
 	// Consent maps plugin id → the permissions hash the user agreed to
 	// (needed before a plugin's shell actions run).
 	Consent map[string]string `json:"consent,omitempty"`
+	// UseModule lists bundled plugins (by id) for which the app uses the
+	// compiled-in module they replace instead (e.g. "external-secrets" →
+	// the external_secrets module), to compare the two. Hidden: set in
+	// developer mode or by editing settings.json. Absent = the plugin.
+	UseModule []string `json:"useModule,omitempty"`
 }
 
 func (p *PluginSettings) clone() *PluginSettings {
 	if p == nil {
 		return nil
 	}
-	return &PluginSettings{DevMode: p.DevMode, DevFolders: slices.Clone(p.DevFolders), Disabled: slices.Clone(p.Disabled), Consent: maps.Clone(p.Consent)}
+	return &PluginSettings{DevMode: p.DevMode, DevFolders: slices.Clone(p.DevFolders), Disabled: slices.Clone(p.Disabled), Consent: maps.Clone(p.Consent), UseModule: slices.Clone(p.UseModule)}
 }
 
 // UpdatePlugins applies fn to the plugin settings and saves them.
@@ -131,7 +136,7 @@ func (st *Store) UpdatePlugins(fn func(p *PluginSettings)) error {
 			p = &PluginSettings{}
 		}
 		fn(p)
-		if !p.DevMode && len(p.DevFolders) == 0 && len(p.Disabled) == 0 && len(p.Consent) == 0 {
+		if !p.DevMode && len(p.DevFolders) == 0 && len(p.Disabled) == 0 && len(p.Consent) == 0 && len(p.UseModule) == 0 {
 			p = nil
 		}
 		s.Plugins = p

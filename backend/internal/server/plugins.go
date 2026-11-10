@@ -21,11 +21,13 @@ import (
 )
 
 // The plugin host is a module ("plugins"): turning it off in Integrations
-// turns every plugin off. Plugins themselves are not modules: they are
-// folders with a plugin.yaml loaded by internal/plugins (docs/PLUGINS.md).
+// turns the user's own plugins off. Its routes stay mounted either way
+// (see moduleOff): bundled plugins have their own switches, like modules.
+// Plugins themselves are not modules: they are folders with a plugin.yaml
+// loaded by internal/plugins (docs/PLUGINS.md).
 //
 //	GET    /api/plugins                 dev mode, folders and every plugin with its errors and timings
-//	PUT    /api/plugins/settings        {devMode?, devFolders?}
+//	PUT    /api/plugins/settings        {devMode?, devFolders?, useModule?}
 //	PUT    /api/plugins/{id}/enabled    {enabled}
 //	PUT    /api/plugins/{id}/consent    {permissionsHash}: agree to the plugin's permissions
 //	DELETE /api/plugins/{id}/consent
@@ -43,7 +45,7 @@ type pluginsModule struct {
 	s *Server
 }
 
-const pluginsModuleID = "plugins"
+const pluginsModuleID = plugins.HostModule
 
 func (m *pluginsModule) Name() string { return pluginsModuleID }
 
@@ -61,10 +63,11 @@ func (m *pluginsModule) Routes(r httpx.Router, d Deps) {
 	r.HandleFunc("POST /api/plugins/run", s.handlePluginRun)
 }
 
-// pluginsOn reports whether plugin contributions apply: the module is on
-// and the host has plugins.
+// pluginsOn reports whether any plugin's contributions apply: a bundled
+// one that is on, or the user's own in dev mode with this module on (the
+// host decides, per plugin).
 func (s *Server) pluginsOn() bool {
-	return s.plugins != nil && !s.settings.ModuleDisabled(pluginsModuleID) && s.plugins.DevMode()
+	return s.plugins != nil && s.plugins.Any()
 }
 
 // servedKinds is a lookup of the kind keys the current cluster serves,
@@ -115,9 +118,20 @@ func (s *Server) handlePluginSettings(w http.ResponseWriter, r *http.Request) {
 	body, ok := httpx.DecodeJSON[struct {
 		DevMode    *bool     `json:"devMode"`
 		DevFolders *[]string `json:"devFolders"`
+		// UseModule: bundled plugin ids whose module replaces them (to
+		// compare the two; see bundled.ReplacesModule).
+		UseModule *[]string `json:"useModule"`
 	}](w, r, 64<<10)
 	if !ok {
 		return
+	}
+	if body.UseModule != nil {
+		for _, id := range *body.UseModule {
+			if s.plugins.Replaces(id) == "" {
+				writeErr(w, httpx.BadRequest("%q isn't a bundled plugin that replaces a module", id))
+				return
+			}
+		}
 	}
 	if body.DevFolders != nil {
 		for _, d := range *body.DevFolders {
@@ -137,6 +151,9 @@ func (s *Server) handlePluginSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if body.DevFolders != nil {
 			p.DevFolders = slices.Compact(slices.Clone(*body.DevFolders))
+		}
+		if body.UseModule != nil {
+			p.UseModule = slices.Compact(slices.Sorted(slices.Values(*body.UseModule)))
 		}
 	})
 	if err != nil {

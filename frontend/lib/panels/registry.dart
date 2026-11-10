@@ -52,8 +52,10 @@ ResourcePanel panelFor(ResourceType t, [AppState? app]) {
   final panel = (on ? e.$1 : null) ?? customFallbackPanel ?? const BasicFallbackPanel();
   if (app == null) return panel;
   pluginHost.attach(app.api);
-  if (!moduleEnabled(pluginsModuleId, app.disabledModules) || !pluginHost.contributesTo(t.gk)) return panel;
-  return PluginComposedPanel(panel);
+  if (!pluginHost.contributesTo(t.gk)) return panel;
+  // Without a dedicated panel, the plugin's sections lead and the generic
+  // summary follows.
+  return PluginComposedPanel(panel, pluginFirst: !on);
 }
 
 /// Minimal fallback: spec + status trees and conditions.

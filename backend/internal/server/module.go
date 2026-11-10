@@ -229,7 +229,7 @@ type moduleRouter struct {
 
 func (mr moduleRouter) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
 	mr.s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-		if mr.s.settings.ModuleDisabled(mr.name) {
+		if mr.s.moduleOff(mr.name) {
 			httpx.WriteError(w, http.StatusNotFound, "ModuleDisabled",
 				fmt.Sprintf("the %s integration is turned off in k8sman's settings", mr.name))
 			return
@@ -238,14 +238,16 @@ func (mr moduleRouter) HandleFunc(pattern string, h func(http.ResponseWriter, *h
 	})
 }
 
-// handleGetModules returns {disabled: [ids]}: the integrations the user
-// turned off. Works without a cluster connection.
+// handleGetModules returns {disabled: [ids], superseded: [ids]}: the
+// integrations the user turned off, and the modules bundled plugins
+// replace (off too, and not the user's choice). Works without a cluster
+// connection.
 func (s *Server) handleGetModules(w http.ResponseWriter, r *http.Request) {
 	disabled := s.settings.Get().DisabledModules
 	if disabled == nil {
 		disabled = []string{}
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"disabled": disabled})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"disabled": disabled, "superseded": s.plugins.Superseded()})
 }
 
 // handlePutModules saves {disabled: [ids]}. Ids may name UI-only modules
@@ -279,11 +281,23 @@ func (s *Server) refuseReadOnly(w http.ResponseWriter) bool {
 func (s *Server) enabledModules() []Module {
 	out := make([]Module, 0, len(s.modules))
 	for _, m := range s.modules {
-		if !s.settings.ModuleDisabled(m.Name()) {
+		if !s.moduleOff(m.Name()) {
 			out = append(out, m)
 		}
 	}
 	return out
+}
+
+// moduleOff reports whether module id is off: the user turned it off, or
+// a bundled plugin replaces it (plugins.useModule brings it back, and
+// turns the plugin off). The plugin host's own module stays mounted:
+// bundled plugins work through it, and it checks the user's switch for
+// their own plugins itself (plugins.Host.active).
+func (s *Server) moduleOff(id string) bool {
+	if id == pluginsModuleID {
+		return false
+	}
+	return s.settings.ModuleDisabled(id) || s.plugins.Supersedes(id)
 }
 
 // OverviewLists runs the health overview's lists in parallel and collects

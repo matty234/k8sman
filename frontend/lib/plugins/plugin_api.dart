@@ -125,8 +125,26 @@ class PluginInfo {
   final String homepage;
   final String dir;
 
-  /// dev (added in the app), flag (--plugin-dev) or installed.
+  /// dev (added in the app), flag (--plugin-dev), installed or bundled
+  /// (compiled into the backend; shown in Settings ▸ Integrations like a
+  /// module).
   final String source;
+
+  /// Whether its contributions apply now (decided by the backend: loaded,
+  /// on, not overridden or replaced by its module, and for the user's own
+  /// plugins, dev mode with the Plugins integration on).
+  final bool active;
+
+  /// A bundled plugin that a loaded folder with its id overrides, and that
+  /// folder's plugin.
+  final bool overridden;
+  final bool overrides;
+
+  /// The built-in module a bundled plugin replaces, and whether the app
+  /// uses that module instead (to compare the two; settings.json's
+  /// plugins.useModule).
+  final String? replacesModule;
+  final bool usingModule;
 
   /// ok, warning or error (the last load failed; [loaded] says whether a
   /// previous version still runs).
@@ -154,6 +172,11 @@ class PluginInfo {
     this.homepage = '',
     this.dir = '',
     this.source = 'dev',
+    this.active = true,
+    this.overridden = false,
+    this.overrides = false,
+    this.replacesModule,
+    this.usingModule = false,
     this.status = 'ok',
     this.loaded = true,
     this.disabled = false,
@@ -181,6 +204,11 @@ class PluginInfo {
       homepage: '${j['homepage'] ?? ''}',
       dir: '${j['dir'] ?? ''}',
       source: '${j['source'] ?? 'dev'}',
+      active: j['active'] == true,
+      overridden: j['overridden'] == true,
+      overrides: j['overrides'] == true,
+      replacesModule: (j['replacesModule'] as String?)?.isEmpty == true ? null : j['replacesModule'] as String?,
+      usingModule: j['usingModule'] == true,
       status: '${j['status'] ?? 'ok'}',
       loaded: j['loaded'] == true,
       disabled: j['disabled'] == true,
@@ -202,8 +230,8 @@ class PluginInfo {
     );
   }
 
-  /// Loaded and turned on: its columns, panels and actions apply.
-  bool get active => loaded && !disabled;
+  /// Compiled into the backend.
+  bool get bundled => source == 'bundled';
 
   List<PluginDiag> get errors => [for (final d in diags) if (!d.warning) d];
 }

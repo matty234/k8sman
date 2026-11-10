@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -28,7 +29,13 @@ const (
 	SourceDev       = "dev"       // a folder added in the app (settings.json)
 	SourceFlag      = "flag"      // --plugin-dev
 	SourceInstalled = "installed" // <settings dir>/plugins/<id>
+	SourceBundled   = "bundled"   // compiled into the backend (internal/plugins/bundled)
 )
+
+// HostModule is the id of the plugin host's module: turning it off turns
+// the user's own plugins (dev and installed) off. Bundled plugins have a
+// switch each instead, like modules.
+const HostModule = "plugins"
 
 // maxManifest caps plugin.yaml's size.
 const maxManifest = 1 << 20
@@ -41,8 +48,10 @@ const maxIcon = 64 << 10
 type Plugin struct {
 	dir    string
 	source string
-	m      *Manifest
-	d      *decoder
+	// fsys holds the plugin's files (its folder, or the embedded copy).
+	fsys fs.FS
+	m    *Manifest
+	d    *decoder
 	// diags are the last load attempt's errors and warnings. When the last
 	// attempt failed, m is the previous good manifest (or nil).
 	diags  []Diag
@@ -123,11 +132,22 @@ func (p *Plugin) PermissionsHash() string {
 	return hex.EncodeToString(sum[:8])
 }
 
+// trusted plugins (bundled ones) need no consent: they ship with the app.
+// Their shell and patch actions are still confirmed on every run and
+// refused on read-only contexts, as everyone's are.
+func (p *Plugin) trusted() bool { return p.source == SourceBundled }
+
 // loadPlugin reads and checks dir/plugin.yaml; eager also compiles it.
 func loadPlugin(dir, source string, eager bool) *Plugin {
+	return loadPluginFS(os.DirFS(dir), dir, source, eager)
+}
+
+// loadPluginFS reads and checks plugin.yaml in fsys; dir names it in the
+// UI and in errors.
+func loadPluginFS(fsys fs.FS, dir, source string, eager bool) *Plugin {
 	start := time.Now()
-	p := &Plugin{dir: dir, source: source, stats: newStats(), eager: eager, kinds: map[string]*kindProgs{}, kindErrs: map[string][]Diag{}, loadedAt: start}
-	f, err := os.Open(filepath.Join(dir, ManifestFile))
+	p := &Plugin{dir: dir, source: source, fsys: fsys, stats: newStats(), eager: eager, kinds: map[string]*kindProgs{}, kindErrs: map[string][]Diag{}, loadedAt: start}
+	f, err := fsys.Open(ManifestFile)
 	if err != nil {
 		p.diags = []Diag{{Pos: Pos{File: ManifestFile, Line: 1, Col: 1}, Message: readErr(err)}}
 		p.failed = true
@@ -168,7 +188,7 @@ func loadPlugin(dir, source string, eager bool) *Plugin {
 }
 
 func readErr(err error) string {
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) {
 		return "no plugin.yaml in this folder"
 	}
 	return err.Error()
@@ -194,6 +214,13 @@ type Options struct {
 	// FlagDirs are --plugin-dev folders (they turn dev mode on).
 	FlagDirs []string
 	Settings *settings.Store
+	// Bundled holds the plugins compiled into the backend, one folder
+	// each (internal/plugins/bundled). They load without dev mode.
+	Bundled fs.FS
+	// Replaces maps a bundled plugin id to the compiled-in module it
+	// replaces: the module is off unless settings' plugins.useModule
+	// names the plugin (then the plugin is off).
+	Replaces map[string]string
 }
 
 // Host holds the loaded plugins and answers the server's lookups. A nil
@@ -217,11 +244,17 @@ func NewHost(opts Options) *Host {
 	return &Host{opts: opts, changed: make(chan struct{}), watched: map[string]bool{}, timers: map[string]*time.Timer{}}
 }
 
-// Start loads the plugins in the background and watches their folders.
+// Start loads the bundled plugins (a parse each, no compile), then the
+// others in the background, and watches their folders.
 func (h *Host) Start() {
 	if h == nil {
 		return
 	}
+	b := h.loadBundled()
+	h.mu.Lock()
+	h.plugins = h.mergeLocked(b, nil)
+	h.bumpLocked()
+	h.mu.Unlock()
 	go h.Reload()
 }
 
@@ -347,7 +380,7 @@ func (h *Host) Reload() {
 		return
 	}
 	fs := h.folders()
-	loaded := make([]*Plugin, 0, len(fs))
+	loaded := h.loadBundled()
 	for _, f := range fs {
 		loaded = append(loaded, loadPlugin(f.dir, f.source, f.source != SourceInstalled))
 	}
@@ -356,6 +389,36 @@ func (h *Host) Reload() {
 	h.bumpLocked()
 	h.mu.Unlock()
 	h.watch(fs)
+}
+
+// loadBundled loads every bundled plugin (each folder of opts.Bundled).
+// They compile a kind on first use, as installed plugins do; their
+// fixtures run in go test (TestPluginTestGolden).
+func (h *Host) loadBundled() []*Plugin {
+	if h.opts.Bundled == nil {
+		return nil
+	}
+	entries, err := fs.ReadDir(h.opts.Bundled, ".")
+	if err != nil {
+		log.Printf("plugins: bundled: %v", err)
+		return nil
+	}
+	var out []*Plugin
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		sub, err := fs.Sub(h.opts.Bundled, e.Name())
+		if err != nil {
+			continue
+		}
+		p := loadPluginFS(sub, "bundled/"+e.Name(), SourceBundled, false)
+		if p.failed {
+			log.Printf("plugins: bundled plugin %s doesn't load: %v", e.Name(), p.diags)
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // reloadDir reloads one plugin folder (a file in it changed).
@@ -402,7 +465,7 @@ func (h *Host) mergeLocked(loaded []*Plugin, old *Plugin) []*Plugin {
 	for _, np := range loaded {
 		if np.failed {
 			if pp := prev[np.dir]; pp != nil && pp.m != nil {
-				kept := &Plugin{dir: pp.dir, source: pp.source, m: pp.m, d: pp.d, diags: np.diags, failed: true, stats: pp.stats,
+				kept := &Plugin{dir: pp.dir, source: pp.source, fsys: pp.fsys, m: pp.m, d: pp.d, diags: np.diags, failed: true, stats: pp.stats,
 					eager: pp.eager, kinds: pp.kinds, kindErrs: pp.kindErrs, loadDur: np.loadDur, compileDur: pp.compileDur, loadedAt: pp.loadedAt, gen: pp.gen}
 				np = kept
 			}
@@ -418,32 +481,101 @@ func (h *Host) mergeLocked(loaded []*Plugin, old *Plugin) []*Plugin {
 		}
 		return list[i].dir < list[j].dir
 	})
-	// Two folders with one id: the later is refused.
-	for i := 1; i < len(list); i++ {
-		if id := list[i].ID(); id != "" && id == list[i-1].ID() {
-			o := list[i]
-			list[i] = &Plugin{dir: o.dir, source: o.source, stats: o.stats, failed: true, gen: o.gen, loadedAt: o.loadedAt,
-				diags: []Diag{{Pos: Pos{File: ManifestFile, Line: 1, Col: 1}, Message: fmt.Sprintf("id %q is already used by the plugin in %s", id, list[i-1].dir)}}}
+	// Two folders with one id: the later is refused. A bundled plugin
+	// isn't refused: a folder with its id overrides it (see active).
+	first := map[string]string{}
+	for i, p := range list {
+		id := p.ID()
+		if id == "" || p.source == SourceBundled {
+			continue
 		}
+		if dir, dup := first[id]; dup {
+			list[i] = &Plugin{dir: p.dir, source: p.source, fsys: p.fsys, stats: p.stats, failed: true, gen: p.gen, loadedAt: p.loadedAt,
+				diags: []Diag{{Pos: Pos{File: ManifestFile, Line: 1, Col: 1}, Message: fmt.Sprintf("id %q is already used by the plugin in %s", id, dir)}}}
+			continue
+		}
+		first[id] = p.dir
 	}
 	return list
 }
 
-// active are the enabled plugins with a manifest.
+// userPluginsOn reports whether the user's own plugins (dev folders and
+// the installed folder) apply: dev mode, and the host module on.
+func (h *Host) userPluginsOn(st settings.PluginSettings) bool {
+	return (len(h.opts.FlagDirs) > 0 || st.DevMode) && !h.opts.Settings.ModuleDisabled(HostModule)
+}
+
+// active are the plugins whose contributions apply: loaded, not turned
+// off, and not set aside for their module (plugins.useModule). Bundled
+// ones apply unless a user plugin with the same id overrides them; the
+// user's own only while userPluginsOn.
 func (h *Host) active() []*Plugin {
-	if h == nil || !h.DevMode() {
+	if h == nil {
 		return nil
 	}
-	disabled := h.settings().Disabled
+	st := h.settings()
+	user := h.userPluginsOn(st)
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	out := make([]*Plugin, 0, len(h.plugins))
-	for _, p := range h.plugins {
-		if p.m != nil && !slices.Contains(disabled, p.m.ID) {
-			out = append(out, p)
+	override := map[string]bool{}
+	if user {
+		for _, p := range h.plugins {
+			if p.m != nil && p.source != SourceBundled {
+				override[p.m.ID] = true
+			}
 		}
 	}
+	out := make([]*Plugin, 0, len(h.plugins))
+	for _, p := range h.plugins {
+		if p.m == nil || slices.Contains(st.Disabled, p.m.ID) || h.usesModule(st, p.m.ID) {
+			continue
+		}
+		if p.source == SourceBundled && override[p.m.ID] || p.source != SourceBundled && !user {
+			continue
+		}
+		out = append(out, p)
+	}
 	return out
+}
+
+// usesModule reports whether bundled plugin id is set aside for the
+// module it replaces (plugins.useModule).
+func (h *Host) usesModule(st settings.PluginSettings, id string) bool {
+	return h.opts.Replaces[id] != "" && slices.Contains(st.UseModule, id)
+}
+
+// Any reports whether any plugin applies.
+func (h *Host) Any() bool { return len(h.active()) > 0 }
+
+// Supersedes reports whether a bundled plugin replaces the compiled-in
+// module now: it does unless plugins.useModule names the plugin. The
+// server keeps such a module off, so the two never apply at once.
+func (h *Host) Supersedes(module string) bool {
+	return slices.Contains(h.Superseded(), module)
+}
+
+// Superseded lists the modules bundled plugins replace now (sorted).
+func (h *Host) Superseded() []string {
+	out := []string{}
+	if h == nil {
+		return out
+	}
+	st := h.settings()
+	for id, m := range h.opts.Replaces {
+		if !h.usesModule(st, id) {
+			out = append(out, m)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// Replaces is the module bundled plugin id replaces ("" for none).
+func (h *Host) Replaces(id string) string {
+	if h == nil {
+		return ""
+	}
+	return h.opts.Replaces[id]
 }
 
 // Get returns the active plugin id.
@@ -608,7 +740,7 @@ func (h *Host) Actions(env Env, rt cluster.ResourceType, obj map[string]any, var
 	var out []ActionOut
 	consent := h.settings().Consent
 	for _, p := range h.active() {
-		out = append(out, p.actions(env, rt, obj, get, consent[p.ID()] == p.PermissionsHash())...)
+		out = append(out, p.actions(env, rt, obj, get, p.trusted() || consent[p.ID()] == p.PermissionsHash())...)
 	}
 	return out
 }
@@ -637,7 +769,7 @@ func (h *Host) action(env Env, rt cluster.ResourceType, obj map[string]any, plug
 	if p == nil {
 		return nil, actProg{}, nil, fmt.Errorf("plugin %q isn't loaded", pluginID)
 	}
-	if h.settings().Consent[p.ID()] != p.PermissionsHash() {
+	if !p.trusted() && h.settings().Consent[p.ID()] != p.PermissionsHash() {
 		return nil, actProg{}, nil, ErrNoConsent
 	}
 	for _, kp := range p.entriesFor(rt) {
@@ -718,7 +850,7 @@ func (h *Host) Icon(id string) ([]byte, error) {
 	if p == nil {
 		return nil, os.ErrNotExist
 	}
-	f, err := os.Open(filepath.Join(p.dir, "icon.png"))
+	f, err := p.fsys.Open("icon.png")
 	if err != nil {
 		return nil, err
 	}
@@ -744,7 +876,19 @@ type Info struct {
 	Authors     []string `json:"authors,omitempty"`
 	Homepage    string   `json:"homepage,omitempty"`
 	Dir         string   `json:"dir"`
-	Source      string   `json:"source"`
+	// Source: dev, flag, installed or bundled.
+	Source string `json:"source"`
+	// Active: its contributions apply now (loaded, on, not overridden or
+	// set aside for its module, and user plugins on for non-bundled ones).
+	Active bool `json:"active"`
+	// Overridden: a bundled plugin that a user plugin with its id
+	// replaces; Overrides: that user plugin.
+	Overridden bool `json:"overridden,omitempty"`
+	Overrides  bool `json:"overrides,omitempty"`
+	// ReplacesModule is the compiled-in module a bundled plugin replaces;
+	// UsingModule says the app uses that module instead (useModule).
+	ReplacesModule string `json:"replacesModule,omitempty"`
+	UsingModule    bool   `json:"usingModule,omitempty"`
 	// Status: "ok", "warning" (loaded, with warnings), "error" (the last
 	// load failed; Loaded says whether a previous version still runs).
 	Status          string              `json:"status"`
@@ -779,21 +923,41 @@ type KindInfo struct {
 	Errors   int  `json:"errors"`
 }
 
-// List describes every plugin folder. served tells whether the current
-// cluster serves a kind key (nil = unknown).
+// List describes every plugin: the bundled ones, and in dev mode every
+// plugin folder. served tells whether the current cluster serves a kind
+// key (nil = unknown).
 func (h *Host) List(served func(key string) bool) []Info {
-	if h == nil || !h.DevMode() {
+	if h == nil {
 		return []Info{}
 	}
-	disabled := h.settings().Disabled
-	consent := h.settings().Consent
+	st := h.settings()
+	disabled, consent := st.Disabled, st.Consent
+	active := map[*Plugin]bool{}
+	for _, p := range h.active() {
+		active[p] = true
+	}
 	h.mu.RLock()
 	plugins := slices.Clone(h.plugins)
 	h.mu.RUnlock()
+	bundled, user := map[string]bool{}, map[string]bool{}
+	for _, p := range plugins {
+		if p.m != nil && p.source == SourceBundled {
+			bundled[p.m.ID] = true
+		} else if p.m != nil && h.userPluginsOn(st) {
+			user[p.m.ID] = true
+		}
+	}
 	out := make([]Info, 0, len(plugins))
 	for _, p := range plugins {
-		in := Info{ID: p.ID(), Name: p.Name(), Dir: p.dir, Source: p.source, Loaded: p.m != nil, Diags: p.diags, Kinds: []KindInfo{},
+		in := Info{ID: p.ID(), Name: p.Name(), Dir: p.dir, Source: p.source, Active: active[p], Loaded: p.m != nil, Diags: p.diags, Kinds: []KindInfo{},
 			LoadMillis: ms(p.loadDur), LoadedAt: p.loadedAt, Stats: p.stats.snapshot()}
+		if p.source == SourceBundled {
+			in.Overridden = user[in.ID]
+			in.ReplacesModule = h.opts.Replaces[in.ID]
+			in.UsingModule = h.usesModule(st, in.ID)
+		} else {
+			in.Overrides = in.ID != "" && bundled[in.ID]
+		}
 		if in.Diags == nil {
 			in.Diags = []Diag{}
 		}
@@ -808,10 +972,10 @@ func (h *Host) List(served func(key string) bool) []Info {
 		if m := p.m; m != nil {
 			in.Version, in.Description, in.Authors, in.Homepage = m.Version, m.Description, m.Authors, m.Homepage
 			in.Permissions, in.PermissionsHash = m.Permissions, p.PermissionsHash()
-			in.Consented = consent[m.ID] == in.PermissionsHash
+			in.Consented = p.trusted() || consent[m.ID] == in.PermissionsHash
 			in.Disabled = slices.Contains(disabled, m.ID)
 			in.Nav = m.Nav
-			_, err := os.Stat(filepath.Join(p.dir, "icon.png"))
+			_, err := fs.Stat(p.fsys, "icon.png")
 			in.HasIcon = err == nil
 			p.mu.Lock()
 			for _, key := range m.KindOrder {

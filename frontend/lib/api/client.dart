@@ -406,9 +406,14 @@ class ApiClient {
   Future<void> putLinkCluster(String fingerprint, String context) =>
       _send('PUT', 'settings/link-clusters', const {}, {'fingerprint': fingerprint, 'context': context});
 
-  Future<Set<String>> getDisabledModules() async {
+  /// The modules the user turned off, and those a bundled plugin replaces
+  /// (off too; not the user's choice).
+  Future<({Set<String> disabled, Set<String> superseded})> getDisabledModules() async {
     final j = await _get('settings/modules') as Json;
-    return {for (final id in (j['disabled'] as List? ?? const [])) '$id'};
+    return (
+      disabled: {for (final id in (j['disabled'] as List? ?? const [])) '$id'},
+      superseded: {for (final id in (j['superseded'] as List? ?? const [])) '$id'},
+    );
   }
 
   Future<void> putDisabledModules(Set<String> ids) => _send('PUT', 'settings/modules', const {}, {'disabled': [...ids]..sort()});
@@ -428,8 +433,10 @@ class ApiClient {
   /// timings (`GET /api/plugins`).
   Future<Json> plugins() async => Map<String, dynamic>.from(await _get('plugins') as Map);
 
-  Future<Json> putPluginSettings({bool? devMode, List<String>? devFolders}) async =>
-      Map<String, dynamic>.from(await _send('PUT', 'plugins/settings', const {}, {'devMode': ?devMode, 'devFolders': ?devFolders}) as Map);
+  /// [useModule]: bundled plugins whose built-in module the app uses
+  /// instead (to compare the two).
+  Future<Json> putPluginSettings({bool? devMode, List<String>? devFolders, List<String>? useModule}) async => Map<String, dynamic>.from(
+      await _send('PUT', 'plugins/settings', const {}, {'devMode': ?devMode, 'devFolders': ?devFolders, 'useModule': ?useModule}) as Map);
 
   Future<Json> setPluginEnabled(String id, bool enabled) async =>
       Map<String, dynamic>.from(await _send('PUT', 'plugins/${Uri.encodeComponent(id)}/enabled', const {}, {'enabled': enabled}) as Map);

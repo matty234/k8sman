@@ -59,7 +59,7 @@ class PluginHost extends ChangeNotifier {
       final s = PluginsState.fromJson(await api.plugins());
       if (identical(api, _api)) apply(s);
     } on ApiException catch (e) {
-      // 404: the plugins integration is turned off.
+      // 404: an older backend without plugins.
       if (e.status == 404 && identical(api, _api)) apply(PluginsState.empty);
     } catch (_) {
       // No backend (yet): the next change or attach tries again.
@@ -113,8 +113,13 @@ class PluginHost extends ChangeNotifier {
     _events = null;
   }
 
-  /// The plugins whose contributions apply.
-  Iterable<PluginInfo> get active => _state.devMode ? _state.plugins.where((p) => p.active) : const [];
+  /// The plugins whose contributions apply: bundled ones that are on, and
+  /// in dev mode the user's own (the backend decides; see
+  /// [PluginInfo.active]).
+  Iterable<PluginInfo> get active => _state.plugins.where((p) => p.active);
+
+  /// The bundled plugins (shown in Settings ▸ Integrations like modules).
+  Iterable<PluginInfo> get bundled => _state.plugins.where((p) => p.bundled);
 
   /// Whether a plugin adds panel sections or actions to kind [gk].
   bool contributesTo(String gk) => active.any((p) => p.kinds.any((k) => (k.key == gk && (k.sections > 0 || k.actions > 0)) || (k.key == '*' && k.actions > 0)));
