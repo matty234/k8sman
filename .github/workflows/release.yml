@@ -100,6 +100,9 @@ jobs:
           fi
           tools/ci-import-cert.sh
 
+      - name: Install dmgbuild (installer window layout)
+        run: pip3 install --break-system-packages dmgbuild || pip3 install dmgbuild
+
       - name: Build the app
         env:
           SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}

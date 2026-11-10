@@ -271,7 +271,10 @@ they open without a Gatekeeper prompt.
     to ad-hoc signing, with a warning.
 - **The disk image.** `make release` also builds `k8sman-<version>-macos.dmg`
   (`tools/make-dmg.sh`): the app and an Applications shortcut in a
-  compressed image, signed, notarized and stapled (`tools/notarize-macos.sh`
+  compressed image with a branded background and fixed icon positions
+  (`packaging/dmg/`; laid out by `dmgbuild`, so `pip3 install dmgbuild`
+  first; regenerate the artwork with
+  `swift packaging/dmg/make-background.swift`), signed, notarized and stapled (`tools/notarize-macos.sh`
   takes a `.dmg` too). It's the download for people. Sparkle and Homebrew keep
   using the zip.
 - **Moving into Applications.** A release build running from a disk image,

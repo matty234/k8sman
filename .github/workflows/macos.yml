@@ -54,6 +54,9 @@ jobs:
       - name: Xcode version
         run: xcodebuild -version
 
+      - name: Install dmgbuild (installer window layout)
+        run: pip3 install --break-system-packages dmgbuild || pip3 install dmgbuild
+
       - name: Build the app (universal, release mode, unsigned updates)
         run: make release
         if: ${{ !inputs.sign }}
