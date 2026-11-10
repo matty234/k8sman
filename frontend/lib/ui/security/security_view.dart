@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../api/client.dart';
+import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../access/access_view.dart';
 import '../widgets/common.dart';
@@ -14,6 +15,18 @@ import 'security_api.dart';
 import 'security_widgets.dart';
 import '../widgets/namespace_picker.dart';
 import '../widgets/partial_banner.dart';
+
+/// A request to open the Security page on one workload (its namespace,
+/// and only the findings and images that name it), e.g. from the
+/// inspector's Security tab.
+abstract final class SecurityFocus {
+  static final request = ValueNotifier<ObjectRef?>(null);
+
+  static void open(AppState app, ObjectRef target) {
+    request.value = target;
+    app.showView(MainView.security);
+  }
+}
 
 /// Security overview: network exposure, permissive/unused RBAC, workload
 /// hardening (Pod Security Standards), best practices and image
@@ -40,6 +53,9 @@ class _SecurityViewState extends State<SecurityView> {
   bool _includeSystem = false;
   bool _showIgnored = false;
   String? _filter;
+
+  /// Only what names this object (see [SecurityFocus]).
+  ObjectRef? _object;
   DateTime? _updatedAt;
   int _seq = 0;
   NamespaceScope _ns = NamespaceScope.all;
@@ -53,9 +69,40 @@ class _SecurityViewState extends State<SecurityView> {
   SecurityApi get source => _source ??= widget.source ?? SecurityApi(context.read<ApiClient>());
 
   @override
+  void initState() {
+    super.initState();
+    SecurityFocus.request.addListener(_onFocus);
+  }
+
+  @override
   void dispose() {
+    SecurityFocus.request.removeListener(_onFocus);
     _poll?.cancel();
     super.dispose();
+  }
+
+  /// Takes a pending [SecurityFocus] request: its object, scoped to its
+  /// namespace. Returns the scope to use, or null when there is none.
+  NamespaceScope? _takeFocus() {
+    final ref = SecurityFocus.request.value;
+    if (ref == null) return null;
+    SecurityFocus.request.value = null;
+    _object = ref;
+    _filter = null;
+    return NamespaceScope.single(ref.namespace);
+  }
+
+  void _onFocus() {
+    if (!_started) return; // taken on the first build
+    final scope = _takeFocus();
+    if (scope == null) return;
+    setState(() {});
+    _setScope(scope);
+  }
+
+  bool _names(List<ObjectRef> refs) {
+    final o = _object;
+    return o == null || refs.any((r) => r.kind == o.kind && r.name == o.name && r.namespace == o.namespace);
   }
 
   Future<void> _refresh() async {
@@ -170,6 +217,11 @@ class _SecurityViewState extends State<SecurityView> {
       // defaulting to all namespaces and remembered for the session.
       _started = true;
       _ns = PageScope.of('security');
+      final focus = _takeFocus();
+      if (focus != null) {
+        _ns = focus;
+        PageScope.set('security', focus);
+      }
       scheduleMicrotask(() {
         if (mounted) _refresh();
       });
@@ -277,10 +329,10 @@ class _SecurityViewState extends State<SecurityView> {
     final theme = Theme.of(context);
     final hint = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor);
     final filter = _filter;
-    final findings = filter == null ? data.findings : data.findings.where((f) => f.category == filter).toList();
+    final findings = [for (final f in data.findings) if ((filter == null || f.category == filter) && _names(f.objects)) f];
     bool show(String id) => filter == null || filter == id;
     final pending = data.pending;
-    final ignored = filter == null ? data.ignored : data.ignored.where((i) => i.finding.category == filter).toList();
+    final ignored = [for (final i in data.ignored) if ((filter == null || i.finding.category == filter) && _names(i.finding.objects)) i];
     // A section whose category is still loading keeps its place with
     // placeholder rows rather than reading as empty.
     Widget pendingSection(String id, String title) => DetailSection(
@@ -288,7 +340,7 @@ class _SecurityViewState extends State<SecurityView> {
           title: title,
           child: const PendingSecurityRows(rows: 3),
         );
-    final images = [for (final i in data.images) _scans[i.image] != null ? i.withScan(_scans[i.image]!) : i];
+    final images = [for (final i in data.images) if (_names(i.workloads)) _scans[i.image] != null ? i.withScan(_scans[i.image]!) : i];
     return [
       SummaryLine(data: data),
       const SizedBox(height: 14),
@@ -374,11 +426,31 @@ class _SecurityViewState extends State<SecurityView> {
   }
 
   Widget _findingsTrailing(BuildContext context, SecurityData data, int shown, int ignored) {
+    final o = _object;
+    if (o == null) return _categoryTrailing(context, data, shown, ignored);
+    final theme = Theme.of(context);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      InputChip(
+        key: const ValueKey('security-object-filter'),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        label: Text('${o.kind} ${o.name} · $shown', style: theme.textTheme.labelSmall),
+        onDeleted: () => setState(() => _object = null),
+        deleteButtonTooltipMessage: 'Show every object',
+        onPressed: () => setState(() => _object = null),
+      ),
+      const SizedBox(width: 6),
+      Flexible(child: _categoryTrailing(context, data, shown, ignored)),
+    ]);
+  }
+
+  Widget _categoryTrailing(BuildContext context, SecurityData data, int shown, int ignored) {
     final theme = Theme.of(context);
     final filter = _filter;
     final hint = theme.textTheme.labelSmall?.copyWith(color: theme.hintColor);
     // Never silent: the ignored count shows whenever it is not zero.
-    final toggle = (filter == null ? data.ignored.length : ignored) == 0
+    final allIgnored = filter == null && _object == null;
+    final toggle = (allIgnored ? data.ignored.length : ignored) == 0
         ? null
         : Tooltip(
             message: _showIgnored ? 'Hide the ignored findings' : 'Show the ignored findings',
@@ -388,12 +460,12 @@ class _SecurityViewState extends State<SecurityView> {
               onTap: () => setState(() => _showIgnored = !_showIgnored),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                child: Text('${filter == null ? data.ignored.length : ignored} ignored', style: hint?.copyWith(decoration: _showIgnored ? TextDecoration.underline : null)),
+                child: Text('${allIgnored ? data.ignored.length : ignored} ignored', style: hint?.copyWith(decoration: _showIgnored ? TextDecoration.underline : null)),
               ),
             ),
           );
     if (filter == null) {
-      return Row(mainAxisSize: MainAxisSize.min, children: [Text('${data.findings.length}', style: hint), ?toggle]);
+      return Row(mainAxisSize: MainAxisSize.min, children: [if (_object == null) Text('${data.findings.length}', style: hint), ?toggle]);
     }
     final label = data.categories.where((c) => c.id == filter).map((c) => c.title).firstOrNull ?? filter;
     final chip = InputChip(
