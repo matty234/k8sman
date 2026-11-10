@@ -265,6 +265,41 @@ or (with `type: code`) part of the object as YAML:
                   value: '{?"match": item.?match, ?"validate": item.?validate}'
 ```
 
+### Header badges, severities and placement
+
+A section's `badge` is a coloured state in its header, beside the summary
+(`text` and `severity`, as a badges block's items). `severity` on a field
+or a table column colours the value (a `status` value's badge, or the text
+of others); it is CEL returning one of `error`, `warning`, `ok`, `info`,
+`neutral`, so the plugin decides, not the app's word list:
+
+```yaml
+        - title: Sync status
+          badge:
+            text: variables.reason
+            severity: 'variables.ready.?status.orValue("") == "True" ? "ok" : "error"'
+          blocks:
+            - type: table
+              rows: object.status.results
+              columns:
+                - name: Result
+                  type: status
+                  value: item.result
+                  severity: 'item.result == "fail" ? "error" : item.result == "pass" ? "ok" : "neutral"'
+```
+
+On a kind with a compiled-in panel (a Pod, a Node, a Deployment, …) plugin
+sections come after the panel's own. `placement: top` puts one first, and
+`after: <id>` after the core section with that id (§4 lists them per kind):
+
+```yaml
+  /Pod:
+    panel:
+      sections:
+        - title: Resource claims
+          after: configuration       # or placement: top | bottom (default)
+```
+
 ### Tabs, and plugins for any kind
 
 `panel.tabs` adds inspector tabs, each with its own sections, after the
@@ -970,8 +1005,21 @@ kinds:
 
 A panel is a list of **sections**: `title` (text), `icon` (text), `when`
 (**CEL** bool), `summary` (**CEL** string: a short text at the right of the
-header), `collapsed` (bool), `blocks` (list). Each section is a
-`DetailSection`. Every block also takes `when`.
+header), `badge` (`{text` **CEL**`, severity` **CEL**`, when}`: a coloured
+badge in the header, before the summary), `collapsed` (bool), `placement`
+(`top` or `bottom`, the default) or `after` (a core section id; see
+*Placement* below), `blocks` (list). Each section is a `DetailSection`.
+Every block also takes `when`.
+
+**Severities.** A `severity` expression (badges, a section's badge, fields,
+table columns) returns one of `error`, `warning`, `ok`, `info`, `neutral`
+(`$defs/Severity` in the schema; its literals are offered as completions).
+`critical`, `warn` and `success`, accepted before v1, still mean `error`,
+`warning` and `ok`, and `plugin validate` warns where they are written, as
+it does for a name that is no severity (shown as if none were given). The
+backend sends only the five names. Without a severity a `status` value or a
+badge colours itself from its text, as before; the `message` block's
+`severity` stays a fixed `info`, `warning` or `error`.
 
 A panel's **tabs** (`panel.tabs`) are `{id, title, icon, when` **CEL** bool`,
 into, sections}`: an inspector tab with its own sections, after the kind's
@@ -985,12 +1033,12 @@ only host tab in v1; more may be added later).
 
 | Block | Widget | Fields |
 |---|---|---|
-| `fields` | `KeyValueTable` | `items`: list of `{label, value` **CEL**`, type, link` **CEL** `Ref, copy: bool, mono: bool, when}`. A row whose value is null or empty is hidden; `mono` draws it in the monospace font |
+| `fields` | `KeyValueTable` | `items`: list of `{label, value` **CEL**`, type, link` **CEL** `Ref, copy: bool, mono: bool, severity` **CEL**`, when}`. A row whose value is null or empty is hidden; `mono` draws it in the monospace font; `severity` colours it |
 | `badges` | `StatusBadge` row | `items`: list of `{text` **CEL**`, severity` **CEL** optional`, when}`; without severity the badge colours itself from the text as today |
 | `chips` | `Chipish` / `LabelChips` | `items` **CEL**: a list of strings, or a map (shown as `key=value`) |
 | `conditions` | `ConditionsTable` | `from` **CEL**, default `object.status.conditions` |
 | `links` | `ResourceLink` list | `items` **CEL**: a list of Refs; `empty` (text) |
-| `table` | compact table | `rows` **CEL** list; `columns`: list of `{name, value` **CEL** (sees `item`)`, type, link, mono: bool, detail: bool}`; `sortBy` (column name), `descending`, `limit` (default 20, "Show all" beyond), `empty` (text). A `detail` column is drawn on its own line under its row, across the table |
+| `table` | compact table | `rows` **CEL** list; `columns`: list of `{name, value` **CEL** (sees `item`)`, type, link, mono: bool, detail: bool, severity` **CEL** (sees `item`)`}`; `sortBy` (column name), `descending`, `limit` (default 20, "Show all" beyond), `empty` (text). A `detail` column is drawn on its own line under its row, across the table |
 | `settings` | `KeyValueTable` | `value` **CEL**: a map of any depth, flattened into sorted `path → value` rows; `limit` (default 14, at most 50; "and N more" beyond), `empty` (text). See below |
 | `bar` | `UsageBar` | `label`, `value` **CEL** number, `max` **CEL** number, `format`: `number`, `quantity` or `percent`; amber from 80%, red from 90% |
 | `code` | `CodeBlock` | `value` **CEL**: a string, or any value, shown as YAML (JSON with `language: json`); `language`: `text`, `yaml`, `json` or `shell` |
@@ -1002,7 +1050,9 @@ Value `type` in `fields` and `table` columns: `text` (default), `number`,
 `timestamp`, `quantity`, `labels`, `url` (opens the browser on click),
 `code` (monospace, with copy; a value that isn't a string is shown as
 YAML). A `status` value colours itself from its text (Ready, Failed,
-Pending, …, and the policy-report results pass, warn and fail).
+Pending, …, and the policy-report results pass, warn and fail) unless the
+field or column gives a `severity`; with one, other values are drawn in
+its colour (`neutral`: quiet).
 
 **The `settings` block** shows a configuration object (a store's provider,
 an issuer's ACME or Vault settings) as the module panels did, which CEL
@@ -1032,6 +1082,79 @@ before; plugin tabs come after the kind's own tabs and before YAML. (As
 built: plugin sections come before Owns and Metadata, and the generic
 panel's sections follow them unless `panel.generic` says `collapse` or
 `replace`; see §13. Tabs were added with the DRA and Kyverno ports.)
+
+On a kind with a compiled-in panel a section's `placement` and `after`
+choose where among the panel's sections it goes: `top` before them,
+`bottom` (the default) after them, `after: <id>` right after the core
+section with that id. Several plugin sections in one place keep their
+plugin, then manifest, order. An `after` the panel doesn't show for this
+object (a conditional section, a module that is off, a typo) puts the
+section at the bottom; `plugin validate` warns about ids the kind's panel
+doesn't have (for a `"*"` entry, ids no panel has), and that placement does
+nothing on kinds without a compiled-in panel (plugin sections lead there)
+and in tabs. A plugin's notes and errors go with its first section.
+
+**Core section ids.** Ids are stable API: a title may change, its id
+doesn't. Top to bottom; *(c)* = shown only for some objects. A panel that
+draws one view of several sections (Service, Ingress, Node, …) has one id
+for it, `overview`; nothing can go between its parts.
+
+| Kind | Section ids |
+|---|---|
+| `/Pod` | `status`, `containers`, `volumes` (c), `scheduling` (c), `configuration`, `history` (c, Prometheus), `network` (c), `gpus` (c), `conditions` |
+| `apps/Deployment` | `status`, `pods`, `usage`, `history`, `rollout-history`, `strategy`, `pod-template`, `scheduling`, `conditions`, `selector` |
+| `apps/StatefulSet` | `status`, `pods`, `usage`, `history`, `volume-claims` (c), `strategy`, `pod-template`, `scheduling`, `conditions` (c), `selector` |
+| `apps/DaemonSet` | `status`, `pods`, `usage`, `history`, `strategy`, `scheduling`, `pod-template`, `conditions` (c), `selector` |
+| `apps/ReplicaSet` | `status`, `pods`, `pod-template`, `scheduling`, `conditions` (c), `selector` |
+| `autoscaling/HorizontalPodAutoscaler` | `status`, `metrics`, `behavior`, `conditions` |
+| `policy/PodDisruptionBudget` | `status`, `pods`, `conditions`, `selector` |
+| `batch/Job` | `status`, `pods`, `spec`, `pod-template`, `conditions` |
+| `batch/CronJob` | `status`, `jobs`, `next-runs`, `spec`, `job-template` |
+| `/Service` | `overview` (header, ports, endpoints, access), `routed-by` (c) |
+| `networking.k8s.io/Ingress`, `networking.k8s.io/NetworkPolicy` | `overview` |
+| `networking.k8s.io/IngressClass` | `class`, `used-by` |
+| `discovery.k8s.io/EndpointSlice` | `status`, `endpoints` |
+| `/Endpoints` | `status`, then `subset-0`, `subset-1`, … (c, one per subset) |
+| `/ConfigMap` | `status`, `data`, `used-by`, `binary-data` (c) |
+| `/Secret` | `status`, `external-secret` (c), `data`, `used-by` |
+| `/ServiceAccount` | `status`, `used-by`, `secrets`, `permissions` |
+| `/PersistentVolumeClaim` | `status`, `history` (c), `mounted-by`, `volume`, `data-source` (c), `conditions` (c), `statefulset` (c) |
+| `/PersistentVolume` | `status`, `source`, `node-affinity` (c), `mount-options` (c) |
+| `storage.k8s.io/StorageClass` | `status`, `used-by`, `parameters`, `allowed-topologies` (c) |
+| `/Node` | `overview` (status, pods, history, usage), `gpus` (c), `capacity`, `taints`, `conditions`, `system-info`, `addresses`, `images` |
+| `/Namespace` | `overview`, `quotas`, `warnings` |
+| `/Event`, `events.k8s.io/Event` | `status`, `other-events` (c) |
+| `/ResourceQuota` | `usage`, `scopes` (c) |
+| `/LimitRange` | `limits` |
+| `rbac.authorization.k8s.io/Role`, `…/ClusterRole` | `permission-matrix` (c), `rules`, `aggregation` (c, ClusterRole), `bound-by` |
+| `rbac.authorization.k8s.io/RoleBinding`, `…/ClusterRoleBinding` | `role-reference`, `subjects`, `granted-rules` |
+| `admissionregistration.k8s.io/ValidatingAdmissionPolicy`, `…/MutatingAdmissionPolicy` | `policy`, `match-constraints`, `match-conditions` (c), `variables` (c), `validations` (validating), `audit-annotations` (c, validating), `mutations` (mutating), `bindings`, `status` (c) |
+| `admissionregistration.k8s.io/ValidatingAdmissionPolicyBinding`, `…/MutatingAdmissionPolicyBinding` | `binding`, `parameters` (c), `match-resources` |
+| `admissionregistration.k8s.io/ValidatingWebhookConfiguration`, `…/MutatingWebhookConfiguration` | `webhooks` |
+| `apiextensions.k8s.io/CustomResourceDefinition` | `definition`, `conditions` (c), `versions`, `instances`, `schema` |
+
+Panels of the integration modules (while the module is on):
+
+| Kind | Section ids |
+|---|---|
+| `gateway.networking.k8s.io/GatewayClass` | `class`, `supported-features` (c), `gateways` |
+| `gateway.networking.k8s.io/Gateway`, `HTTPRoute`, `GRPCRoute`, `TLSRoute`, `TCPRoute`, `UDPRoute` | `overview` |
+| `gateway.networking.k8s.io/ReferenceGrant` | `grant`, `used-by` |
+| `argoproj.io/Application` | `status`, `last-operation` (c), `source`, `destination`, `managed-resources`, `sync-history` |
+| `argoproj.io/ApplicationSet` | `status`, `generated-applications`, `generators`, `template`, `conditions` |
+| `argoproj.io/AppProject` | `summary`, `applications`, `source-repositories`, `destinations`, `resource-kinds`, `sync-windows`, `roles`, `orphaned-resources` |
+| `argoproj.io/Workflow` | `summary`, `parameters`, `steps`, `conditions` (c), `spec` |
+| `argoproj.io/CronWorkflow` | `schedule`, `status`, `conditions` (c), `workflows`, `workflow-spec` |
+| `argoproj.io/WorkflowTemplate`, `…/ClusterWorkflowTemplate` | `template`, `parameters`, `templates`, `workflows` |
+| `monitoring.coreos.com/ServiceMonitor`, `…/PodMonitor` | `selects`, `targets` |
+| `monitoring.coreos.com/Prometheus` | `overview`, `selects`, `alerting` (c), `conditions` (c) |
+| `monitoring.coreos.com/Alertmanager` | `overview`, `configuration`, `conditions` (c) |
+| `monitoring.coreos.com/PrometheusRule` | `rules` |
+
+The frontend wraps each section in a `CoreSection(id, …)`
+(`lib/panels/panel.dart`); the backend keeps the same list
+(`coreSections`, `internal/plugins/sections.go`) for `plugin validate`.
+Change all three together.
 
 The vocabulary grows by adding blocks or fields; an older app shows "this
 section needs k8sman ≥ x" for a block it doesn't know.
@@ -2096,24 +2219,83 @@ Pod and Node sections in `dra_sections.dart`), `lib/modules/kyverno_module.dart`
   `compile.go` warns when a column reads `row`. The bundled plugins and
   `plugin new` (which has no table) use `item`.
 
+### v1 freeze: placement, header badges, severities
+
+Checklist items 1–3, all additions (no v1 plugin breaks).
+
+1. **Placement.** Every compiled-in panel's top-level sections are wrapped
+   in `CoreSection(id, …)` (core and module panels, ~50 kinds; the ids are
+   in §4). A section takes `placement: top|bottom` or `after: <id>`.
+   `PluginComposedPanel` puts a slot before the base's sections, one after
+   each `CoreSection` and one at the end; each slot is a `PluginSections`
+   showing the sections that resolve to it, from the one shared panel
+   fetch. The ids the UI draws decide at runtime, so an `after` the panel
+   doesn't show (conditional, module off, unknown) goes to the bottom,
+   never lost. For lint the backend keeps a static copy of the ids
+   (`coreSections` in `internal/plugins/sections.go`): simplest, and
+   `plugin validate` runs without the app; the cost is keeping three lists
+   (Dart, Go, this doc) in step, which the `CoreSection` doc comment says.
+   Ids are per top-level widget: a panel that draws one view of several
+   sections (Node's status, pods and usage; Service; Ingress; Gateway and
+   routes) is one `overview`, and plugins can't go between its parts.
+   Placement applies only to compiled-in panels' Overview; a kind with the
+   generic panel keeps plugin sections first, and tabs keep their order
+   (validate warns in both cases).
+2. **Header badges.** `badge` on a section, the badges block's item shape
+   (`text`, `severity`, `when`; `text` rather than `value`, so the two
+   badges read the same), drawn before the summary in the header
+   (`DetailSection` and, in host tabs, `InspectorSection`). Chosen over a
+   `summarySeverity`, which would have coloured the summary text and left
+   no room for a count beside a state.
+3. **Severities.** `severity` (CEL) on fields and table columns (it sees
+   `item`, and warns on `row` as `value` does), as badges had. A `status`
+   value takes it for its badge; other values are drawn in its colour (`neutral` quiet). The five names
+   (`error`, `warning`, `ok`, `info`, `neutral`) are `$defs/Severity` in
+   the schema, and every severity field offers them as completions. The
+   backend normalises what it sends (aliases mapped, unknown names
+   dropped), so the UI knows only the five. `plugin validate` warns about
+   `critical`, `warn`, `success` and unknown names among an expression's
+   possible results (string literals, through `?:`), at the literal; a
+   name computed some other way isn't checked.
+
+**Bundled plugins.** External Secrets: the Ready badge is the header badge
+of Sync status (ExternalSecret), Cluster external secret and Provider
+(stores), with a severity (green Ready, amber pending, red failed) rather
+than the app's word list guessing from the reason; the Store status
+field and the "ExternalSecrets using this store" Status column have
+severities too. DRA: the claim state is the Claim section's
+header badge (amber Pending, green Allocated/Reserved); Resource claims
+goes after the Pod's Configuration (where the module had it) and DRA
+devices after the Node's `overview` (second, as in the module), which
+resolves DRA differences 1 and 3 above. Kyverno: result cells (pass, warn,
+fail, error, skip) carry a severity rather than relying on the word list.
+
+**Where.** Backend: `manifest.go` (`Section.Badge`, `.Placement`,
+`.After`; `FieldItem.Severity`; `TableColumn.Severity`; `severities`,
+`severityAliases`, `placements`), `sections.go` (`coreSections`,
+placement and severity lint, `severityName`), `compile.go`, `eval.go`
+(`SectionOut.Badge`, `.Placement`, `.After`; `severity` on items and
+cells), `schema.go`. Frontend: `panels/panel.dart` (`CoreSection`), every
+compiled-in panel, `plugins/plugin_panel.dart` (slots,
+`pluginSectionSlot`), `plugins/blocks.dart` (header badge, `pluginValue`'s
+severity).
+
 ## v1 freeze checklist
 
 What should still change, or be decided, before third parties build on
 `k8sman.dev/v1`:
 
-1. **Section placement on compiled-in panels.** Plugin sections always come
-   after a core panel's own (DRA's Pod and Node sections sit last). A
-   `placement` (`top`, `bottom`, or after a named core section) needs core
-   sections to have stable ids first.
-2. **Header badges.** `summary` is text; a coloured state in a header (the
-   ESO Ready badge, the DRA claim state) is still the first block. Decide
-   between a `summarySeverity` and leaving it.
-3. **Severity of table and field values.** `status` colours itself from a
-   word list in the app; a plugin can't say "this cell is an error". A
-   `severity` (CEL) on columns and fields, as badges have, would retire the
-   list for plugins. Also make the badge severity names an enum in the
-   schema (`error`, `critical`, `warning`, `warn`, `ok`, `success`,
-   `info`, `neutral` are accepted today, undocumented).
+1. ~~**Section placement on compiled-in panels.**~~ Done: core sections
+   have stable ids (§4), and a section takes `placement: top|bottom` or
+   `after: <id>`; an id the panel doesn't show goes to the bottom, and
+   validate warns about unknown ones (§13, *v1 freeze*).
+2. ~~**Header badges.**~~ Done: a section's `badge` (`text`, `severity`,
+   `when`) is drawn in the header before the summary; the ESO Ready badge
+   and the DRA claim state use it.
+3. ~~**Severity of table and field values.**~~ Done: `severity` (CEL) on
+   fields and table columns; the names are `error`, `warning`, `ok`,
+   `info`, `neutral` (`$defs/Severity`); `critical`, `warn` and `success`
+   still load, and validate warns.
 4. ~~**Host tab slots.**~~ Resolved: `into` is a schema enum holding
    only `security`; an unknown value is a load error. New slots may be
    added later (additive, non-breaking).
