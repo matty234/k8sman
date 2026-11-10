@@ -96,6 +96,46 @@ type Settings struct {
 	// AllowedNamespaces maps kube context → the only namespaces the app
 	// shows and lists (multi-tenant clusters). Absent = every namespace.
 	AllowedNamespaces map[string][]string `json:"allowedNamespaces,omitempty"`
+
+	// Plugins holds runtime plugin settings (see internal/plugins).
+	Plugins *PluginSettings `json:"plugins,omitempty"`
+}
+
+// PluginSettings are the runtime plugin settings.
+type PluginSettings struct {
+	// DevMode loads plugins (in this version they load only in dev mode):
+	// those in <settings dir>/plugins and DevFolders, hot reloaded.
+	DevMode bool `json:"devMode,omitempty"`
+	// DevFolders are folders added with "Load plugin folder…": a plugin
+	// folder, or a folder of plugin folders.
+	DevFolders []string `json:"devFolders,omitempty"`
+	// Disabled lists plugin ids the user turned off.
+	Disabled []string `json:"disabled,omitempty"`
+	// Consent maps plugin id → the permissions hash the user agreed to
+	// (needed before a plugin's shell actions run).
+	Consent map[string]string `json:"consent,omitempty"`
+}
+
+func (p *PluginSettings) clone() *PluginSettings {
+	if p == nil {
+		return nil
+	}
+	return &PluginSettings{DevMode: p.DevMode, DevFolders: slices.Clone(p.DevFolders), Disabled: slices.Clone(p.Disabled), Consent: maps.Clone(p.Consent)}
+}
+
+// UpdatePlugins applies fn to the plugin settings and saves them.
+func (st *Store) UpdatePlugins(fn func(p *PluginSettings)) error {
+	return st.Update(func(s *Settings) {
+		p := s.Plugins.clone()
+		if p == nil {
+			p = &PluginSettings{}
+		}
+		fn(p)
+		if !p.DevMode && len(p.DevFolders) == 0 && len(p.Disabled) == 0 && len(p.Consent) == 0 {
+			p = nil
+		}
+		s.Plugins = p
+	})
 }
 
 // DefaultNamespace is where a context opens: the kubeconfig context's own
@@ -364,6 +404,7 @@ func (s Settings) clone() Settings {
 	out.Namespaces = cloneNamespaces(s.Namespaces)
 	out.FavouriteNamespaces = cloneNamespaces(s.FavouriteNamespaces)
 	out.AllowedNamespaces = cloneNamespaces(s.AllowedNamespaces)
+	out.Plugins = s.Plugins.clone()
 	if s.DefaultNamespace != nil {
 		out.DefaultNamespace = make(map[string]DefaultNamespace, len(s.DefaultNamespace))
 		for k, v := range s.DefaultNamespace {

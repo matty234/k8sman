@@ -34,8 +34,28 @@ type Column struct {
 	//   "x/y" count such as ready replicas: narrow, right-aligned, sorted
 	//   by x/y), "nodeos" (a node's osImage, operatingSystem, kubeletVersion,
 	//   containerRuntimeVersion, providerID and first platform label,
-	//   tab-separated: drawn as the OS icon and short name).
+	//   tab-separated: drawn as the OS icon and short name), "until" (a
+	//   future RFC3339 timestamp → time remaining, red once passed).
 	Type string `json:"type,omitempty"`
+	// Description is the header tooltip.
+	Description string `json:"description,omitempty"`
+	// Plugin is the id of the plugin that defines the column (then Query
+	// is empty and Program evaluates it). Saved column sets keep it so
+	// the column finds its program again (see plugins.Host.Resolve).
+	Plugin string `json:"plugin,omitempty"`
+	// Program evaluates a plugin column; nil when its plugin isn't loaded.
+	Program Program `json:"-"`
+	// Rev changes when the plugin is reloaded, so memoised rows are
+	// re-evaluated (see the table builder's row tag).
+	Rev uint64 `json:"-"`
+}
+
+// Program is a compiled plugin column (CEL, internal/plugins). Unlike jq
+// it never writes to the object.
+type Program interface {
+	Eval(obj map[string]any) (any, error)
+	// UsesNow reports whether the cell depends on the current time.
+	UsesNow() bool
 }
 
 // Key identifies a resource independently of version, kubectl style:
@@ -164,9 +184,13 @@ func (s *Store) Set(key string, cols []Column) error {
 	return s.save()
 }
 
-// Validate checks that every column's query compiles.
+// Validate checks that every column's query compiles (plugin columns are
+// checked by their plugin).
 func Validate(cols []Column) error {
 	for _, c := range cols {
+		if c.Plugin != "" {
+			continue
+		}
 		if _, err := compile(c.Query); err != nil {
 			return fmt.Errorf("column %q: %w", c.Name, err)
 		}
@@ -222,9 +246,11 @@ func compile(query string) (*gojq.Code, error) {
 
 // Evaluator runs a fixed column set against many objects.
 type Evaluator struct {
-	cols  []Column
-	codes []*gojq.Code
-	errs  []error
+	cols    []Column
+	codes   []*gojq.Code
+	errs    []error
+	jq      bool
+	usesNow bool
 }
 
 // NewEvaluator compiles the columns. Compile errors are reported per column
@@ -232,13 +258,28 @@ type Evaluator struct {
 func NewEvaluator(cols []Column) *Evaluator {
 	e := &Evaluator{cols: cols, codes: make([]*gojq.Code, len(cols)), errs: make([]error, len(cols))}
 	for i, c := range cols {
-		e.codes[i], e.errs[i] = compile(c.Query)
+		switch {
+		case c.Program != nil:
+			e.usesNow = e.usesNow || c.Program.UsesNow()
+		case c.Plugin != "":
+			e.errs[i] = fmt.Errorf("the %s plugin isn't loaded, or has no column %q for this kind", c.Plugin, c.Name)
+		default:
+			e.codes[i], e.errs[i] = compile(c.Query)
+			e.jq = true
+		}
 	}
 	return e
 }
 
 // Columns returns the evaluator's columns.
 func (e *Evaluator) Columns() []Column { return e.cols }
+
+// WritesInput reports whether evaluating writes to the object (any jq
+// column does; see PrivateCopy).
+func (e *Evaluator) WritesInput() bool { return e.jq }
+
+// UsesNow reports whether a cell depends on the current time.
+func (e *Evaluator) UsesNow() bool { return e.usesNow }
 
 // PrivateCopy deep-copies an object for evaluation. gojq normalises numbers
 // by writing every map and slice of its input in place, so objects shared
@@ -281,6 +322,10 @@ func (e *Evaluator) Row(obj map[string]any) (cells []any, errs []error) {
 	cells = make([]any, len(e.cols))
 	errs = make([]error, len(e.cols))
 	for i, code := range e.codes {
+		if p := e.cols[i].Program; p != nil {
+			cells[i], errs[i] = p.Eval(obj)
+			continue
+		}
 		if code == nil {
 			errs[i] = e.errs[i]
 			continue
