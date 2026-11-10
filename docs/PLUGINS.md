@@ -2,7 +2,7 @@
 
 Status: **Milestone 2 implemented** (your own plugins load in dev mode
 only), plus [bundled plugins](#bundled-plugins) that load by default:
-External Secrets, Dynamic Resource Allocation and Kyverno. Sections 1–12
+External Secrets, Dynamic Resource Allocation, Kyverno and cert-manager. Sections 1–12
 are the design; [§13 As built](#13-as-built) says where the build differs
 from it, [Writing a plugin](#writing-a-plugin) is how to use it, and the
 [v1 freeze checklist](#v1-freeze-checklist) is what is left before third
@@ -23,7 +23,12 @@ without it: see [Bundled plugins](#bundled-plugins).)
    a `plugin.yaml` (a column, a panel section with a related object, a patch
    action and an alert), a README, and one fixture with its snapshot. Or
    copy [`examples/plugins/cert-manager`](../examples/plugins/cert-manager),
-   which uses every contribution type.
+   a short commented example (columns, a panel section, an alert, a shell
+   action, nav and an icon). The full cert-manager plugin, which uses most
+   of the format, is bundled:
+   [`backend/internal/plugins/bundled/cert-manager`](../backend/internal/plugins/bundled/cert-manager).
+   The example keeps the id `cert-manager`, so loading it replaces the
+   bundled one while it is loaded (see [Bundled plugins](#bundled-plugins)).
 2. Turn developer mode on: **Settings ▸ Integrations ▸ Plugins ▸ Developer
    mode** (or the palette's **Integrations…**). Or start the backend with
    `--plugin-dev <folder>` (repeatable), e.g.
@@ -366,7 +371,11 @@ Each replaced a built-in module, since removed:
 [External Secrets](../backend/internal/plugins/bundled/external-secrets)
 (`external_secrets`), [Dynamic Resource Allocation](../backend/internal/plugins/bundled/dra)
 (`dra`) and [Kyverno](../backend/internal/plugins/bundled/kyverno)
-(`kyverno`).
+(`kyverno`). [cert-manager](../backend/internal/plugins/bundled/cert-manager)
+(`cert-manager`) was written as a plugin from the start and replaced no
+module. It is the full version of
+[`examples/plugins/cert-manager`](../examples/plugins/cert-manager), the
+short teaching copy.
 
 - **Loaded by default.** They load at start (a parse each; a kind compiles
   on first use), with or without developer mode, and whether the Plugins
@@ -387,10 +396,11 @@ Each replaced a built-in module, since removed:
   mode, overrides the bundled copy while it is loaded (badges *Unpacked ·
   overrides bundled* and *Bundled · overridden*): load
   `backend/internal/plugins/bundled/external-secrets` to work on it with hot
-  reload. Two of your own folders with one id still refuse the second.
+  reload. The cert-manager example folder has the id `cert-manager` too, so
+  loading it overrides the bundled cert-manager the same way. Two of your own folders with one id still refuse the second.
 - **Tested in `go test`.** `TestPluginTestGolden` validates every bundled
-  plugin and runs its fixtures against their snapshots (a bundled plugin
-  must have fixtures). By hand:
+  plugin and the cert-manager example, and runs their fixtures against their
+  snapshots (a bundled plugin must have fixtures). By hand:
   `k8sman-server plugin test backend/internal/plugins/bundled/external-secrets`.
 
 To add one: a folder under `bundled/` with fixtures and snapshots, and, if
@@ -623,6 +633,11 @@ context on screen first). Values are also exported as environment variables
 when a `-c` script interpolates `$COL-…` directly.
 
 ### Example: cert-manager
+
+The full plugin is bundled with the app, in
+[`backend/internal/plugins/bundled/cert-manager`](../backend/internal/plugins/bundled/cert-manager);
+the listing below is its shape from the design. A short commented copy to
+start from is [`examples/plugins/cert-manager`](../examples/plugins/cert-manager).
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman-plugins/main/schema/plugin.v1.json
@@ -1482,7 +1497,7 @@ Frontend: `lib/plugins/` (`plugin_api.dart`, `plugin_host.dart`,
   TableSnapshot`), 1,500 pods: defaults 36.0 ms cold / 0.48 ms warm; three
   jq columns 45.3 / 0.49 ms; three plugin columns 41.4 / 0.50 ms. Plugin
   columns: +5.4 ms cold (budget 10), +0 warm, about 1.2 µs per cell, and
-  cheaper than jq doing the same. The cert-manager example loads in about
+  cheaper than jq doing the same. The bundled cert-manager plugin loads in about
   1.3 ms and compiles (4 kinds, about 45 expressions) in about 9 ms.
 
 **Panels.**
@@ -1672,7 +1687,7 @@ enums and per-block fields; rules across fields (exactly one of `name`,
 
 **Numbers** (M1 Pro, `go test -bench`):
 
-- `BenchmarkPluginData` (cert-manager example): alerts over 1,000
+- `BenchmarkPluginData` (the bundled cert-manager plugin): alerts over 1,000
   Certificates, about 10 ms when every object is new (once per 30 s
   bucket, or for changed objects) and about 0.2 ms on a poll that reuses
   the memo; the Certificate panel with its related objects and metric
@@ -1868,7 +1883,7 @@ The `dra` and `kyverno` modules are now the bundled plugins
 [`kyverno`](../backend/internal/plugins/bundled/kyverno), and both
 modules are removed. Every change to the format is an addition (no v1
 plugin breaks); each is generic, and the External Secrets plugin and the
-cert-manager example use the ones that fit them.
+bundled cert-manager plugin use the ones that fit them.
 
 **Where.** Backend, `internal/plugins`: `manifest.go` (`Tab`,
 `Section.Summary`, `TableColumn.Detail`, `Related.Filter` and `.Limit`,

@@ -1,0 +1,10 @@
+# Settings for `k8sman-server plugin test`: the time every fixture sees,
+# the context name, whether the context is read-only, and the answers to
+# metric queries (by query string; without metrics there is no Prometheus).
+now: 2026-01-01T00:00:00Z
+context: demo
+readOnly: false
+metrics:
+  'certmanager_certificate_expiration_timestamp_seconds{namespace="default", name="web-tls"}':
+    - labels: {namespace: default, name: web-tls}
+      value: 1774915200

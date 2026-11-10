@@ -1,0 +1,101 @@
+# A ready Certificate, with its Secret, its Issuer and two requests.
+# The first document is the subject; the rest are what related lookups see.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: web-tls
+  namespace: default
+  uid: 11111111-0000-0000-0000-000000000001
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  secretName: web-tls
+  commonName: www.example.com
+  dnsNames: [www.example.com, example.com]
+  issuerRef:
+    name: letsencrypt
+    kind: Issuer
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+status:
+  notAfter: "2026-03-31T00:00:00Z"
+  renewalTime: "2026-03-01T00:00:00Z"
+  revision: 3
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Ready
+      message: Certificate is up to date and has not expired
+      lastTransitionTime: "2025-12-31T00:00:00Z"
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  name: web-tls
+  namespace: default
+  creationTimestamp: "2025-06-01T00:01:00Z"
+data:
+  tls.key: c2VjcmV0           # never shown to the plugin: it sees ""
+  tls.crt: Y2VydA==
+  ca.crt: Y2E=
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt
+  namespace: default
+spec:
+  acme:
+    server: https://acme.example.com/directory
+    email: admin@example.com
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+---
+apiVersion: cert-manager.io/v1
+kind: CertificateRequest
+metadata:
+  name: web-tls-2
+  namespace: default
+  creationTimestamp: "2025-09-01T00:00:00Z"
+  ownerReferences:
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      name: web-tls
+      uid: 11111111-0000-0000-0000-000000000001
+status:
+  conditions:
+    - {type: Approved, status: "True"}
+    - {type: Ready, status: "True", reason: Issued}
+---
+apiVersion: cert-manager.io/v1
+kind: CertificateRequest
+metadata:
+  name: web-tls-3
+  namespace: default
+  creationTimestamp: "2025-12-31T00:00:00Z"
+  ownerReferences:
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      name: web-tls
+      uid: 11111111-0000-0000-0000-000000000001
+status:
+  conditions:
+    - {type: Approved, status: "True"}
+    - {type: Ready, status: "True", reason: Issued}
+---
+# Not owned by web-tls: not one of its requests.
+apiVersion: cert-manager.io/v1
+kind: CertificateRequest
+metadata:
+  name: other-1
+  namespace: default
+  creationTimestamp: "2025-12-01T00:00:00Z"
+  ownerReferences:
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      name: other
+      uid: 11111111-0000-0000-0000-000000000099

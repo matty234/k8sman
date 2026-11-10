@@ -452,7 +452,7 @@ func containsValue(l []any, v any) bool {
 // snapshots, then the flow on a new plugin: scaffold (snapshots written),
 // pass, change a fixture (fail with a diff), --update, pass.
 func TestPluginTestGolden(t *testing.T) {
-	// The example and every bundled plugin (each must have fixtures).
+	// The cert-manager example and every bundled plugin (each must have fixtures).
 	dirs := []string{"../../../examples/plugins/cert-manager"}
 	bundledDirs, _ := filepath.Glob("bundled/*/" + ManifestFile)
 	if len(bundledDirs) == 0 {
@@ -504,12 +504,12 @@ func TestPluginTestGolden(t *testing.T) {
 	}
 }
 
-// BenchmarkPluginData measures the cert-manager example against the
+// BenchmarkPluginData measures the bundled cert-manager plugin against the
 // budgets of docs/PLUGINS.md §8: its alerts over 1,000 Certificates (one
 // overview poll; budget +5 ms p50 for five typical plugins) and its
 // Certificate panel with related objects and metrics warm (5 ms p95).
 func BenchmarkPluginData(b *testing.B) {
-	const dir = "../../../examples/plugins/cert-manager"
+	const dir = "bundled/cert-manager"
 	p, cfg, err := loadForFixtures(dir)
 	if err != nil {
 		b.Fatal(err)

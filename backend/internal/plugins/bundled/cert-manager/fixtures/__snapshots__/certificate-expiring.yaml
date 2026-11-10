@@ -1,0 +1,169 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: cert-manager.io/Certificate demo/api-tls
+columns:
+  - name: Ready
+    value: Failed
+  - name: Issuer
+    value: ClusterIssuer/internal-ca
+  - name: Expires
+    value: "2026-01-06T00:00:00Z"
+panel:
+  refresh: 5
+  sections:
+    - blocks:
+        - severity: warning
+          text: Expires in 5d
+          type: message
+        - items:
+            - text: Not ready
+            - severity: warning
+              text: Issuing
+          type: badges
+        - items:
+            - copy: true
+              label: Secret
+              link:
+                group: ""
+                kind: Secret
+                name: api-tls
+                namespace: demo
+              type: text
+              value: api-tls
+            - label: Issuer
+              link:
+                group: cert-manager.io
+                kind: ClusterIssuer
+                name: internal-ca
+                namespace: demo
+              type: text
+              value: ClusterIssuer/internal-ca
+            - label: Issuer status
+              type: status
+              value: Not found
+            - label: Expires
+              type: until
+              value: "2026-01-06T00:00:00Z"
+            - label: Not after
+              type: timestamp
+              value: "2026-01-06T00:00:00Z"
+            - label: Duration
+              type: text
+              value: 2160h (default)
+            - label: Renew before
+              type: text
+              value: 720h
+          type: fields
+      icon: verified
+      title: Certificate
+    - blocks:
+        - severity: warning
+          text: Secret api-tls doesn't exist yet
+          type: message
+      icon: key
+      title: Secret
+    - blocks:
+        - items:
+            - api.example.com
+          type: chips
+      icon: dns
+      summary: "1"
+      title: DNS names
+    - blocks:
+        - items:
+            - label: Algorithm
+              type: text
+              value: RSA
+            - label: Rotation
+              type: text
+              value: Never
+          type: fields
+      collapsed: true
+      icon: key
+      title: Private key
+    - blocks:
+        - conditions:
+            - lastTransitionTime: "2025-12-30T12:00:00Z"
+              message: Issuer "internal-ca" not found
+              reason: Failed
+              status: "False"
+              type: Ready
+            - status: "True"
+              type: Issuing
+          type: conditions
+      icon: checklist
+      title: Conditions
+actions:
+  - argv:
+      - cmctl
+      - renew
+      - --context
+      - demo
+      - -n
+      - demo
+      - api-tls
+    dangerous: true
+    icon: refresh
+    id: renew
+    label: Renew
+    message: cmctl marks the certificate for renewal; cert-manager issues a new one now.
+    shortcut: shift+R
+    type: shell
+  - argv:
+      - cmctl
+      - status
+      - certificate
+      - --context
+      - demo
+      - -n
+      - demo
+      - api-tls
+    dangerous: false
+    icon: terminal
+    id: status
+    label: cmctl status
+    type: shell
+  - body:
+      spec:
+        renewBefore: 720h
+    dangerous: false
+    icon: schedule
+    id: renew-before
+    inputs:
+      - default: 720h
+        label: Renew before
+        name: renewBefore
+        type: string
+        validateMessage: Enter a duration such as 360h or 720h30m.
+    label: Set renewal time…
+    message: cert-manager renews the certificate this long before it expires.
+    patchType: merge
+    type: patch
+  - body:
+      spec:
+        privateKey:
+          rotationPolicy: Never
+    dangerous: true
+    icon: vpn_key
+    id: key-rotation
+    inputs:
+      - default: Never
+        label: Rotation policy
+        name: policy
+        options:
+          - Never
+          - Always
+        type: enum
+    label: Private key rotation…
+    patchType: merge
+    type: patch
+alerts:
+  - id: expiring
+    message: Expires in 5d
+    section: custom
+    severity: warning
+  - id: not-ready
+    message: Issuer "internal-ca" not found
+    section: custom
+    severity: warning
+    since: "2025-12-30T12:00:00Z"
+status: 'Certificates: 1 · not ready: 1 (warning)'
