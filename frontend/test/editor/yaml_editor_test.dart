@@ -36,12 +36,12 @@ class _EditApi extends ApiClient {
   }
 }
 
-Future<_EditApi> _pump(WidgetTester tester, {String rv = '100'}) async {
+Future<_EditApi> _pump(WidgetTester tester, {String rv = '100', Size size = const Size(600, 700)}) async {
   final api = _EditApi();
   final app = AppState(api)
     ..currentContext = 'kind-dev'
     ..types = const [ResourceType(group: 'apps', version: 'v1', resource: 'deployments', kind: 'Deployment', verbs: ['get', 'update'])];
-  tester.view.physicalSize = const Size(600, 700);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MultiProvider(
@@ -58,6 +58,15 @@ Future<_EditApi> _pump(WidgetTester tester, {String rv = '100'}) async {
 
 void main() {
   setUpAll(loadRealFonts);
+
+  testWidgets('toolbars fit a slim inspector', (tester) async {
+    await _pump(tester, size: const Size(300, 700));
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    expect(find.text('Apply…'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('edit → review → apply runs dry-run then apply', (tester) async {
     final api = await _pump(tester);

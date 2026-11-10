@@ -233,49 +233,71 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
     );
   }
 
+  void _setManagedFields(bool v) {
+    setState(() => _managedFields = v);
+    _load();
+  }
+
   Widget _toolbar(BuildContext context, bool canEdit) {
     final theme = Theme.of(context);
     final small = OutlinedButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10));
+    final icon = IconButton.styleFrom(visualDensity: VisualDensity.compact);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 8, 2),
-      child: Row(children: [
-        if (!_editing) ...[
-          Text('rv ${widget.resourceVersion}', style: monoStyle(context, size: 11, color: theme.hintColor)),
-          const Spacer(),
-          Text('managedFields', style: theme.textTheme.bodySmall),
-          Switch(
-            value: _managedFields,
-            onChanged: (v) {
-              setState(() => _managedFields = v);
-              _load();
-            },
-          ),
-          IconButton(tooltip: 'Copy YAML', icon: const Icon(Icons.copy, size: 16), onPressed: () => copyToClipboard(context, _original, label: 'YAML')),
-          IconButton(tooltip: 'Open in Editor', icon: const Icon(Icons.open_in_full, size: 16), onPressed: () => openResourceEditor(context, _t)),
-          if (canEdit) FilledButton.tonalIcon(style: FilledButton.styleFrom(visualDensity: VisualDensity.compact), onPressed: _startEditing, icon: const Icon(Icons.edit, size: 16), label: const Text('Edit')),
-        ] else ...[
+      // Narrow (a slim inspector): shorter labels so nothing overflows.
+      child: LayoutBuilder(builder: (context, box) {
+        final narrow = box.maxWidth < 380;
+        if (!_editing) {
+          return Row(children: [
+            Flexible(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => _setManagedFields(!_managedFields),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  SizedBox(width: 32, height: 20, child: FittedBox(child: Switch(value: _managedFields, onChanged: _setManagedFields))),
+                  const SizedBox(width: 6),
+                  Flexible(child: Text('Managed fields', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
+                ]),
+              ),
+            ),
+            const Spacer(),
+            IconButton(style: icon, tooltip: 'Copy YAML', icon: const Icon(Icons.copy, size: 16), onPressed: () => copyToClipboard(context, _original, label: 'YAML')),
+            IconButton(style: icon, tooltip: 'Open in Editor', icon: const Icon(Icons.open_in_full, size: 16), onPressed: () => openResourceEditor(context, _t)),
+            if (canEdit) ...[
+              const SizedBox(width: 4),
+              FilledButton.tonalIcon(style: FilledButton.styleFrom(visualDensity: VisualDensity.compact), onPressed: _startEditing, icon: const Icon(Icons.edit, size: 16), label: const Text('Edit')),
+            ],
+          ]);
+        }
+        return Row(children: [
           SegmentedButton<bool>(
             style: const ButtonStyle(visualDensity: VisualDensity.compact),
             showSelectedIcon: false,
             segments: [
-              const ButtonSegment(value: false, label: Text('Editor')),
+              ButtonSegment(value: false, label: Text(narrow ? 'Edit' : 'Editor')),
               ButtonSegment(value: true, label: Text(_dirty ? 'Diff •' : 'Diff')),
             ],
             selected: {_showDiff},
             onSelectionChanged: (s) => setState(() => _showDiff = s.first),
           ),
           const Spacer(),
-          TextButton(onPressed: _busy ? null : _discard, child: const Text('Cancel')),
+          if (narrow)
+            IconButton(style: icon, tooltip: 'Cancel', icon: const Icon(Icons.close, size: 16), onPressed: _busy ? null : _discard)
+          else
+            TextButton(onPressed: _busy ? null : _discard, child: const Text('Cancel')),
           const SizedBox(width: 4),
-          OutlinedButton(style: small, onPressed: _busy || !_dirty ? null : () => _submit(dryRun: true), child: const Text('Validate')),
+          if (narrow)
+            IconButton(style: icon, tooltip: 'Validate (dry run)', icon: const Icon(Icons.fact_check_outlined, size: 16), onPressed: _busy || !_dirty ? null : () => _submit(dryRun: true))
+          else
+            OutlinedButton(style: small, onPressed: _busy || !_dirty ? null : () => _submit(dryRun: true), child: const Text('Validate')),
           const SizedBox(width: 6),
           FilledButton(
             style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
             onPressed: _busy || !_dirty ? null : _reviewAndApply,
-            child: Text(_busy ? 'Working…' : 'Review & apply'),
+            child: Text(_busy ? 'Working…' : (narrow ? 'Apply…' : 'Review & apply')),
           ),
-        ],
-      ]),
+        ]);
+      }),
     );
   }
 
