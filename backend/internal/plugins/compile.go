@@ -64,6 +64,7 @@ type kindProgs struct {
 	sections []secProg
 	actions  []actProg
 	alerts   []alertProg
+	status   []statusProg
 	// panelNeeds and actionNeeds are the related objects (and, for
 	// panels, metrics) their expressions read, so only those are looked up.
 	panelRelated, panelMetrics, actionRelated refSet
@@ -123,6 +124,11 @@ type metricProg struct {
 type alertProg struct {
 	a                    *Alert
 	when, message, since *program
+}
+
+type statusProg struct {
+	c    *StatusCount
+	when *program
 }
 
 // compiler compiles a kind entry's expressions, collecting diags with
@@ -461,6 +467,13 @@ func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
 		}
 		kp.alerts = append(kp.alerts, alertProg{a: a, when: al(a.When, cel.BoolType), message: al(a.Message, nil), since: al(a.Since, nil)})
 	}
+	if k.Status != nil {
+		for i := range k.Status.Counts {
+			sc := &k.Status.Counts[i]
+			kp.status = append(kp.status, statusProg{c: sc,
+				when: c.restrict(sc.When, env, cel.BoolType, alertCostLimit, "status counts", false, false, false)})
+		}
+	}
 	kp.needs()
 	return kp, c.diags
 }
@@ -572,10 +585,11 @@ func (c *compiler) compileBlock(b *Block) blockProg {
 	case "bar":
 		set("value", b.Value, c.base, nil)
 		set("max", b.Max, c.base, nil)
-	case "code", "json":
+	case "code", "json", "settings":
 		set("value", b.Value, c.base, nil)
 	case "message":
 		set("text", b.Text, c.base, nil)
+		set("title", b.Title, c.base, nil)
 	}
 	return bp
 }

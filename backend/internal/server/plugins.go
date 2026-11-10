@@ -34,6 +34,7 @@ import (
 //	POST   /api/plugins/reload          reload every folder
 //	GET    /api/plugins/{id}/icon       the plugin's icon.png
 //	GET    /api/plugins/panel           ?group&version&resource&namespace&name: sections and actions for an object
+//	GET    /api/plugins/status          {plugins: {id: {text, severity, kinds, errors}}}: status lines (plugins_data.go)
 //	GET    /api/plugins/events          WebSocket: {"generation": n} on every change
 //	POST   /api/plugins/run             ?plugin&action&group&version&resource&namespace&name: a background shell action
 //
@@ -59,6 +60,7 @@ func (m *pluginsModule) Routes(r httpx.Router, d Deps) {
 	r.HandleFunc("POST /api/plugins/reload", s.handlePluginsReload)
 	r.HandleFunc("GET /api/plugins/{id}/icon", s.handlePluginIcon)
 	r.HandleFunc("GET /api/plugins/panel", s.handlePluginPanel)
+	r.HandleFunc("GET /api/plugins/status", s.handlePluginStatus)
 	r.HandleFunc("GET /api/plugins/events", s.handlePluginEvents)
 	r.HandleFunc("POST /api/plugins/run", s.handlePluginRun)
 }

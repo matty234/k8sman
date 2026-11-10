@@ -38,6 +38,8 @@ var schemaRequired = map[string][]string{
 	"Shell":       {"command"},
 	"Patch":       {"type", "body"},
 	"Input":       {"name"},
+	"Status":      {"label"},
+	"StatusCount": {"label", "when"},
 }
 
 var kindKeyPattern = `^(\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$`
@@ -81,8 +83,16 @@ func schemaField() map[string]map[string]any {
 		"Block.format":           enum(barFormats),
 		"Block.language":         enum(codeLanguages),
 		"Block.severity":         enum(messageSeverity),
+		"Block.title":            {"description": "message: a heading; a warning or error with one is a callout titled with it."},
+		"Block.limit":            {"description": "table: rows shown before \"Show all\" (default 20); settings: rows (default 14, at most 50)."},
+		"Block.value":            {"description": "bar: a number; code: a string; json: any value; settings: a map, flattened into path → value rows (references become links)."},
 		"FieldItem.type":         enum(valueTypes),
+		"FieldItem.mono":         {"description": "Draw the value in the monospace font."},
 		"TableColumn.type":       enum(valueTypes),
+		"TableColumn.mono":       {"description": "Draw the cells in the monospace font."},
+		"Panel.generic":          map[string]any{"enum": genericModes, "description": "For a kind without a compiled-in panel: keep the generic panel's sections after the plugin's (default), collapse them, or replace them with the plugin's."},
+		"Kind.status":            {"description": "The kind's part of the plugin's status line in Settings ▸ Integrations: its object count and counts of objects matching CEL predicates."},
+		"StatusCount.severity":   map[string]any{"enum": alertSeverities, "description": "Colours the status line when the count isn't zero (default warning)."},
 		"Action.id":              {"pattern": actionIDRe.String()},
 		"Action.icon":            enum(Icons),
 		"Action.dangerous":       {"description": "Default true. Dangerous actions are styled as such; every plugin action is hidden on read-only contexts."},

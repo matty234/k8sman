@@ -372,7 +372,31 @@
                 "type",
                 "when",
                 "text",
-                "severity"
+                "severity",
+                "title"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "settings"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "type",
+                "when",
+                "value",
+                "limit",
+                "empty"
               ]
             }
           }
@@ -457,6 +481,7 @@
           "type": "string"
         },
         "limit": {
+          "description": "table: rows shown before \"Show all\" (default 20); settings: rows (default 14, at most 50).",
           "type": "integer"
         },
         "max": {
@@ -482,6 +507,10 @@
           "description": "CEL expression.",
           "type": "string"
         },
+        "title": {
+          "description": "CEL expression. message: a heading; a warning or error with one is a callout titled with it.",
+          "type": "string"
+        },
         "type": {
           "enum": [
             "badges",
@@ -493,12 +522,13 @@
             "json",
             "links",
             "message",
+            "settings",
             "table"
           ],
           "type": "string"
         },
         "value": {
-          "description": "CEL expression.",
+          "description": "CEL expression. bar: a number; code: a string; json: any value; settings: a map, flattened into path → value rows (references become links).",
           "type": "string"
         },
         "when": {
@@ -708,6 +738,14 @@
           },
           "type": "object"
         },
+        "status": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Status"
+            }
+          ],
+          "description": "The kind's part of the plugin's status line in Settings ▸ Integrations: its object count and counts of objects matching CEL predicates."
+        },
         "variables": {
           "additionalProperties": {
             "description": "CEL expression.",
@@ -767,6 +805,15 @@
     "Panel": {
       "additionalProperties": false,
       "properties": {
+        "generic": {
+          "description": "For a kind without a compiled-in panel: keep the generic panel's sections after the plugin's (default), collapse them, or replace them with the plugin's.",
+          "enum": [
+            "keep",
+            "collapse",
+            "replace"
+          ],
+          "type": "string"
+        },
         "sections": {
           "items": {
             "$ref": "#/$defs/Section"
@@ -990,12 +1037,60 @@
       ],
       "type": "object"
     },
+    "Status": {
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "items": {
+            "$ref": "#/$defs/StatusCount"
+          },
+          "type": "array"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "type": "object"
+    },
+    "StatusCount": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "severity": {
+          "description": "Colours the status line when the count isn't zero (default warning).",
+          "enum": [
+            "critical",
+            "warning",
+            "info"
+          ],
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "when"
+      ],
+      "type": "object"
+    },
     "TableColumn": {
       "additionalProperties": false,
       "properties": {
         "link": {
           "description": "CEL expression.",
           "type": "string"
+        },
+        "mono": {
+          "description": "Draw the cells in the monospace font.",
+          "type": "boolean"
         },
         "name": {
           "type": "string"

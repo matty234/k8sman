@@ -237,7 +237,44 @@ func previewYAML(u *unstructured.Unstructured) string {
 	return string(b)
 }
 
-// ---- alerts ------------------------------------------------------------------
+// ---- alerts and status lines ---------------------------------------------------
+
+// pluginLister lists a kind's objects in scope ns ("" = every namespace)
+// from the watch cache, for alerts and status lines.
+func (s *Server) pluginLister(ctx context.Context, c *cluster.Clients, scope string) plugins.AlertLister {
+	kc := kcache.For(c)
+	return func(key, version string) ([]map[string]any, error) {
+		rt, ok := s.typeForKey(ctx, c, key, version)
+		if !ok {
+			return nil, plugins.ErrNotServed
+		}
+		ns := scope
+		if !rt.Namespaced {
+			ns = ""
+		}
+		items, err := listCached(ctx, kc, rt.GVR(), ns)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]map[string]any, len(items))
+		for i, u := range items {
+			out[i] = u.Object
+		}
+		return out, nil
+	}
+}
+
+// handlePluginStatus answers the active plugins' status lines (their rows
+// in Settings ▸ Integrations), over every namespace: {plugins: {id:
+// StatusOut}}. A plugin without a status line, or whose kinds the cluster
+// doesn't serve, is absent.
+func (s *Server) handlePluginStatus(w http.ResponseWriter, r *http.Request) {
+	out := map[string]plugins.StatusOut{}
+	if c := s.mgr.Clients(); c != nil && s.pluginsOn() {
+		out = s.plugins.Status(plugins.Env{Context: c.Context}, s.pluginLister(r.Context(), c, ""))
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"plugins": out})
+}
 
 // OverviewInputs implements OverviewSource: the active plugins' alerts
 // over their kinds' objects in the overview's scope, from the watch cache.
@@ -247,27 +284,7 @@ func (m *pluginsModule) OverviewInputs(l *OverviewLists) {
 		return
 	}
 	l.Go("plugins", func() (func(*overview.Input), error) {
-		kc := kcache.For(l.Clients)
-		list := func(key, version string) ([]map[string]any, error) {
-			rt, ok := s.typeForKey(l.Ctx, l.Clients, key, version)
-			if !ok {
-				return nil, plugins.ErrNotServed
-			}
-			ns := l.Namespace
-			if !rt.Namespaced {
-				ns = ""
-			}
-			items, err := listCached(l.Ctx, kc, rt.GVR(), ns)
-			if err != nil {
-				return nil, err
-			}
-			out := make([]map[string]any, len(items))
-			for i, u := range items {
-				out[i] = u.Object
-			}
-			return out, nil
-		}
-		hits, errs := s.plugins.Alerts(plugins.Env{Context: l.Clients.Context}, list)
+		hits, errs := s.plugins.Alerts(plugins.Env{Context: l.Clients.Context}, s.pluginLister(l.Ctx, l.Clients, l.Namespace))
 		fs := make([]overview.Finding, len(hits))
 		for i, h := range hits {
 			fs[i] = overview.Finding{

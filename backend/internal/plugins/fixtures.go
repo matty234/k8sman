@@ -238,6 +238,8 @@ type snapshot struct {
 	Panel   any    `yaml:"panel,omitempty"`
 	Actions any    `yaml:"actions,omitempty"`
 	Alerts  []any  `yaml:"alerts,omitempty"`
+	// Status is the kind's status line for the subject alone.
+	Status any `yaml:"status,omitempty"`
 }
 
 func renderFixture(p *Plugin, cfg FixtureConfig, path string) ([]byte, error) {
@@ -327,6 +329,18 @@ func renderFixture(p *Plugin, cfg FixtureConfig, path string) ([]byte, error) {
 		}
 		for _, err := range errs {
 			snap.Alerts = append(snap.Alerts, map[string]any{"error": err.Error()})
+		}
+	}
+
+	if kp := p.kind(key); kp != nil && kp.kind.Status != nil {
+		sk, errs := kp.evalStatus(context.Background(), []map[string]any{subject}, env)
+		line, sev := statusLine([]StatusKind{sk})
+		if sev != "" {
+			line += " (" + sev + ")"
+		}
+		snap.Status = line
+		if len(errs) > 0 {
+			snap.Status = map[string]any{"line": line, "error": errs[0].Error()}
 		}
 	}
 

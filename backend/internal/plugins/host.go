@@ -921,6 +921,11 @@ type KindInfo struct {
 	Related  int  `json:"related"`
 	Metrics  int  `json:"metrics"`
 	Errors   int  `json:"errors"`
+	// Generic is the panel's generic mode (keep, collapse or replace):
+	// what the UI does with the generic panel's sections for this kind.
+	Generic string `json:"generic"`
+	// Status: the kind adds to the plugin's status line.
+	Status bool `json:"status,omitempty"`
 }
 
 // List describes every plugin: the bundled ones, and in dev mode every
@@ -981,7 +986,7 @@ func (h *Host) List(served func(key string) bool) []Info {
 			for _, key := range m.KindOrder {
 				k := m.Kinds[key]
 				ki := KindInfo{Key: key, Served: key == "*" || (served != nil && served(key)), Columns: len(k.Columns), Actions: len(k.Actions),
-					Alerts: len(k.Alerts), Related: len(k.Related), Metrics: len(k.Metrics)}
+					Alerts: len(k.Alerts), Related: len(k.Related), Metrics: len(k.Metrics), Generic: k.Panel.GenericMode(), Status: k.Status != nil}
 				if k.Panel != nil {
 					ki.Sections = len(k.Panel.Sections)
 				}

@@ -72,7 +72,28 @@ type Kind struct {
 	Panel       *Panel             `yaml:"panel"`
 	Actions     []Action           `yaml:"actions"`
 	Alerts      []Alert            `yaml:"alerts"`
-	pos         Pos
+	// Status is the kind's part of the plugin's status line (its row in
+	// Settings ▸ Integrations): a count of its objects and of those that
+	// match each of Counts.
+	Status *Status `yaml:"status"`
+	pos    Pos
+}
+
+// Status counts a kind's objects across the cluster for the plugin's
+// status line ("ExternalSecrets: 12 · not synced: 2"), coloured by the
+// most severe count that isn't zero.
+type Status struct {
+	// Label names the objects ("ExternalSecrets").
+	Label  string        `yaml:"label"`
+	Counts []StatusCount `yaml:"counts"`
+}
+
+// StatusCount is the number of objects for which When is true. Like
+// alerts, it sees the object only.
+type StatusCount struct {
+	Label    string `yaml:"label"`
+	When     Expr   `yaml:"when"`
+	Severity string `yaml:"severity"`
 }
 
 // Related is an object (name) or objects (owner, selector) that a kind's
@@ -125,7 +146,22 @@ func (c *Column) setPos(p Pos) { c.pos = p }
 
 // Panel is the kind's inspector sections.
 type Panel struct {
+	// Generic says what happens to the generic panel's sections (Health,
+	// Conditions, Spec, Status, …) for a kind without a compiled-in panel:
+	// keep (default: after the plugin's sections), collapse (there, but
+	// collapsed) or replace (left out: the plugin's sections are the
+	// panel). The shell's Owns and Metadata sections stay either way.
+	// Kinds with a compiled-in panel ignore it.
+	Generic  string    `yaml:"generic"`
 	Sections []Section `yaml:"sections"`
+}
+
+// GenericMode is Generic with its default.
+func (p *Panel) GenericMode() string {
+	if p == nil {
+		return "keep"
+	}
+	return orDefault(p.Generic, "keep")
 }
 
 // Section is one DetailSection.
@@ -162,6 +198,9 @@ type Block struct {
 	Language   string        `yaml:"language"`
 	Text       Expr          `yaml:"text"`
 	Severity   string        `yaml:"severity"`
+	// Title is a message's heading (CEL): with one, a warning or an error
+	// is a callout titled with it, the text under it.
+	Title Expr `yaml:"title"`
 
 	Fields []FieldItem `yaml:"-"`
 	Badges []BadgeItem `yaml:"-"`
@@ -178,6 +217,8 @@ type FieldItem struct {
 	Link  Expr   `yaml:"link"`
 	Copy  bool   `yaml:"copy"`
 	When  Expr   `yaml:"when"`
+	// Mono draws the value in the monospace font (versions, keys, ids).
+	Mono bool `yaml:"mono"`
 }
 
 // BadgeItem is one badge of a badges block.
@@ -193,6 +234,7 @@ type TableColumn struct {
 	Value Expr   `yaml:"value"`
 	Type  string `yaml:"type"`
 	Link  Expr   `yaml:"link"`
+	Mono  bool   `yaml:"mono"`
 }
 
 // Action is a kind's action: a shell command run on this computer, or a
@@ -278,6 +320,7 @@ var (
 	messageSeverity = []string{"info", "warning", "error"}
 	barFormats      = []string{"number", "quantity", "percent"}
 	codeLanguages   = []string{"text", "yaml", "json", "shell"}
+	genericModes    = []string{"keep", "collapse", "replace"}
 	jsonPatchOps    = []string{"add", "remove", "replace", "move", "copy", "test"}
 )
 
@@ -306,7 +349,8 @@ var blockFields = map[string][]string{
 	"bar":        {"label", "value", "max", "format"},
 	"code":       {"value", "language"},
 	"json":       {"value"},
-	"message":    {"text", "severity"},
+	"message":    {"text", "severity", "title"},
+	"settings":   {"value", "limit", "empty"},
 }
 
 // parseManifest decodes and checks plugin.yaml. Diags carry file:line:col;
@@ -421,7 +465,7 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 		}
 		if key == "*" {
 			if len(k.Columns) > 0 || k.Panel != nil || len(k.HideColumns) > 0 || len(k.Variables) > 0 ||
-				len(k.Related) > 0 || len(k.Metrics) > 0 || len(k.Alerts) > 0 {
+				len(k.Related) > 0 || len(k.Metrics) > 0 || len(k.Alerts) > 0 || k.Status != nil {
 				d.errAt(kn, `the "*" kind may only hold actions`)
 			}
 		} else if !slices.Contains(m.Permissions.Read, key) {
@@ -566,8 +610,31 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 			d.errAt(resolve(field(cn, "type")), "column type %q: use one of %s", c.Type, strings.Join(columnTypes, ", "))
 		}
 	}
+	if k.Status != nil {
+		sn := resolve(field(n, "status"))
+		if k.Status.Label == "" {
+			d.errAt(sn, "status needs a label (what its objects are called, e.g. Certificates)")
+		}
+		cn := resolve(field(sn, "counts"))
+		for i, c := range k.Status.Counts {
+			var in *yaml.Node
+			if cn != nil && i < len(cn.Content) {
+				in = resolve(cn.Content[i])
+			}
+			if c.Label == "" || !c.When.IsSet() {
+				d.errAt(orNode(in, sn), "a status count needs a label and when")
+			}
+			if c.Severity != "" && !slices.Contains(alertSeverities, c.Severity) {
+				d.errAt(resolve(field(in, "severity")), "severity must be one of %s", strings.Join(alertSeverities, ", "))
+			}
+		}
+	}
 	if k.Panel != nil {
-		secs := resolve(field(resolve(field(n, "panel")), "sections"))
+		pn := resolve(field(n, "panel"))
+		if k.Panel.Generic != "" && !slices.Contains(genericModes, k.Panel.Generic) {
+			d.errAt(resolve(field(pn, "generic")), "panel.generic must be one of %s", strings.Join(genericModes, ", "))
+		}
+		secs := resolve(field(pn, "sections"))
 		for i := range k.Panel.Sections {
 			s := &k.Panel.Sections[i]
 			var sn *yaml.Node
@@ -801,6 +868,11 @@ func (b *Block) validate(d *decoder, n *yaml.Node) {
 		}
 	case "json":
 		need(b.Value.IsSet(), "value")
+	case "settings":
+		need(b.Value.IsSet(), "value")
+		if b.Limit < 0 || b.Limit > settingsRowLimit {
+			d.errAt(resolve(field(n, "limit")), "limit must be between 1 and %d", settingsRowLimit)
+		}
 	case "message":
 		need(b.Text.IsSet(), "text")
 		if b.Severity != "" && !slices.Contains(messageSeverity, b.Severity) {

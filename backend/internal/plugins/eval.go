@@ -257,6 +257,9 @@ func (r *renderer) block(bp blockProg) map[string]any {
 			if f.Copy {
 				item["copy"] = true
 			}
+			if f.Mono {
+				item["mono"] = true
+			}
 			if p := bp.progs[k+".link"]; p != nil {
 				if l, err := r.eval(p); err == nil && l != nil {
 					item["link"] = l
@@ -322,9 +325,32 @@ func (r *renderer) block(bp blockProg) map[string]any {
 		out["language"] = orDefault(b.Language, "text")
 	case "json":
 		out["value"] = get("value")
+	case "settings":
+		limit := b.Limit
+		if limit <= 0 {
+			limit = settingsDefaultLimit
+		}
+		switch v := get("value").(type) {
+		case nil:
+			out["rows"], out["total"] = []map[string]any{}, 0
+		case map[string]any:
+			out["rows"], out["total"] = flattenSettings(v, r.act.namespace, limit)
+		default:
+			if firstErr == nil {
+				firstErr = evalErr(bp.progs["value"], fmt.Errorf("a settings block's value must be a map"))
+			}
+		}
+		if b.Empty != "" {
+			out["empty"] = b.Empty
+		}
 	case "message":
 		out["text"] = get("text")
 		out["severity"] = orDefault(b.Severity, "info")
+		if bp.progs["title"] != nil {
+			if t := get("title"); t != nil && t != "" {
+				out["title"] = fmt.Sprint(t)
+			}
+		}
 	}
 	if firstErr != nil {
 		return errBlock(firstErr)
@@ -348,6 +374,9 @@ func (r *renderer) table(bp blockProg, out map[string]any, firstErr *error) {
 	sortCol := -1
 	for i, c := range b.Columns {
 		cols[i] = map[string]any{"name": c.Name, "type": orDefault(c.Type, "text")}
+		if c.Mono {
+			cols[i]["mono"] = true
+		}
 		if c.Name == b.SortBy {
 			sortCol = i
 		}
