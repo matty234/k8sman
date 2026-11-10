@@ -1,0 +1,42 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: /Node node-a
+panel:
+  refresh: 5
+  sections:
+    - blocks:
+        - columns:
+            - name: Slice
+              type: text
+            - mono: true
+              name: Driver
+              type: text
+            - mono: true
+              name: Pool
+              type: text
+            - name: Devices
+              type: number
+          limit: 20
+          rows:
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceSlice
+                  name: node-a-gpu.example.com-x2k9d
+                  namespace: ""
+                value: node-a-gpu.example.com-x2k9d
+              - value: gpu.example.com
+              - value: node-a
+              - value: 2
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceSlice
+                  name: node-a-nic.example.com-q8w4z
+                  namespace: ""
+                value: node-a-nic.example.com-q8w4z
+              - value: nic.example.com
+              - value: node-a
+              - value: 1
+          total: 2
+          type: table
+      icon: memory
+      summary: 2 slices
+      title: DRA devices

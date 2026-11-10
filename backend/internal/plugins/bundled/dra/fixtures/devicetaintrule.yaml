@@ -1,0 +1,12 @@
+# A rule tainting one driver's devices.
+apiVersion: resource.k8s.io/v1alpha3
+kind: DeviceTaintRule
+metadata:
+  name: gpu-maintenance
+  creationTimestamp: "2025-12-01T00:00:00Z"
+spec:
+  deviceSelector:
+    driver: gpu.example.com
+  taint:
+    key: example.com/maintenance
+    effect: NoExecute

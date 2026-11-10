@@ -1,0 +1,60 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: resource.k8s.io/ResourceSlice fpga.example.com-pool-1
+columns:
+  - name: Node
+    value: (all nodes)
+  - name: Driver
+    value: fpga.example.com
+  - name: Pool
+    value: pool-1
+  - name: Devices
+    value: 1
+panel:
+  sections:
+    - blocks:
+        - items:
+            - label: Scope
+              type: text
+              value: all nodes
+            - label: Driver
+              mono: true
+              type: text
+              value: fpga.example.com
+            - label: Pool
+              mono: true
+              type: text
+              value: pool-1
+            - label: Generation
+              type: number
+              value: 1
+            - label: Slices in pool
+              type: number
+              value: 2
+          type: fields
+      icon: developer_board
+      title: Slice
+    - blocks:
+        - columns:
+            - mono: true
+              name: Device
+              type: text
+            - name: Capacity
+              type: text
+            - name: Taints
+              type: text
+            - detail: true
+              mono: true
+              name: Attributes
+              type: text
+          empty: No devices
+          limit: 50
+          rows:
+            - - value: fpga-0
+              - value: 'lanes: 16'
+              - value: ""
+              - value: family=agilex  ready=true
+          total: 1
+          type: table
+      icon: memory
+      summary: "1"
+      title: Devices

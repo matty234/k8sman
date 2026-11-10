@@ -1,0 +1,54 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: /Pod demo/web-0
+panel:
+  sections:
+    - blocks:
+        - columns:
+            - mono: true
+              name: Name
+              type: text
+            - name: Claim
+              type: text
+            - name: Template
+              type: text
+            - name: Used by
+              type: text
+          limit: 20
+          rows:
+            - - value: gpu
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: web-0-gpu-x7k2p
+                  namespace: demo
+                value: web-0-gpu-x7k2p
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaimTemplate
+                  name: gpu-pair
+                  namespace: demo
+                value: gpu-pair
+              - value: web
+            - - value: shared
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: web-shared
+                  namespace: demo
+                value: web-shared
+              - value: ""
+              - value: init, web
+            - - value: scratch
+              - value: not created yet
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaimTemplate
+                  name: scratch
+                  namespace: demo
+                value: scratch
+              - value: ""
+          total: 3
+          type: table
+      icon: memory
+      summary: "3"
+      title: Resource claims

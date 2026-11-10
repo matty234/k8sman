@@ -1,0 +1,22 @@
+# A claim in the v1beta1 shape (request fields flat), not allocated yet: one
+# request takes whichever device class is available first.
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaim
+metadata:
+  name: web-shared
+  namespace: demo
+  uid: 2b6f0c1e-0000-4000-8000-000000000002
+  creationTimestamp: "2025-12-31T22:00:00Z"
+spec:
+  devices:
+    requests:
+      - name: gpu
+        firstAvailable:
+          - name: large
+            deviceClassName: gpu-large.example.com
+          - name: small
+            deviceClassName: gpu.example.com
+            count: 2
+      - name: fpga
+        deviceClassName: fpga.example.com
+        allocationMode: All

@@ -1,0 +1,52 @@
+# A node and the slices of the cluster: two published for it, one for
+# another node, one for every node (not this node's: it lists its own).
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-a
+  uid: 2b6f0c1e-0000-4000-8000-0000000000bb
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: node-a-gpu.example.com-x2k9d
+spec:
+  nodeName: node-a
+  driver: gpu.example.com
+  pool: {name: node-a, generation: 3, resourceSliceCount: 1}
+  devices:
+    - name: gpu-0
+    - name: gpu-1
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: node-a-nic.example.com-q8w4z
+spec:
+  nodeName: node-a
+  driver: nic.example.com
+  pool: {name: node-a, generation: 1, resourceSliceCount: 1}
+  devices:
+    - name: nic-0
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: node-b-gpu.example.com-m3n7c
+spec:
+  nodeName: node-b
+  driver: gpu.example.com
+  pool: {name: node-b, generation: 1, resourceSliceCount: 1}
+  devices:
+    - name: gpu-0
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: fpga.example.com-pool-1
+spec:
+  allNodes: true
+  driver: fpga.example.com
+  pool: {name: pool-1, generation: 1, resourceSliceCount: 2}
+  devices:
+    - name: fpga-0

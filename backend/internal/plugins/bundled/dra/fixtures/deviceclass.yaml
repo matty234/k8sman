@@ -1,0 +1,22 @@
+# A device class: two CEL selectors, driver config and an extended
+# resource name.
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: gpu.example.com
+  creationTimestamp: "2025-12-01T00:00:00Z"
+spec:
+  selectors:
+    - cel:
+        expression: device.driver == "gpu.example.com"
+    - cel:
+        expression: device.capacity["gpu.example.com"].memory.compareTo(quantity("40Gi")) >= 0
+  extendedResourceName: example.com/gpu
+  config:
+    - opaque:
+        driver: gpu.example.com
+        parameters:
+          apiVersion: gpu.example.com/v1
+          kind: GpuConfig
+          sharing:
+            strategy: TimeSlicing

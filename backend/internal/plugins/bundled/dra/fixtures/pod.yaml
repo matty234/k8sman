@@ -1,0 +1,33 @@
+# A pod with two claims: one from a template (its claim's name is in the
+# pod's status), one not created yet; containers use them.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-0
+  namespace: demo
+  uid: 2b6f0c1e-0000-4000-8000-0000000000aa
+spec:
+  resourceClaims:
+    - name: gpu
+      resourceClaimTemplateName: gpu-pair
+    - name: shared
+      resourceClaimName: web-shared
+    - name: scratch
+      resourceClaimTemplateName: scratch
+  initContainers:
+    - name: init
+      image: example.com/init:1.0
+      resources:
+        claims:
+          - name: shared
+  containers:
+    - name: web
+      image: example.com/web:1.0
+      resources:
+        claims:
+          - name: gpu
+          - name: shared
+status:
+  resourceClaimStatuses:
+    - name: gpu
+      resourceClaimName: web-0-gpu-x7k2p

@@ -1,0 +1,38 @@
+# A driver's slice for node-a (v1): two GPUs, one tainted.
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: node-a-gpu.example.com-x2k9d
+  creationTimestamp: "2025-12-01T00:00:00Z"
+spec:
+  nodeName: node-a
+  driver: gpu.example.com
+  pool:
+    name: node-a
+    generation: 3
+    resourceSliceCount: 1
+  devices:
+    - name: gpu-0
+      attributes:
+        gpu.example.com/model:
+          string: a100
+        gpu.example.com/index:
+          int: 0
+        driverVersion:
+          version: 1.2.0
+      capacity:
+        gpu.example.com/memory:
+          value: 40Gi
+    - name: gpu-1
+      attributes:
+        gpu.example.com/model:
+          string: a100
+        gpu.example.com/index:
+          int: 1
+      capacity:
+        gpu.example.com/memory:
+          value: 40Gi
+      taints:
+        - key: example.com/unhealthy
+          value: ecc
+          effect: NoSchedule

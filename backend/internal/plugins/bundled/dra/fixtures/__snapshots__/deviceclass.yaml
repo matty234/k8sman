@@ -1,0 +1,55 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: resource.k8s.io/DeviceClass gpu.example.com
+columns:
+  - name: Selectors
+    value: device.driver == "gpu.example.com" && device.capacity["gpu.example.com"].memory.compareTo(quantity("40Gi")) >= 0
+panel:
+  sections:
+    - blocks:
+        - columns:
+            - mono: true
+              name: CEL expression
+              type: text
+          limit: 20
+          rows:
+            - - value: device.driver == "gpu.example.com"
+            - - value: device.capacity["gpu.example.com"].memory.compareTo(quantity("40Gi")) >= 0
+          total: 2
+          type: table
+      icon: filter_alt
+      summary: "2"
+      title: Selectors
+    - blocks:
+        - items:
+            - copy: true
+              label: Name
+              mono: true
+              type: text
+              value: example.com/gpu
+          type: fields
+        - severity: info
+          text: Pods can request these devices as a container resource limit under this name.
+          type: message
+      icon: numbers
+      title: Extended resource
+    - blocks:
+        - columns:
+            - mono: true
+              name: Driver
+              type: text
+            - detail: true
+              name: Parameters
+              type: code
+          limit: 20
+          rows:
+            - - value: gpu.example.com
+              - value: |-
+                  apiVersion: gpu.example.com/v1
+                  kind: GpuConfig
+                  sharing:
+                    strategy: TimeSlicing
+          total: 1
+          type: table
+      icon: tune
+      summary: "1"
+      title: Config

@@ -1,0 +1,24 @@
+# A network-attached slice in the v1beta1 shape (device fields under
+# basic), available to every node.
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceSlice
+metadata:
+  name: fpga.example.com-pool-1
+  creationTimestamp: "2025-12-01T00:00:00Z"
+spec:
+  allNodes: true
+  driver: fpga.example.com
+  pool:
+    name: pool-1
+    generation: 1
+    resourceSliceCount: 2
+  devices:
+    - name: fpga-0
+      basic:
+        attributes:
+          fpga.example.com/family:
+            string: agilex
+          ready:
+            bool: true
+        capacity:
+          fpga.example.com/lanes: "16"

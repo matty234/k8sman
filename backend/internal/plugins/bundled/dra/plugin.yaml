@@ -1,0 +1,474 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json
+#
+# Dynamic Resource Allocation (resource.k8s.io), bundled with k8sman:
+# compiled into the backend, on by default, switched off in Settings ▸
+# Integrations like a module. It replaced the built-in dra module, which has
+# been removed (see docs/PLUGINS.md, "Bundled plugins").
+#
+# resource.k8s.io v1 (and v1beta2) nest a request's fields under `exactly`
+# and keep a device's attributes on the device; v1beta1 keeps request fields
+# flat and nests device fields under `basic`. Every expression here reads
+# both shapes.
+#
+# Iterate on it with developer mode: load this folder (Settings ▸
+# Integrations ▸ Plugins ▸ Load plugin folder…, or --plugin-dev
+# backend/internal/plugins/bundled/dra); the folder overrides the bundled
+# copy while it is loaded.
+# Without a cluster: k8sman-server plugin test backend/internal/plugins/bundled/dra
+apiVersion: k8sman.dev/v1
+id: dra
+name: Dynamic Resource Allocation
+version: 1.0.0
+description: Resource claims, templates, device classes and slices (resource.k8s.io), with claims on pods and devices on nodes.
+authors: [k8sman]
+homepage: https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/
+
+permissions:
+  read:
+    - resource.k8s.io/ResourceClaim
+    - resource.k8s.io/ResourceClaimTemplate
+    - resource.k8s.io/DeviceClass
+    - resource.k8s.io/ResourceSlice
+    - resource.k8s.io/DeviceTaintRule
+    - /Pod                    # a claim's pod (its template); a pod's claims
+    - /Node                   # a node's devices
+
+# Only the kinds the cluster serves are listed, so the section is absent
+# without DRA.
+nav:
+  title: Dynamic Resources
+  after: Storage
+  kinds:
+    - resource.k8s.io/ResourceClaim
+    - resource.k8s.io/ResourceClaimTemplate
+    - resource.k8s.io/DeviceClass
+    - resource.k8s.io/ResourceSlice
+    - resource.k8s.io/DeviceTaintRule
+
+kinds:
+  resource.k8s.io/ResourceClaim:
+    icon: memory
+    variables:
+      requests: object.spec.?devices.?requests.orValue([])
+      # One row per request, or per firstAvailable sub-request ("gpu/large"):
+      # name, its fields (v1 nests them under exactly) and whether it is an
+      # alternative.
+      requestRows: &requestRows >-
+        variables.requests.map(r, has(r.firstAvailable)
+          ? r.firstAvailable.map(a, {"name": string(r.name) + "/" + string(a.name), "spec": a, "alt": true})
+          : [{"name": string(r.name), "spec": r.?exactly.orValue(r), "alt": false}]).flatten()
+      classes: &classes >-
+        variables.requestRows.map(x, string(x.spec.?deviceClassName.orValue(""))).filter(c, c != "").distinct()
+      allocation: object.?status.?allocation
+      reserved: object.?status.?reservedFor.orValue([])
+      state: >-
+        !variables.allocation.hasValue() ? "Pending" :
+        size(variables.reserved) > 0 ? "Reserved: " + string(size(variables.reserved)) : "Allocated"
+      results: variables.allocation.?devices.?results.orValue([])
+      # The nodes the allocation is pinned to (In terms of its node selector).
+      nodes: >-
+        variables.allocation.?nodeSelector.?nodeSelectorTerms.orValue([])
+          .map(t, t.?matchFields.orValue([]) + t.?matchExpressions.orValue([])).flatten()
+          .filter(e, e.?operator.orValue("") == "In")
+          .map(e, e.?values.orValue([])).flatten()
+          .map(v, string(v)).distinct().sort()
+      # A claim made from a pod's template: the pod (its owner), and the
+      # pod's name for it.
+      ownerPod: >-
+        object.metadata.?ownerReferences.orValue([]).exists(o, o.kind == "Pod")
+          ? string(object.metadata.ownerReferences.filter(o, o.kind == "Pod")[0].name) : ""
+      podClaimName: string(object.metadata.?annotations[?"resource.kubernetes.io/pod-claim-name"].orValue(""))
+      # Panels only (they read related): the template, from the pod's spec.
+      template: >-
+        related.?pod.orValue({}).?spec.?resourceClaims.orValue([])
+          .filter(e, e.name == variables.podClaimName).map(e, string(e.?resourceClaimTemplateName.orValue(""))).filter(t, t != "")
+
+    related:
+      pod:
+        kind: /Pod
+        when: variables.ownerPod != ""
+        name: variables.ownerPod
+
+    columns:
+      - name: State
+        type: status
+        value: variables.state
+      - name: Device Classes
+        value: variables.classes.join(",")
+      - name: Devices
+        type: number
+        value: size(variables.results)
+      - name: Node
+        value: variables.nodes.join(",")
+
+    panel:
+      generic: replace
+      sections:
+        - title: Claim
+          icon: memory
+          blocks:
+            - type: badges
+              items:
+                - text: variables.state
+            - type: message
+              severity: info
+              when: '!variables.allocation.hasValue()'
+              text: '"Not allocated yet: the scheduler allocates devices when a pod using this claim is scheduled."'
+            - type: fields
+              items:
+                - label: Node
+                  value: variables.nodes.join(", ")
+                  link: 'size(variables.nodes) == 1 ? ref("", "Node", variables.nodes[0]) : dyn(null)'
+                - label: Allocated
+                  type: timestamp
+                  value: variables.allocation.?allocationTimestamp
+                - label: Created for
+                  when: variables.ownerPod != ""
+                  value: '"Pod/" + variables.ownerPod'
+                  link: ref("", "Pod", variables.ownerPod)
+                - label: Pod claim
+                  value: variables.podClaimName
+                  mono: true
+                - label: Template
+                  when: size(variables.template) > 0
+                  value: variables.template[0]
+                  link: ref("resource.k8s.io", "ResourceClaimTemplate", variables.template[0])
+        - title: Requests
+          icon: fact_check
+          summary: string(size(variables.requests))
+          blocks:
+            - &requestTable
+              type: table
+              rows: variables.requestRows
+              limit: 50
+              empty: No device requests
+              columns:
+                - name: Request
+                  mono: true
+                  value: 'row.name + (row.alt ? " (first available)" : "")'
+                - name: Device class
+                  value: row.spec.?deviceClassName.orValue("")
+                  link: 'has(row.spec.deviceClassName) ? ref("resource.k8s.io", "DeviceClass", string(row.spec.deviceClassName)) : dyn(null)'
+                - name: Count
+                  value: 'row.spec.?allocationMode.orValue("ExactCount") == "All" ? "all matching" : "× " + string(row.spec.?count.orValue(1))'
+                - name: Options
+                  value: >-
+                    ((row.spec.?adminAccess.orValue(false) == true ? ["admin access"] : [])
+                      + (size(row.spec.?tolerations.orValue([])) > 0
+                          ? [string(size(row.spec.tolerations)) + (size(row.spec.tolerations) == 1 ? " toleration" : " tolerations")] : [])
+                    ).join(", ")
+                - name: Selectors
+                  detail: true
+                  mono: true
+                  value: row.spec.?selectors.orValue([]).map(s, string(s.?cel.?expression.orValue(""))).filter(e, e != "").join("\n")
+        - title: Allocation
+          icon: developer_board
+          when: size(variables.results) > 0
+          summary: 'string(size(variables.results)) + (size(variables.results) == 1 ? " device" : " devices")'
+          blocks:
+            - type: table
+              rows: variables.results
+              limit: 50
+              columns:
+                - name: Request
+                  mono: true
+                  value: 'string(row.?request.orValue("")) + (row.?adminAccess.orValue(false) == true ? " (admin)" : "")'
+                - name: Device
+                  mono: true
+                  value: row.?device.orValue("")
+                - name: Driver
+                  mono: true
+                  value: row.?driver.orValue("")
+                - name: Pool
+                  mono: true
+                  value: row.?pool.orValue("")
+        - title: Reserved for
+          icon: link
+          when: size(variables.reserved) > 0 || variables.allocation.hasValue()
+          summary: string(size(variables.reserved))
+          blocks:
+            - type: message
+              severity: info
+              when: size(variables.reserved) == 0
+              text: '"No consumers: the claim is allocated but no pod holds it."'
+            - type: table
+              when: size(variables.reserved) > 0
+              rows: variables.reserved
+              columns:
+                - name: Consumer
+                  value: >-
+                    row.?resource.orValue("") == "pods" && row.?apiGroup.orValue("") == ""
+                      ? "Pod/" + string(row.name) : string(row.?resource.orValue("")) + "/" + string(row.?name.orValue(""))
+                  link: >-
+                    row.?resource.orValue("") == "pods" && row.?apiGroup.orValue("") == ""
+                      ? ref("", "Pod", string(row.name)) : dyn(null)
+        - title: Device status
+          icon: monitor_heart
+          when: size(object.?status.?devices.orValue([])) > 0
+          blocks:
+            - type: table
+              rows: object.status.devices
+              columns:
+                - name: Device
+                  mono: true
+                  value: row.?device.orValue("")
+                - name: Driver / pool
+                  value: string(row.?driver.orValue("")) + " / " + string(row.?pool.orValue(""))
+                - name: Network
+                  value: >-
+                    (row.?networkData.?ips.orValue([]).map(i, string(i))
+                      + (has(row.networkData) && has(row.networkData.hardwareAddress) ? [string(row.networkData.hardwareAddress)] : [])).join(", ")
+                - name: Conditions
+                  detail: true
+                  value: >-
+                    row.?conditions.orValue([]).map(c,
+                      string(c.type) + "=" + string(c.status) + (has(c.reason) ? " (" + string(c.reason) + ")" : "")).join(", ")
+
+    # Settings ▸ Integrations: "ResourceClaims: 4 · pending: 1".
+    status:
+      label: ResourceClaims
+      counts:
+        - label: pending
+          severity: info
+          when: '!has(object.status) || !has(object.status.allocation)'
+
+  resource.k8s.io/ResourceClaimTemplate:
+    icon: content_copy
+    variables:
+      requests: object.spec.?spec.?devices.?requests.orValue([])
+      requestRows: *requestRows
+      classes: *classes
+    columns:
+      - name: Device Classes
+        value: variables.classes.join(",")
+    panel:
+      generic: replace
+      sections:
+        - title: Requests
+          icon: fact_check
+          summary: string(size(variables.requests))
+          blocks:
+            - type: message
+              severity: info
+              text: '"Each pod that references this template gets its own claim with these requests."'
+            - *requestTable
+
+  resource.k8s.io/DeviceClass:
+    icon: category
+    variables:
+      selectors: object.spec.?selectors.orValue([]).map(s, string(s.?cel.?expression.orValue(""))).filter(e, e != "")
+      configs: object.spec.?config.orValue([])
+    columns:
+      - name: Selectors
+        value: variables.selectors.join(" && ")
+    panel:
+      generic: replace
+      sections:
+        - title: Selectors
+          icon: filter_alt
+          summary: string(size(variables.selectors))
+          blocks:
+            - type: message
+              severity: info
+              when: size(variables.selectors) == 0
+              text: '"No selectors: every device qualifies."'
+            - type: table
+              when: size(variables.selectors) > 0
+              rows: variables.selectors
+              columns:
+                - name: CEL expression
+                  mono: true
+                  value: row
+        - title: Extended resource
+          icon: numbers
+          when: object.spec.?extendedResourceName.orValue("") != ""
+          blocks:
+            - type: fields
+              items:
+                - label: Name
+                  value: object.spec.extendedResourceName
+                  mono: true
+                  copy: true
+            - type: message
+              severity: info
+              text: '"Pods can request these devices as a container resource limit under this name."'
+        - title: Config
+          icon: tune
+          when: size(variables.configs) > 0
+          summary: string(size(variables.configs))
+          blocks:
+            - type: table
+              rows: variables.configs
+              columns:
+                - name: Driver
+                  mono: true
+                  value: row.?opaque.?driver.orValue("")
+                - name: Parameters
+                  type: code
+                  detail: true
+                  value: row.?opaque.?parameters.orValue(row)
+
+  resource.k8s.io/ResourceSlice:
+    icon: developer_board
+    variables:
+      node: string(object.spec.?nodeName.orValue(""))
+      devices: object.spec.?devices.orValue([])
+      # "key In (a, b) and key2 Exists", terms joined with "or".
+      nodeSelector: >-
+        object.spec.?nodeSelector.?nodeSelectorTerms.orValue([]).map(t,
+          (t.?matchFields.orValue([]) + t.?matchExpressions.orValue([])).map(e,
+            string(e.key) + " " + string(e.operator)
+              + (size(e.?values.orValue([])) > 0 ? " (" + e.values.map(v, string(v)).join(", ") + ")" : "")
+          ).join(" and ")).join("\nor ")
+    columns:
+      - name: Node
+        value: >-
+          variables.node != "" ? variables.node :
+          object.spec.?allNodes.orValue(false) == true ? "(all nodes)" :
+          has(object.spec.nodeSelector) ? "(selector)" : ""
+      - name: Driver
+        value: object.spec.?driver.orValue("")
+      - name: Pool
+        value: object.spec.?pool.?name.orValue("")
+      - name: Devices
+        type: number
+        value: size(variables.devices)
+    panel:
+      generic: replace
+      sections:
+        - title: Slice
+          icon: developer_board
+          blocks:
+            - type: fields
+              items:
+                - label: Node
+                  when: variables.node != ""
+                  value: variables.node
+                  link: ref("", "Node", variables.node)
+                - label: Scope
+                  when: variables.node == ""
+                  value: >-
+                    object.spec.?allNodes.orValue(false) == true ? "all nodes" :
+                    has(object.spec.nodeSelector) ? "nodes matching a selector" :
+                    object.spec.?perDeviceNodeSelection.orValue(false) == true ? "per device" : ""
+                - label: Node selector
+                  value: variables.nodeSelector
+                  mono: true
+                - label: Driver
+                  value: object.spec.?driver.orValue("")
+                  mono: true
+                - label: Pool
+                  value: object.spec.?pool.?name.orValue("")
+                  mono: true
+                - label: Generation
+                  type: number
+                  value: object.spec.?pool.?generation
+                - label: Slices in pool
+                  type: number
+                  value: object.spec.?pool.?resourceSliceCount
+        - title: Devices
+          icon: memory
+          summary: string(size(variables.devices))
+          blocks:
+            - type: table
+              rows: variables.devices
+              limit: 50
+              empty: No devices
+              columns:
+                - name: Device
+                  mono: true
+                  value: row.?name.orValue("")
+                # Capacity and taints; v1beta1 nests them under basic.
+                - name: Capacity
+                  value: >-
+                    row.?basic.orValue(row).?capacity.orValue({}).map(k, string(k)).sort().map(k,
+                      (k.contains("/") ? k.substring(k.lastIndexOf("/") + 1) : k) + ": "
+                        + string(row.?basic.orValue(row).capacity[k].?value.orValue(row.?basic.orValue(row).capacity[k]))).join(", ")
+                - name: Taints
+                  value: >-
+                    row.?basic.orValue(row).?taints.orValue([]).map(t,
+                      string(t.key) + (t.?value.orValue("") != "" ? "=" + string(t.value) : "") + ":" + string(t.?effect.orValue(""))).join(", ")
+                # Attributes, the driver's own domain prefix dropped
+                # (gpu.example.com/model reads as model).
+                - name: Attributes
+                  detail: true
+                  mono: true
+                  value: >-
+                    row.?basic.orValue(row).?attributes.orValue({}).map(k, string(k)).sort().map(k,
+                      (k.contains("/") ? k.substring(k.lastIndexOf("/") + 1) : k) + "="
+                        + [row.?basic.orValue(row).attributes[k]].map(a,
+                            has(a.string) ? string(a.string) : has(a.int) ? string(a.int) :
+                            has(a.bool) ? string(a.bool) : has(a.version) ? string(a.version) : string(a))[0]).join("  ")
+
+  resource.k8s.io/DeviceTaintRule:
+    icon: block
+    columns:
+      - name: Driver
+        value: object.spec.?deviceSelector.?driver.orValue("")
+      - name: Taint
+        value: string(object.spec.?taint.?key.orValue("")) + ":" + string(object.spec.?taint.?effect.orValue(""))
+
+  # A pod's claims, after the Pod panel's own sections: each
+  # spec.resourceClaims entry, the claim behind it (its name is in the
+  # pod's status when a template made it) and the containers that use it.
+  /Pod:
+    variables:
+      claims: object.spec.?resourceClaims.orValue([])
+      containers: object.spec.?initContainers.orValue([]) + object.spec.?containers.orValue([]) + object.spec.?ephemeralContainers.orValue([])
+      statuses: object.?status.?resourceClaimStatuses.orValue([])
+    panel:
+      sections:
+        - title: Resource claims
+          icon: memory
+          when: size(variables.claims) > 0
+          summary: string(size(variables.claims))
+          blocks:
+            - type: table
+              rows: >-
+                variables.claims.map(e, {
+                  "name": string(e.name),
+                  "claim": ((variables.statuses.filter(s, s.name == e.name).map(s, string(s.?resourceClaimName.orValue("")))
+                    + [string(e.?resourceClaimName.orValue(""))]).filter(n, n != "") + [""])[0],
+                  "template": string(e.?resourceClaimTemplateName.orValue("")),
+                  "users": variables.containers.filter(c, c.?resources.?claims.orValue([]).exists(u, u.name == e.name)).map(c, string(c.name))})
+              columns:
+                - name: Name
+                  mono: true
+                  value: row.name
+                - name: Claim
+                  value: 'row.claim != "" ? row.claim : "not created yet"'
+                  link: 'row.claim != "" ? ref("resource.k8s.io", "ResourceClaim", row.claim) : dyn(null)'
+                - name: Template
+                  value: row.template
+                  link: 'row.template != "" ? ref("resource.k8s.io", "ResourceClaimTemplate", row.template) : dyn(null)'
+                - name: Used by
+                  value: row.users.join(", ")
+
+  # A node's devices: the ResourceSlices published for it.
+  /Node:
+    related:
+      slices:
+        kind: resource.k8s.io/ResourceSlice
+        filter: item.spec.?nodeName.orValue("") == object.metadata.name
+    panel:
+      sections:
+        - title: DRA devices
+          icon: memory
+          when: size(related.slices) > 0
+          summary: 'string(size(related.slices)) + (size(related.slices) == 1 ? " slice" : " slices")'
+          blocks:
+            - type: table
+              rows: related.slices
+              columns:
+                - name: Slice
+                  value: row.metadata.name
+                  link: ref(row)
+                - name: Driver
+                  mono: true
+                  value: row.spec.?driver.orValue("")
+                - name: Pool
+                  mono: true
+                  value: row.spec.?pool.?name.orValue("")
+                - name: Devices
+                  type: number
+                  value: size(row.spec.?devices.orValue([]))

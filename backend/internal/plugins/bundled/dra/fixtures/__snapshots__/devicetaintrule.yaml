@@ -1,0 +1,7 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: resource.k8s.io/DeviceTaintRule gpu-maintenance
+columns:
+  - name: Driver
+    value: gpu.example.com
+  - name: Taint
+    value: example.com/maintenance:NoExecute

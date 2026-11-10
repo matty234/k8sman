@@ -1,0 +1,15 @@
+# The template pod web-0's claim was made from.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: gpu-pair
+  namespace: demo
+  creationTimestamp: "2025-12-01T00:00:00Z"
+spec:
+  spec:
+    devices:
+      requests:
+        - name: gpu
+          exactly:
+            deviceClassName: gpu.example.com
+            count: 2

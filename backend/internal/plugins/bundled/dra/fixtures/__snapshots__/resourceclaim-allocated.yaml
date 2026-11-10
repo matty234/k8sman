@@ -1,0 +1,169 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: resource.k8s.io/ResourceClaim demo/web-0-gpu-x7k2p
+columns:
+  - name: State
+    value: 'Reserved: 1'
+  - name: Device Classes
+    value: gpu.example.com,nic.example.com
+  - name: Devices
+    value: 3
+  - name: Node
+    value: node-a
+panel:
+  refresh: 5
+  sections:
+    - blocks:
+        - items:
+            - text: 'Reserved: 1'
+          type: badges
+        - items:
+            - label: Node
+              link:
+                group: ""
+                kind: Node
+                name: node-a
+                namespace: demo
+              type: text
+              value: node-a
+            - label: Allocated
+              type: timestamp
+              value: "2025-12-31T23:00:05Z"
+            - label: Created for
+              link:
+                group: ""
+                kind: Pod
+                name: web-0
+                namespace: demo
+              type: text
+              value: Pod/web-0
+            - label: Pod claim
+              mono: true
+              type: text
+              value: gpu
+            - label: Template
+              link:
+                group: resource.k8s.io
+                kind: ResourceClaimTemplate
+                name: gpu-pair
+                namespace: demo
+              type: text
+              value: gpu-pair
+          type: fields
+      icon: memory
+      title: Claim
+    - blocks:
+        - columns:
+            - mono: true
+              name: Request
+              type: text
+            - name: Device class
+              type: text
+            - name: Count
+              type: text
+            - name: Options
+              type: text
+            - detail: true
+              mono: true
+              name: Selectors
+              type: text
+          empty: No device requests
+          limit: 50
+          rows:
+            - - value: gpu
+              - link:
+                  group: resource.k8s.io
+                  kind: DeviceClass
+                  name: gpu.example.com
+                  namespace: demo
+                value: gpu.example.com
+              - value: × 2
+              - value: ""
+              - value: device.attributes["gpu.example.com"].model == "a100"
+            - - value: nic
+              - link:
+                  group: resource.k8s.io
+                  kind: DeviceClass
+                  name: nic.example.com
+                  namespace: demo
+                value: nic.example.com
+              - value: × 1
+              - value: admin access, 1 toleration
+              - value: ""
+          total: 2
+          type: table
+      icon: fact_check
+      summary: "2"
+      title: Requests
+    - blocks:
+        - columns:
+            - mono: true
+              name: Request
+              type: text
+            - mono: true
+              name: Device
+              type: text
+            - mono: true
+              name: Driver
+              type: text
+            - mono: true
+              name: Pool
+              type: text
+          limit: 50
+          rows:
+            - - value: gpu
+              - value: gpu-0
+              - value: gpu.example.com
+              - value: node-a
+            - - value: gpu
+              - value: gpu-1
+              - value: gpu.example.com
+              - value: node-a
+            - - value: nic (admin)
+              - value: nic-0
+              - value: nic.example.com
+              - value: node-a
+          total: 3
+          type: table
+      icon: developer_board
+      summary: 3 devices
+      title: Allocation
+    - blocks:
+        - columns:
+            - name: Consumer
+              type: text
+          limit: 20
+          rows:
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: web-0
+                  namespace: demo
+                value: Pod/web-0
+          total: 1
+          type: table
+      icon: link
+      summary: "1"
+      title: Reserved for
+    - blocks:
+        - columns:
+            - mono: true
+              name: Device
+              type: text
+            - name: Driver / pool
+              type: text
+            - name: Network
+              type: text
+            - detail: true
+              name: Conditions
+              type: text
+          limit: 20
+          rows:
+            - - value: nic-0
+              - value: nic.example.com / node-a
+              - value: 10.0.0.5/24, 02:00:00:00:00:01
+              - value: Ready=True (Configured)
+          total: 1
+          type: table
+      icon: monitor_heart
+      title: Device status
+status: 'ResourceClaims: 1 · pending: 0'

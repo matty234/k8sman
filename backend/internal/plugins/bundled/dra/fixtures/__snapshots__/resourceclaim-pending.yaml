@@ -1,0 +1,79 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: resource.k8s.io/ResourceClaim demo/web-shared
+columns:
+  - name: State
+    value: Pending
+  - name: Device Classes
+    value: gpu-large.example.com,gpu.example.com,fpga.example.com
+  - name: Devices
+    value: 0
+  - name: Node
+    value: ""
+panel:
+  refresh: 5
+  sections:
+    - blocks:
+        - items:
+            - text: Pending
+          type: badges
+        - severity: info
+          text: 'Not allocated yet: the scheduler allocates devices when a pod using this claim is scheduled.'
+          type: message
+        - items: []
+          type: fields
+      icon: memory
+      title: Claim
+    - blocks:
+        - columns:
+            - mono: true
+              name: Request
+              type: text
+            - name: Device class
+              type: text
+            - name: Count
+              type: text
+            - name: Options
+              type: text
+            - detail: true
+              mono: true
+              name: Selectors
+              type: text
+          empty: No device requests
+          limit: 50
+          rows:
+            - - value: gpu/large (first available)
+              - link:
+                  group: resource.k8s.io
+                  kind: DeviceClass
+                  name: gpu-large.example.com
+                  namespace: demo
+                value: gpu-large.example.com
+              - value: × 1
+              - value: ""
+              - value: ""
+            - - value: gpu/small (first available)
+              - link:
+                  group: resource.k8s.io
+                  kind: DeviceClass
+                  name: gpu.example.com
+                  namespace: demo
+                value: gpu.example.com
+              - value: × 2
+              - value: ""
+              - value: ""
+            - - value: fpga
+              - link:
+                  group: resource.k8s.io
+                  kind: DeviceClass
+                  name: fpga.example.com
+                  namespace: demo
+                value: fpga.example.com
+              - value: all matching
+              - value: ""
+              - value: ""
+          total: 3
+          type: table
+      icon: fact_check
+      summary: "2"
+      title: Requests
+status: 'ResourceClaims: 1 · pending: 1 (info)'
