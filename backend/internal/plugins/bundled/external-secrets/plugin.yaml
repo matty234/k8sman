@@ -187,6 +187,7 @@ kinds:
         - title: Target Secret keys
           icon: key
           when: has(related.target)
+          summary: string(size(related.target.?data.orValue({})))
           blocks:
             - type: chips              # keys only: plugins never see Secret values
               items: related.target.?data.orValue({}).map(k, k).sort()
@@ -194,6 +195,7 @@ kinds:
         - title: Data mapping
           icon: data_object
           when: size(object.spec.?data.orValue([])) + size(object.spec.?dataFrom.orValue([])) > 0
+          summary: string(size(object.spec.?data.orValue([])) + size(object.spec.?dataFrom.orValue([])))
           blocks:
             - type: table
               when: size(object.spec.?data.orValue([])) > 0
@@ -353,6 +355,7 @@ kinds:
               when: size(variables.namespaces) > 0
               items: variables.namespaces
         - title: Provisioned namespaces
+          summary: string(size(object.?status.?provisionedNamespaces.orValue([])))
           icon: check_circle
           blocks:
             - type: chips
@@ -361,6 +364,7 @@ kinds:
         - title: Failed namespaces
           icon: error
           when: size(object.?status.?failedNamespaces.orValue([])) > 0
+          summary: string(size(object.status.failedNamespaces))
           blocks:
             - type: table
               rows: object.status.failedNamespaces
@@ -434,6 +438,7 @@ kinds:
           blocks:
             - type: conditions
         - title: ExternalSecrets using this store
+          summary: string(size(related.externalSecrets))
           icon: link
           blocks:
             - type: table
