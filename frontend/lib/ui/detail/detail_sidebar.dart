@@ -409,7 +409,10 @@ class _Header extends StatelessWidget {
     // end (away from the traffic lights) and never depend on the drag area.
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
-      child: Row(children: [
+      // Narrow: the object's actions fold into a ⋯ menu so the name keeps room.
+      child: LayoutBuilder(builder: (context, box) {
+        final fold = actions.length > 1 && box.maxWidth < 440;
+        return Row(children: [
         if (app.canGoBack) IconButton(tooltip: 'Back', icon: const Icon(Icons.chevron_left, size: 20), onPressed: app.back),
         const SizedBox(width: 6),
         Expanded(
@@ -419,12 +422,14 @@ class _Header extends StatelessWidget {
                 if (target.type.custom) ...[GroupIcon(group: target.type.group, size: 14), const SizedBox(width: 5)],
                 // The kind opens its table (inspector tucked away); the
                 // namespace is in the identity strip below.
-                _Crumb(
-                  key: const ValueKey('crumb-kind'),
-                  text: target.type.kind,
-                  tooltip: 'Show all ${target.type.kind}s${target.namespace != null && !app.namespaceScope.contains(target.namespace) ? ' in ${target.namespace}' : ''}',
-                  style: meta?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
-                  onTap: () => app.showInList(target),
+                Flexible(
+                  child: _Crumb(
+                    key: const ValueKey('crumb-kind'),
+                    text: target.type.kind,
+                    tooltip: 'Show all ${target.type.kind}s${target.namespace != null && !app.namespaceScope.contains(target.namespace) ? ' in ${target.namespace}' : ''}',
+                    style: meta?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
+                    onTap: () => app.showInList(target),
+                  ),
                 ),
                 if (deleted) ...[const SizedBox(width: 8), const StatusBadge('Deleted', severity: Severity.error, dense: true)],
               ]),
@@ -433,7 +438,28 @@ class _Header extends StatelessWidget {
             ]),
           ),
         ),
-        for (final a in actions) ActionIconButton(a),
+        if (fold)
+          PopupMenuButton<ResourceAction>(
+            key: const ValueKey('header-actions-more'),
+            tooltip: 'Actions',
+            icon: const Icon(Icons.more_horiz, size: 18),
+            popUpAnimationStyle: AnimationStyle.noAnimation,
+            onSelected: (a) => a.run(context),
+            itemBuilder: (_) => [
+              for (final a in actions)
+                PopupMenuItem(
+                  value: a,
+                  height: 32,
+                  child: Row(children: [
+                    Icon(a.icon, size: 16, color: a.destructive ? theme.colorScheme.error : null),
+                    const SizedBox(width: 10),
+                    Text(a.label, style: a.destructive ? TextStyle(color: theme.colorScheme.error) : null),
+                  ]),
+                ),
+            ],
+          )
+        else
+          for (final a in actions) ActionIconButton(a),
         if (actions.isNotEmpty) Container(width: 1, height: 16, margin: const EdgeInsets.symmetric(horizontal: 6), color: colors.separator),
         _HistoryButton(current: target),
         IconButton(tooltip: 'Copy name', icon: const Icon(Icons.copy_rounded, size: 14), onPressed: () => copyToClipboard(context, target.name)),
@@ -444,7 +470,8 @@ class _Header extends StatelessWidget {
           onPressed: app.collapseInspector,
         ),
         IconButton(tooltip: 'Close (Esc)', icon: const Icon(Icons.close, size: 16), onPressed: app.closeDetail),
-      ]),
+      ]);
+      }),
     );
   }
 }
