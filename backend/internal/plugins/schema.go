@@ -76,6 +76,7 @@ func schemaField() map[string]map[string]any {
 		"Related.kind":           {"pattern": kindKeyPattern, "description": "Kind key; must be in permissions.read."},
 		"Related.owner":          {"description": "Objects whose ownerReferences include this object (at most 200)."},
 		"Related.filter":         {"description": "bool, sees each candidate as item: keep those for which it is true, before the list is capped at 200. Alone, the candidates are every object of the kind in the namespace."},
+		"Related.limit":          {"minimum": 0, "maximum": relatedMaxLimit, "description": "How many objects a list relation keeps (default 200, at most 2000); the panel notes what it left out."},
 		"Related.namespace":      {"description": "string: where to look (default: the object's namespace; \"\" = every namespace)."},
 		"Section.summary":        {"description": "string: a short text at the right of the section's header (a count, a state)."},
 		"Tab.icon":               enum(Icons),

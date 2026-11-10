@@ -165,9 +165,9 @@ func (r *renderer) resolveRelated(kp *kindProgs, need refSet, env Env, ns *notes
 			continue
 		}
 		sortObjects(items)
-		if len(items) > relatedLimit {
-			ns.add("related.%s: showing the first %d of %d", rp.name, relatedLimit, len(items))
-			items = items[:relatedLimit]
+		if len(items) > rel.ListLimit() {
+			ns.add("related.%s: showing the first %d of %d", rp.name, rel.ListLimit(), len(items))
+			items = items[:rel.ListLimit()]
 		}
 		list := make([]any, len(items))
 		for i, o := range items {

@@ -732,8 +732,17 @@ func (p *Plugin) panel(env Env, rt cluster.ResourceType, obj map[string]any) (Pa
 			out.Refresh = po.Refresh
 		}
 	}
+	// Nothing shown (a "*" tab whose when doesn't hold on most objects):
+	// look again now and then rather than every few seconds.
+	if len(out.Sections) == 0 && len(out.Tabs) == 0 && out.Refresh > 0 {
+		out.Refresh = idleRefresh
+	}
 	return out, found
 }
+
+// idleRefresh is how often (seconds) a panel that shows nothing is
+// rendered again while its object is open.
+const idleRefresh = 30
 
 // entriesFor are p's compiled kind entries that apply to rt: its kind's
 // and "*".

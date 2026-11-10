@@ -111,6 +111,17 @@ type Related struct {
 	// name, owner or selector) the candidates are every object of the kind
 	// in the namespace.
 	Filter Expr `yaml:"filter"`
+	// Limit is how many objects a list relation keeps (default 200, at
+	// most relatedMaxLimit); beyond it the panel says how many it left out.
+	Limit int `yaml:"limit"`
+}
+
+// ListLimit is Limit with its default.
+func (r *Related) ListLimit() int {
+	if r.Limit <= 0 {
+		return relatedLimit
+	}
+	return r.Limit
 }
 
 // IsList is whether related.<name> is a list (owner, selector and filter
@@ -360,8 +371,12 @@ var (
 // their values, and can't change them.
 const secretKind = "/Secret"
 
-// relatedLimit caps the objects of an owner or selector relation.
-const relatedLimit = 200
+// relatedLimit caps the objects of a list relation (owner, selector or
+// filter) unless it sets limit, which can raise it to relatedMaxLimit.
+const (
+	relatedLimit    = 200
+	relatedMaxLimit = 2000
+)
 
 // usage is what the kinds use of the permissions (checked both ways).
 type usage struct {
@@ -574,6 +589,9 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 			d.errAt(rn, "related.%s takes one of name, owner and selector", name)
 		case ways == 0 && !r.Filter.IsSet():
 			d.errAt(rn, "related.%s needs one of name, owner, selector and filter", name)
+		}
+		if r.Limit < 0 || r.Limit > relatedMaxLimit || (r.Limit != 0 && !r.IsList()) {
+			d.errAt(orNode(resolve(field(rn, "limit")), rn), "related.%s: limit is for lists (owner, selector, filter), from 1 to %d", name, relatedMaxLimit)
 		}
 	}
 	metNode := resolve(field(n, "metrics"))

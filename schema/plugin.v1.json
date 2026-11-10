@@ -930,6 +930,12 @@
           "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
           "type": "string"
         },
+        "limit": {
+          "description": "How many objects a list relation keeps (default 200, at most 2000); the panel notes what it left out.",
+          "maximum": 2000,
+          "minimum": 0,
+          "type": "integer"
+        },
         "name": {
           "description": "CEL expression.",
           "type": "string"
