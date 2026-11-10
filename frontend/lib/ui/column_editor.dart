@@ -360,9 +360,16 @@ class _PreviewCell extends StatelessWidget {
   final ColumnDef def;
   const _PreviewCell({required this.value, required this.def});
 
+  // The preview's DataTable measures cells' intrinsic widths, which bar
+  // cells (laid out with a LayoutBuilder) can't answer: give them the
+  // width the real table would.
+  static const _fixed = {'usage': 160.0, 'percent': 120.0};
+
   @override
   Widget build(BuildContext context) {
-    return TableCellView(value: value, column: def);
+    final cell = TableCellView(value: value, column: def);
+    final w = _fixed[def.type];
+    return w == null ? cell : SizedBox(width: w, height: 22, child: cell);
   }
 }
 
