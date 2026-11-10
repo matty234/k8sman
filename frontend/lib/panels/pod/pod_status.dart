@@ -12,7 +12,7 @@ import 'pod_logic.dart';
 import '../../ui/widgets/atoms.dart';
 
 /// The top of the pod inspector: is this pod OK, and if not, why? A status
-/// line, a row of large figures (ready, restarts, init, up), the insights
+/// line, a row of large figures (ready, restarts, init; the age is in the inspector's identity strip), the insights
 /// explaining any problem, then where it runs (node, IPs, service account,
 /// usage) as one quiet line.
 class PodStatusHeader extends StatelessWidget {
@@ -60,7 +60,6 @@ class PodStatusHeader extends StatelessWidget {
               of: initsDone == inits.length ? null : '/${inits.length}',
               severity: initsDone == inits.length ? Severity.neutral : Severity.warn,
               tooltip: '$initsDone of ${inits.length} init containers completed'),
-        if (status['startTime'] != null) InspectorFigure.age(status['startTime'], 'up'),
       ],
       insights: insights,
       factsKeyWidth: 64,

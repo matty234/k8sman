@@ -107,6 +107,9 @@ class _TableBodyState extends State<_TableBody> {
     final multi = selectedRows.length >= 2;
     // No rows because the list failed: explain why instead of "No pods".
     final failedEmpty = tc.failure != null && tc.totalCount == 0;
+    // "Filter by this label" from the inspector.
+    final term = app.takeFilterTerm(tc.type.gk);
+    if (term != null) WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? _addTerm(tc, term) : null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -382,12 +385,14 @@ class _TableBodyState extends State<_TableBody> {
     final value = cellText(col < row.cells.length ? row.cells[col] : null).trim();
     if (key.isEmpty || value.isEmpty || value.length > 80 || value.contains('"')) return null;
     final v = value.contains(RegExp(r'\s')) ? '"$value"' : value;
-    void add(String term) {
-      final f = tc.filter.trim();
-      tc.setFilter('${f.isEmpty ? '' : '$f '}$term ');
-    }
+    return CellFilter(column: column.name, value: value, include: () => _addTerm(tc, '$key=$v'), exclude: () => _addTerm(tc, '$key!=$v'));
+  }
 
-    return CellFilter(column: column.name, value: value, include: () => add('$key=$v'), exclude: () => add('$key!=$v'));
+  /// [term] appended to the filter (unless it is already there).
+  static void _addTerm(TableController tc, String term) {
+    final f = tc.filter.trim();
+    if (f.split(RegExp(r'\s+')).contains(term)) return;
+    tc.setFilter('${f.isEmpty ? '' : '$f '}$term ');
   }
 
   static bool _isInspected(AppState app, ResourceType type, TableRowData row) =>

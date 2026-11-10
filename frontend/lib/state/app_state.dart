@@ -818,6 +818,27 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// A term for a kind's table to add to its filter (an inspector label's
+  /// "Filter by this label"), until that table takes it.
+  ({String gk, String term})? _filterTerm;
+
+  String? takeFilterTerm(String gk) {
+    final r = _filterTerm;
+    if (r == null || r.gk != gk) return null;
+    _filterTerm = null;
+    return r.term;
+  }
+
+  /// Shows [t]'s table with [term] added to its filter.
+  void filterTable(ResourceType t, String term) {
+    _filterTerm = (gk: t.gk, term: term);
+    if (selectedType == t && view == MainView.resources) {
+      notifyListeners();
+    } else {
+      selectType(t, asTable: true);
+    }
+  }
+
   // ---- sidebar layout ----
 
   /// Which pages the sidebar shows, in what order, and pinned kinds.

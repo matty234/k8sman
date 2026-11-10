@@ -9,8 +9,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 
 /// The shared Metadata section, last on every inspector's Overview:
-/// collapsed to a one-line summary ("7 labels · 2 annotations · created 5d
-/// ago"); open, the namespace, age and owners, labels and annotations as
+/// collapsed to a one-line summary ("7 labels · 2 annotations"); open, the namespace, age and owners, labels and annotations as
 /// quiet copyable rows (long lists trimmed), and the API details (UID,
 /// resourceVersion, generation, finalizers). The open state is remembered
 /// for the session.
@@ -18,17 +17,15 @@ class MetadataSection extends StatelessWidget {
   final PanelContext ctx;
   const MetadataSection({super.key, required this.ctx});
 
-  /// "7 labels · 2 annotations · created 5d ago".
+  /// "7 labels · 2 annotations" (the age is in the identity strip).
   static String summary(Json m) {
     final labels = asMap(m['labels']).length;
     final annotations = asMap(m['annotations']).length;
     final finalizers = (m['finalizers'] as List?)?.length ?? 0;
-    final created = parseTime(m['creationTimestamp']);
     return [
       labels == 0 ? 'no labels' : plural(labels, 'label'),
       if (annotations > 0) plural(annotations, 'annotation'),
       if (finalizers > 0) plural(finalizers, 'finalizer'),
-      if (created != null) 'created ${formatAge(created)} ago',
     ].join(' · ');
   }
 

@@ -16,7 +16,8 @@
 ///   `name=/^web-\d+/`  the Name column matches the regex (`!=` negates)
 /// A regex that doesn't compile matches nothing, and [TableQuery.error] says why.
 /// A `key=value` term whose key isn't a column is plain text, so `app=web`
-/// still finds that label in a Labels column.
+/// still finds that label in a Labels column (or, exactly, in the row's
+/// object's labels).
 library;
 
 import '../api/models.dart';
@@ -192,7 +193,8 @@ class TableQuery {
       }
       if (split == null || f == null) {
         final needle = t.toLowerCase();
-        preds.add((row, _) => row.name.toLowerCase().contains(needle) || row.cells.any((c) => cellText(c).toLowerCase().contains(needle)));
+        preds.add((row, _) =>
+            row.name.toLowerCase().contains(needle) || row.cells.any((c) => cellText(c).toLowerCase().contains(needle)) || (split != null && _hasLabel(row, needle)));
         return;
       }
       final (_, op, rawValue) = split;
@@ -216,6 +218,14 @@ class TableQuery {
       }
     }
   }
+}
+
+/// The row's object has the label [term] (`key=value`, lowercased), shown
+/// in a column or not.
+bool _hasLabel(TableRowData row, String term) {
+  final labels = dig(row.object, ['metadata', 'labels']);
+  if (labels is! Map) return false;
+  return labels.entries.any((e) => '${e.key}=${e.value}'.toLowerCase() == term);
 }
 
 /// `>`/`<` on ages (durations) and numbers/quantities; null when [raw]

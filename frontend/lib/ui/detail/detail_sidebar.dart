@@ -23,6 +23,7 @@ import '../widgets/group_icon.dart';
 import '../portforward/portforward_dialog.dart';
 import '../resource_nav.dart' show kindIconWidget;
 import 'metadata_section.dart';
+import '../inspector/identity_strip.dart';
 import '../inspector/inspector.dart';
 import 'owned_section.dart';
 import 'yaml_editor.dart';
@@ -215,6 +216,8 @@ class _LiveObjectState extends State<_LiveObject> {
       // With no primary actions there is no action row: the destructive
       // ones become header icons instead of a lone ⋯ menu.
       _Header(target: widget.target, deleted: _deleted, actions: primary.isEmpty && !stale ? rest : const []),
+      // Namespace, age and labels under the name, on every tab and kind.
+      _dim(stale, IdentityStrip(key: ValueKey('identity-${ctx?.uid}'), type: t.type, namespace: t.namespace, object: obj)),
       if (primary.isNotEmpty) _dim(stale, _ActionBar(primary: primary, rest: rest)),
       const Divider(),
       Expanded(
@@ -414,8 +417,8 @@ class _Header extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 if (target.type.custom) ...[GroupIcon(group: target.type.group, size: 14), const SizedBox(width: 5)],
-                // Breadcrumbs: the kind opens its table (inspector tucked
-                // away), the namespace opens the Namespace object.
+                // The kind opens its table (inspector tucked away); the
+                // namespace is in the identity strip below.
                 _Crumb(
                   key: const ValueKey('crumb-kind'),
                   text: target.type.kind,
@@ -423,18 +426,6 @@ class _Header extends StatelessWidget {
                   style: meta?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600),
                   onTap: () => app.showInList(target),
                 ),
-                if (target.namespace != null) ...[
-                  Text('  ·  ', style: meta),
-                  Flexible(
-                    child: _Crumb(
-                      key: const ValueKey('crumb-namespace'),
-                      text: target.namespace!,
-                      tooltip: 'Open namespace ${target.namespace}',
-                      style: meta,
-                      onTap: () => app.openRef(ObjectRef(kind: 'Namespace', name: target.namespace!)),
-                    ),
-                  ),
-                ],
                 if (deleted) ...[const SizedBox(width: 8), const StatusBadge('Deleted', severity: Severity.error, dense: true)],
               ]),
               const SizedBox(height: 2),
