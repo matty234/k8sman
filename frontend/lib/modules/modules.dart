@@ -18,7 +18,6 @@ import 'gpus_module.dart';
 import 'helm_module.dart';
 import 'hubble_module.dart';
 import 'metrics_module.dart';
-import 'kyverno_module.dart';
 import 'module.dart';
 import 'plugins_module.dart';
 import 'prometheus_module.dart';
@@ -38,7 +37,6 @@ const List<AppModule> builtInModules = [
   PrometheusModule(),
   GatewayModule(),
   HubbleModule(),
-  KyvernoModule(),
   UpgradeModule(),
   PluginsModule(),
 ];

@@ -104,6 +104,9 @@ kinds:
         when: ns == ""
         filter: *mentions
         limit: 2000
+    # The CRDs' printer columns (ADMISSION, BACKGROUND, READY, MESSAGE, …):
+    # ours say the same, as the built-in columns did before.
+    hideColumns: ["*"]
     columns: &policyColumns
       - name: Action
         value: variables.action
@@ -242,6 +245,7 @@ kinds:
     icon: policy
     variables: *policyVariables
     related: *policyRelated
+    hideColumns: ["*"]
     columns: *policyColumns
     panel: *policyPanel
     status:
@@ -260,12 +264,14 @@ kinds:
 
   kyverno.io/PolicyException:
     icon: gpp_maybe
+    hideColumns: ["*"]
     columns:
       - name: Policies
         value: object.spec.?exceptions.orValue([]).map(e, string(e.?policyName.orValue(""))).join(",")
 
   kyverno.io/CleanupPolicy: &cleanup
     icon: cleaning_services
+    hideColumns: ["*"]
     columns:
       - name: Schedule
         value: object.spec.?schedule.orValue("")
@@ -276,6 +282,7 @@ kinds:
 
   kyverno.io/UpdateRequest:
     icon: sync_alt
+    hideColumns: ["*"]
     columns:
       - name: Type
         value: object.spec.?requestType.orValue("")
@@ -300,6 +307,7 @@ kinds:
         ["fail", "error", "warn", "skip", "pass"].map(k, variables.results.filter(r, r.result == k)).flatten()
           + variables.results.filter(r, !(r.result in ["fail", "error", "warn", "skip", "pass"]))
       summary: object.?summary.orValue({})
+    hideColumns: ["*"]
     columns:
       - name: Pass
         type: number
