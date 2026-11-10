@@ -32,10 +32,10 @@ class CronWorkflowPanel extends ResourcePanel {
     final conds = ctx.status['conditions'];
     final active = asMapList(ctx.status['active']);
     return [
-      DetailSection(title: 'Schedule', icon: Icons.schedule, card: true, child: CronWorkflowSchedule(ctx.object)),
-      DetailSection(title: 'Status & policy', icon: Icons.tune, child: _CronStatus(ctx.object)),
-      if (conds is List && conds.isNotEmpty) DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(conds)),
-      DetailSection(
+      CoreSection('schedule', DetailSection(title: 'Schedule', icon: Icons.schedule, card: true, child: CronWorkflowSchedule(ctx.object))),
+      CoreSection('status', DetailSection(title: 'Status & policy', icon: Icons.tune, child: _CronStatus(ctx.object))),
+      if (conds is List && conds.isNotEmpty) CoreSection('conditions', DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(conds))),
+      CoreSection('workflows', DetailSection(
         title: 'Workflows',
         icon: Icons.history,
         child: RelatedWorkflows(
@@ -46,8 +46,8 @@ class CronWorkflowPanel extends ResourcePanel {
           fetch: (api) => api.items(workflowsRef, namespace: ctx.namespace, labelSelector: '$labelCronWorkflow=${ctx.name}'),
           empty: 'No workflows from this CronWorkflow (history limits: ${ctx.spec['successfulJobsHistoryLimit'] ?? 3} succeeded, ${ctx.spec['failedJobsHistoryLimit'] ?? 1} failed)',
         ),
-      ),
-      DetailSection(
+      )),
+      CoreSection('workflow-spec', DetailSection(
         title: 'Workflow spec',
         icon: Icons.description_outlined,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -76,7 +76,7 @@ class CronWorkflowPanel extends ResourcePanel {
             TemplateList(asMapList(wfSpec['templates']), entrypoint: wfSpec['entrypoint'] as String?),
           ],
         ]),
-      ),
+      )),
     ];
   }
 }

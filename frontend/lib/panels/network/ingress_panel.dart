@@ -104,7 +104,7 @@ class IngressPanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
-    return [_IngressView(key: ValueKey('${ctx.uid}/ingress'), ctx: ctx)];
+    return [CoreSection('overview', _IngressView(key: ValueKey('${ctx.uid}/ingress'), ctx: ctx))];
   }
 }
 
@@ -438,7 +438,7 @@ class IngressClassPanel extends ResourcePanel {
     final isDefault = dig<String>(ctx.metadata, ['annotations', 'ingressclass.kubernetes.io/is-default-class']) == 'true';
     final params = asMap(spec['parameters']);
     return [
-      DetailSection(
+      CoreSection('class', DetailSection(
         title: 'Ingress class',
         icon: Icons.input,
         trailing: isDefault ? const StatusBadge('Default class', dense: true, severity: Severity.ok) : null,
@@ -467,8 +467,8 @@ class IngressClassPanel extends ResourcePanel {
                   ]),
           ),
         ], keyWidth: 100),
-      ),
-      _IngressClassUsers(key: ValueKey('${ctx.uid}/users'), ctx: ctx, isDefault: isDefault),
+      )),
+      CoreSection('used-by', _IngressClassUsers(key: ValueKey('${ctx.uid}/users'), ctx: ctx, isDefault: isDefault)),
     ];
   }
 }

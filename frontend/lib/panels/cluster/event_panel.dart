@@ -91,9 +91,9 @@ class EventPanel extends ResourcePanel {
     final ns = ctx.namespace;
     final regardingUid = ev.regarding['uid'] as String?;
     return [
-      _EventHeader(ev, namespace: ns),
+      CoreSection('status', _EventHeader(ev, namespace: ns)),
       if (ev.regarding.isNotEmpty)
-        InspectorSection(
+        CoreSection('other-events', InspectorSection(
           id: 'event-others',
           title: 'Other events for ${ev.regarding['kind'] ?? 'object'}/${ev.regarding['name'] ?? ''}',
           initiallyExpanded: ev.type == 'Warning',
@@ -106,7 +106,7 @@ class EventPanel extends ResourcePanel {
             name: ev.regarding['name'] as String?,
             selfUid: ctx.uid,
           ),
-        ),
+        )),
     ];
   }
 }

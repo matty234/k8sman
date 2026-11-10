@@ -44,10 +44,10 @@ class NodePanel extends ResourcePanel {
     final alloc = asMap(status['allocatable']);
     return [
       // Is this node OK? Status, pods and usage (one fetch of its pods).
-      _NodeView(key: ValueKey(ctx.uid), ctx: ctx),
-      gpuNodeSection(ctx),
+      CoreSection('overview', _NodeView(key: ValueKey(ctx.uid), ctx: ctx)),
+      CoreSection('gpus', gpuNodeSection(ctx)),
       // Reference detail, collapsed behind a one-line summary.
-      InspectorSection(
+      CoreSection('capacity', InspectorSection(
         id: 'node-capacity',
         title: 'Capacity & allocatable',
         initiallyExpanded: false,
@@ -58,8 +58,8 @@ class NodePanel extends ResourcePanel {
           if (cap.isEmpty && alloc.isEmpty) 'not reported',
         ].join(' · ')),
         child: _CapacityTable(status),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('taints', InspectorSection(
         id: 'node-taints',
         title: 'Taints',
         initiallyExpanded: false,
@@ -67,8 +67,8 @@ class NodePanel extends ResourcePanel {
         child: taints.isEmpty
             ? const Padding(padding: EdgeInsets.only(left: 4), child: Text('No taints: any pod can be scheduled here'))
             : Wrap(spacing: 4, runSpacing: 4, children: [for (final t in taints) _TaintChip(t)]),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('conditions', InspectorSection(
         id: 'node-conditions',
         title: 'Conditions',
         initiallyExpanded: false,
@@ -77,8 +77,8 @@ class NodePanel extends ResourcePanel {
           color: bad.isEmpty ? null : severityColor(context, Severity.error),
         ),
         child: ConditionsTable(status['conditions'] as List?),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('system-info', InspectorSection(
         id: 'node-system',
         title: 'System info',
         initiallyExpanded: false,
@@ -93,15 +93,15 @@ class NodePanel extends ResourcePanel {
           ),
         ]),
         child: _SystemInfo(ctx, labels),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('addresses', InspectorSection(
         id: 'node-addresses',
         title: 'Addresses',
         initiallyExpanded: false,
         trailing: SectionSummary(addrs.isEmpty ? 'none' : addrs.map((a) => '${a['address']}').join(' · ')),
         child: _Addresses(ctx),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('images', InspectorSection(
         id: 'node-images',
         title: 'Images',
         initiallyExpanded: false,
@@ -110,7 +110,7 @@ class NodePanel extends ResourcePanel {
           return images.isEmpty ? 'none' : '${images.length} · ${formatBytes(total)}';
         }()),
         child: _Images(images),
-      ),
+      )),
     ];
   }
 }

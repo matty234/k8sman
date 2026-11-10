@@ -36,12 +36,12 @@ class PvcPanel extends ResourcePanel {
     Future<List<PvcMount>> mounts() => SharedFetch.get(mountsKey, () async => findMounts(await ctx.api.items(podResource, namespace: ctx.namespace), ctx.name));
     return [
       // Is it bound, how big, how full?
-      PvcStatusHeader(ctx, mountNodes: () async => {
+      CoreSection('status', PvcStatusHeader(ctx, mountNodes: () async => {
             for (final m in await mounts())
               if (m.node != null && dig<String>(m.pod, ['status', 'phase']) == 'Running') m.node!,
-          }),
-      pvcHistory(ctx),
-      InspectorSection(
+          })),
+      CoreSection('history', pvcHistory(ctx)),
+      CoreSection('mounted-by', InspectorSection(
         id: 'pvc-mounts',
         title: 'Mounted by',
         trailing: FutureBuilder<List<PvcMount>>(
@@ -56,9 +56,9 @@ class PvcPanel extends ResourcePanel {
           accessModes: asStrings(spec['accessModes']),
           load: mounts,
         ),
-      ),
+      )),
       // Reference detail, collapsed behind a one-line summary.
-      InspectorSection(
+      CoreSection('volume', InspectorSection(
         id: 'pvc-volume',
         title: 'Volume',
         initiallyExpanded: false,
@@ -67,25 +67,25 @@ class PvcPanel extends ResourcePanel {
           if ((spec['volumeMode'] ?? 'Filesystem') == 'Block') 'block',
         ].join(' · ')),
         child: _VolumeDetails(ctx: ctx, modes: modes),
-      ),
+      )),
       if (ds.isNotEmpty)
-        InspectorSection(
+        CoreSection('data-source', InspectorSection(
           id: 'pvc-datasource',
           title: 'Data source',
           initiallyExpanded: false,
           trailing: SectionSummary('${ds['kind'] ?? ''}/${ds['name'] ?? ''}'),
           child: _dataSource(ctx, ds),
-        ),
+        )),
       if (conditions.isNotEmpty)
-        InspectorSection(
+        CoreSection('conditions', InspectorSection(
           id: 'pvc-conditions',
           title: 'Conditions',
           initiallyExpanded: false,
           trailing: SectionSummary(trueConds.isEmpty ? 'none true' : trueConds.join(', '),
               color: trueConds.any((t) => t.contains('Error')) ? severityColor(context, Severity.error) : null),
           child: ConditionsTable(conditions),
-        ),
-      _CreatedByStatefulSet(key: ValueKey('sts-${ctx.uid}'), api: ctx.api, namespace: ctx.namespace ?? '', claimName: ctx.name, owners: ownerRefs(ctx.object)),
+        )),
+      CoreSection('statefulset', _CreatedByStatefulSet(key: ValueKey('sts-${ctx.uid}'), api: ctx.api, namespace: ctx.namespace ?? '', claimName: ctx.name, owners: ownerRefs(ctx.object))),
     ];
   }
 

@@ -121,40 +121,40 @@ class PodPanel extends ResourcePanel {
 
     return [
       // Is this pod OK, and if not, why?
-      PodStatusHeader(ctx),
+      CoreSection('status', PodStatusHeader(ctx)),
       // What it runs (the spec), then the live data.
-      containersSection,
+      CoreSection('containers', containersSection),
       // Reference detail: collapsed by default, a one-line summary in the
       // header; opening one keeps it open for the next pod.
       if (volumes.isNotEmpty)
-        InspectorSection(
+        CoreSection('volumes', InspectorSection(
           id: 'volumes',
           title: 'Volumes',
           initiallyExpanded: false,
           trailing: SectionSummary(_volumeSummary(volumes)),
           child: _Volumes(volumes, containers, ctx.namespace, ctx.name),
-        ),
+        )),
       if (scheduling.isNotEmpty)
-        InspectorSection(
+        CoreSection('scheduling', InspectorSection(
           id: 'scheduling',
           title: 'Scheduling',
           initiallyExpanded: false,
           trailing: SectionSummary(_schedulingSummary(ctx.spec)),
           child: KeyValueTable(scheduling, keyWidth: 110),
-        ),
-      InspectorSection(
+        )),
+      CoreSection('configuration', InspectorSection(
         id: 'configuration',
         title: 'Configuration',
         initiallyExpanded: false,
         trailing: SectionSummary(_configSummary(ctx)),
         child: _Configuration(ctx),
-      ),
+      )),
       // CPU / memory history (hidden when Prometheus isn't available).
-      podHistory(ctx),
+      CoreSection('history', podHistory(ctx)),
       // Live network from the kubelet when there is no Prometheus.
-      liveNetworkSection(ctx),
-      gpuPodSection(ctx),
-      InspectorSection(
+      CoreSection('network', liveNetworkSection(ctx)),
+      CoreSection('gpus', gpuPodSection(ctx)),
+      CoreSection('conditions', InspectorSection(
         id: 'conditions',
         title: 'Conditions',
         initiallyExpanded: false,
@@ -163,7 +163,7 @@ class PodPanel extends ResourcePanel {
           color: falseConds.isEmpty ? null : severityColor(context, Severity.warn),
         ),
         child: ConditionsTable(ctx.status['conditions'] as List?),
-      ),
+      )),
     ];
   }
 

@@ -19,9 +19,9 @@ class ResourceQuotaPanel extends ResourcePanel {
     final scopes = strList(ctx.spec['scopes']);
     final exprs = asMapList(dig(ctx.spec, ['scopeSelector', 'matchExpressions']));
     return [
-      DetailSection(title: 'Usage (used / hard)', icon: Icons.data_usage, child: QuotaBars(ctx.object)),
+      CoreSection('usage', DetailSection(title: 'Usage (used / hard)', icon: Icons.data_usage, child: QuotaBars(ctx.object))),
       if (scopes.isNotEmpty || exprs.isNotEmpty)
-        DetailSection(
+        CoreSection('scopes', DetailSection(
           title: 'Scopes',
           icon: Icons.filter_alt_outlined,
           child: KeyValueTable([
@@ -33,7 +33,7 @@ class ResourceQuotaPanel extends ResourcePanel {
                       Chipish(text: '${e['scopeName']} ${e['operator']}${strList(e['values']).isEmpty ? '' : ' (${strList(e['values']).join(', ')})'}'),
                   ])),
           ], keyWidth: 110),
-        ),
+        )),
     ];
   }
 }
@@ -116,10 +116,10 @@ class LimitRangePanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
-        DetailSection(
+        CoreSection('limits', DetailSection(
           title: 'Limits',
           icon: Icons.straighten,
           child: LimitRangeTables(asMapList(ctx.spec['limits'])),
-        ),
+        )),
       ];
 }

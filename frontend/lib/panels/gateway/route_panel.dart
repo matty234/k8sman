@@ -70,7 +70,7 @@ class RoutePanel extends ResourcePanel {
   bool get ownerInHeader => true;
 
   @override
-  List<Widget> buildSections(BuildContext context, PanelContext ctx) => [_RouteView(key: ValueKey('${ctx.uid}/route'), ctx: ctx)];
+  List<Widget> buildSections(BuildContext context, PanelContext ctx) => [CoreSection('overview', _RouteView(key: ValueKey('${ctx.uid}/route'), ctx: ctx))];
 }
 
 class _RouteView extends StatelessWidget {

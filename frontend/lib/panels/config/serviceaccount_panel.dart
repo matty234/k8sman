@@ -42,7 +42,7 @@ class ServiceAccountPanel extends ResourcePanel {
     final nSecrets = secrets.length + pullSecrets.length;
     return [
       // Does it mount a token, and who runs as it?
-      UsageReportBuilder(
+      CoreSection('status', UsageReportBuilder(
         ctx: ctx,
         kind: RefKind.serviceAccount,
         builder: (context, snap) => InspectorHeader(
@@ -65,9 +65,9 @@ class ServiceAccountPanel extends ResourcePanel {
           ],
           factsKeyWidth: 76,
         ),
-      ),
-      UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.serviceAccount, existingKeys: const {}),
-      InspectorSection(
+      )),
+      CoreSection('used-by', UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.serviceAccount, existingKeys: const {})),
+      CoreSection('secrets', InspectorSection(
         id: 'sa-secrets',
         title: 'Secrets',
         initiallyExpanded: nSecrets > 0,
@@ -80,8 +80,8 @@ class ServiceAccountPanel extends ResourcePanel {
                 for (final s in pullSecrets) secretRow(s, pull: true),
                 for (final s in secrets) secretRow(s, pull: false),
               ], keep: 6, trimAbove: 8),
-      ),
-      _Permissions(key: ValueKey('${ctx.uid}/rbac'), ctx: ctx),
+      )),
+      CoreSection('permissions', _Permissions(key: ValueKey('${ctx.uid}/rbac'), ctx: ctx)),
     ];
   }
 }

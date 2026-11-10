@@ -22,12 +22,12 @@ class MonitorPanel extends ResourcePanel {
     final isPod = ctx.type.kind == 'PodMonitor';
     final endpoints = asMapList(ctx.spec[isPod ? 'podMetricsEndpoints' : 'endpoints']);
     return [
-      DetailSection(
+      CoreSection('selects', DetailSection(
         title: 'Selects',
         icon: Icons.filter_alt_outlined,
         child: _Selects(key: ValueKey('sel-${ctx.uid}'), ctx: ctx, isPod: isPod),
-      ),
-      _LiveTargets(key: ValueKey('live-${ctx.uid}'), ctx: ctx, endpoints: endpoints, isPod: isPod),
+      )),
+      CoreSection('targets', _LiveTargets(key: ValueKey('live-${ctx.uid}'), ctx: ctx, endpoints: endpoints, isPod: isPod)),
     ];
   }
 }

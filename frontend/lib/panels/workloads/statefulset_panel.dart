@@ -110,7 +110,7 @@ class StatefulSetPanel extends ResourcePanel {
     final parallel = spec['podManagementPolicy'] == 'Parallel';
 
     return [
-      InspectorHeader(
+      CoreSection('status', InspectorHeader(
         headline: head.text,
         mark: head.severity,
         detail: head.detail,
@@ -127,8 +127,8 @@ class StatefulSetPanel extends ResourcePanel {
           replicasFact(ctx),
           ('Service', svc == null || svc.isEmpty ? null : ResourceLink(ObjectRef(kind: 'Service', name: svc, namespace: ctx.namespace), label: svc)),
         ],
-      ),
-      PodsList(
+      )),
+      CoreSection('pods', PodsList(
         key: ValueKey('pods-${ctx.uid}'),
         api: ctx.api,
         namespace: ctx.namespace,
@@ -138,11 +138,11 @@ class StatefulSetPanel extends ResourcePanel {
         sortByOrdinal: true,
         actionCtx: ctx,
         sectionTitle: 'Pods',
-      ),
-      workloadUsageSection(ctx),
-      workloadHistory(ctx),
+      )),
+      CoreSection('usage', workloadUsageSection(ctx)),
+      CoreSection('history', workloadHistory(ctx)),
       if (templates.isNotEmpty)
-        workloadSection(
+        CoreSection('volume-claims', workloadSection(
           'claims',
           'Volume claims',
           [
@@ -163,8 +163,8 @@ class StatefulSetPanel extends ResourcePanel {
             ordinalStart: ordStart,
             refreshKey: key,
           ),
-        ),
-      workloadSection(
+        )),
+      CoreSection('strategy', workloadSection(
         'strategy',
         'Strategy',
         [
@@ -192,11 +192,11 @@ class StatefulSetPanel extends ResourcePanel {
           if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
           if (ordStart != 0) ('Ordinals start', '$ordStart'),
         ], keyWidth: 120),
-      ),
-      podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid),
-      schedulingSection(asMap(dig(spec, ['template', 'spec']))),
-      if (asMapList(st['conditions']).isNotEmpty) conditionsSection(context, st),
-      selectorSection(spec['selector']),
+      )),
+      CoreSection('pod-template', podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid)),
+      CoreSection('scheduling', schedulingSection(asMap(dig(spec, ['template', 'spec'])))),
+      if (asMapList(st['conditions']).isNotEmpty) CoreSection('conditions', conditionsSection(context, st)),
+      CoreSection('selector', selectorSection(spec['selector'])),
     ];
   }
 }

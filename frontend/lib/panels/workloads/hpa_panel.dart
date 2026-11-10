@@ -165,7 +165,7 @@ class HpaPanel extends ResourcePanel {
     final behavior = asMap(spec['behavior']);
     final insights = conditionInsights(asMapList(st['conditions']), errors: sev == Severity.error ? const {'AbleToScale', 'ScalingActive'} : const {});
     return [
-      InspectorHeader(
+      CoreSection('status', InspectorHeader(
         headline: headline,
         mark: sev,
         // The reason is the insight's title when a condition explains it.
@@ -193,23 +193,23 @@ class HpaPanel extends ResourcePanel {
           ),
           if (lastScale != null) ('Last scaled', AgeText(lastScale, suffix: ' ago', style: theme.textTheme.bodySmall)),
         ],
-      ),
-      metrics.isEmpty
+      )),
+      CoreSection('metrics', metrics.isEmpty
           ? const DetailSection(
               title: 'Metrics',
               icon: Icons.speed,
               child: InlineMessage('No metrics: defaults to 80% average CPU utilization'),
             )
-          : hpaMetricsSection(ctx),
-      workloadSection(
+          : hpaMetricsSection(ctx)),
+      CoreSection('behavior', workloadSection(
         'behavior',
         'Behavior',
         behavior.isEmpty
             ? 'defaults'
             : [if (behavior['scaleUp'] != null) 'custom scale up', if (behavior['scaleDown'] != null) 'custom scale down'].join(' · '),
         _Behavior(behavior),
-      ),
-      conditionsSection(context, st),
+      )),
+      CoreSection('conditions', conditionsSection(context, st)),
     ];
   }
 }

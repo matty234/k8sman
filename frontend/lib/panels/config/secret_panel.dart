@@ -29,10 +29,10 @@ class SecretPanel extends ResourcePanel {
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final data = asMap(ctx.object['data']);
     return [
-      _SecretHeader(ctx),
-      ManagedByExternalSecret(key: ValueKey('${ctx.uid}/eso'), ctx: ctx),
-      SecretBody(key: ValueKey('${ctx.uid}/secret'), ctx: ctx),
-      UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.secret, existingKeys: {...data.keys}),
+      CoreSection('status', _SecretHeader(ctx)),
+      CoreSection('external-secret', ManagedByExternalSecret(key: ValueKey('${ctx.uid}/eso'), ctx: ctx)),
+      CoreSection('data', SecretBody(key: ValueKey('${ctx.uid}/secret'), ctx: ctx)),
+      CoreSection('used-by', UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.secret, existingKeys: {...data.keys})),
     ];
   }
 }

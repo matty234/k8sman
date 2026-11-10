@@ -55,7 +55,7 @@ class EndpointSlicePanel extends ResourcePanel {
     final addrs = EndpointAddr.fromSlices([o]);
     final ready = addrs.where((a) => a.ready).length;
     return [
-      endpointsHeader(
+      CoreSection('status', endpointsHeader(
         addrs,
         what: 'slice',
         facts: [
@@ -70,13 +70,13 @@ class EndpointSlicePanel extends ResourcePanel {
           ('Managed by', managedBy),
           ('Ports', PortChips(asMapList(o['ports']))),
         ],
-      ),
-      InspectorSection(
+      )),
+      CoreSection('endpoints', InspectorSection(
         id: 'slice-endpoints',
         title: 'Endpoints',
         trailing: SectionSummary(addrs.isEmpty ? 'none' : '$ready of ${addrs.length} ready'),
         child: EndpointList(addrs, namespace: ctx.namespace),
-      ),
+      )),
     ];
   }
 }
@@ -99,7 +99,7 @@ class EndpointsPanel extends ResourcePanel {
         ];
     final all = [for (final s in subsets) ...addrsOf(s)];
     return [
-      endpointsHeader(
+      CoreSection('status', endpointsHeader(
         all,
         what: 'service',
         extra: [if (subsets.isEmpty) const Insight(Severity.error, 'No subsets', 'This service has no endpoints.')],
@@ -109,9 +109,9 @@ class EndpointsPanel extends ResourcePanel {
           ('Subsets', '${subsets.length}'),
         ],
         footer: const HintText('Legacy core/v1 Endpoints (mirrors EndpointSlices; capped at 1000 addresses).'),
-      ),
+      )),
       for (var i = 0; i < subsets.length; i++)
-        InspectorSection(
+        CoreSection('subset-$i', InspectorSection(
           id: 'endpoints-subset-$i',
           title: subsets.length == 1 ? 'Subset' : 'Subset ${i + 1}',
           trailing: SectionSummary(() {
@@ -128,7 +128,7 @@ class EndpointsPanel extends ResourcePanel {
             ),
             EndpointList(addrsOf(subsets[i]), namespace: ctx.namespace),
           ]),
-        ),
+        )),
     ];
   }
 }

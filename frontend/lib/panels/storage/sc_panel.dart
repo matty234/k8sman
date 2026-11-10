@@ -32,23 +32,23 @@ class StorageClassPanel extends ResourcePanel {
         );
     return [
       // What provisions it, how it binds, and how much uses it.
-      usage((context, u) => _ClassHeader(object: o, usage: u)),
-      usage((context, u) => InspectorSection(
+      CoreSection('status', usage((context, u) => _ClassHeader(object: o, usage: u))),
+      CoreSection('used-by', usage((context, u) => InspectorSection(
             id: 'sc-usage',
             title: 'Used by',
             trailing: SectionSummary(u == null ? '' : '${plural(u.pvcs.length, 'claim')} · ${plural(u.pvs.length, 'volume')}'),
             child: StorageClassUsage(key: ValueKey('usage-${ctx.uid}'), api: ctx.api, className: ctx.name),
-          )),
+          ))),
       // Reference detail, collapsed behind a one-line summary.
-      InspectorSection(
+      CoreSection('parameters', InspectorSection(
         id: 'sc-parameters',
         title: 'Parameters',
         initiallyExpanded: false,
         trailing: SectionSummary(params.isEmpty ? 'none' : params.keys.take(4).join(', ') + (params.length > 4 ? ' +${params.length - 4}' : '')),
         child: ParamsTable(params, emptyText: 'No parameters (provisioner defaults apply)'),
-      ),
+      )),
       if (topo.isNotEmpty)
-        InspectorSection(
+        CoreSection('allowed-topologies', InspectorSection(
           id: 'sc-topologies',
           title: 'Allowed topologies',
           initiallyExpanded: false,
@@ -70,7 +70,7 @@ class StorageClassPanel extends ResourcePanel {
                 },
             ]),
           ]),
-        ),
+        )),
     ];
   }
 }

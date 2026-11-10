@@ -106,7 +106,7 @@ class AdmissionPolicyPanel extends ResourcePanel {
     final warnings = asMapList(dig(ctx.status, ['typeChecking', 'expressionWarnings']));
     final statusConds = asMapList(ctx.status['conditions']);
     return [
-      DetailSection(
+      CoreSection('policy', DetailSection(
         title: 'Policy',
         icon: Icons.policy_outlined,
         child: KeyValueTable([
@@ -114,44 +114,44 @@ class AdmissionPolicyPanel extends ResourcePanel {
           if (mutating) ('Reinvocation', spec['reinvocationPolicy'] as String? ?? 'Never'),
           ('Param kind', paramKind.isEmpty ? null : _paramKind(ctx, paramKind)),
         ], keyWidth: 110),
-      ),
-      DetailSection(title: 'Match constraints', icon: Icons.filter_alt_outlined, child: _match(asMap(spec['matchConstraints']))),
+      )),
+      CoreSection('match-constraints', DetailSection(title: 'Match constraints', icon: Icons.filter_alt_outlined, child: _match(asMap(spec['matchConstraints'])))),
       if (conditions.isNotEmpty)
-        DetailSection(
+        CoreSection('match-conditions', DetailSection(
           title: 'Match conditions',
           icon: Icons.rule,
           trailing: HintText('${conditions.length}'),
           child: _stack([for (final c in conditions) _cel('${c['expression'] ?? ''}', title: c['name'] as String?)]),
-        ),
+        )),
       if (variables.isNotEmpty)
-        DetailSection(
+        CoreSection('variables', DetailSection(
           title: 'Variables',
           icon: Icons.data_object,
           trailing: HintText('${variables.length}'),
           child: _stack([for (final v in variables) _cel('${v['expression'] ?? ''}', title: v['name'] as String?)]),
-        ),
+        )),
       if (!mutating)
-        DetailSection(
+        CoreSection('validations', DetailSection(
           title: 'Validations',
           icon: Icons.fact_check_outlined,
           trailing: HintText('${validations.length}'),
           child: validations.isEmpty ? const HintText('No validations.') : _stack([for (final v in validations) _Validation(v)], gap: 10),
-        ),
+        )),
       if (!mutating && audit.isNotEmpty)
-        DetailSection(
+        CoreSection('audit-annotations', DetailSection(
           title: 'Audit annotations',
           icon: Icons.edit_note,
           trailing: HintText('${audit.length}'),
           child: _stack([for (final a in audit) _cel('${a['valueExpression'] ?? ''}', title: a['key'] as String?)]),
-        ),
+        )),
       if (mutating)
-        DetailSection(
+        CoreSection('mutations', DetailSection(
           title: 'Mutations',
           icon: Icons.build_outlined,
           trailing: HintText('${mutations.length}'),
           child: mutations.isEmpty ? const HintText('No mutations.') : _stack([for (final m in mutations) _Mutation(m)], gap: 10),
-        ),
-      DetailSection(
+        )),
+      CoreSection('bindings', DetailSection(
         title: 'Bindings using this policy',
         icon: Icons.link,
         child: _PolicyBindings(
@@ -160,9 +160,9 @@ class AdmissionPolicyPanel extends ResourcePanel {
           policy: ctx.name,
           mutating: mutating,
         ),
-      ),
+      )),
       if (warnings.isNotEmpty || statusConds.isNotEmpty)
-        DetailSection(
+        CoreSection('status', DetailSection(
           title: 'Status',
           icon: Icons.monitor_heart_outlined,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -173,7 +173,7 @@ class AdmissionPolicyPanel extends ResourcePanel {
               ),
             if (statusConds.isNotEmpty) ConditionsTable(statusConds),
           ]),
-        ),
+        )),
     ];
   }
 }
@@ -273,16 +273,16 @@ class AdmissionBindingPanel extends ResourcePanel {
     final actions = [for (final a in (spec['validationActions'] as List? ?? const [])) '$a'];
     final param = asMap(spec['paramRef']);
     return [
-      DetailSection(
+      CoreSection('binding', DetailSection(
         title: 'Binding',
         icon: Icons.link,
         child: KeyValueTable([
           ('Policy', policy == null || policy.isEmpty ? null : ResourceLink(_ref(mutating ? _mapKind : _vapKind, policy), label: policy)),
           if (!mutating) ('Actions', actions.isEmpty ? null : InlineWrap([for (final a in actions) _ActionChip(a)])),
         ], keyWidth: 90),
-      ),
+      )),
       if (param.isNotEmpty)
-        DetailSection(
+        CoreSection('parameters', DetailSection(
           title: 'Parameters',
           icon: Icons.tune,
           child: KeyValueTable([
@@ -291,8 +291,8 @@ class AdmissionBindingPanel extends ResourcePanel {
             ('Selector', param['selector'] == null ? null : _selector(param['selector'])),
             ('If not found', param['parameterNotFoundAction'] as String?),
           ], keyWidth: 90),
-        ),
-      DetailSection(title: 'Match resources', icon: Icons.filter_alt_outlined, child: _match(asMap(spec['matchResources']))),
+        )),
+      CoreSection('match-resources', DetailSection(title: 'Match resources', icon: Icons.filter_alt_outlined, child: _match(asMap(spec['matchResources'])))),
     ];
   }
 }
@@ -308,12 +308,12 @@ class WebhookConfigPanel extends ResourcePanel {
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
     final hooks = asMapList(ctx.object['webhooks']);
     return [
-      DetailSection(
+      CoreSection('webhooks', DetailSection(
         title: 'Webhooks',
         icon: Icons.webhook,
         trailing: HintText('${hooks.length}'),
         child: hooks.isEmpty ? const HintText('No webhooks.') : _stack([for (final h in hooks) _Webhook(h)], gap: 12),
-      ),
+      )),
     ];
   }
 }

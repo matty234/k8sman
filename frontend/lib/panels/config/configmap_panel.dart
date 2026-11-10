@@ -33,7 +33,7 @@ class ConfigMapPanel extends ResourcePanel {
 
     return [
       // How much is in it, and who depends on it?
-      UsageReportBuilder(
+      CoreSection('status', UsageReportBuilder(
         ctx: ctx,
         kind: RefKind.configMap,
         builder: (context, snap) => InspectorHeader(
@@ -46,8 +46,8 @@ class ConfigMapPanel extends ResourcePanel {
           extraInsights: missingKeyInsights(snap, existing, 'ConfigMap'),
           facts: [?ownerFact(ctx.object)],
         ),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('data', InspectorSection(
         id: 'cm-data',
         title: 'Data',
         trailing: SectionSummary(keys.isEmpty ? 'empty' : '${plural(keys.length, 'key')} · ${formatBytes(dataBytes)}'),
@@ -63,16 +63,16 @@ class ConfigMapPanel extends ResourcePanel {
                     initiallyExpanded: keys.length == 1,
                   ),
               ]),
-      ),
-      UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.configMap, existingKeys: existing),
+      )),
+      CoreSection('used-by', UsedBySection(key: ValueKey('${ctx.uid}/usedby'), ctx: ctx, kind: RefKind.configMap, existingKeys: existing)),
       if (binKeys.isNotEmpty)
-        InspectorSection(
+        CoreSection('binary-data', InspectorSection(
           id: 'cm-binary',
           title: 'Binary data',
           initiallyExpanded: false,
           trailing: SectionSummary('${plural(binKeys.length, 'key')} · ${formatBytes(binaryBytes)}'),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final k in binKeys) _BinaryEntry(name: k, value: binary[k])]),
-        ),
+        )),
     ];
   }
 }

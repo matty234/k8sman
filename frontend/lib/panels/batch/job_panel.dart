@@ -49,8 +49,8 @@ class JobPanel extends ResourcePanel {
     final failedConds = trueConds.any((t) => t == 'Failed' || t == 'FailureTarget');
     return [
       // Did it work, and if not, why?
-      JobStatusHeader(ctx),
-      InspectorSection(
+      CoreSection('status', JobStatusHeader(ctx)),
+      CoreSection('pods', InspectorSection(
         id: 'job-pods',
         title: 'Pods',
         trailing: SectionSummary(
@@ -70,23 +70,23 @@ class JobPanel extends ResourcePanel {
           // Refetch when the counts move (a pod started, finished or failed).
           signature: [status['active'], status['ready'], status['succeeded'], status['failed'], status['terminating'], ctx.metadata['resourceVersion']].join('/'),
         ),
-      ),
+      )),
       // Reference detail, collapsed behind a one-line summary.
-      InspectorSection(
+      CoreSection('spec', InspectorSection(
         id: 'job-spec',
         title: 'Spec',
         initiallyExpanded: false,
         trailing: SectionSummary(jobSpecSummary(spec)),
         child: JobSpecTable(ctx.object),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('pod-template', InspectorSection(
         id: 'job-template',
         title: 'Pod template',
         initiallyExpanded: false,
         trailing: SectionSummary(podTemplateSummaryLine(template)),
         child: PodTemplateSummary(template: template, namespace: ctx.namespace, memoryKey: ctx.uid),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('conditions', InspectorSection(
         id: 'job-conditions',
         title: 'Conditions',
         initiallyExpanded: false,
@@ -95,7 +95,7 @@ class JobPanel extends ResourcePanel {
           color: failedConds ? severityColor(context, Severity.error) : null,
         ),
         child: ConditionsTable(status['conditions'] as List?),
-      ),
+      )),
     ];
   }
 }

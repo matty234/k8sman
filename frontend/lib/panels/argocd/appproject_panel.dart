@@ -23,35 +23,35 @@ class AppProjectPanel extends ResourcePanel {
     final dests = asMapList(spec['destinations']);
     final repos = [for (final r in (spec['sourceRepos'] as List? ?? const [])) '$r'];
     return [
-      DetailSection(title: 'Summary', icon: Icons.folder_special_outlined, card: true, child: ProjectSummary(ctx: ctx)),
-      DetailSection(
+      CoreSection('summary', DetailSection(title: 'Summary', icon: Icons.folder_special_outlined, card: true, child: ProjectSummary(ctx: ctx))),
+      CoreSection('applications', DetailSection(
         title: 'Applications',
         icon: Icons.apps,
         child: ProjectApps(key: ValueKey('apps-${ctx.uid}'), ctx: ctx),
-      ),
-      DetailSection(
+      )),
+      CoreSection('source-repositories', DetailSection(
         title: 'Source repositories',
         icon: Icons.source_outlined,
         trailing: Text('${repos.length}'),
         child: _SourceRepos(spec: spec),
-      ),
-      DetailSection(title: 'Destinations', icon: Icons.place_outlined, trailing: Text('${dests.length}'), child: DestinationsTable(dests)),
-      DetailSection(title: 'Allowed resource kinds', icon: Icons.category_outlined, child: ResourceKindRules(spec: spec)),
-      DetailSection(
+      )),
+      CoreSection('destinations', DetailSection(title: 'Destinations', icon: Icons.place_outlined, trailing: Text('${dests.length}'), child: DestinationsTable(dests))),
+      CoreSection('resource-kinds', DetailSection(title: 'Allowed resource kinds', icon: Icons.category_outlined, child: ResourceKindRules(spec: spec))),
+      CoreSection('sync-windows', DetailSection(
         title: 'Sync windows',
         icon: Icons.schedule,
         trailing: Text('${windows.length}'),
         initiallyExpanded: windows.isNotEmpty,
         child: SyncWindowsView(windows),
-      ),
-      DetailSection(
+      )),
+      CoreSection('roles', DetailSection(
         title: 'Roles',
         icon: Icons.badge_outlined,
         trailing: Text('${roles.length}'),
         initiallyExpanded: roles.isNotEmpty,
         child: RolesView(roles),
-      ),
-      DetailSection(title: 'Orphaned resources', icon: Icons.help_center_outlined, child: _Orphaned(asMap(spec['orphanedResources']))),
+      )),
+      CoreSection('orphaned-resources', DetailSection(title: 'Orphaned resources', icon: Icons.help_center_outlined, child: _Orphaned(asMap(spec['orphanedResources'])))),
     ];
   }
 }

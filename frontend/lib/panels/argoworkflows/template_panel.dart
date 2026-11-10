@@ -26,7 +26,7 @@ class WorkflowTemplatePanel extends ResourcePanel {
     final params = asMapList(dig(ctx.spec, ['arguments', 'parameters']));
     final wfMeta = asMap(ctx.spec['workflowMetadata']);
     return [
-      DetailSection(
+      CoreSection('template', DetailSection(
         title: 'Template',
         icon: Icons.description_outlined,
         card: true,
@@ -37,14 +37,14 @@ class WorkflowTemplatePanel extends ResourcePanel {
             KeyValueTable([('Workflow labels', LabelChips(asMap(wfMeta['labels']).map((k, v) => MapEntry(k, '$v'))))], keyWidth: 120),
           ],
         ]),
-      ),
-      DetailSection(title: 'Parameters', icon: Icons.tune, child: DeclaredParams(params)),
-      DetailSection(
+      )),
+      CoreSection('parameters', DetailSection(title: 'Parameters', icon: Icons.tune, child: DeclaredParams(params))),
+      CoreSection('templates', DetailSection(
         title: 'Templates',
         icon: Icons.view_list_outlined,
         child: TemplateList(asMapList(ctx.spec['templates']), entrypoint: ctx.spec['entrypoint'] as String?),
-      ),
-      DetailSection(
+      )),
+      CoreSection('workflows', DetailSection(
         title: 'Recent workflows',
         icon: Icons.history,
         child: RelatedWorkflows(
@@ -58,7 +58,7 @@ class WorkflowTemplatePanel extends ResourcePanel {
           ],
           empty: 'No workflows currently reference this template',
         ),
-      ),
+      )),
     ];
   }
 }

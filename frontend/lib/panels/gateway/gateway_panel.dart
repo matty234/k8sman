@@ -86,7 +86,7 @@ class GatewayPanel extends ResourcePanel {
   bool get ownerInHeader => true;
 
   @override
-  List<Widget> buildSections(BuildContext context, PanelContext ctx) => [_GatewayView(key: ValueKey('${ctx.uid}/gateway'), ctx: ctx)];
+  List<Widget> buildSections(BuildContext context, PanelContext ctx) => [CoreSection('overview', _GatewayView(key: ValueKey('${ctx.uid}/gateway'), ctx: ctx))];
 }
 
 class _GatewayView extends StatelessWidget {

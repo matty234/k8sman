@@ -45,6 +45,21 @@ class PanelTab {
   const PanelTab({required this.label, this.id, this.icon, required this.builder, this.badge, this.slot});
 }
 
+/// One of a compiled-in panel's sections, named: plugins place their own
+/// sections after it (`after: <id>`, docs/PLUGINS.md §4). The ids are API
+/// for plugin authors: keep them when a title changes, and keep the list
+/// in docs/PLUGINS.md and `coreSections` (backend/internal/plugins) in
+/// step. It draws [child] as it is; keyed by its id, so a section that
+/// comes and goes doesn't take another's state.
+class CoreSection extends StatelessWidget {
+  final String id;
+  final Widget child;
+  CoreSection(this.id, this.child) : super(key: ValueKey('core-section-$id'));
+
+  @override
+  Widget build(BuildContext context) => child;
+}
+
 /// Renders kind-specific detail sections. The shell renders a quiet owner
 /// line first (see [ownerInHeader]), then [buildSections] in order, then
 /// the shared Metadata section, collapsed.
@@ -58,6 +73,8 @@ abstract class ResourcePanel {
   /// `group/Kind` keys this panel handles, e.g. `{'/Pod'}`, `{'apps/Deployment'}`.
   Set<String> get kinds;
 
+  /// The sections, each wrapped in a [CoreSection] so plugins can place
+  /// theirs after it.
   List<Widget> buildSections(BuildContext context, PanelContext ctx);
 
   /// True when the panel already lists the object's children prominently

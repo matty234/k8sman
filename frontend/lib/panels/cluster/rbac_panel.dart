@@ -37,14 +37,14 @@ class RolePanel extends ResourcePanel {
     final matrixRows = matrixFromRules(rules, role: role).rows.length;
     return [
       if (rules.isNotEmpty)
-        DetailSection(
+        CoreSection('permission-matrix', DetailSection(
           title: 'Permission matrix',
           icon: Icons.grid_on,
           initiallyExpanded: matrixRows <= 24,
           trailing: _RoleActions(ctx: ctx, role: role),
           child: RoleRulesMatrix(rules: rules, role: role),
-        ),
-      DetailSection(
+        )),
+      CoreSection('rules', DetailSection(
         title: 'Rules',
         icon: Icons.rule,
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -61,9 +61,9 @@ class RolePanel extends ResourcePanel {
             ),
           RulesTable(rules),
         ]),
-      ),
+      )),
       if (isCluster && (selectors.isNotEmpty || into.isNotEmpty))
-        DetailSection(
+        CoreSection('aggregation', DetailSection(
           title: 'Aggregation',
           icon: Icons.merge_type,
           child: KeyValueTable([
@@ -80,12 +80,12 @@ class RolePanel extends ResourcePanel {
                         for (final n in into) ResourceLink(ObjectRef(group: rbacGroup, kind: 'ClusterRole', name: n), label: n),
                       ])),
           ], keyWidth: 120),
-        ),
-      DetailSection(
+        )),
+      CoreSection('bound-by', DetailSection(
         title: 'Bound by',
         icon: Icons.link,
         child: _BoundBy(key: ValueKey(ctx.uid), api: ctx.api, kind: isCluster ? 'ClusterRole' : 'Role', name: ctx.name, namespace: ctx.namespace),
-      ),
+      )),
     ];
   }
 }
@@ -194,7 +194,7 @@ class BindingPanel extends ResourcePanel {
             ? 'Grants the ClusterRole\'s permissions only within namespace $ns.'
             : 'Grants the Role\'s permissions within namespace $ns.');
     return [
-      DetailSection(
+      CoreSection('role-reference', DetailSection(
         title: 'Role reference',
         icon: Icons.badge_outlined,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -206,8 +206,8 @@ class BindingPanel extends ResourcePanel {
           const SizedBox(height: 4),
           Text(scope, style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
         ]),
-      ),
-      DetailSection(
+      )),
+      CoreSection('subjects', DetailSection(
         title: 'Subjects',
         icon: Icons.people_outline,
         trailing: Text('${subjects.length}', style: theme.textTheme.labelSmall),
@@ -229,12 +229,12 @@ class BindingPanel extends ResourcePanel {
               ),
             ),
         ]),
-      ),
-      DetailSection(
+      )),
+      CoreSection('granted-rules', DetailSection(
         title: 'Granted rules',
         icon: Icons.rule,
         child: _GrantedRules(key: ValueKey('${ctx.uid}/$refKind/$refName'), api: ctx.api, kind: refKind, name: refName, namespace: ns),
-      ),
+      )),
     ];
   }
 }

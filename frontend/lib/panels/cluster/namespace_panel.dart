@@ -24,13 +24,13 @@ class NamespacePanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
-        _NamespaceView(key: ValueKey(ctx.uid), ctx: ctx),
-        _QuotaSection(key: ValueKey('${ctx.uid}/quotas'), api: ctx.api, namespace: ctx.name),
-        InspectorSection(
+        CoreSection('overview', _NamespaceView(key: ValueKey(ctx.uid), ctx: ctx)),
+        CoreSection('quotas', _QuotaSection(key: ValueKey('${ctx.uid}/quotas'), api: ctx.api, namespace: ctx.name)),
+        CoreSection('warnings', InspectorSection(
           id: 'ns-warnings',
           title: 'Recent warnings',
           child: _Warnings(key: ValueKey('${ctx.uid}/warnings'), api: ctx.api, namespace: ctx.name),
-        ),
+        )),
       ];
 }
 

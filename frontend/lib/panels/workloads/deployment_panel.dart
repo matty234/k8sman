@@ -56,7 +56,7 @@ class DeploymentPanel extends ResourcePanel {
 
     return [
       // Is it rolled out and available, and if not, why?
-      InspectorHeader(
+      CoreSection('status', InspectorHeader(
         headline: head.text,
         mark: head.severity,
         detail: head.detail,
@@ -90,8 +90,8 @@ class DeploymentPanel extends ResourcePanel {
         ],
         extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}')), SecurityInsight(ctx)],
         facts: [?ownerFact(ctx.object), replicasFact(ctx)],
-      ),
-      PodsList(
+      )),
+      CoreSection('pods', PodsList(
         key: ValueKey('pods-${ctx.uid}'),
         api: ctx.api,
         namespace: ctx.namespace,
@@ -101,19 +101,19 @@ class DeploymentPanel extends ResourcePanel {
         refreshKey: key,
         actionCtx: ctx,
         sectionTitle: 'Pods',
-      ),
-      workloadUsageSection(ctx),
-      workloadHistory(ctx),
+      )),
+      CoreSection('usage', workloadUsageSection(ctx)),
+      CoreSection('history', workloadHistory(ctx)),
       // Reference detail, collapsed behind a one-line summary.
-      InspectorSection(
+      CoreSection('rollout-history', InspectorSection(
         key: const ValueKey('workload-section-history'),
         id: 'workload-history',
         title: 'Rollout history',
         initiallyExpanded: false,
         trailing: _HistorySummary(ctx: ctx, refreshKey: key, revision: rev),
         child: RolloutHistory(key: ValueKey('hist-${ctx.uid}'), ctx: ctx, refreshKey: key),
-      ),
-      workloadSection(
+      )),
+      CoreSection('strategy', workloadSection(
         'strategy',
         'Strategy',
         recreate ? 'Recreate' : 'RollingUpdate · ${ru['maxSurge'] ?? '25%'} surge · ${ru['maxUnavailable'] ?? '25%'} unavailable',
@@ -130,11 +130,11 @@ class DeploymentPanel extends ResourcePanel {
           ('Revision', rev),
           ('Generation', '${ctx.metadata['generation'] ?? '?'} (observed ${st['observedGeneration'] ?? '?'})'),
         ], keyWidth: 120),
-      ),
-      podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid),
-      schedulingSection(asMap(dig(spec, ['template', 'spec']))),
-      conditionsSection(context, st),
-      selectorSection(spec['selector']),
+      )),
+      CoreSection('pod-template', podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid)),
+      CoreSection('scheduling', schedulingSection(asMap(dig(spec, ['template', 'spec'])))),
+      CoreSection('conditions', conditionsSection(context, st)),
+      CoreSection('selector', selectorSection(spec['selector'])),
     ];
   }
 }

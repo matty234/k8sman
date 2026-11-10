@@ -36,15 +36,15 @@ class WorkflowPanel extends ResourcePanel {
     final templates = asMapList(ctx.spec['templates']).isNotEmpty ? asMapList(ctx.spec['templates']) : asMapList(stored['templates']);
     final conds = ctx.status['conditions'];
     return [
-      DetailSection(title: 'Workflow', icon: Icons.account_tree_outlined, card: true, child: WorkflowSummary(ctx)),
-      DetailSection(title: 'Parameters', icon: Icons.tune, child: WorkflowParams(ctx.object)),
-      DetailSection(
+      CoreSection('summary', DetailSection(title: 'Workflow', icon: Icons.account_tree_outlined, card: true, child: WorkflowSummary(ctx))),
+      CoreSection('parameters', DetailSection(title: 'Parameters', icon: Icons.tune, child: WorkflowParams(ctx.object))),
+      CoreSection('steps', DetailSection(
         title: 'Steps',
         icon: Icons.schema_outlined,
         child: WorkflowNodesView(key: ValueKey('nodes-${ctx.uid}'), workflow: ctx.object, api: ctx.api),
-      ),
-      if (conds is List && conds.isNotEmpty) DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(conds)),
-      DetailSection(
+      )),
+      if (conds is List && conds.isNotEmpty) CoreSection('conditions', DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(conds))),
+      CoreSection('spec', DetailSection(
         title: 'Spec',
         icon: Icons.description_outlined,
         initiallyExpanded: false,
@@ -57,7 +57,7 @@ class WorkflowPanel extends ResourcePanel {
             TemplateList(templates, entrypoint: (ctx.spec['entrypoint'] ?? stored['entrypoint']) as String?),
           ],
         ]),
-      ),
+      )),
     ];
   }
 }

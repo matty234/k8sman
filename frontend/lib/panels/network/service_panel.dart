@@ -141,8 +141,8 @@ class ServicePanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
-        _ServiceView(key: ValueKey('${ctx.uid}/backends'), ctx: ctx),
-        RoutedBySection(key: ValueKey('${ctx.uid}/routed-by'), ctx: ctx),
+        CoreSection('overview', _ServiceView(key: ValueKey('${ctx.uid}/backends'), ctx: ctx)),
+        CoreSection('routed-by', RoutedBySection(key: ValueKey('${ctx.uid}/routed-by'), ctx: ctx)),
       ];
 }
 

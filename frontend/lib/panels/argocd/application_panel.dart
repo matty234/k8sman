@@ -39,15 +39,15 @@ class ApplicationPanel extends ResourcePanel {
       for (final r in resources) '${r['kind']}/${r['namespace']}/${r['name']}=${r['status']}',
     ].join('|');
     return [
-      DetailSection(title: 'Status', icon: Icons.monitor_heart_outlined, card: true, child: AppStatusSummary(ctx: ctx)),
+      CoreSection('status', DetailSection(title: 'Status', icon: Icons.monitor_heart_outlined, card: true, child: AppStatusSummary(ctx: ctx))),
       if (op.isNotEmpty)
-        DetailSection(
+        CoreSection('last-operation', DetailSection(
           title: 'Last operation',
           icon: Icons.sync,
           trailing: ArgoBadge.phase(context, op['phase'] as String?),
           child: OperationView(ctx: ctx, op: op),
-        ),
-      DetailSection(
+        )),
+      CoreSection('source', DetailSection(
         title: sources.length > 1 ? 'Sources (${sources.length})' : 'Source',
         icon: Icons.source_outlined,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -60,21 +60,21 @@ class ApplicationPanel extends ResourcePanel {
               revision: sources.length > 1 ? dig<String>(st, ['sync', 'revisions', i]) : dig<String>(st, ['sync', 'revision']),
             ),
         ]),
-      ),
-      DetailSection(title: 'Destination', icon: Icons.place_outlined, child: DestinationView(ctx: ctx)),
-      DetailSection(
+      )),
+      CoreSection('destination', DetailSection(title: 'Destination', icon: Icons.place_outlined, child: DestinationView(ctx: ctx))),
+      CoreSection('managed-resources', DetailSection(
         title: 'Managed resources',
         icon: Icons.inventory_2_outlined,
         trailing: Text(outOfSync > 0 ? '$outOfSync of ${resources.length} out of sync' : '${resources.length}'),
         child: ManagedResourcesView(key: ValueKey('res-${ctx.uid}'), ctx: ctx, refreshKey: refreshKey),
-      ),
-      DetailSection(
+      )),
+      CoreSection('sync-history', DetailSection(
         title: 'Sync history',
         icon: Icons.history,
         trailing: Text('${history.length}'),
         initiallyExpanded: history.isNotEmpty,
         child: SyncHistoryView(history: history),
-      ),
+      )),
     ];
   }
 }

@@ -59,7 +59,7 @@ class ReferenceGrantPanel extends ResourcePanel {
     final from = asMapList(ctx.spec['from']);
     final to = asMapList(ctx.spec['to']);
     return [
-      DetailSection(
+      CoreSection('grant', DetailSection(
         title: 'Reference grant',
         icon: Icons.verified_user_outlined,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -87,8 +87,8 @@ class ReferenceGrantPanel extends ResourcePanel {
             ],
           ),
         ]),
-      ),
-      _GrantUsers(key: ValueKey('${ctx.uid}/users'), ctx: ctx),
+      )),
+      CoreSection('used-by', _GrantUsers(key: ValueKey('${ctx.uid}/users'), ctx: ctx)),
     ];
   }
 }

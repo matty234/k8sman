@@ -25,23 +25,23 @@ class ApplicationSetPanel extends ResourcePanel {
     final generated = asMapList(ctx.status['resources']);
     final refreshKey = [for (final r in generated) '${r['name']}:${dig(r, ['health', 'status'])}:${r['status']}'].join('|');
     return [
-      DetailSection(title: 'Status', icon: Icons.monitor_heart_outlined, card: true, child: AppSetSummary(ctx: ctx)),
-      DetailSection(
+      CoreSection('status', DetailSection(title: 'Status', icon: Icons.monitor_heart_outlined, card: true, child: AppSetSummary(ctx: ctx))),
+      CoreSection('generated-applications', DetailSection(
         title: 'Generated applications',
         icon: Icons.apps,
         trailing: Text('${ctx.status['resourcesCount'] ?? generated.length}'),
         child: GeneratedApps(key: ValueKey('apps-${ctx.uid}'), ctx: ctx, refreshKey: refreshKey),
-      ),
-      DetailSection(
+      )),
+      CoreSection('generators', DetailSection(
         title: generators.length == 1 ? 'Generator' : 'Generators (${generators.length})',
         icon: Icons.auto_awesome_motion_outlined,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (generators.isEmpty) const HintText('No generators'),
           for (final g in generators) GeneratorView(generator: g),
         ]),
-      ),
-      DetailSection(title: 'Template', icon: Icons.description_outlined, child: AppSetTemplateView(spec: spec)),
-      DetailSection(title: 'Conditions', icon: Icons.checklist, child: AppSetConditions(asMapList(ctx.status['conditions']))),
+      )),
+      CoreSection('template', DetailSection(title: 'Template', icon: Icons.description_outlined, child: AppSetTemplateView(spec: spec))),
+      CoreSection('conditions', DetailSection(title: 'Conditions', icon: Icons.checklist, child: AppSetConditions(asMapList(ctx.status['conditions'])))),
     ];
   }
 }

@@ -86,7 +86,7 @@ class DaemonSetPanel extends ResourcePanel {
     final unavailable = asIntOrNull(st['numberUnavailable']) ?? (desired - available).clamp(0, desired);
     final mis = asIntOrNull(st['numberMisscheduled']) ?? 0;
     return [
-      InspectorHeader(
+      CoreSection('status', InspectorHeader(
         extraInsights: [SecurityInsight(ctx)],
         headline: head.text,
         mark: head.severity,
@@ -103,8 +103,8 @@ class DaemonSetPanel extends ResourcePanel {
           ...conditionInsights(asMapList(st['conditions'])),
         ],
         facts: [?ownerFact(ctx.object)],
-      ),
-      PodsList(
+      )),
+      CoreSection('pods', PodsList(
         key: ValueKey('pods-${ctx.uid}'),
         api: ctx.api,
         namespace: ctx.namespace,
@@ -113,10 +113,10 @@ class DaemonSetPanel extends ResourcePanel {
         refreshKey: workloadRefreshKey(ctx),
         actionCtx: ctx,
         sectionTitle: 'Pods',
-      ),
-      workloadUsageSection(ctx),
-      workloadHistory(ctx),
-      workloadSection(
+      )),
+      CoreSection('usage', workloadUsageSection(ctx)),
+      CoreSection('history', workloadHistory(ctx)),
+      CoreSection('strategy', workloadSection(
         'strategy',
         'Strategy',
         onDelete ? 'OnDelete' : 'RollingUpdate · ${ru['maxUnavailable'] ?? 1} unavailable · ${ru['maxSurge'] ?? 0} surge',
@@ -128,11 +128,11 @@ class DaemonSetPanel extends ResourcePanel {
           if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
           ('History limit', '${spec['revisionHistoryLimit'] ?? 10} revisions'),
         ], keyWidth: 120),
-      ),
-      schedulingSection(podSpec, emptyText: 'No nodeSelector, tolerations or affinity: runs on every schedulable node without taints', none: 'every node'),
-      podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid),
-      if (asMapList(st['conditions']).isNotEmpty) conditionsSection(context, st),
-      selectorSection(spec['selector']),
+      )),
+      CoreSection('scheduling', schedulingSection(podSpec, emptyText: 'No nodeSelector, tolerations or affinity: runs on every schedulable node without taints', none: 'every node')),
+      CoreSection('pod-template', podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid)),
+      if (asMapList(st['conditions']).isNotEmpty) CoreSection('conditions', conditionsSection(context, st)),
+      CoreSection('selector', selectorSection(spec['selector'])),
     ];
   }
 }

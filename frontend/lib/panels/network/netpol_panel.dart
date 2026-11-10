@@ -19,7 +19,7 @@ class NetworkPolicyPanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) =>
-      [_NetpolView(key: ValueKey('${ctx.uid}/netpol'), ctx: ctx)];
+      [CoreSection('overview', _NetpolView(key: ValueKey('${ctx.uid}/netpol'), ctx: ctx))];
 }
 
 /// The headline for a policy: what it does to the directions it governs.

@@ -39,7 +39,7 @@ class PdbPanel extends ResourcePanel {
         : 'none (minAvailable 1 implied)';
 
     return [
-      InspectorHeader(
+      CoreSection('status', InspectorHeader(
         headline: headline,
         mark: sev,
         detail: budget,
@@ -68,8 +68,8 @@ class PdbPanel extends ResourcePanel {
               ]),
             ),
         ],
-      ),
-      PodsList(
+      )),
+      CoreSection('pods', PodsList(
         key: ValueKey('pods-${ctx.uid}'),
         api: ctx.api,
         namespace: ctx.namespace,
@@ -77,9 +77,9 @@ class PdbPanel extends ResourcePanel {
         refreshKey: workloadRefreshKey(ctx),
         actionCtx: ctx,
         sectionTitle: 'Matched pods',
-      ),
-      conditionsSection(context, st),
-      selectorSection(spec['selector'], extra: [('Observed gen', st['observedGeneration'] == null ? null : '${st['observedGeneration']}')]),
+      )),
+      CoreSection('conditions', conditionsSection(context, st)),
+      CoreSection('selector', selectorSection(spec['selector'], extra: [('Observed gen', st['observedGeneration'] == null ? null : '${st['observedGeneration']}')])),
     ];
   }
 }

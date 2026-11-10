@@ -105,8 +105,8 @@ class CronJobPanel extends ResourcePanel {
     final deadline = ctx.spec['startingDeadlineSeconds'];
     return [
       // Is it running on time, and did the last run work?
-      CronStatusHeader(ctx, signature: signature),
-      InspectorSection(
+      CoreSection('status', CronStatusHeader(ctx, signature: signature)),
+      CoreSection('jobs', InspectorSection(
         id: 'cron-jobs',
         title: 'Recent jobs',
         trailing: SharedFetchBuilder<List<Json>>(
@@ -132,16 +132,16 @@ class CronJobPanel extends ResourcePanel {
           active: active,
           signature: signature,
         ),
-      ),
+      )),
       // Reference detail, collapsed behind a one-line summary.
-      InspectorSection(
+      CoreSection('next-runs', InspectorSection(
         id: 'cron-runs',
         title: suspended ? 'Next runs (if resumed)' : 'Next runs',
         initiallyExpanded: false,
         trailing: SectionSummary(runs.isEmpty ? (s.sched == null ? 'unknown' : 'never') : s.wall(runs.first)),
         child: CronScheduleView(ctx.object),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('spec', InspectorSection(
         id: 'cron-spec',
         title: 'Spec',
         initiallyExpanded: false,
@@ -151,8 +151,8 @@ class CronJobPanel extends ResourcePanel {
           if (deadline is num) 'deadline ${formatDuration(Duration(seconds: deadline.toInt()), style: DurationStyle.trimmed)}',
         ].join(' · ')),
         child: _CronSpec(ctx.object),
-      ),
-      InspectorSection(
+      )),
+      CoreSection('job-template', InspectorSection(
         id: 'cron-template',
         title: 'Job template',
         initiallyExpanded: false,
@@ -169,7 +169,7 @@ class CronJobPanel extends ResourcePanel {
           ], keyWidth: 120),
           PodTemplateSummary(template: asMap(jobSpec['template']), namespace: ctx.namespace, memoryKey: ctx.uid),
         ]),
-      ),
+      )),
     ];
   }
 }

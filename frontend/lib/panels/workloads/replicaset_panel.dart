@@ -54,7 +54,7 @@ class ReplicaSetPanel extends ResourcePanel {
         ? WorkloadHeadline('Ready $ready/$desired', Severity.ok, detail: rev == null ? null : 'Revision $rev')
         : WorkloadHeadline('Ready $ready/$desired', ready == 0 ? Severity.error : Severity.warn, detail: '${desired - ready} not ready');
     return [
-      InspectorHeader(
+      CoreSection('status', InspectorHeader(
         headline: head.text,
         mark: head.severity,
         detail: head.detail,
@@ -74,8 +74,8 @@ class ReplicaSetPanel extends ResourcePanel {
           replicasFact(ctx),
           ('Hash', dig<String>(ctx.metadata, ['labels', 'pod-template-hash'])),
         ],
-      ),
-      PodsList(
+      )),
+      CoreSection('pods', PodsList(
         key: ValueKey('pods-${ctx.uid}'),
         api: ctx.api,
         namespace: ctx.namespace,
@@ -84,14 +84,14 @@ class ReplicaSetPanel extends ResourcePanel {
         refreshKey: workloadRefreshKey(ctx),
         actionCtx: ctx,
         sectionTitle: 'Pods',
-      ),
-      podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid),
-      schedulingSection(asMap(dig(spec, ['template', 'spec']))),
-      if (asMapList(st['conditions']).isNotEmpty) conditionsSection(context, st),
-      selectorSection(spec['selector'], extra: [
+      )),
+      CoreSection('pod-template', podTemplateSection(asMap(spec['template']), ctx.namespace, uid: ctx.uid)),
+      CoreSection('scheduling', schedulingSection(asMap(dig(spec, ['template', 'spec'])))),
+      if (asMapList(st['conditions']).isNotEmpty) CoreSection('conditions', conditionsSection(context, st)),
+      CoreSection('selector', selectorSection(spec['selector'], extra: [
         ('Fully labeled', '${st['fullyLabeledReplicas'] ?? 0}'),
         if (spec['minReadySeconds'] != null) ('Min ready', '${spec['minReadySeconds']}s'),
-      ]),
+      ])),
     ];
   }
 }

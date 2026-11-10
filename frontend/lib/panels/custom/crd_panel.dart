@@ -29,15 +29,15 @@ class CrdPanel extends ResourcePanel {
     final versions = asMapList(spec['versions']);
     final conds = asMapList(ctx.status['conditions']);
     return [
-      DetailSection(title: 'Definition', icon: Icons.extension_outlined, child: _definition(context, ctx)),
-      if (conds.isNotEmpty) DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(conds)),
-      DetailSection(
+      CoreSection('definition', DetailSection(title: 'Definition', icon: Icons.extension_outlined, child: _definition(context, ctx))),
+      if (conds.isNotEmpty) CoreSection('conditions', DetailSection(title: 'Conditions', icon: Icons.checklist, child: ConditionsTable(conds))),
+      CoreSection('versions', DetailSection(
         title: 'Versions',
         icon: Icons.layers_outlined,
         trailing: _count(context, versions.length),
         child: _versions(context, versions),
-      ),
-      DetailSection(
+      )),
+      CoreSection('instances', DetailSection(
         title: 'Instances',
         icon: Icons.inventory_2_outlined,
         child: CrdInstances(
@@ -49,12 +49,12 @@ class CrdPanel extends ResourcePanel {
           plural: '${dig(spec, ['names', 'plural']) ?? ''}',
           namespaced: spec['scope'] != 'Cluster',
         ),
-      ),
-      DetailSection(
+      )),
+      CoreSection('schema', DetailSection(
         title: 'Schema',
         icon: Icons.account_tree_outlined,
         child: _SchemaSection(key: ValueKey('schema/${ctx.uid}'), versions: versions),
-      ),
+      )),
     ];
   }
 

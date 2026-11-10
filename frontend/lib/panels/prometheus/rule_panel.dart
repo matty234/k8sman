@@ -19,7 +19,7 @@ class PrometheusRulePanel extends ResourcePanel {
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
-        _RuleGroups(key: ValueKey(ctx.uid), ctx: ctx, resourceVersion: '${ctx.metadata['resourceVersion']}'),
+        CoreSection('rules', _RuleGroups(key: ValueKey(ctx.uid), ctx: ctx, resourceVersion: '${ctx.metadata['resourceVersion']}')),
       ];
 }
 

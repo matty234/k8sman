@@ -29,7 +29,7 @@ class GatewayClassPanel extends ResourcePanel {
     ]..sort();
     final controller = '${spec['controllerName'] ?? ''}';
     return [
-      DetailSection(
+      CoreSection('class', DetailSection(
         title: 'Gateway class',
         icon: Icons.category_outlined,
         trailing: CondBadge(accepted, label: 'Accepted', negative: 'Not accepted'),
@@ -53,15 +53,15 @@ class GatewayClassPanel extends ResourcePanel {
             ('Status', condTrue(accepted) ? (accepted?['message'] as String?) : null),
           ], keyWidth: 90),
         ]),
-      ),
+      )),
       if (features.isNotEmpty)
-        DetailSection(
+        CoreSection('supported-features', DetailSection(
           title: 'Supported features',
           icon: Icons.checklist,
           trailing: Text('${features.length}'),
           child: Wrap(spacing: 4, runSpacing: 4, children: [for (final f in features) Chipish(text: f)]),
-        ),
-      _ClassGateways(key: ValueKey('${ctx.uid}/gateways'), ctx: ctx),
+        )),
+      CoreSection('gateways', _ClassGateways(key: ValueKey('${ctx.uid}/gateways'), ctx: ctx)),
     ];
   }
 

@@ -23,7 +23,7 @@ class PromInstancePanel extends ResourcePanel {
     final spec = ctx.spec;
     final conds = ctx.status['conditions'];
     return [
-      DetailSection(
+      CoreSection('overview', DetailSection(
         title: 'Overview',
         icon: isProm ? Icons.query_stats : Icons.notifications_none,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -45,9 +45,9 @@ class PromInstancePanel extends ResourcePanel {
           const SizedBox(height: 6),
           _LiveStatus(key: ValueKey(ctx.uid), ctx: ctx),
         ]),
-      ),
+      )),
       if (isProm)
-        DetailSection(
+        CoreSection('selects', DetailSection(
           title: 'Selects',
           icon: Icons.filter_alt_outlined,
           child: KeyValueTable([
@@ -57,9 +57,9 @@ class PromInstancePanel extends ResourcePanel {
             ('Probes', _sel(spec, 'probeSelector', 'probeNamespaceSelector')),
             if (spec.containsKey('scrapeConfigSelector')) ('ScrapeConfigs', _sel(spec, 'scrapeConfigSelector', 'scrapeConfigNamespaceSelector')),
           ], keyWidth: 120),
-        )
+        ))
       else
-        DetailSection(
+        CoreSection('configuration', DetailSection(
           title: 'Configuration',
           icon: Icons.tune,
           child: KeyValueTable([
@@ -67,9 +67,9 @@ class PromInstancePanel extends ResourcePanel {
             if (spec['configSecret'] != null)
               ('Config secret', ResourceLink(ObjectRef(kind: 'Secret', name: '${spec['configSecret']}', namespace: ctx.namespace), label: '${spec['configSecret']}')),
           ], keyWidth: 140),
-        ),
+        )),
       if (isProm && asMapList(dig(spec, ['alerting', 'alertmanagers'])).isNotEmpty)
-        DetailSection(
+        CoreSection('alerting', DetailSection(
           title: 'Sends alerts to',
           icon: Icons.send_outlined,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -83,8 +83,8 @@ class PromInstancePanel extends ResourcePanel {
                 ]),
               ),
           ]),
-        ),
-      if (conds is List && conds.isNotEmpty) DetailSection(title: 'Conditions', icon: Icons.fact_check_outlined, child: ConditionsTable(conds)),
+        )),
+      if (conds is List && conds.isNotEmpty) CoreSection('conditions', DetailSection(title: 'Conditions', icon: Icons.fact_check_outlined, child: ConditionsTable(conds))),
     ];
   }
 

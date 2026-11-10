@@ -32,9 +32,9 @@ class PvPanel extends ResourcePanel {
     ];
     return [
       // Is it bound, to what, and what happens to the data?
-      _PvHeader(ctx: ctx),
+      CoreSection('status', _PvHeader(ctx: ctx)),
       // Where the data lives, collapsed behind a one-line summary.
-      InspectorSection(
+      CoreSection('source', InspectorSection(
         id: 'pv-source',
         title: source == null ? 'Source' : 'Source · ${pvSourceLabel(source.$1)}',
         initiallyExpanded: false,
@@ -42,9 +42,9 @@ class PvPanel extends ResourcePanel {
         child: source == null
             ? const InlineMessage('No volume source found in spec.')
             : PvSourceView(type: source.$1, src: source.$2, namespace: null),
-      ),
+      )),
       if (terms.isNotEmpty)
-        InspectorSection(
+        CoreSection('node-affinity', InspectorSection(
           id: 'pv-affinity',
           title: 'Node affinity',
           initiallyExpanded: false,
@@ -59,15 +59,15 @@ class PvPanel extends ResourcePanel {
             }),
             NodeSelectorView(terms),
           ]),
-        ),
+        )),
       if (mountOptions.isNotEmpty)
-        InspectorSection(
+        CoreSection('mount-options', InspectorSection(
           id: 'pv-mount-options',
           title: 'Mount options',
           initiallyExpanded: false,
           trailing: SectionSummary(mountOptions.join(', ')),
           child: Wrap(spacing: 4, runSpacing: 4, children: [for (final o in mountOptions) Chipish(text: o, copyValue: o)]),
-        ),
+        )),
     ];
   }
 }
