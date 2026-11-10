@@ -47,6 +47,15 @@ var ErrNoPrometheus = errors.New("no Prometheus is available")
 // costs one LIST; later renders read the warm stream).
 const lookupTimeout = 5 * time.Second
 
+// A "*" entry runs for every inspected object, so each plugin's "*" entry
+// gets a budget per inspection: at most starMaxLookups related lookups and
+// starDeadline to make them. The lookups past it are skipped (the panel
+// says so) and counted in the plugin's stats (statBudget).
+const (
+	starMaxLookups = 4
+	starDeadline   = 300 * time.Millisecond
+)
+
 // Env is what an evaluation runs in.
 type Env struct {
 	// Context is the kube context's name (the `context` variable).
@@ -82,7 +91,11 @@ func (r *renderer) resolveRelated(kp *kindProgs, need refSet, env Env, ns *notes
 	if need.empty() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), lookupTimeout)
+	limit, lookups := lookupTimeout, 0
+	if kp.key == "*" {
+		limit = starDeadline
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	uid, _ := nestedString(r.act.object, "metadata", "uid")
 	for _, rp := range kp.related {
@@ -102,6 +115,14 @@ func (r *renderer) resolveRelated(kp *kindProgs, need refSet, env Env, ns *notes
 		if env.Lookup == nil {
 			ns.add("Related objects aren't available here.")
 			continue
+		}
+		if kp.key == "*" {
+			if lookups >= starMaxLookups || ctx.Err() != nil {
+				ns.add("related.%s: skipped: over budget", rp.name)
+				r.overBudget = true
+				continue
+			}
+			lookups++
 		}
 		namespace := r.act.namespace
 		if rp.nsP != nil {

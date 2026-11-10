@@ -73,7 +73,7 @@ class _LiveObjectState extends State<_LiveObject> {
     onFrame: (m) => setState(() => m.frames.forEach(_apply)),
   );
   /// The tab last open, by kind and label (see build).
-  ({String gk, String label})? _openTab;
+  ({String gk, String id})? _openTab;
 
   /// Bumped for each "edit YAML" request, so the YAML tab starts editing.
   int _editRequest = 0;
@@ -182,10 +182,10 @@ class _LiveObjectState extends State<_LiveObject> {
     final panel = panelFor(t.type, app);
     final ctx = obj == null ? null : PanelContext(object: obj, type: t.type, api: context.read<ApiClient>(), app: app);
     final extraTabs = ctx == null ? const <PanelTab>[] : [...panel.tabs(ctx), ...moduleInspectorTabs(ctx)];
-    final tabLabels = ['Overview', for (final x in extraTabs) x.label, 'YAML', 'Events'];
+    final tabIds = ['Overview', for (final x in extraTabs) x.key, 'YAML', 'Events'];
     // A tab appearing later (a module's detection finishing) recreates the
     // controller; stay on the tab that was open rather than jump to Overview.
-    final keptTab = _openTab?.gk == t.type.gk ? tabLabels.indexOf(_openTab!.label) : -1;
+    final keptTab = _openTab?.gk == t.type.gk ? tabIds.indexOf(_openTab!.id) : -1;
 
     final actions = ctx == null || _deleted ? const <ResourceAction>[] : _actionsFor(app, t, panel, ctx);
     final primary = actions.where((a) => !a.destructive && !a.advanced).take(3).toList();
@@ -236,7 +236,7 @@ class _LiveObjectState extends State<_LiveObject> {
                 animationDuration: Duration.zero,
                 child: Builder(builder: (context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   _applyTabRequest(context, app, extraTabs.length),
-                  _TabWatch(onIndex: (i) => _openTab = (gk: t.type.gk, label: tabLabels[i])),
+                  _TabWatch(onIndex: (i) => _openTab = (gk: t.type.gk, id: tabIds[i])),
                   TabBar(
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,

@@ -185,6 +185,7 @@ type SectionOut struct {
 // TabOut is a resolved tab: its sections, and the host tab it goes into
 // on kinds that have one.
 type TabOut struct {
+	ID       string       `json:"id"`
 	Title    string       `json:"title"`
 	Icon     string       `json:"icon,omitempty"`
 	Into     string       `json:"into,omitempty"`
@@ -196,6 +197,8 @@ type renderer struct {
 	act  *activation
 	cost uint64
 	errs int
+	// overBudget: a "*" entry's lookups were cut short (related.go).
+	overBudget bool
 }
 
 func (r *renderer) eval(p *program) (any, error) {
@@ -597,7 +600,7 @@ func renderPanel(p *Plugin, kp *kindProgs, obj map[string]any, env Env) PanelOut
 	}
 	for _, tp := range kp.tabs {
 		t := tp.tab
-		to := TabOut{Title: t.Title, Icon: t.Icon, Into: t.Into, Sections: []SectionOut{}}
+		to := TabOut{ID: t.TabID(), Title: t.Title, Icon: t.Icon, Into: t.Into, Sections: []SectionOut{}}
 		show, err := r.cond(tp.when)
 		if err != nil {
 			to.Sections = append(to.Sections, SectionOut{Title: t.Title, Blocks: []map[string]any{errBlock(err)}})
@@ -623,6 +626,9 @@ func renderPanel(p *Plugin, kp *kindProgs, obj map[string]any, env Env) PanelOut
 		out.Errors = append(out.Errors, Diag{Pos: Pos{File: ManifestFile}, Message: err.Error()})
 	}
 	p.stats.record(statPanel, time.Since(start), err)
+	if r.overBudget {
+		p.stats.record(statBudget, 0, nil)
+	}
 	return out
 }
 

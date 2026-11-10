@@ -53,7 +53,7 @@ ResourcePanel panelFor(ResourceType t, [AppState? app]) {
   final panel = (on ? e.$1 : null) ?? customFallbackPanel ?? const BasicFallbackPanel();
   if (app == null) return panel;
   pluginHost.attach(app.api);
-  if (!pluginHost.contributesTo(t.gk)) return panel;
+  if (!pluginHost.contributesTo(t.gk, namespaced: t.namespaced)) return panel;
   if (on) return PluginComposedPanel(panel);
   // Without a dedicated panel, the plugin's sections lead and the generic
   // ones follow, collapsed or left out if the plugin says so

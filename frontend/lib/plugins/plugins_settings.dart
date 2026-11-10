@@ -298,7 +298,7 @@ class _PluginCard extends StatelessWidget {
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]);
     String us(double v) => v >= 1000 ? '${(v / 1000).toStringAsFixed(1)} ms' : '${v.toStringAsFixed(v < 10 ? 1 : 0)} µs';
-    const labels = {'column': 'Columns', 'panel': 'Panels', 'action': 'Actions', 'alert': 'Alerts'};
+    const labels = {'column': 'Columns', 'panel': 'Panels', 'action': 'Actions', 'alert': 'Alerts', 'budget': 'Lookups skipped over budget'};
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Load ${p.loadMs.toStringAsFixed(1)} ms · compile ${p.compileMs.toStringAsFixed(1)} ms', style: hint),
       for (final e in labels.entries)

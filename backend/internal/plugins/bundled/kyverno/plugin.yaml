@@ -145,28 +145,28 @@ kinds:
               empty: No rules
               columns:
                 - name: Rule
-                  value: row.?name.orValue("")
+                  value: item.?name.orValue("")
                 - name: Type
                   value: >-
-                    has(row.validate) ? "validate" : has(row.mutate) ? "mutate" : has(row.generate) ? "generate" :
-                    has(row.verifyImages) ? "verifyImages" : "other"
+                    has(item.validate) ? "validate" : has(item.mutate) ? "mutate" : has(item.generate) ? "generate" :
+                    has(item.verifyImages) ? "verifyImages" : "other"
                 # The kinds the rule matches, from any, all and resources.
                 - name: Kinds
                   value: >-
-                    (row.?match.?any.orValue([]) + row.?match.?all.orValue([]) + [row.?match.orValue({})])
+                    (item.?match.?any.orValue([]) + item.?match.?all.orValue([]) + [item.?match.orValue({})])
                       .map(f, f.?resources.?kinds.orValue([])).flatten().map(k, string(k)).distinct().join(", ")
                 - name: Message
                   detail: true
                   value: >-
-                    string(row.?validate.?message.orValue(row.?mutate.?message.orValue(row.?generate.?message.orValue(""))))
+                    string(item.?validate.?message.orValue(item.?mutate.?message.orValue(item.?generate.?message.orValue(""))))
                 # The rule itself (match, exclude, preconditions and what it
                 # does) as YAML.
                 - name: Definition
                   type: code
                   detail: true
                   value: >-
-                    {?"match": row.?match, ?"exclude": row.?exclude, ?"preconditions": row.?preconditions,
-                     ?"validate": row.?validate, ?"mutate": row.?mutate, ?"generate": row.?generate, ?"verifyImages": row.?verifyImages}
+                    {?"match": item.?match, ?"exclude": item.?exclude, ?"preconditions": item.?preconditions,
+                     ?"validate": item.?validate, ?"mutate": item.?mutate, ?"generate": item.?generate, ?"verifyImages": item.?verifyImages}
         - title: Status
           icon: checklist
           when: variables.ready != "" || size(object.?status.?conditions.orValue([])) > 0
@@ -216,21 +216,21 @@ kinds:
                 - &resultColumn
                   name: Result
                   type: status
-                  value: row.result
+                  value: item.result
                 - name: Rule
-                  value: row.rule
+                  value: item.rule
                 - &resourceColumn
                   name: Resource
-                  value: string(row.resource.?kind.orValue("")) + "/" + string(row.resource.?name.orValue(""))
+                  value: string(item.resource.?kind.orValue("")) + "/" + string(item.resource.?name.orValue(""))
                   link: >-
-                    has(row.resource.kind) && has(row.resource.name)
-                      ? ref(string(row.resource.?apiVersion.orValue("")).contains("/") ? string(row.resource.apiVersion).split("/")[0] : "",
-                            string(row.resource.kind), row.namespace, string(row.resource.name))
+                    has(item.resource.kind) && has(item.resource.name)
+                      ? ref(string(item.resource.?apiVersion.orValue("")).contains("/") ? string(item.resource.apiVersion).split("/")[0] : "",
+                            string(item.resource.kind), item.namespace, string(item.resource.name))
                       : dyn(null)
                 - &messageColumn
                   name: Message
                   detail: true
-                  value: row.message
+                  value: item.message
     # Settings ▸ Integrations: "ClusterPolicies: 12 · not ready: 1 · Policies: 3".
     status:
       label: ClusterPolicies
@@ -363,14 +363,14 @@ kinds:
                 - *resultColumn
                 - &policyColumn
                   name: Policy
-                  value: 'row.policy.contains("/") ? row.policy.split("/")[1] : row.policy'
+                  value: 'item.policy.contains("/") ? item.policy.split("/")[1] : item.policy'
                   link: &policyLink >-
-                    row.policy.contains("/") ? ref("kyverno.io", "Policy", row.policy.split("/")[0], row.policy.split("/")[1]) :
-                    row.source.replace("Kyverno", "").endsWith("ValidatingPolicy") || row.source.endsWith("MutatingPolicy") || row.source.endsWith("GeneratingPolicy")
-                      ? ref("policies.kyverno.io", row.source.replace("Kyverno", ""), row.policy)
-                      : ref("kyverno.io", "ClusterPolicy", row.policy)
+                    item.policy.contains("/") ? ref("kyverno.io", "Policy", item.policy.split("/")[0], item.policy.split("/")[1]) :
+                    item.source.replace("Kyverno", "").endsWith("ValidatingPolicy") || item.source.endsWith("MutatingPolicy") || item.source.endsWith("GeneratingPolicy")
+                      ? ref("policies.kyverno.io", item.source.replace("Kyverno", ""), item.policy)
+                      : ref("kyverno.io", "ClusterPolicy", item.policy)
                 - name: Rule
-                  value: row.rule
+                  value: item.rule
                 - *resourceColumn
                 - *messageColumn
   wgpolicyk8s.io/ClusterPolicyReport: *report
@@ -379,10 +379,10 @@ kinds:
   # Security tab on Pods and workloads. Kyverno's own kinds, the reports
   # and Events have none.
   "*":
+    # Events never have reports; the UI doesn't even fetch this panel for them.
+    exceptKinds: [/Event, events.k8s.io/Event]
     variables:
-      skip: >-
-        string(object.?apiVersion.orValue("")).split("/")[0] in ["kyverno.io", "policies.kyverno.io", "wgpolicyk8s.io"] ||
-        string(object.?kind.orValue("")) == "Event"
+      skip: string(object.?apiVersion.orValue("")).split("/")[0] in ["kyverno.io", "policies.kyverno.io", "wgpolicyk8s.io"]
       # Panels only (they read related): every result of the reports the
       # object owns.
       results: >-
@@ -405,7 +405,8 @@ kinds:
         when: ns == "" && !variables.skip
     panel:
       tabs:
-        - title: Policy results
+        - id: policy-results
+          title: Policy results
           icon: policy
           into: security
           when: size(variables.results) > 0
@@ -423,7 +424,7 @@ kinds:
                     - *resultColumn
                     - *policyColumn
                     - name: Rule
-                      value: row.rule
+                      value: item.rule
                     - name: Severity
-                      value: row.severity
+                      value: item.severity
                     - *messageColumn

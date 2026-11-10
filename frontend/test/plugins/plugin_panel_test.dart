@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/panels/registry.dart';
+import 'package:k8sman/plugins/plugin_api.dart';
 import 'package:k8sman/plugins/plugin_host.dart';
 import 'package:k8sman/plugins/plugin_panel.dart';
 import 'package:k8sman/state/app_state.dart';
@@ -331,5 +332,12 @@ void main() {
     app.readOnly = true;
     expect([for (final a in panel.actions(ctx)) a.label], isNot(contains('Poke')));
     expect(api.calls, 1, reason: 'one fetch per object version');
+  });
+
+  test('a "*" entry skips excepted kinds and the other scope', () {
+    const star = PluginKind(key: '*', scope: 'namespaced', exceptKinds: ['/Event']);
+    expect(star.appliesTo('/Pod', true), isTrue);
+    expect(star.appliesTo('/Event', true), isFalse);
+    expect(star.appliesTo('/Node', false), isFalse);
   });
 }

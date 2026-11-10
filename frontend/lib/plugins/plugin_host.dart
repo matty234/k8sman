@@ -126,7 +126,9 @@ class PluginHost extends ChangeNotifier {
 
   /// Whether a plugin adds panel sections, tabs or actions to kind [gk]
   /// (its own entry, or one for any kind, "*").
-  bool contributesTo(String gk) => active.any((p) => p.kinds.any((k) => (k.key == gk || k.key == '*') && (k.sections > 0 || k.tabs > 0 || k.actions > 0)));
+  /// A "*" entry that excludes the kind ([PluginKind.exceptKinds], `scope`)
+  /// doesn't count, so the panel isn't fetched for it.
+  bool contributesTo(String gk, {bool namespaced = true}) => active.any((p) => p.kinds.any((k) => k.appliesTo(gk, namespaced) && (k.sections > 0 || k.tabs > 0 || k.actions > 0)));
 
   /// What becomes of the generic panel's sections for kind [gk] when it
   /// has no compiled-in panel: `replace` if a plugin with sections for it

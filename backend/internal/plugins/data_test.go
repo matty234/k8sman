@@ -648,3 +648,49 @@ func (s sliceLookup) List(_ context.Context, kindKey, _, _, _ string) ([]map[str
 func (s sliceLookup) Query(context.Context, string, string) ([]Sample, error) {
 	return nil, ErrNoPrometheus
 }
+
+// A "*" entry's scope and exceptKinds decide where it applies, a tab's id
+// defaults to a slug of its title, and its lookups stop at the budget.
+func TestAnyKindScopeIDAndBudget(t *testing.T) {
+	var rel strings.Builder
+	reads := []string{}
+	for i := range starMaxLookups + 1 {
+		fmt.Fprintf(&rel, "      r%d: {kind: /Pod, name: '\"p\"'}\n", i)
+		reads = append(reads, fmt.Sprintf("string(has(related.r%d))", i))
+	}
+	h := demoHost(t, `apiVersion: k8sman.dev/v1
+id: star
+name: Star
+version: 1.0.0
+permissions:
+  read: [/Pod]
+kinds:
+  "*":
+    scope: namespaced
+    exceptKinds: [/Secret]
+    related:
+`+rel.String()+`    panel:
+      tabs:
+        - title: Policy Results
+          sections:
+            - title: S
+              blocks:
+                - {type: message, text: '`+strings.Join(reads, " + ")+`'}
+`)
+	lookup := &countingLookup{}
+	env := Env{Context: "demo", Lookup: lookup}
+	secretType := cluster.ResourceType{Version: "v1", Resource: "secrets", Kind: "Secret", Namespaced: true}
+	nodeType := cluster.ResourceType{Version: "v1", Resource: "nodes", Kind: "Node"}
+	for _, rt := range []cluster.ResourceType{secretType, nodeType} {
+		if got := h.Panels(env, rt, map[string]any{"metadata": map[string]any{"name": "x"}}); len(got) != 0 {
+			t.Fatalf("%s: panels = %+v, want none (excepted or out of scope)", rt.Kind, got)
+		}
+	}
+	got := h.Panels(env, widgetType, widgetObj("w1", 1))
+	if len(got) != 1 || len(got[0].Tabs) != 1 || got[0].Tabs[0].ID != "policy-results" {
+		t.Fatalf("panels = %+v, want a tab with id policy-results", got)
+	}
+	if len(lookup.kinds) != starMaxLookups || len(got[0].Notes) != 1 || !strings.Contains(got[0].Notes[0], "over budget") {
+		t.Fatalf("lookups = %d, notes = %v, want %d lookups and one over-budget note", len(lookup.kinds), got[0].Notes, starMaxLookups)
+	}
+}

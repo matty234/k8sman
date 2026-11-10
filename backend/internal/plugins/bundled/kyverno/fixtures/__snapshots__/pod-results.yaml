@@ -5,6 +5,7 @@ panel:
   sections: []
   tabs:
     - icon: policy
+      id: policy-results
       into: security
       sections:
         - blocks:

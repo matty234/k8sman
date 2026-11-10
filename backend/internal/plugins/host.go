@@ -602,7 +602,7 @@ func (h *Host) entries(rt cluster.ResourceType) []entry {
 	var out []entry
 	for _, p := range h.active() {
 		k := p.m.Kinds[key]
-		if k == nil || (k.Version != "" && k.Version != rt.Version) {
+		if k == nil || !k.applies(rt) {
 			continue
 		}
 		if kp := p.kind(key); kp != nil {
@@ -710,7 +710,7 @@ func (p *Plugin) panel(env Env, rt cluster.ResourceType, obj map[string]any) (Pa
 	found := false
 	for _, key := range []string{KindKey(rt), "*"} {
 		k := p.m.Kinds[key]
-		if k == nil || (k.Version != "" && k.Version != rt.Version) {
+		if k == nil || !k.applies(rt) {
 			continue
 		}
 		kp := p.kind(key)
@@ -748,6 +748,25 @@ func (p *Plugin) panel(env Env, rt cluster.ResourceType, obj map[string]any) (Pa
 		out.Refresh = idleRefresh
 	}
 	return out, found
+}
+
+// applies reports whether the entry covers rt: its pinned version, and for
+// a "*" entry its scope and exceptKinds.
+func (k *Kind) applies(rt cluster.ResourceType) bool {
+	if k.Version != "" && k.Version != rt.Version {
+		return false
+	}
+	switch k.Scope {
+	case "namespaced":
+		if !rt.Namespaced {
+			return false
+		}
+	case "cluster":
+		if rt.Namespaced {
+			return false
+		}
+	}
+	return !slices.Contains(k.ExceptKinds, KindKey(rt))
 }
 
 // idleRefresh is how often (seconds) a panel that shows nothing is
@@ -972,6 +991,10 @@ type KindInfo struct {
 	Generic string `json:"generic"`
 	// Status: the kind adds to the plugin's status line.
 	Status bool `json:"status,omitempty"`
+	// Scope and ExceptKinds narrow a "*" entry (see Kind): the UI skips
+	// the panel fetch for kinds no entry applies to.
+	Scope       string   `json:"scope,omitempty"`
+	ExceptKinds []string `json:"exceptKinds,omitempty"`
 }
 
 // List describes every plugin: the bundled ones, and in dev mode every
@@ -1032,7 +1055,7 @@ func (h *Host) List(served func(key string) bool) []Info {
 			for _, key := range m.KindOrder {
 				k := m.Kinds[key]
 				ki := KindInfo{Key: key, Served: key == "*" || (served != nil && served(key)), Columns: len(k.Columns), Actions: len(k.Actions),
-					Alerts: len(k.Alerts), Related: len(k.Related), Metrics: len(k.Metrics), Generic: k.Panel.GenericMode(), Status: k.Status != nil}
+					Alerts: len(k.Alerts), Related: len(k.Related), Metrics: len(k.Metrics), Generic: k.Panel.GenericMode(), Status: k.Status != nil, Scope: k.Scope, ExceptKinds: k.ExceptKinds}
 				if k.Panel != nil {
 					ki.Sections, ki.Tabs = len(k.Panel.Sections), len(k.Panel.Tabs)
 				}

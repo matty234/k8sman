@@ -64,7 +64,7 @@ true`, without one: the app reports the exit status and the last lines of
 output). The first action of a plugin asks you to allow its permissions;
 every run shows the full command or the change and asks first. Plugin
 actions are hidden on read-only contexts. Differences from the design below
-(notably `ns` instead of `namespace`) are in [§13](#13-as-built).
+(notably `ns` instead of `namespace`, a CEL reserved word) are in [§13](#13-as-built).
 
 ### Related objects and metrics
 
@@ -253,16 +253,16 @@ or (with `type: code`) part of the object as YAML:
             - type: table
               rows: variables.requests
               columns:
-                - {name: Request, value: row.name, mono: true}
-                - {name: Class, value: row.deviceClassName}
+                - {name: Request, value: item.name, mono: true}
+                - {name: Class, value: item.deviceClassName}
                 - name: Selectors
                   detail: true
                   mono: true
-                  value: row.?selectors.orValue([]).map(s, s.cel.expression).join("\n")
+                  value: item.?selectors.orValue([]).map(s, s.cel.expression).join("\n")
                 - name: Definition
                   type: code         # a value that isn't a string is shown as YAML
                   detail: true
-                  value: '{?"match": row.?match, ?"validate": row.?validate}'
+                  value: '{?"match": item.?match, ?"validate": item.?validate}'
 ```
 
 ### Tabs, and plugins for any kind
@@ -272,7 +272,11 @@ kind's own tabs. A tab shows for an object while its `when` holds, which
 may read related objects: it appears once the object's panel has been
 rendered. `into` names a tab of the app's that the sections go into on
 kinds that have it, instead of a tab of their own: `security`, the Security
-tab of Pods and workloads.
+tab of Pods and workloads. `security` is the only host tab in v1 (any other
+value is a load error and the schema's `enum` lists it); more may be added
+later, which is additive and never changes an existing plugin. A tab's `id`
+(default: a slug of its title) is what the app remembers the open tab by, so
+a title can change without losing it.
 
 The `"*"` kind key is any kind. It may hold `variables`, `related`,
 `metrics`, `panel` sections and tabs, and `actions`, but not columns,
@@ -300,14 +304,27 @@ does:
               blocks: […]
 ```
 
-Every inspected object then asks for its plugin panel (`GET
-/api/plugins/panel`), so keep a `"*"` entry's lookups cheap: an `owner` or
+A `"*"` entry can say where it doesn't apply: `exceptKinds: [/Event,
+events.k8s.io/Event]` (kind keys) and `scope: namespaced | cluster | any`
+(default `any`). The app skips the plugin-panel fetch for kinds no entry
+applies to (`GET /api/plugins` lists both per kind entry), and the entry's
+actions don't apply there either, so authors needn't write `when` for it.
+
+An inspected object whose kind a `"*"` entry applies to asks for its plugin
+panel (`GET /api/plugins/panel`), so keep a `"*"` entry's lookups cheap: an `owner` or
 `name` relation from the watch cache, skipped with `when` for kinds that
 have none. A panel that shows nothing (no section, no tab) is fetched again
 every 30 seconds rather than every 5. What a `"*"` relation can't read (a
 kind the cluster doesn't serve) is noted only where the plugin shows
 something. Objects seen through `"*"` are prepared as for their own kind:
 a Secret's values are blanked there too.
+
+Each plugin's `"*"` entry has a **budget per inspection**: at most 4 related
+lookups (`starMaxLookups`) within 300 ms (`starDeadline`). Lookups past it
+are skipped, the panel notes `related.<name>: skipped: over budget`, and
+the inspection is counted under `budget` in the plugin's stats
+(Settings ▸ Integrations ▸ timings). Entries for a kind of their own have
+no such budget.
 
 ### Fixtures and tests
 
@@ -512,8 +529,9 @@ with a `minAppVersion`.
 A **kind key** is `group/Kind`, as in the UI: `/Pod`,
 `cert-manager.io/Certificate`. The key `"*"` (any kind) may hold
 `variables`, `related`, `metrics`, `panel` (sections and tabs, not
-`generic`) and `actions`; columns, `hideColumns`, alerts, `status`,
-`icon` and `version` are per kind. YAML anchors work, so two kinds can
+`generic`) and `actions`, and only it takes `exceptKinds` (kind keys it
+skips) and `scope` (`any` (default), `namespaced` or `cluster`); columns,
+`hideColumns`, alerts, `status`, `icon` and `version` are per kind. YAML anchors work, so two kinds can
 share a definition (or one field of it).
 
 ### Kind
@@ -776,14 +794,14 @@ kinds:
               limit: 5
               columns:
                 - name: Name
-                  value: row.metadata.name
-                  link: ref(row)
+                  value: item.metadata.name
+                  link: ref(item)
                 - name: Ready
                   type: status
-                  value: 'conditionTrue(row, "Ready") ? "Ready" : condition(row, "Ready").?reason.orValue("Pending")'
+                  value: 'conditionTrue(item, "Ready") ? "Ready" : condition(item, "Ready").?reason.orValue("Pending")'
                 - name: Created
                   type: age
-                  value: row.metadata.creationTimestamp
+                  value: item.metadata.creationTimestamp
 
     actions:
       - id: renew
@@ -912,13 +930,13 @@ kinds:
               empty: No node claims.
               columns:
                 - name: Name
-                  value: row.metadata.name
-                  link: ref(row)
+                  value: item.metadata.name
+                  link: ref(item)
                 - name: Type
-                  value: row.metadata.?labels[?"node.kubernetes.io/instance-type"]
+                  value: item.metadata.?labels[?"node.kubernetes.io/instance-type"]
                 - name: Ready
                   type: status
-                  value: 'conditionTrue(row, "Ready") ? "Ready" : "Not ready"'
+                  value: 'conditionTrue(item, "Ready") ? "Ready" : "Not ready"'
         - title: Conditions
           blocks:
             - type: conditions
@@ -955,12 +973,15 @@ A panel is a list of **sections**: `title` (text), `icon` (text), `when`
 header), `collapsed` (bool), `blocks` (list). Each section is a
 `DetailSection`. Every block also takes `when`.
 
-A panel's **tabs** (`panel.tabs`) are `{title, icon, when` **CEL** bool`,
+A panel's **tabs** (`panel.tabs`) are `{id, title, icon, when` **CEL** bool`,
 into, sections}`: an inspector tab with its own sections, after the kind's
 tabs, shown while `when` holds (default: always). `into: security` puts the
 sections in the Security tab instead, on the kinds that have one (Pods and
 workloads); there they are drawn as that tab's sections. A title may not be
-Overview, YAML or Events, nor appear twice in a kind entry.
+Overview, YAML or Events, nor appear twice in a kind entry. `id` matches
+`^[a-z][a-z0-9-]*$`, is unique among the entry's tabs and defaults to a slug
+of the title; set it on a tab you may retitle. `into` is `security` (the
+only host tab in v1; more may be added later).
 
 | Block | Widget | Fields |
 |---|---|---|
@@ -969,7 +990,7 @@ Overview, YAML or Events, nor appear twice in a kind entry.
 | `chips` | `Chipish` / `LabelChips` | `items` **CEL**: a list of strings, or a map (shown as `key=value`) |
 | `conditions` | `ConditionsTable` | `from` **CEL**, default `object.status.conditions` |
 | `links` | `ResourceLink` list | `items` **CEL**: a list of Refs; `empty` (text) |
-| `table` | compact table | `rows` **CEL** list; `columns`: list of `{name, value` **CEL** (sees `row`)`, type, link, mono: bool, detail: bool}`; `sortBy` (column name), `descending`, `limit` (default 20, "Show all" beyond), `empty` (text). A `detail` column is drawn on its own line under its row, across the table |
+| `table` | compact table | `rows` **CEL** list; `columns`: list of `{name, value` **CEL** (sees `item`)`, type, link, mono: bool, detail: bool}`; `sortBy` (column name), `descending`, `limit` (default 20, "Show all" beyond), `empty` (text). A `detail` column is drawn on its own line under its row, across the table |
 | `settings` | `KeyValueTable` | `value` **CEL**: a map of any depth, flattened into sorted `path → value` rows; `limit` (default 14, at most 50; "and N more" beyond), `empty` (text). See below |
 | `bar` | `UsageBar` | `label`, `value` **CEL** number, `max` **CEL** number, `format`: `number`, `quantity` or `percent`; amber from 80%, red from 90% |
 | `code` | `CodeBlock` | `value` **CEL**: a string, or any value, shown as YAML (JSON with `language: json`); `language`: `text`, `yaml`, `json` or `shell` |
@@ -1045,12 +1066,17 @@ must still have one type; use `dyn()` to mix (as in the Karpenter column).
 | `variables` | `map(string, dyn)`, lazy | ✓¹ | ✓¹ | ✓ | ✓ | ✓¹ |
 | `now` | `timestamp` | ✓ | ✓ | ✓ | ✓ | |
 | `context` | `string`: kube context name | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `namespace` | `string`: the object's namespace, `""` if cluster-scoped | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `ns` | `string`: the object's namespace, `""` if cluster-scoped (not `namespace`: that is a reserved word in CEL and can't name a variable) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `related` | `map(string, dyn)` | | | ✓ | ✓ | |
 | `metrics` | `map(string, list(dyn))` | | | ✓ | | |
+| `item` | `dyn` (a map for a related filter) | | | `table` columns: the row | | a related `filter`: the candidate |
 | `row` | `dyn` | | | `table` columns | | |
 | `input` | `map(string, dyn)` | | | | patch `body`, `validate` | |
-| `item` | `map(string, dyn)` | | | | | a related `filter`: the candidate |
+
+`item` is the element being evaluated, in table columns and related filters
+alike. `row` is its **deprecated** alias in table columns: it works for all of
+v1 and `plugin validate` warns about it. `input` is what the user entered in
+an action's form and stays as is (final); so does `ns`.
 
 ¹ Only variables that don't (directly or through other variables) reference
 `related` or `metrics`. The loader checks this from the compiled ASTs and
@@ -2036,8 +2062,9 @@ for a pod that owns one (the tab rendered) and **0.12 ms** for an object
 that owns none. It runs again every 5 s while the tab shows and every 30 s
 otherwise. Without Kyverno the relation stops at discovery (the kind isn't
 served). The namespace's PolicyReport stream stays warm for 90 s after the
-last read, as the module's list was cached for 30 s. Kyverno's own kinds,
-reports and Events skip the lookup (`when`). The DRA Node filter over
+last read, as the module's list was cached for 30 s. Kyverno's own kinds
+and reports skip the lookup (`when`); Events are `exceptKinds`, so the app
+doesn't fetch the panel for them at all. The DRA Node filter over
 1,000 slices is 1.3 ms.
 
 **Tables.** `BenchmarkTableSnapshot` (1,500 pods) is unchanged: before,
@@ -2050,6 +2077,24 @@ columns of their plugins; their tables are small and memoised like any.
 Pod and Node sections in `dra_sections.dart`), `lib/modules/kyverno_module.dart`,
 `lib/panels/kyverno/` (with `ObjectPolicyResults`), the DRA columns of
 `internal/columns/builtin.go` and `internal/columns/kyverno.go`.
+
+### Freeze changes (host slots, tab ids, `"*"` cost, `item`)
+
+- `into` stays a one-value enum (`security`); the schema says more may come.
+- `Tab.id` (`TabID()` falls back to a slug of the title, with a `tab-`
+  prefix when it would not start with a letter) is in `TabOut.id`. The
+  frontend's `PanelTab.id` is `plugin:<plugin>:<tab id>` for plugin tabs,
+  and the sidebar remembers the open tab by it instead of by label.
+- `Kind.Scope` / `Kind.ExceptKinds` are checked on `"*"` only and applied
+  by `Kind.applies` to panels, actions and tables alike; `KindInfo` carries
+  them to the UI, whose `PluginHost.contributesTo` skips the fetch. The
+  bundled Kyverno `"*"` entry uses `exceptKinds` for Events.
+- The budget is `starMaxLookups` / `starDeadline` in `related.go`; going
+  over sets `renderer.overBudget`, which records one `budget` count in the
+  plugin's stats.
+- Table column environments declare `item` and `row` (the same value);
+  `compile.go` warns when a column reads `row`. The bundled plugins and
+  `plugin new` (which has no table) use `item`.
 
 ## v1 freeze checklist
 
@@ -2069,20 +2114,19 @@ What should still change, or be decided, before third parties build on
    list for plugins. Also make the badge severity names an enum in the
    schema (`error`, `critical`, `warning`, `warn`, `ok`, `success`,
    `info`, `neutral` are accepted today, undocumented).
-4. **Host tab slots.** `into` accepts `security` only. Decide the slots
-   (and their names, which become API) before others ask: a network or
-   logs tab are candidates.
-5. **Tab identity.** A tab is identified by its title (unique per entry).
-   An `id` would let titles change without breaking remembered tabs.
-6. **The `"*"` cost model.** Any `"*"` panel entry makes every inspection
-   fetch the plugin panel. A `kinds` list or exclusions on `"*"` (so the UI
-   can skip the fetch, and authors needn't write `when` for it) and a
-   per-plugin budget for `"*"` lookups would bound it before many plugins
-   do this.
-7. **Naming.** `row` (table columns), `item` (related filters) and `input`
-   (actions) are three names for "the thing being looked at"; `ns` is the
-   CEL variable but `namespace` the related field. Settle or document as
-   final.
+4. ~~**Host tab slots.**~~ Resolved: `into` is a schema enum holding
+   only `security`; an unknown value is a load error. New slots may be
+   added later (additive, non-breaking).
+5. ~~**Tab identity.**~~ Resolved: tabs take an optional `id`
+   (`^[a-z][a-z0-9-]*$`, unique per entry, default a slug of the title);
+   the UI remembers and selects plugin tabs by it.
+6. ~~**The `"*"` cost model.**~~ Resolved: a `"*"` entry takes `exceptKinds`
+   and `scope`, which the plugin list exposes so the UI skips the panel
+   fetch; each plugin's `"*"` entry has a per-inspection budget (4 related
+   lookups, 300 ms), noted in the panel and counted in the stats.
+7. ~~**Naming.**~~ Resolved: `ns` stays (`namespace` is a CEL reserved
+   word; §5 said otherwise), table columns see `item` (`row` is a
+   deprecated alias with a lint warning), and `input` is final.
 8. **Interactive tables.** No filter chips or per-column sorting in the
    UI; a `filterBy: <column>` on tables would cover the Kyverno report
    panel.

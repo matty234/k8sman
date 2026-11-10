@@ -64,8 +64,9 @@ class PluginComposedPanel extends ResourcePanel {
             if (!(t.into != null && slots.contains(t.into)) && !labels.contains(t.title))
               PanelTab(
                 label: t.title,
+                id: 'plugin:${p.plugin}:${t.id}',
                 icon: pluginIcon(t.icon) ?? Icons.extension_outlined,
-                builder: (context, ctx) => PluginTabView(key: ValueKey('plugin-tab-${p.plugin}-${t.title}-${ctx.uid}'), ctx: ctx, plugin: p.plugin, title: t.title),
+                builder: (context, ctx) => PluginTabView(key: ValueKey('plugin-tab-${p.plugin}-${t.id}-${ctx.uid}'), ctx: ctx, plugin: p.plugin, tabId: t.id),
               ),
     ];
   }
@@ -294,15 +295,15 @@ class PluginSections extends StatelessWidget {
 class PluginTabView extends StatelessWidget {
   final PanelContext ctx;
   final String plugin;
-  final String title;
-  const PluginTabView({super.key, required this.ctx, required this.plugin, required this.title});
+  final String tabId;
+  const PluginTabView({super.key, required this.ctx, required this.plugin, required this.tabId});
 
   @override
   Widget build(BuildContext context) => _PanelWatch(
         ctx: ctx,
         builder: (context, d, error) {
           final p = d?.panels.where((p) => p.plugin == plugin).firstOrNull;
-          final tab = p?.tabs.where((t) => t.title == title).firstOrNull;
+          final tab = p?.tabs.where((t) => t.id == tabId).firstOrNull;
           return SelectionArea(
             child: PageScroll(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
               if (error != null && d == null) PluginErrorText('$error'),

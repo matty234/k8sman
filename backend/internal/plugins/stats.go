@@ -13,6 +13,9 @@ const (
 	statPanel  = "panel"
 	statAction = "action"
 	statAlert  = "alert"
+	// statBudget counts inspections where a "*" entry went over its
+	// lookup budget.
+	statBudget = "budget"
 )
 
 // stats records a plugin's evaluations: counts, errors, cost-limit hits

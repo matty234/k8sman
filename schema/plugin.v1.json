@@ -655,6 +655,14 @@
           },
           "type": "array"
         },
+        "exceptKinds": {
+          "description": "Only for \"*\": kind keys (group/Kind) the entry doesn't apply to; the app doesn't fetch the plugin's panel for them.",
+          "items": {
+            "pattern": "^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
         "hideColumns": {
           "description": "Default columns to drop, by name (any case); \"*\" drops every default but Name, Namespace and Age.",
           "items": {
@@ -768,6 +776,15 @@
             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
           },
           "type": "object"
+        },
+        "scope": {
+          "description": "Only for \"*\": namespaced or cluster limits the entry to namespaced or cluster-scoped kinds (default any).",
+          "enum": [
+            "any",
+            "namespaced",
+            "cluster"
+          ],
+          "type": "string"
         },
         "status": {
           "allOf": [
@@ -1234,8 +1251,13 @@
           ],
           "type": "string"
         },
+        "id": {
+          "description": "Identifies the tab (the app remembers the open tab by it, so the title can change): unique among the entry's tabs. Default: a slug of the title.",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
         "into": {
-          "description": "A tab of the app's own that these sections join on kinds that have it (security: the Security tab of Pods and workloads); elsewhere the tab is a tab of its own.",
+          "description": "A tab of the app's own that these sections join on kinds that have it (security: the Security tab of Pods and workloads); elsewhere the tab is a tab of its own. More host tabs may be added in later versions.",
           "enum": [
             "security"
           ],

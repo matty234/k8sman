@@ -78,7 +78,13 @@ type Kind struct {
 	// Settings ▸ Integrations): a count of its objects and of those that
 	// match each of Counts.
 	Status *Status `yaml:"status"`
-	pos    Pos
+	// ExceptKinds and Scope narrow a "*" entry (and only that): it skips
+	// the kinds in ExceptKinds (group/Kind keys) and, with Scope
+	// namespaced or cluster, the other kind of resource, so the UI doesn't
+	// fetch the plugin's panel for objects it can't apply to.
+	ExceptKinds []string `yaml:"exceptKinds"`
+	Scope       string   `yaml:"scope"`
+	pos         Pos
 }
 
 // Status counts a kind's objects across the cluster for the plugin's
@@ -184,11 +190,40 @@ type Panel struct {
 // engine's results go into the Security tab of Pods and workloads, and
 // are a tab of their own on other kinds.
 type Tab struct {
+	// ID identifies the tab (remembered selection, API): lower-case
+	// letters, digits and dashes, unique among the entry's tabs. Default:
+	// a slug of Title.
+	ID       string    `yaml:"id"`
 	Title    string    `yaml:"title"`
 	Icon     string    `yaml:"icon"`
 	When     Expr      `yaml:"when"`
 	Into     string    `yaml:"into"`
 	Sections []Section `yaml:"sections"`
+}
+
+// TabID is the tab's id: its own, or a slug of its title.
+func (t Tab) TabID() string {
+	if t.ID != "" {
+		return t.ID
+	}
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(t.Title) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			if dash && b.Len() > 0 {
+				b.WriteByte('-')
+			}
+			dash = false
+			b.WriteRune(r)
+		} else {
+			dash = true
+		}
+	}
+	id := b.String()
+	if id == "" || id[0] < 'a' || id[0] > 'z' {
+		id = "tab-" + id
+	}
+	return strings.TrimSuffix(id, "-")
 }
 
 // GenericMode is Generic with its default.
@@ -266,7 +301,7 @@ type BadgeItem struct {
 	When     Expr `yaml:"when"`
 }
 
-// TableColumn is a column of a table block; its value sees `row`.
+// TableColumn is a column of a table block; its value and link see `item`.
 type TableColumn struct {
 	Name  string `yaml:"name"`
 	Value Expr   `yaml:"value"`
@@ -340,6 +375,7 @@ type items struct {
 func (it *items) decodeNode(_ *decoder, n *yaml.Node) { it.node = n }
 
 var (
+	tabIDRe    = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 	idRe       = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$`)
 	actionIDRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$`)
 	kindKeyRe  = regexp.MustCompile(`^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*$`)
@@ -366,6 +402,7 @@ var (
 	// hostTabs are the app's own tabs a plugin tab can go into (Tab.Into):
 	// security is the Security tab of Pods and workloads.
 	hostTabs     = []string{"security"}
+	kindScopes   = []string{"any", "namespaced", "cluster"}
 	jsonPatchOps = []string{"add", "remove", "replace", "move", "copy", "test"}
 )
 
@@ -520,8 +557,21 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 				(k.Panel != nil && k.Panel.Generic != "") {
 				d.errAt(kn, `the "*" kind may hold variables, related, metrics, panel sections and tabs, and actions (not columns, hideColumns, alerts, status, icon, version or panel.generic)`)
 			}
-		} else if !slices.Contains(m.Permissions.Read, key) {
-			d.errAt(kn, "%s is not in permissions.read", key)
+		} else {
+			if len(k.ExceptKinds) > 0 || k.Scope != "" {
+				d.errAt(kn, `exceptKinds and scope belong to the "*" kind`)
+			}
+			if !slices.Contains(m.Permissions.Read, key) {
+				d.errAt(kn, "%s is not in permissions.read", key)
+			}
+		}
+		if k.Scope != "" && !slices.Contains(kindScopes, k.Scope) {
+			d.errAt(resolve(field(kn, "scope")), "scope must be one of %s", strings.Join(kindScopes, ", "))
+		}
+		for _, x := range k.ExceptKinds {
+			if !kindKeyRe.MatchString(x) {
+				d.errAt(resolve(field(kn, "exceptKinds")), "exceptKinds: %q is not a kind key such as apps/Deployment or /Pod", x)
+			}
 		}
 		used.read[key] = true
 		k.validate(d, m, key, resolve(field(kindsNode, key)), used)
@@ -695,6 +745,7 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 		validateSections(d, k.Panel.Sections, resolve(field(pn, "sections")))
 		tabsNode := resolve(field(pn, "tabs"))
 		titles := map[string]bool{}
+		tabIDs := map[string]bool{}
 		for i := range k.Panel.Tabs {
 			t := &k.Panel.Tabs[i]
 			var tn *yaml.Node
@@ -710,6 +761,12 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 				d.errAt(orNode(tn, pn), "tab %q has the name of one of the inspector's own tabs", t.Title)
 			}
 			titles[t.Title] = true
+			if t.ID != "" && !tabIDRe.MatchString(t.ID) {
+				d.errAt(resolve(field(tn, "id")), "tab id %q: lower-case letters, digits and dashes, starting with a letter", t.ID)
+			} else if tabIDs[t.TabID()] {
+				d.errAt(orNode(tn, pn), "tab id %q is used twice (give the tabs an id)", t.TabID())
+			}
+			tabIDs[t.TabID()] = true
 			if t.Icon != "" && !IconAllowed(t.Icon) {
 				d.errAt(resolve(field(tn, "icon")), "unknown icon %q", t.Icon)
 			}

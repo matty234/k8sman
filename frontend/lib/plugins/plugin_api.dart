@@ -75,6 +75,11 @@ class PluginKind {
 
   /// Whether the kind adds to the plugin's status line.
   final bool status;
+
+  /// For a "*" entry: `namespaced`, `cluster` or `any`, and the kinds it
+  /// skips (group/Kind keys). See [appliesTo].
+  final String scope;
+  final List<String> exceptKinds;
   const PluginKind({
     required this.key,
     this.served = false,
@@ -89,6 +94,8 @@ class PluginKind {
     this.errors = 0,
     this.generic = 'keep',
     this.status = false,
+    this.scope = 'any',
+    this.exceptKinds = const [],
   });
 
   factory PluginKind.fromJson(Json j) => PluginKind(
@@ -105,7 +112,17 @@ class PluginKind {
         errors: (j['errors'] as num?)?.toInt() ?? 0,
         generic: '${j['generic'] ?? 'keep'}',
         status: j['status'] == true,
+        scope: '${j['scope'] ?? 'any'}',
+        exceptKinds: [for (final x in (j['exceptKinds'] as List? ?? const [])) '$x'],
       );
+
+  /// Whether the entry covers kind [gk] ([namespaced]: it is namespaced):
+  /// its own key, or "*" less its scope and exceptions.
+  bool appliesTo(String gk, bool namespaced) {
+    if (key != '*') return key == gk;
+    if (exceptKinds.contains(gk)) return false;
+    return switch (scope) { 'namespaced' => namespaced, 'cluster' => !namespaced, _ => true };
+  }
 }
 
 /// A plugin's status line (`GET /api/plugins/status`): e.g.
@@ -424,13 +441,16 @@ class PluginPanelOut {
 /// A plugin tab for an object: a tab of its own, or, on kinds with the
 /// host tab named by [into] (`security`), sections of that tab.
 class PluginTabOut {
+  /// Stable identity (the plugin's `id`, or a slug of the title).
+  final String id;
   final String title;
   final String? icon;
   final String? into;
   final List<Json> sections;
-  const PluginTabOut({required this.title, this.icon, this.into, this.sections = const []});
+  const PluginTabOut({required this.id, required this.title, this.icon, this.into, this.sections = const []});
 
   factory PluginTabOut.fromJson(Json j) => PluginTabOut(
+        id: '${j['id'] ?? j['title'] ?? ''}',
         title: '${j['title'] ?? ''}',
         icon: j['icon'] as String?,
         into: j['into'] as String?,

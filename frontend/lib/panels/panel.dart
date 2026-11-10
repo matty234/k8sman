@@ -27,6 +27,10 @@ class PanelContext {
 /// An extra tab in the detail sidebar beside Overview / YAML / Events.
 class PanelTab {
   final String label;
+
+  /// Identity for remembering the open tab (default: [label]); a plugin
+  /// tab's is `plugin:<plugin>:<tab id>`, so retitling it keeps it.
+  final String? id;
   final IconData? icon;
   final Widget Function(BuildContext context, PanelContext ctx) builder;
 
@@ -36,7 +40,9 @@ class PanelTab {
   /// The tab's role for plugins: a plugin tab whose `into` names it
   /// (`security`) is drawn inside this tab rather than as a tab of its own.
   final String? slot;
-  const PanelTab({required this.label, this.icon, required this.builder, this.badge, this.slot});
+
+  String get key => id ?? label;
+  const PanelTab({required this.label, this.id, this.icon, required this.builder, this.badge, this.slot});
 }
 
 /// Renders kind-specific detail sections. The shell renders a quiet owner
