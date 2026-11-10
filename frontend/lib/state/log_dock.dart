@@ -240,7 +240,7 @@ String? defaultLogContainer(Json pod) {
 }
 
 /// Fixed panes at the start of the dock strip, before the closable tabs.
-enum DockPane { alerts, forwards }
+enum DockPane { issues, alerts, forwards }
 
 /// The bottom dock: a permanent bar along the main column with its fixed
 /// panes (Alerts, Forwards) first, then open tabs (log streams and terminal sessions), the active

@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/state/issues_feed.dart';
+import 'package:k8sman/state/log_dock.dart';
+import 'package:k8sman/ui/logs/log_dock_view.dart';
 import 'package:k8sman/ui/overview/overview_api.dart';
 import 'package:k8sman/ui/overview/overview_view.dart';
 import 'package:k8sman/ui/theme.dart';
@@ -152,6 +155,37 @@ void main() {
 
     tester.view.physicalSize = const Size(1500, 900);
     await tester.pump();
+  });
+
+  testWidgets('dock: Issues tab shows a badge and lists the overview issues', (tester) async {
+    final api = RecordingApi();
+    final app = AppState(api)
+      ..types = testTypes
+      ..currentContext = 'kind-k8sman-dev';
+    final dock = LogDock(api);
+    final feed = IssuesFeed(api, app: app, dock: dock, source: FakeOverviewApi(liveFixture(), api));
+    addTearDown(feed.dispose);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1000, 600);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        Provider<ApiClient>.value(value: api),
+        ChangeNotifierProvider<AppState>.value(value: app),
+        ChangeNotifierProvider<LogDock>.value(value: dock),
+        ChangeNotifierProvider<IssuesFeed>.value(value: feed),
+      ],
+      child: MaterialApp(theme: buildTheme(Brightness.dark), home: const Scaffold(body: Column(children: [Spacer(), LogDockView(maxHeight: 500)]))),
+    ));
+    await feed.refresh();
+    dock.showPane(DockPane.issues);
+    await tester.pump();
+    final tab = find.byKey(const ValueKey('dock-issues-tab'));
+    expect(find.descendant(of: tab, matching: find.textContaining(RegExp(r'^\d+$'))), findsOneWidget); // the count badge
+    expect(find.text('crashy'), findsWidgets);
+    expect(find.text('bad-image'), findsWidgets);
+    await tester.tap(find.text('crashy').first);
+    expect(app.detail?.name, 'crashy'); // opens the inspector from any page
   });
 
   for (final width in [360.0, 900.0, 1600.0]) {

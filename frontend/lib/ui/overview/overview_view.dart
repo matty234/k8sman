@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../api/client.dart';
 import '../../metrics/cache.dart';
 import '../../metrics/metrics_api.dart';
+import '../../state/issues_feed.dart';
 import '../../state/poller.dart';
 import '../../util/k8s.dart' show Severity;
 import '../../app/window_chrome.dart' show toolbarRowHeight;
@@ -100,6 +101,7 @@ class _OverviewViewState extends State<OverviewView> with PollingState {
       if (!mounted || seq != _seq) return;
       // The sidebar's problem badges count all namespaces.
       if (ns.isAll) OverviewSummary.of(source.api).feed(data, source.api.context);
+      context.read<IssuesFeed?>()?.accept(data, ns, source.api.context);
       _scheduleQuick(data);
       setState(() {
         _data = data;

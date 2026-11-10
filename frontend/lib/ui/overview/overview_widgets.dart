@@ -106,7 +106,10 @@ class IssueList extends StatefulWidget {
   /// How many rows show before "Show all" (null: page through all), so a
   /// long list doesn't push Nodes and events far down the page.
   final int? preview;
-  const IssueList({super.key, required this.issues, required this.onChanged, required this.emptyText, this.loading = false, this.preview});
+
+  /// Docked in the bottom pane: no padding around an empty list.
+  final bool dense;
+  const IssueList({super.key, required this.issues, required this.onChanged, required this.emptyText, this.loading = false, this.preview, this.dense = false});
 
   @override
   State<IssueList> createState() => _IssueListState();
@@ -141,7 +144,7 @@ class _IssueListState extends State<IssueList> {
     }
     if (groups.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: EdgeInsets.symmetric(vertical: widget.dense ? 0 : 6),
         child: InlineMessage(widget.emptyText, icon: Icons.check_circle_outline),
       );
     }

@@ -11,6 +11,7 @@ import 'app/updates/update_controller.dart';
 import 'app/updates/update_ui.dart';
 import 'app/window_chrome.dart';
 import 'state/app_state.dart';
+import 'state/issues_feed.dart';
 import 'state/log_dock.dart';
 import 'modules/modules.dart' show kindHomes;
 import 'prometheus/metric_history_chart.dart' show ChartHoverScope;
@@ -28,6 +29,7 @@ void main(List<String> args) {
   // Spawns the embedded backend (macOS/Windows app) or uses K8SMAN_BACKEND, then
   // loads the app state whenever the backend (re)connects.
   final dock = LogDock(api);
+  final issues = IssuesFeed(api, app: app, dock: dock);
   final backend = BackendController(
     api,
     onReady: () {
@@ -46,12 +48,14 @@ void main(List<String> args) {
         ChangeNotifierProvider<AppState>.value(value: app),
         ChangeNotifierProvider<BackendController>.value(value: backend),
         ChangeNotifierProvider<LogDock>.value(value: dock),
+        ChangeNotifierProvider<IssuesFeed>.value(value: issues),
         ChangeNotifierProvider<UpdateController>.value(value: updates),
       ],
       child: const K8sManApp(),
     ),
   );
   backend.start();
+  issues.start();
   updates.start();
 }
 

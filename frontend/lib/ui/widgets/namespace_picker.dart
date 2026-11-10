@@ -749,7 +749,15 @@ class PageScope {
   static final _scopes = <String, NamespaceScope>{};
 
   static NamespaceScope of(String page) => _scopes[page] ?? NamespaceScope.all;
-  static void set(String page, NamespaceScope scope) => _scopes[page] = scope;
+  static void set(String page, NamespaceScope scope) {
+    if (_scopes[page] == scope) return;
+    _scopes[page] = scope;
+    changes.value++;
+  }
+
+  /// Bumps when any page's scope changes (the dock's Issues feed follows the
+  /// Overview's).
+  static final changes = ValueNotifier<int>(0);
 
   /// Tests: forget every page's scope.
   @visibleForTesting

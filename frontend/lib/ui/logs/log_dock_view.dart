@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import '../../state/log_dock.dart';
 import '../alerts/alerts_nav_badge.dart';
 import '../alerts/alerts_view.dart';
+import '../overview/issues_dock_view.dart';
+import '../overview/issues_nav_badge.dart';
 import '../portforward/forwards_badge.dart';
 import '../portforward/portforward_view.dart';
 import '../../util/k8s.dart';
@@ -58,7 +60,9 @@ class LogDockView extends StatelessWidget {
                 if (!dock.collapsed) ...[
                   Container(height: 1, color: colors.separator),
                   Expanded(
-                    child: dock.pane == DockPane.alerts
+                    child: dock.pane == DockPane.issues
+                        ? const IssuesDockView()
+                        : dock.pane == DockPane.alerts
                         ? const AlertsView(docked: true)
                         : dock.pane == DockPane.forwards
                         ? const PortForwardView(docked: true)
@@ -122,10 +126,12 @@ class _TabStrip extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, box) {
           // Narrow main column: drop the title and status; tabs keep the room.
-          final narrow = box.maxWidth < 560;
+          final narrow = box.maxWidth < 640;
           return Row(
             children: [
               const SizedBox(width: 4),
+              _PaneTab(compact: narrow, dock: dock, pane: DockPane.issues, icon: Icons.report_problem_outlined, label: 'Issues', badge: const IssuesNavBadge(leading: 6)),
+              const SizedBox(width: 2),
               _PaneTab(compact: narrow, dock: dock, pane: DockPane.alerts, icon: Icons.notifications_none, label: 'Alerts', badge: const AlertsNavBadge(leading: 6)),
               const SizedBox(width: 2),
               _PaneTab(
