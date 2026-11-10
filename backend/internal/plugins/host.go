@@ -571,7 +571,14 @@ func (h *Host) Panels(contextName string, rt cluster.ResourceType, obj map[strin
 
 // Actions are the shell actions offered for obj (its kind's and "*"),
 // with their argv expanded by vars.
-func (h *Host) Actions(contextName string, rt cluster.ResourceType, obj map[string]any, vars ShellVars) []ActionOut {
+func (h *Host) Actions(contextName string, rt cluster.ResourceType, obj map[string]any, vars func() ShellVars) []ActionOut {
+	var memo ShellVars
+	get := func() ShellVars {
+		if memo == nil {
+			memo = vars()
+		}
+		return memo
+	}
 	var out []ActionOut
 	consent := h.settings().Consent
 	for _, p := range h.active() {
@@ -588,7 +595,7 @@ func (h *Host) Actions(contextName string, rt cluster.ResourceType, obj map[stri
 			for _, a := range acts {
 				out = append(out, ActionOut{
 					Plugin: p.ID(), ID: a.ID, Label: a.Label, Icon: a.Icon, Shortcut: a.Shortcut, Message: a.Message,
-					Dangerous: a.IsDangerous(), Argv: a.Argv(vars), Consented: consent[p.ID()] == p.PermissionsHash(),
+					Dangerous: a.IsDangerous(), Argv: a.Argv(get()), Consented: consent[p.ID()] == p.PermissionsHash(),
 				})
 			}
 		}

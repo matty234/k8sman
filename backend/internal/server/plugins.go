@@ -310,7 +310,10 @@ func (s *Server) handlePluginPanel(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.isReadOnly() {
 		home, _ := os.UserHomeDir()
-		vars := s.shellVars(r.Context(), c, rq, u, kubeconfigChain(s.mgr.Kubeconfig(), os.Getenv("KUBECONFIG"), home))
+		// Built only when an action is offered (it evaluates the row).
+		vars := func() plugins.ShellVars {
+			return s.shellVars(r.Context(), c, rq, u, kubeconfigChain(s.mgr.Kubeconfig(), os.Getenv("KUBECONFIG"), home))
+		}
 		if acts := s.plugins.Actions(c.Context, rq.Type, u.Object, vars); acts != nil {
 			out["actions"] = acts
 		}

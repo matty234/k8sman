@@ -3,7 +3,6 @@ package plugins
 import (
 	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,9 +24,10 @@ import (
 // The CEL environment of k8sman.dev/v1 (docs/PLUGINS.md §5), without
 // `related` and `metrics` (Milestone 2).
 //
-// Variables: object, variables (lazy), now, context, ns (the object's
-// namespace; `namespace` is a reserved word in CEL), and row in table
-// block columns.
+// Variables: object, variables.<name> (each declared with its own type
+// when the kind entry is compiled, and evaluated lazily), now, context, ns
+// (the object's namespace; `namespace` is a reserved word in CEL), and
+// row in table block columns.
 //
 // age(t) and until(t) are macros for _age(t, now) and _until(t, now), and
 // ref(group, kind, name) for ref(group, kind, ns, name), so functions
@@ -75,7 +75,6 @@ func envOptions() []cel.EnvOption {
 		k8scel.URLs(),
 		k8scel.QuantityLib(),
 		cel.Variable(varObject, cel.MapType(cel.StringType, cel.DynType)),
-		cel.Variable(varVariables, cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable(varNow, cel.TimestampType),
 		cel.Variable(varContext, cel.StringType),
 		cel.Variable(varNS, cel.StringType),
@@ -289,8 +288,6 @@ func (a *activation) ResolveName(name string) (any, bool) {
 	switch name {
 	case varObject:
 		return a.object, true
-	case varVariables:
-		return a.vars, true
 	case varNow:
 		return a.now, true
 	case varContext:
@@ -300,13 +297,16 @@ func (a *activation) ResolveName(name string) (any, bool) {
 	case varRow:
 		return a.row, a.hasRow
 	}
+	if v, ok := strings.CutPrefix(name, varVariables+"."); ok {
+		return a.vars.get(v)
+	}
 	return nil, false
 }
 
 func (a *activation) Parent() interpreter.Activation { return nil }
 
-// lazyVars is `variables`: each is evaluated on first use, at most once
-// per evaluation (they are compiled programs of the kind entry).
+// lazyVars are the kind entry's variables (compiled programs), each
+// evaluated on first use, at most once per evaluation.
 type lazyVars struct {
 	progs map[string]*program
 	act   *activation
@@ -315,8 +315,6 @@ type lazyVars struct {
 	// caller's budget by the panel renderer).
 	cost uint64
 }
-
-var lazyVarsType = types.NewObjectType("k8sman.Variables")
 
 func (l *lazyVars) get(name string) (ref.Val, bool) {
 	if v, ok := l.done[name]; ok {
@@ -339,56 +337,6 @@ func (l *lazyVars) get(name string) (ref.Val, bool) {
 	l.done[name] = out
 	return out, true
 }
-
-func (l *lazyVars) Find(key ref.Val) (ref.Val, bool) {
-	k, ok := key.(types.String)
-	if !ok {
-		return nil, false
-	}
-	return l.get(string(k))
-}
-
-func (l *lazyVars) Get(key ref.Val) ref.Val {
-	v, ok := l.Find(key)
-	if !ok {
-		return types.NewErr("no such variable: %v", key)
-	}
-	return v
-}
-
-func (l *lazyVars) Contains(key ref.Val) ref.Val {
-	k, ok := key.(types.String)
-	if !ok {
-		return types.False
-	}
-	_, ok = l.progs[string(k)]
-	return types.Bool(ok)
-}
-
-func (l *lazyVars) Size() ref.Val { return types.Int(len(l.progs)) }
-
-func (l *lazyVars) Iterator() traits.Iterator {
-	names := make([]string, 0, len(l.progs))
-	for n := range l.progs {
-		names = append(names, n)
-	}
-	return types.NewStringList(types.DefaultTypeAdapter, names).Iterator()
-}
-
-func (l *lazyVars) ConvertToNative(reflect.Type) (any, error) {
-	return nil, fmt.Errorf("variables can't be converted")
-}
-
-func (l *lazyVars) ConvertToType(t ref.Type) ref.Val {
-	if t == types.TypeType {
-		return lazyVarsType
-	}
-	return types.NewErr("variables can't be converted to %s", t.TypeName())
-}
-
-func (l *lazyVars) Equal(other ref.Val) ref.Val { return types.Bool(other == l) }
-func (l *lazyVars) Type() ref.Type              { return lazyVarsType }
-func (l *lazyVars) Value() any                  { return l }
 
 // ---- results ---------------------------------------------------------------
 

@@ -196,7 +196,7 @@ func TestPluginColumnsEvaluate(t *testing.T) {
 func TestShellActionExpandsVariables(t *testing.T) {
 	h := demoHost(t, demoManifest)
 	vars := ShellVars{"NAME": "w1", "NAMESPACE": "default", "CONTEXT": "demo-context", ColumnVar("Ready"): "Ready", ColumnVar("Not After"): "soon"}
-	acts := h.Actions("demo-context", widgetType, widget(true, ""), vars)
+	acts := h.Actions("demo-context", widgetType, widget(true, ""), func() ShellVars { return vars })
 	if len(acts) != 1 {
 		t.Fatalf("actions = %+v", acts)
 	}
