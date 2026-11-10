@@ -211,7 +211,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   - **Dynamic Resource Allocation** (`resource.k8s.io`, v1 or the beta
     shapes) ResourceClaim, ResourceClaimTemplate, DeviceClass and ResourceSlice
     in a "Dynamic Resources" sidebar section (only where served), with state,
-    device and node columns; Pods list their claims and Nodes their devices.
+    device and node columns; Pods list their claims and Nodes their devices,
+    and Settings ▸ Integrations counts claims and pending ones. A bundled
+    plugin (see [PLUGINS.md](PLUGINS.md#bundled-plugins)), which replaced the
+    module.
   - **External Secrets Operator** (`external-secrets.io`, v1 or v1beta1)
     ExternalSecret, ClusterExternalSecret, SecretStore, ClusterSecretStore and
     PushSecret in an "External Secrets" sidebar section (only where served):
@@ -222,13 +225,16 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     day), a status line in Settings ▸ Integrations, and "Managed by
     ExternalSecret" on the Secret it owns. A bundled plugin (see
     [PLUGINS.md](PLUGINS.md#bundled-plugins)), which replaced the module.
-  - **Kyverno** (module, `kyverno.io` and `wgpolicyk8s.io`) ClusterPolicy and
+  - **Kyverno** (`kyverno.io` and `wgpolicyk8s.io`) ClusterPolicy and
     Policy (rules, status, and the results they produced), PolicyReport and
-    ClusterPolicyReport (summary, results filterable by outcome), exceptions,
+    ClusterPolicyReport (summary and results, failures first), exceptions,
     cleanup policies and 1.14+ `policies.kyverno.io` kinds in a "Kyverno"
-    sidebar section (only where served). Where Kyverno is found, any object
-    gets a **Policy results** tab from the cached reports (per-resource
-    reports by scope or owner, per-namespace ones by resource), failures first.
+    sidebar section (only where served), and a status line in Settings ▸
+    Integrations. Any object that owns policy reports (Kyverno 1.10+ writes
+    one per resource) gets a **Policy results** tab, failures first; on Pods
+    and workloads the results are a section of the Security tab. A bundled
+    plugin (see [PLUGINS.md](PLUGINS.md#bundled-plugins)), which replaced the
+    module.
   - **Admission** (`admissionregistration.k8s.io`) Validating and Mutating
     admission policies and their bindings, and Validating/Mutating webhook
     configurations, in an "Admission" sidebar section (only where served):

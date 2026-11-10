@@ -1,10 +1,12 @@
 # Plugins
 
 Status: **Milestone 2 implemented** (your own plugins load in dev mode
-only), plus [bundled plugins](#bundled-plugins) that load by default: the
-External Secrets integration is the first. Sections 1–12 are the design;
-[§13 As built](#13-as-built) says where the build differs from it, and
-[Writing a plugin](#writing-a-plugin) is how to use it.
+only), plus [bundled plugins](#bundled-plugins) that load by default:
+External Secrets, Dynamic Resource Allocation and Kyverno. Sections 1–12
+are the design; [§13 As built](#13-as-built) says where the build differs
+from it, [Writing a plugin](#writing-a-plugin) is how to use it, and the
+[v1 freeze checklist](#v1-freeze-checklist) is what is left before third
+parties build on the format.
 
 Deep integrations (Argo CD, Helm, Gateway API, …) are compile-time modules
 (see [DEVELOPMENT.md](DEVELOPMENT.md#adding-an-integration)). Plugins cover
@@ -85,7 +87,28 @@ kinds:
 
 Read them as `related.secret` (test with `has(related.secret)` or use
 `related.?secret`) and `related.requests` (a list, e.g. a `table` block's
-`rows`). Only the relations that a panel's (or an action's) expressions
+`rows`).
+
+A list relation can also keep only the objects a `filter` accepts. The host
+evaluates it for each candidate (as `item`) before the list is capped, so
+nothing is missed past the cap. Alone, without `name`, `owner` or
+`selector`, the candidates are every object of the kind in the namespace
+(every namespace for a cluster-scoped object, or with `namespace: '""'`).
+`limit` raises the cap (default 200, at most 2,000):
+
+```yaml
+      users:                         # the ExternalSecrets that use this store
+        kind: external-secrets.io/ExternalSecret
+        filter: item.spec.?secretStoreRef.?name.orValue("") == object.metadata.name
+      slices:                        # a Node's ResourceSlices (cluster-wide)
+        kind: resource.k8s.io/ResourceSlice
+        filter: item.spec.?nodeName.orValue("") == object.metadata.name
+        limit: 500
+```
+
+Prefer `name`, `owner` or `selector` where they fit: they are answered in
+Go (a field or label selector, a uid match), a filter costs about 1.3 µs of
+CEL per candidate. Only the relations that a panel's (or an action's) expressions
 mention are looked up. Secrets show their keys with `""` values: plugins
 never see Secret values. While a panel that reads related objects is open,
 it renders again every 5 seconds from the warm cache, so a Secret that
@@ -205,6 +228,82 @@ included.
       sections: […]
 ```
 
+The CRD's printer columns can be dropped the same way: `hideColumns:
+["*"]` drops every default column but Name, Namespace and Age, so the
+plugin's columns are the table's. Names match in any case (printer columns
+are often `READY`, `AGE`), for `hideColumns` and for a plugin column that
+replaces a default one.
+
+### Section summaries and detail columns
+
+A section's `summary` is a short text at the right of its header (a count,
+a state). A table column with `detail: true` is drawn on a line of its own
+under the row's other cells, across the table: a message, a description,
+or (with `type: code`) part of the object as YAML:
+
+```yaml
+        - title: Requests
+          summary: string(size(variables.requests))
+          blocks:
+            - type: table
+              rows: variables.requests
+              columns:
+                - {name: Request, value: row.name, mono: true}
+                - {name: Class, value: row.deviceClassName}
+                - name: Selectors
+                  detail: true
+                  mono: true
+                  value: row.?selectors.orValue([]).map(s, s.cel.expression).join("\n")
+                - name: Definition
+                  type: code         # a value that isn't a string is shown as YAML
+                  detail: true
+                  value: '{?"match": row.?match, ?"validate": row.?validate}'
+```
+
+### Tabs, and plugins for any kind
+
+`panel.tabs` adds inspector tabs, each with its own sections, after the
+kind's own tabs. A tab shows for an object while its `when` holds, which
+may read related objects: it appears once the object's panel has been
+rendered. `into` names a tab of the app's that the sections go into on
+kinds that have it, instead of a tab of their own: `security`, the Security
+tab of Pods and workloads.
+
+The `"*"` kind key is any kind. It may hold `variables`, `related`,
+`metrics`, `panel` sections and tabs, and `actions`, but not columns,
+alerts or a status line (those run over whole tables and every object of a
+kind, so they stay per kind). Together they let a policy engine show its
+results on whatever object they are about, as the bundled Kyverno plugin
+does:
+
+```yaml
+  "*":
+    related:
+      reports:                       # the reports the object owns (by uid)
+        kind: wgpolicyk8s.io/PolicyReport
+        owner: true
+        when: ns != ""
+    panel:
+      tabs:
+        - title: Policy results
+          icon: policy
+          into: security             # a section of the Security tab on Pods and workloads
+          when: size(related.reports) > 0
+          sections:
+            - title: Policy results
+              summary: string(size(related.reports.map(r, r.results).flatten()))
+              blocks: […]
+```
+
+Every inspected object then asks for its plugin panel (`GET
+/api/plugins/panel`), so keep a `"*"` entry's lookups cheap: an `owner` or
+`name` relation from the watch cache, skipped with `when` for kinds that
+have none. A panel that shows nothing (no section, no tab) is fetched again
+every 30 seconds rather than every 5. What a `"*"` relation can't read (a
+kind the cluster doesn't serve) is noted only where the plugin shows
+something. Objects seen through `"*"` are prepared as for their own kind:
+a Secret's values are blanked there too.
+
 ### Fixtures and tests
 
 ```
@@ -263,8 +362,11 @@ Some of the app's own integrations are plugins: ordinary plugin folders
 compiled into the backend with Go `embed`, in
 [`backend/internal/plugins/bundled/<id>/`](../backend/internal/plugins/bundled)
 (`plugin.yaml`, `README.md`, `fixtures/`; only the first two are embedded).
-The first is [External Secrets](../backend/internal/plugins/bundled/external-secrets),
-which replaced the built-in `external_secrets` module (since removed).
+Each replaced a built-in module, since removed:
+[External Secrets](../backend/internal/plugins/bundled/external-secrets)
+(`external_secrets`), [Dynamic Resource Allocation](../backend/internal/plugins/bundled/dra)
+(`dra`) and [Kyverno](../backend/internal/plugins/bundled/kyverno)
+(`kyverno`).
 
 - **Loaded by default.** They load at start (a parse each; a kind compiles
   on first use), with or without developer mode, and whether the Plugins
@@ -311,8 +413,8 @@ Or edit `~/.config/k8sman/settings.json` with the app closed, e.g.
 `{"plugins": {"useModule": ["<plugin id>"]}}` (or `PUT /api/plugins/settings
 {"useModule": [...]}`).
 
-No bundled plugin replaces a module now: External Secrets was compared this
-way and its module removed once the plugin matched it (§13). A saved
+No bundled plugin replaces a module now: External Secrets, DRA and Kyverno
+were compared with their modules and the modules removed (§13). A saved
 `useModule` entry for a plugin without a module is ignored.
 
 ## 1. Goals and non-goals
@@ -336,8 +438,10 @@ Non-goals for v1:
   see §12, question 7.)
 - Network access from plugins, other than PromQL through the existing
   Prometheus module.
-- Replacing compiled-in modules. Argo CD, Helm, Hubble and the like stay
-  modules.
+- Replacing deep integrations. Argo CD, Helm, Hubble and the like (their
+  own pages, streams, backends) stay modules. Integrations that are columns,
+  panels, tabs and lookups can be plugins: External Secrets, DRA and Kyverno
+  are now bundled plugins (§13).
 - Reading Secret values.
 
 ## 2. Concepts and layout
@@ -348,6 +452,7 @@ A plugin contributes to **kinds**. For each kind it can add:
 |---|---|---|
 | Columns | the kind's table | per row, in the table builder |
 | Panel sections | the inspector's Overview tab | per object change, streamed |
+| Tabs | inspector tabs of their own, or sections of the Security tab | with the panel sections |
 | Actions | inspector header, row menu, palette | on click |
 | Alerts | Overview page and Alerts tiles | per object, on each overview poll |
 | Status line | the plugin's row in Settings ▸ Integrations | per object, when the row is shown (at most every 30 s) |
@@ -395,8 +500,11 @@ Unknown fields are a load error (typos are caught), so new fields always come
 with a `minAppVersion`.
 
 A **kind key** is `group/Kind`, as in the UI: `/Pod`,
-`cert-manager.io/Certificate`. The key `"*"` (any kind) may hold only
-`actions`. YAML anchors work, so two kinds can share a definition.
+`cert-manager.io/Certificate`. The key `"*"` (any kind) may hold
+`variables`, `related`, `metrics`, `panel` (sections and tabs, not
+`generic`) and `actions`; columns, `hideColumns`, alerts, `status`,
+`icon` and `version` are per kind. YAML anchors work, so two kinds can
+share a definition (or one field of it).
 
 ### Kind
 
@@ -407,8 +515,8 @@ A **kind key** is `group/Kind`, as in the UI: `/Pod`,
 | `related` | map of name → Related | §6 |
 | `metrics` | map of name → Metric | §6 |
 | `columns` | list of Column | |
-| `hideColumns` | list of string | default columns to drop (by name) |
-| `panel` | `{generic, sections: [Section]}` | §4; `generic`: `keep` (default), `collapse` or `replace` |
+| `hideColumns` | list of string | default columns to drop (by name, any case); `"*"`: all but Name, Namespace and Age |
+| `panel` | `{generic, sections: [Section], tabs: [Tab]}` | §4; `generic`: `keep` (default), `collapse` or `replace` |
 | `actions` | list of Action | |
 | `alerts` | list of Alert | |
 | `status` | Status | the kind's part of the plugin's status line (below) |
@@ -828,8 +936,16 @@ kinds:
 ## 4. Panel vocabulary v1
 
 A panel is a list of **sections**: `title` (text), `icon` (text), `when`
-(**CEL** bool), `collapsed` (bool), `blocks` (list). Each section is a
+(**CEL** bool), `summary` (**CEL** string: a short text at the right of the
+header), `collapsed` (bool), `blocks` (list). Each section is a
 `DetailSection`. Every block also takes `when`.
+
+A panel's **tabs** (`panel.tabs`) are `{title, icon, when` **CEL** bool`,
+into, sections}`: an inspector tab with its own sections, after the kind's
+tabs, shown while `when` holds (default: always). `into: security` puts the
+sections in the Security tab instead, on the kinds that have one (Pods and
+workloads); there they are drawn as that tab's sections. A title may not be
+Overview, YAML or Events, nor appear twice in a kind entry.
 
 | Block | Widget | Fields |
 |---|---|---|
@@ -838,17 +954,19 @@ A panel is a list of **sections**: `title` (text), `icon` (text), `when`
 | `chips` | `Chipish` / `LabelChips` | `items` **CEL**: a list of strings, or a map (shown as `key=value`) |
 | `conditions` | `ConditionsTable` | `from` **CEL**, default `object.status.conditions` |
 | `links` | `ResourceLink` list | `items` **CEL**: a list of Refs; `empty` (text) |
-| `table` | compact table | `rows` **CEL** list; `columns`: list of `{name, value` **CEL** (sees `row`)`, type, link, mono: bool}`; `sortBy` (column name), `descending`, `limit` (default 20, "Show all" beyond), `empty` (text) |
+| `table` | compact table | `rows` **CEL** list; `columns`: list of `{name, value` **CEL** (sees `row`)`, type, link, mono: bool, detail: bool}`; `sortBy` (column name), `descending`, `limit` (default 20, "Show all" beyond), `empty` (text). A `detail` column is drawn on its own line under its row, across the table |
 | `settings` | `KeyValueTable` | `value` **CEL**: a map of any depth, flattened into sorted `path → value` rows; `limit` (default 14, at most 50; "and N more" beyond), `empty` (text). See below |
 | `bar` | `UsageBar` | `label`, `value` **CEL** number, `max` **CEL** number, `format`: `number`, `quantity` or `percent`; amber from 80%, red from 90% |
-| `code` | `CodeBlock` | `value` **CEL** string, `language`: `text`, `yaml`, `json` or `shell` |
+| `code` | `CodeBlock` | `value` **CEL**: a string, or any value, shown as YAML (JSON with `language: json`); `language`: `text`, `yaml`, `json` or `shell` |
 | `json` | `JsonTree` | `value` **CEL**, any value |
 | `message` | `InlineMessage` / `Callout` | `text` **CEL** string, `severity`: `info`, `warning` or `error`; `title` **CEL** string, optional: a warning or error with a title is a callout headed by it, the text under it |
 
 Value `type` in `fields` and `table` columns: `text` (default), `number`,
 `bool`, `status`, `age` (with the timestamp in a tooltip), `until`,
 `timestamp`, `quantity`, `labels`, `url` (opens the browser on click),
-`code` (monospace, with copy).
+`code` (monospace, with copy; a value that isn't a string is shown as
+YAML). A `status` value colours itself from its text (Ready, Failed,
+Pending, …, and the policy-report results pass, warn and fail).
 
 **The `settings` block** shows a configuration object (a store's provider,
 an issuer's ACME or Vault settings) as the module panels did, which CEL
@@ -874,9 +992,10 @@ kind with a compiled-in panel they follow its sections. For a kind that only
 has the generic custom-resource panel, they replace its summary; the generic
 spec and status trees stay, collapsed, at the end. Two plugins for one kind
 appear in plugin id order. Panels get the shared YAML and Events tabs as
-before; plugins can't add tabs in v1. (As built: plugin sections come
-before Owns and Metadata, and the generic panel's sections follow them
-unless `panel.generic` says `collapse` or `replace`; see §13.)
+before; plugin tabs come after the kind's own tabs and before YAML. (As
+built: plugin sections come before Owns and Metadata, and the generic
+panel's sections follow them unless `panel.generic` says `collapse` or
+`replace`; see §13. Tabs were added with the DRA and Kyverno ports.)
 
 The vocabulary grows by adding blocks or fields; an older app shows "this
 section needs k8sman ≥ x" for a block it doesn't know.
@@ -916,6 +1035,7 @@ must still have one type; use `dyn()` to mix (as in the Karpenter column).
 | `metrics` | `map(string, list(dyn))` | | | ✓ | | |
 | `row` | `dyn` | | | `table` columns | | |
 | `input` | `map(string, dyn)` | | | | patch `body`, `validate` | |
+| `item` | `map(string, dyn)` | | | | | a related `filter`: the candidate |
 
 ¹ Only variables that don't (directly or through other variables) reference
 `related` or `metrics`. The loader checks this from the compiled ASTs and
@@ -942,6 +1062,8 @@ replaced with `""`.
 | `humanDuration(d duration)` | string | kubectl style: `45s`, `3h12m`, `29d`, `1y20d`; negative gets `-` |
 | `promQuote(s string)` | string | `s` as an escaped PromQL string literal, for `metrics` queries |
 | `l.sort()` | list | `l` in order (strings, numbers, booleans or timestamps); added in Milestone 2 |
+| `l.flatten()` | list | the lists in `l` joined into one (one level; other elements kept) |
+| `l.distinct()` | list | each value of `l` once, in first-seen order |
 
 CEL durations have no day unit: write `duration("336h")`, not `"14d"`.
 
@@ -967,13 +1089,17 @@ v1 plugins don't change. Nothing in v1 reserves more than the field name.
 | `name` | **CEL** string | one object by name |
 | `owner` | bool | objects whose `ownerReferences` include this object's uid |
 | `selector` | **CEL** | a `matchLabels` map or a `LabelSelector` object |
-| `namespace` | **CEL** string | default `namespace`; ignored for cluster-scoped kinds |
+| `namespace` | **CEL** string | default `namespace`; `""` = every namespace; ignored for cluster-scoped kinds |
 | `when` | **CEL** bool | skip the lookup |
+| `filter` | **CEL** bool, sees `item` | keep the candidates for which it is true, before the cap; alone: every object of the kind in the namespace |
+| `limit` | int | list relations: how many objects to keep (default 200, at most 2,000) |
 
-Exactly one of `name`, `owner` and `selector`. All three are served from
-`kcache`: `name` reads the namespace's stream, `selector` uses a
-label-selector key (which rides a warm broader stream when there is one),
-and `owner` filters the namespace's stream by uid (`limit` 200 objects).
+At most one of `name`, `owner` and `selector`, and at least one of them or
+`filter`. All are served from `kcache`: `name` reads the namespace's
+stream, `selector` uses a label-selector key (which rides a warm broader
+stream when there is one), `owner` filters the namespace's stream by uid,
+and `filter` alone reads the namespace's stream; `filter` then runs on what
+they found, and a list keeps `limit` objects (default 200).
 While a panel is open its related streams stay subscribed, so a change to
 the Secret re-renders the Certificate panel. A related kind the cluster
 doesn't serve gives an empty result and a note in the panel.
@@ -1734,3 +1860,217 @@ action; the plugin's `plugin.external-secrets.refresh` replaces it), the
 ESO built-in columns and their test, and the `external-secrets` entry of
 `bundled.ReplacesModule` (now empty; the `useModule` mechanism stays for
 the next module a plugin replaces).
+
+### DRA and Kyverno ports: format changes
+
+The `dra` and `kyverno` modules are now the bundled plugins
+[`dra`](../backend/internal/plugins/bundled/dra) and
+[`kyverno`](../backend/internal/plugins/bundled/kyverno), and both
+modules are removed. Every change to the format is an addition (no v1
+plugin breaks); each is generic, and the External Secrets plugin and the
+cert-manager example use the ones that fit them.
+
+**Where.** Backend, `internal/plugins`: `manifest.go` (`Tab`,
+`Section.Summary`, `TableColumn.Detail`, `Related.Filter` and `.Limit`,
+the wider `"*"` rule, `hostTabs`), `compile.go` (tabs, summaries, filters
+compiled with `item`), `related.go` (filters, limits), `eval.go` (tabs,
+summaries, detail columns, code values as YAML, Secrets blanked by their
+own kind), `host.go` (a plugin's kind and `"*"` entries render into one
+panel; `hideColumns: ["*"]`; idle refresh), `celenv.go` (`item`,
+`flatten`, `distinct`), `icons.go` (15 icons, 78 in all). Frontend:
+`plugins/plugin_panel.dart` (`pluginPanels`, one fetch per object shared
+by the tab bar, the Overview's sections, plugin tabs and the Security tab;
+`PluginTabView`; `PluginSlotSections`), `plugins/blocks.dart` (summaries,
+detail columns, sections drawn as the host tab's own), `panels/panel.dart`
+(`PanelTab.slot`), `ui/security/security_tab.dart` (the `security` slot),
+`ui/detail/detail_sidebar.dart` (rebuilds when plugin tabs arrive).
+
+**Format changes**, with why:
+
+1. **`panel.tabs`** (`title`, `icon`, `when`, `into`, `sections`). The
+   Kyverno module added a "Policy results" tab to any kind
+   (`inspectorTabs`) and the Security tab embedded its widget for Pods and
+   workloads. A tab is the generic form of both: `into: security` is a
+   *slot*, a tab of the app's own that the tab's sections join on kinds
+   that have it; elsewhere it is a tab of its own. Any policy engine
+   (Kyverno, Gatekeeper, Kubewarden) declares the same thing and lands in
+   the same place, and the host decides where slots are. Rejected: a
+   per-feature key such as `contributes: {securitySection: …}` (one key per
+   host feature, nothing in common between them), and gating tabs on
+   served kinds (the format has no detection; `when` over related objects
+   is more precise: the tab appears on objects with results, not on every
+   object of a cluster that runs the engine). `when` may read related, so
+   tabs are dynamic: the UI learns them from the panel render and the tab
+   bar is rebuilt when they arrive, as it already was for a module's tab
+   appearing after detection.
+2. **`"*"` holds more**: variables, related, metrics, panel sections and
+   tabs, actions (not columns, `hideColumns`, alerts, `status`, `icon`,
+   `version` or `panel.generic`: those run over whole tables or every
+   object of a kind). A plugin's kind entry and its `"*"` entry render into
+   one panel, the kind's first. **Security fix on the way:** objects seen
+   through `"*"` are now prepared by their own kind, so a Secret's values
+   are blanked there too (before, only an entry keyed `/Secret` blanked
+   them, so a `"*"` action's `when` could have read a Secret's data).
+3. **`related.filter`** (CEL bool over `item`) and **`related.limit`**
+   (default 200, at most 2,000). DRA's Node section needs the
+   ResourceSlices whose `spec.nodeName` is the node (no label to select
+   on); a Kyverno policy needs the reports that mention it; External
+   Secrets' "ExternalSecrets using this store" used a selector no object
+   fails and filtered in CEL *after* the 200 cap (pilot gap 3). The host
+   now filters before the cap, and `limit` lets a panel that summarises
+   (a policy's results across the cluster) read more.
+4. **`summary`** on sections: the modules put counts and states in section
+   headers (requests, devices, slices, results); pilot gap 7 was the same.
+   Text only.
+5. **`detail`** on table columns: messages, CEL selectors, device
+   attributes and rule definitions are too wide for a cell in the
+   inspector; the modules drew them under the row.
+6. **`code` values that aren't strings are YAML** (the `code` block, and
+   `type: code` fields and cells): a Kyverno rule's definition. CEL can't
+   serialise, and the host already had the object.
+7. **`flatten()` and `distinct()`**: results of several reports,
+   requests with `firstAvailable` alternatives, the distinct device classes
+   and nodes the module's jq columns computed with `unique`. Custom
+   functions, like `sort()`, not cel-go's `ext.Lists()` (Milestone 2
+   measured it slowing every cell).
+8. **`hideColumns: ["*"]`**, and column names matched in any case. Kyverno
+   CRDs have upper-case printer columns (ADMISSION, BACKGROUND, READY,
+   MESSAGE, …) that the module's built-in columns replaced wholesale; the
+   plugin says "my columns are the table's" without guessing names.
+9. Behaviour, not vocabulary: a panel that shows nothing re-renders every
+   30 s instead of every 5 (a `"*"` tab on objects without results);
+   notes about what couldn't be read show only beside a plugin's sections
+   or in its tab (a `"*"` relation's "PolicyReports aren't served" stays
+   quiet elsewhere); a bundled plugin's Integrations row counts its sidebar
+   kinds as its own (DRA's `/Pod` and `/Node` entries don't make it look
+   installed everywhere); `status` values colour `pass`, `warn` and `fail`
+   (the policy-report results) like Ready, Pending and Failed.
+
+**DRA: what moved, and the differences.** Columns, panels (claims,
+templates, device classes, slices; DeviceTaintRule keeps the generic
+panel), the sidebar section and icons are the plugin's; it adds a status
+line ("ResourceClaims: 4 · pending: 1"). The **Pod and Node sections moved
+too**: `/Pod` and `/Node` entries add them cleanly (a pod's claims come
+from the pod alone; a node's slices through a `filter` relation), and
+turning the plugin off now removes them as well. Differences from the
+module:
+
+1. Placement: plugin sections follow a compiled-in panel's own, so
+   Resource claims is the Pod's last section (the module put it after
+   Configuration) and DRA devices the Node's last (it was second). There
+   is no placement field (freeze checklist).
+2. A node's slices come from the warm cluster-wide ResourceSlice stream,
+   filtered (about 1.3 ms per 1,000 slices), not a LIST with a field
+   selector on every open.
+3. The claim's state is a badge block, not a badge in the header; counts
+   are header summaries (text).
+4. Requests are table rows: a `firstAvailable` alternative is a row named
+   `gpu/large (first available)` rather than an indented list; CEL
+   selectors are monospace detail lines rather than boxed blocks.
+5. A slice's devices: capacity and taints are text (taints were amber
+   chips), attributes a detail line rather than chips; a claim's device
+   conditions are text (`Ready=True (Configured)`) rather than a
+   conditions table; driver config parameters are YAML rather than a
+   collapsed JSON tree.
+6. An allocation on several nodes lists them as text (one node is a link).
+7. The claim's template is read through a `name` relation on Pods (list
+   rights on Pods in the namespace), not a GET.
+
+**Kyverno: what moved, and the differences.** Columns (with
+`hideColumns: ["*"]`), the ClusterPolicy/Policy and PolicyReport/
+ClusterPolicyReport panels, the sidebar section and icons (1.14+
+`policies.kyverno.io` kinds have icon-only entries), a status line
+("ClusterPolicies: 12 · not ready: 1 · Policies: 3", where the module said
+"15 policies"), and the any-kind **Policy results**: a `"*"` tab with
+`into: security`, from the PolicyReports (ClusterPolicyReports for
+cluster-scoped objects) the object owns. `ObjectPolicyResults` is gone;
+the Security tab draws the slot's sections (`PluginSlotSections`) and no
+core widget had to move. Differences:
+
+1. The tab (and the Security tab's section) appears only on objects that
+   have results; the module showed it on every kind once Kyverno was
+   detected, saying "No policy reports mention this object".
+2. Only reports the object **owns** are read: Kyverno 1.10+ writes one per
+   resource, owned by it (and other engines that write per-resource
+   reports, such as Kubewarden's audit scanner, show too). The module also
+   matched entries of the older aggregated reports (`results[].resources`)
+   by uid or kind and name. Doing that for every inspected object would be
+   a CEL scan of every report in the namespace on each inspection, so it
+   was dropped; the policy and report panels still read the aggregated
+   shape.
+3. A policy's Results read up to 2,000 reports that mention it (with a
+   note beyond); the module read all of them.
+4. The report panel has no per-result filter chips: results are failures
+   first, 50 then "Show all".
+5. A rule is its name, type, the kinds it matches, its message and its
+   definition as YAML, rather than formatted match, exclude and
+   preconditions lines.
+6. No Refresh button: open panels re-render every 5 s from the watch
+   cache (the module cached reports for 30 s).
+7. The Policy section isn't drawn as a card; result rows are table rows.
+
+**Cost of the any-kind tab.** Every inspected object now asks for its
+plugin panel (before, only kinds a plugin contributed to). With the
+Kyverno plugin, the `"*"` entry looks up the object's reports with an
+`owner` relation over the namespace's PolicyReports in the watch cache:
+`BenchmarkPluginData` (M1 Pro), 2,000 reports in the namespace, **0.21 ms**
+for a pod that owns one (the tab rendered) and **0.12 ms** for an object
+that owns none. It runs again every 5 s while the tab shows and every 30 s
+otherwise. Without Kyverno the relation stops at discovery (the kind isn't
+served). The namespace's PolicyReport stream stays warm for 90 s after the
+last read, as the module's list was cached for 30 s. Kyverno's own kinds,
+reports and Events skip the lookup (`when`). The DRA Node filter over
+1,000 slices is 1.3 ms.
+
+**Tables.** `BenchmarkTableSnapshot` (1,500 pods) is unchanged: before,
+33.8–49.8 ms cold and 2.09–2.13 ms warm for the defaults, 39.0–39.4 ms /
+2.28–2.48 ms with three plugin columns; after, 32.9–36.0 / 2.11–2.40 ms
+and 39.1–39.5 / 2.30–2.49 ms. The DRA and Kyverno jq columns became CEL
+columns of their plugins; their tables are small and memoised like any.
+
+**Removed.** `lib/modules/dra_module.dart`, `lib/panels/dra/` (with the
+Pod and Node sections in `dra_sections.dart`), `lib/modules/kyverno_module.dart`,
+`lib/panels/kyverno/` (with `ObjectPolicyResults`), the DRA columns of
+`internal/columns/builtin.go` and `internal/columns/kyverno.go`.
+
+## v1 freeze checklist
+
+What should still change, or be decided, before third parties build on
+`k8sman.dev/v1`:
+
+1. **Section placement on compiled-in panels.** Plugin sections always come
+   after a core panel's own (DRA's Pod and Node sections sit last). A
+   `placement` (`top`, `bottom`, or after a named core section) needs core
+   sections to have stable ids first.
+2. **Header badges.** `summary` is text; a coloured state in a header (the
+   ESO Ready badge, the DRA claim state) is still the first block. Decide
+   between a `summarySeverity` and leaving it.
+3. **Severity of table and field values.** `status` colours itself from a
+   word list in the app; a plugin can't say "this cell is an error". A
+   `severity` (CEL) on columns and fields, as badges have, would retire the
+   list for plugins. Also make the badge severity names an enum in the
+   schema (`error`, `critical`, `warning`, `warn`, `ok`, `success`,
+   `info`, `neutral` are accepted today, undocumented).
+4. **Host tab slots.** `into` accepts `security` only. Decide the slots
+   (and their names, which become API) before others ask: a network or
+   logs tab are candidates.
+5. **Tab identity.** A tab is identified by its title (unique per entry).
+   An `id` would let titles change without breaking remembered tabs.
+6. **The `"*"` cost model.** Any `"*"` panel entry makes every inspection
+   fetch the plugin panel. A `kinds` list or exclusions on `"*"` (so the UI
+   can skip the fetch, and authors needn't write `when` for it) and a
+   per-plugin budget for `"*"` lookups would bound it before many plugins
+   do this.
+7. **Naming.** `row` (table columns), `item` (related filters) and `input`
+   (actions) are three names for "the thing being looked at"; `ns` is the
+   CEL variable but `namespace` the related field. Settle or document as
+   final.
+8. **Interactive tables.** No filter chips or per-column sorting in the
+   UI; a `filterBy: <column>` on tables would cover the Kyverno report
+   panel.
+9. **Aggregated policy reports.** If matching results by resource across a
+   namespace's reports is wanted on every object, it needs an indexed
+   lookup in the host (by uid), not a CEL filter.
+10. **Distribution** (Milestone 3: index, signing, install, consent
+    upgrades) is still unbuilt; `minAppVersion` is the only versioning a
+    plugin has.
