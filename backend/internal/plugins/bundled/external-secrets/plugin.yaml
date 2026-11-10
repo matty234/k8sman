@@ -111,11 +111,15 @@ kinds:
       sections:
         - title: Sync status
           icon: sync
+          # The Ready state in the header: green when Ready, amber while
+          # it is on its way, red when it failed.
+          badge: &readyBadge
+            text: variables.reason
+            severity: >-
+              !variables.ready.hasValue() ? "neutral" :
+              variables.ready.value().status == "True" ? "ok" :
+              variables.reason.lowerAscii() in ["pending", "progressing", "unknown", "waiting"] ? "warning" : "error"
           blocks:
-            - &readyBadge
-              type: badges
-              items:
-                - text: variables.reason
             - &notReconciled
               type: message
               severity: info
@@ -168,6 +172,10 @@ kinds:
                   value: >-
                     !variables.store.hasValue() ? "Not found" :
                     string(condition(variables.store.value(), "Ready").?reason.orValue("Unknown"))
+                  severity: >-
+                    !variables.store.hasValue() ? "error" :
+                    conditionTrue(variables.store.value(), "Ready") ? "ok" :
+                    condition(variables.store.value(), "Ready").hasValue() ? "error" : "neutral"
                 - label: Created by
                   when: variables.ownerCES != ""
                   value: '"ClusterExternalSecret/" + variables.ownerCES'
@@ -320,8 +328,8 @@ kinds:
       sections:
         - title: Cluster external secret
           icon: hub
+          badge: *readyBadge
           blocks:
-            - *readyBadge
             - *notReconciled
             - *notReadyWarning
             - *notReadyError
@@ -408,8 +416,8 @@ kinds:
       sections:
         - title: Provider
           icon: vpn_key
+          badge: *readyBadge
           blocks:
-            - *readyBadge
             - *notReconciled
             - *notReadyWarning
             - *notReadyError
@@ -453,6 +461,9 @@ kinds:
                   value: >-
                     condition(item, "Ready").hasValue()
                       ? string(condition(item, "Ready").value().?reason.orValue(condition(item, "Ready").value().status)) : "Unknown"
+                  severity: >-
+                    !condition(item, "Ready").hasValue() ? "neutral" :
+                    conditionTrue(item, "Ready") ? "ok" : "error"
   external-secrets.io/ClusterSecretStore:
     icon: dns
     variables: *storeVariables

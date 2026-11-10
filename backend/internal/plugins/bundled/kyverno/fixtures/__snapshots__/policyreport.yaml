@@ -57,7 +57,8 @@ panel:
           empty: No results
           limit: 50
           rows:
-            - - value: fail
+            - - severity: error
+                value: fail
               - link:
                   group: kyverno.io
                   kind: ClusterPolicy
@@ -72,7 +73,8 @@ panel:
                   namespace: demo
                 value: Pod/web-0
               - value: 'validation error: The label app is required.'
-            - - value: warn
+            - - severity: warning
+                value: warn
               - link:
                   group: kyverno.io
                   kind: Policy
@@ -87,7 +89,8 @@ panel:
                   namespace: demo
                 value: Pod/web-0
               - value: memory limit is not set
-            - - value: skip
+            - - severity: neutral
+                value: skip
               - link:
                   group: policies.kyverno.io
                   kind: ValidatingPolicy
@@ -102,7 +105,8 @@ panel:
                   namespace: demo
                 value: Pod/web-0
               - value: ""
-            - - value: pass
+            - - severity: ok
+                value: pass
               - link:
                   group: kyverno.io
                   kind: ClusterPolicy

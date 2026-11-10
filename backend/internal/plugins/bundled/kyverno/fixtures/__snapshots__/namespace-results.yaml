@@ -27,7 +27,8 @@ panel:
                   type: text
               limit: 50
               rows:
-                - - value: warn
+                - - severity: warning
+                    value: warn
                   - link:
                       group: kyverno.io
                       kind: ClusterPolicy

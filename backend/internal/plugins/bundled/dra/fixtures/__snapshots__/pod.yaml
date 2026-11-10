@@ -2,7 +2,8 @@
 object: /Pod demo/web-0
 panel:
   sections:
-    - blocks:
+    - after: configuration
+      blocks:
         - columns:
             - mono: true
               name: Name

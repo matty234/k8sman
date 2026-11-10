@@ -99,7 +99,8 @@ panel:
               type: text
           limit: 50
           rows:
-            - - value: fail
+            - - severity: error
+                value: fail
               - value: max-replicas
               - link:
                   group: apps

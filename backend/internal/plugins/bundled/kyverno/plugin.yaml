@@ -217,6 +217,10 @@ kinds:
                   name: Result
                   type: status
                   value: item.result
+                  # A policy report's results, coloured by the plugin.
+                  severity: >-
+                    item.result in ["fail", "error"] ? "error" :
+                    item.result == "warn" ? "warning" : item.result == "pass" ? "ok" : "neutral"
                 - name: Rule
                   value: item.rule
                 - &resourceColumn

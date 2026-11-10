@@ -29,7 +29,8 @@ panel:
                   type: text
               limit: 50
               rows:
-                - - value: fail
+                - - severity: error
+                    value: fail
                   - link:
                       group: kyverno.io
                       kind: ClusterPolicy
@@ -39,7 +40,8 @@ panel:
                   - value: check-app-label
                   - value: medium
                   - value: 'validation error: The label app is required.'
-                - - value: pass
+                - - severity: ok
+                    value: pass
                   - link:
                       group: kyverno.io
                       kind: ClusterPolicy

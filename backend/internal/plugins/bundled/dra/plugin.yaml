@@ -105,10 +105,10 @@ kinds:
       sections:
         - title: Claim
           icon: memory
+          badge:
+            text: variables.state
+            severity: 'variables.allocation.hasValue() ? "ok" : "warning"'
           blocks:
-            - type: badges
-              items:
-                - text: variables.state
             - type: message
               severity: info
               when: '!variables.allocation.hasValue()'
@@ -407,7 +407,7 @@ kinds:
       - name: Taint
         value: string(object.spec.?taint.?key.orValue("")) + ":" + string(object.spec.?taint.?effect.orValue(""))
 
-  # A pod's claims, after the Pod panel's own sections: each
+  # A pod's claims, after the Pod panel's Configuration section: each
   # spec.resourceClaims entry, the claim behind it (its name is in the
   # pod's status when a template made it) and the containers that use it.
   /Pod:
@@ -419,6 +419,7 @@ kinds:
       sections:
         - title: Resource claims
           icon: memory
+          after: configuration
           when: size(variables.claims) > 0
           summary: string(size(variables.claims))
           blocks:
@@ -443,7 +444,8 @@ kinds:
                 - name: Used by
                   value: item.users.join(", ")
 
-  # A node's devices: the ResourceSlices published for it.
+  # A node's devices: the ResourceSlices published for it, after the
+  # node's status, pods and usage.
   /Node:
     related:
       slices:
@@ -453,6 +455,7 @@ kinds:
       sections:
         - title: DRA devices
           icon: memory
+          after: overview
           when: size(related.slices) > 0
           summary: 'string(size(related.slices)) + (size(related.slices) == 1 ? " slice" : " slices")'
           blocks:

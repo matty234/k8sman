@@ -3,7 +3,8 @@ object: /Node node-a
 panel:
   refresh: 5
   sections:
-    - blocks:
+    - after: overview
+      blocks:
         - columns:
             - name: Slice
               type: text

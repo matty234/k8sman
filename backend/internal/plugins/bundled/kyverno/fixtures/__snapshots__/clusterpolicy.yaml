@@ -131,7 +131,8 @@ panel:
               type: text
           limit: 50
           rows:
-            - - value: fail
+            - - severity: error
+                value: fail
               - value: check-app-label
               - link:
                   group: ""
@@ -140,7 +141,8 @@ panel:
                   namespace: demo
                 value: Pod/web-0
               - value: 'validation error: The label app is required.'
-            - - value: warn
+            - - severity: warning
+                value: warn
               - value: check-app-label
               - link:
                   group: ""
@@ -149,7 +151,8 @@ panel:
                   namespace: legacy
                 value: Pod/worker-1
               - value: label app is missing
-            - - value: warn
+            - - severity: warning
+                value: warn
               - value: check-app-label
               - link:
                   group: ""

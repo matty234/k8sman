@@ -12,10 +12,10 @@ columns:
 panel:
   refresh: 5
   sections:
-    - blocks:
-        - items:
-            - text: 'Reserved: 1'
-          type: badges
+    - badge:
+        severity: ok
+        text: 'Reserved: 1'
+      blocks:
         - items:
             - label: Node
               link:

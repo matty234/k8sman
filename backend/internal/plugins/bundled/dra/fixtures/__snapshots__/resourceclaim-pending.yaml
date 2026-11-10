@@ -12,10 +12,10 @@ columns:
 panel:
   refresh: 5
   sections:
-    - blocks:
-        - items:
-            - text: Pending
-          type: badges
+    - badge:
+        severity: warning
+        text: Pending
+      blocks:
         - severity: info
           text: 'Not allocated yet: the scheduler allocates devices when a pod using this claim is scheduled.'
           type: message
