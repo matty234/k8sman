@@ -74,17 +74,17 @@ var (
 	ageCol  = Column{Name: "Age", Query: ".metadata.creationTimestamp", Type: "age"}
 )
 
-// Defaults returns the built-in or derived default columns for a resource.
+// Defaults returns the built-in or derived default columns for a resource:
+// Name (and Namespace), then Age, then the kind's own columns.
 func Defaults(rt cluster.ResourceType, printer []cluster.PrinterColumn) []Column {
 	head := []Column{nameCol}
 	if rt.Namespaced {
 		head = append(head, nsCol)
 	}
 	if body, ok := builtin[Key(rt.Group, rt.Resource)]; ok {
-		return append(head, body...)
+		return ageFirst(head, body, false)
 	}
-	cols := head
-	hasAge := false
+	var body []Column
 	for _, p := range printer {
 		q, ok := jsonPathToJQ(p.JSONPath)
 		if !ok {
@@ -94,20 +94,34 @@ func Defaults(rt cluster.ResourceType, printer []cluster.PrinterColumn) []Column
 		switch p.Type {
 		case "date":
 			c.Type = "age"
-			if q == ".metadata.creationTimestamp" {
-				hasAge = true
-			}
 		case "integer", "number":
 			c.Type = "number"
 		case "boolean":
 			c.Type = "bool"
 		}
-		cols = append(cols, c)
+		body = append(body, c)
 	}
-	if !hasAge {
-		cols = append(cols, ageCol)
+	return ageFirst(head, body, true)
+}
+
+// ageFirst puts the creation-time Age column straight after [head], taking
+// it out of [body] wherever it was. Without one in [body] it is added only
+// when [always].
+func ageFirst(head, body []Column, always bool) []Column {
+	out := append([]Column{}, head...)
+	rest := make([]Column, 0, len(body))
+	age := always
+	for _, c := range body {
+		if c.Type == "age" && c.Query == ".metadata.creationTimestamp" {
+			age = true
+			continue
+		}
+		rest = append(rest, c)
 	}
-	return cols
+	if age {
+		out = append(out, ageCol)
+	}
+	return append(out, rest...)
 }
 
 var simplePath = regexp.MustCompile(`^(\.[A-Za-z0-9_\-]+|\[\d+\])+$`)
