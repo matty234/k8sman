@@ -27,6 +27,7 @@ import 'column_editor.dart';
 import 'resource_nav.dart' show showKindMenu;
 import '../actions/actions.dart' show ResourceAction;
 import '../panels/registry.dart';
+import '../plugins/plugin_host.dart' show pluginHost;
 import 'detail/detail_sidebar.dart' show resourceActionsFor;
 import 'keyboard_help.dart';
 import 'kubectl_menu.dart';
@@ -566,7 +567,14 @@ class _TableBodyState extends State<_TableBody> {
     if (repeat) return false;
     if (shift && key == LogicalKeyboardKey.slash) return did(() => showKeyboardHelp(context));
     if (shift && key == LogicalKeyboardKey.keyF) return did(() => act('port-forward', 'port-forward'));
-    if (shift) return false;
+    // A plugin action's `shortcut` (the row's, once the inspector has
+    // loaded its actions); the built-in keys above and below win.
+    bool pluginKey() {
+      final a = row == null ? null : pluginHost.actionForKey(row.uid, key, shift: shift);
+      return a != null && did(() => act('plugin.${a.plugin}.${a.id}', a.label));
+    }
+
+    if (shift) return pluginKey();
     if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) return did(() => inspect(null));
     if (key == LogicalKeyboardKey.keyD) return did(() => inspect(DetailTab.overview));
     if (key == LogicalKeyboardKey.keyY) return did(() => inspect(DetailTab.yaml));
@@ -576,7 +584,7 @@ class _TableBodyState extends State<_TableBody> {
       return did(() => sel.length >= 2 && _canMergeLogs(tc) ? _openSelectedLogs(tc, sel) : act(kLogsActionId, 'logs'));
     }
     if (key == LogicalKeyboardKey.keyS) return did(() => act(kTerminalActionId, 'shell'));
-    return false;
+    return pluginKey();
   }
 
   /// ↑/↓ (or j/k) move the selection (and the inspector); ⇧↑/⇧↓ extend it;

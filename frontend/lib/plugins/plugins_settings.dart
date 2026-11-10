@@ -14,7 +14,7 @@ import '../ui/widgets/common.dart';
 import '../util/k8s.dart' show Severity;
 import 'plugin_api.dart';
 import 'plugin_host.dart';
-import 'plugin_panel.dart' show showPluginConsent;
+import 'plugin_actions.dart' show showPluginConsent;
 
 class PluginsSettings extends StatefulWidget {
   const PluginsSettings({super.key});
@@ -216,6 +216,9 @@ class _PluginCard extends StatelessWidget {
           if (k.columns > 0) '${k.columns} column${k.columns == 1 ? '' : 's'}',
           if (k.sections > 0) '${k.sections} section${k.sections == 1 ? '' : 's'}',
           if (k.actions > 0) '${k.actions} action${k.actions == 1 ? '' : 's'}',
+          if (k.alerts > 0) '${k.alerts} alert${k.alerts == 1 ? '' : 's'}',
+          if (k.related > 0) '${k.related} related',
+          if (k.metrics > 0) '${k.metrics} metric${k.metrics == 1 ? '' : 's'}',
         ].join(' · ');
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       for (final k in p.kinds)
@@ -267,7 +270,7 @@ class _PluginCard extends StatelessWidget {
     final theme = Theme.of(context);
     final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]);
     String us(double v) => v >= 1000 ? '${(v / 1000).toStringAsFixed(1)} ms' : '${v.toStringAsFixed(v < 10 ? 1 : 0)} µs';
-    const labels = {'column': 'Columns', 'panel': 'Panels', 'action': 'Actions'};
+    const labels = {'column': 'Columns', 'panel': 'Panels', 'action': 'Actions', 'alert': 'Alerts'};
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Load ${p.loadMs.toStringAsFixed(1)} ms · compile ${p.compileMs.toStringAsFixed(1)} ms', style: hint),
       for (final e in labels.entries)

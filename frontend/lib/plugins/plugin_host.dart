@@ -1,6 +1,6 @@
 /// The app's view of the backend's runtime plugins: the plugin list (for
 /// the Plugins settings, sidebar sections and kind icons), its changes
-/// (hot reload), and the shell actions last offered per object.
+/// (hot reload), and the actions last offered per object.
 library;
 
 import 'dart:async';
@@ -9,7 +9,9 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 
+import '../actions/actions.dart' show ResourceAction;
 import '../api/client.dart';
 import '../modules/module.dart' show NavGroup;
 import '../state/startup_gate.dart';
@@ -43,6 +45,7 @@ class PluginHost extends ChangeNotifier {
     _state = PluginsState.empty;
     _icons.clear();
     _actions.clear();
+    _bound.clear();
     StartupGate.ready.then((_) {
       if (identical(_api, api)) refresh();
     });
@@ -147,14 +150,37 @@ class PluginHost extends ChangeNotifier {
     return null;
   }
 
-  /// The shell actions last offered for object [uid] (by its panel fetch).
+  /// The actions last offered for object [uid] (by its panel fetch).
   List<PluginAction> actionsFor(String uid) => _actions[uid] ?? const [];
+
+  /// The action of object [uid] whose `shortcut` is [key] (with or without
+  /// Shift; other modifiers aren't bound), for the table's single-key
+  /// bindings. The table checks its own keys first, so a clash keeps the
+  /// built-in.
+  PluginAction? actionForKey(String uid, LogicalKeyboardKey key, {required bool shift}) {
+    final label = key.keyLabel.toUpperCase();
+    for (final a in actionsFor(uid)) {
+      final parts = (a.shortcut ?? '').split('+');
+      final mods = parts.sublist(0, parts.length - 1).map((m) => m.toLowerCase()).toSet();
+      if (parts.last.length != 1 || mods.difference(const {'shift'}).isNotEmpty) continue;
+      if (mods.contains('shift') == shift && parts.last.toUpperCase() == label) return a;
+    }
+    return null;
+  }
+
+  final Map<String, List<ResourceAction> Function()> _bound = {};
+
+  /// Records how to build the plugin actions of the object the inspector
+  /// shows ([pluginTargetKey]), for the command palette.
+  void bindActions(String target, List<ResourceAction> Function() actions) => _bound[target] = actions;
+
+  /// The plugin actions of the inspected object [target], ready to run.
+  List<ResourceAction> boundActions(String target) => _bound[target]?.call() ?? const [];
 
   /// Records the actions offered for [uid]; listeners hear after the frame.
   void setActions(String uid, List<PluginAction> actions) {
     final old = _actions[uid];
-    if (old != null && listEquals([for (final a in old) '${a.plugin}/${a.id}/${a.argv.join(' ')}/${a.consented}'],
-        [for (final a in actions) '${a.plugin}/${a.id}/${a.argv.join(' ')}/${a.consented}'])) {
+    if (old != null && listEquals([for (final a in old) a.signature], [for (final a in actions) a.signature])) {
       return;
     }
     _actions[uid] = actions;
@@ -171,3 +197,6 @@ class PluginHost extends ChangeNotifier {
 
 /// The app's [PluginHost].
 final pluginHost = PluginHost();
+
+/// Identifies an inspected object for [PluginHost.bindActions].
+String pluginTargetKey(String gk, String? namespace, String name) => '$gk|${namespace ?? ''}|$name';

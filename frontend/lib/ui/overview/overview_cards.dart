@@ -430,6 +430,8 @@ String sectionLabel(String section) => switch (section) {
       'storage' => 'Storage',
       'argocd' => 'Argo CD',
       'network' => 'Network',
+      // Plugin alerts without a section of their own (docs/PLUGINS.md).
+      'custom' => 'Plugins',
       _ => section.isEmpty ? section : '${section[0].toUpperCase()}${section.substring(1)}',
     };
 

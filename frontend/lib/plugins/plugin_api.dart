@@ -61,8 +61,22 @@ class PluginKind {
   final int columns;
   final int sections;
   final int actions;
+  final int alerts;
+  final int related;
+  final int metrics;
   final int errors;
-  const PluginKind({required this.key, this.served = false, this.compiled = false, this.columns = 0, this.sections = 0, this.actions = 0, this.errors = 0});
+  const PluginKind({
+    required this.key,
+    this.served = false,
+    this.compiled = false,
+    this.columns = 0,
+    this.sections = 0,
+    this.actions = 0,
+    this.alerts = 0,
+    this.related = 0,
+    this.metrics = 0,
+    this.errors = 0,
+  });
 
   factory PluginKind.fromJson(Json j) => PluginKind(
         key: '${j['key'] ?? ''}',
@@ -71,6 +85,9 @@ class PluginKind {
         columns: (j['columns'] as num?)?.toInt() ?? 0,
         sections: (j['sections'] as num?)?.toInt() ?? 0,
         actions: (j['actions'] as num?)?.toInt() ?? 0,
+        alerts: (j['alerts'] as num?)?.toInt() ?? 0,
+        related: (j['related'] as num?)?.toInt() ?? 0,
+        metrics: (j['metrics'] as num?)?.toInt() ?? 0,
         errors: (j['errors'] as num?)?.toInt() ?? 0,
       );
 }
@@ -226,7 +243,31 @@ class PluginsState {
   static const empty = PluginsState();
 }
 
-/// A shell action offered for an object.
+/// A form field of a plugin patch action. The backend checks the value
+/// again (type, options, the plugin's `validate`).
+class PluginInput {
+  final String name;
+  final String label;
+
+  /// string, int, bool or enum.
+  final String type;
+  final List<String> options;
+  final Object? defaultValue;
+  final String? validateMessage;
+  const PluginInput({required this.name, required this.label, this.type = 'string', this.options = const [], this.defaultValue, this.validateMessage});
+
+  factory PluginInput.fromJson(Json j) => PluginInput(
+        name: '${j['name'] ?? ''}',
+        label: '${j['label'] ?? j['name'] ?? ''}',
+        type: '${j['type'] ?? 'string'}',
+        options: [for (final o in (j['options'] as List? ?? const [])) '$o'],
+        defaultValue: j['default'],
+        validateMessage: (j['validateMessage'] as String?)?.isEmpty == true ? null : j['validateMessage'] as String?,
+      );
+}
+
+/// An action offered for an object: a shell command run on this computer,
+/// or a patch of the object (through `POST /api/actions/plugin.<id>.<action>`).
 class PluginAction {
   final String plugin;
   final String id;
@@ -236,22 +277,58 @@ class PluginAction {
   final String? message;
   final bool dangerous;
 
-  /// The command exactly as it will run.
+  /// shell or patch.
+  final String type;
+
+  /// A shell action's command exactly as it will run.
   final List<String> argv;
+
+  /// A shell action that runs without a dock tab.
+  final bool background;
+
+  /// A patch action's type (merge or json) and form.
+  final String patchType;
+  final List<PluginInput> inputs;
   final bool consented;
-  const PluginAction({required this.plugin, required this.id, required this.label, this.icon, this.shortcut, this.message, this.dangerous = true, this.argv = const [], this.consented = false});
+  const PluginAction({
+    required this.plugin,
+    required this.id,
+    required this.label,
+    this.icon,
+    this.shortcut,
+    this.message,
+    this.dangerous = true,
+    this.type = 'shell',
+    this.argv = const [],
+    this.background = false,
+    this.patchType = 'merge',
+    this.inputs = const [],
+    this.consented = false,
+  });
+
+  bool get isPatch => type == 'patch';
+
+  /// Its name on `POST /api/actions/{action}`.
+  String get actionName => 'plugin.$plugin.$id';
 
   factory PluginAction.fromJson(Json j) => PluginAction(
         plugin: '${j['plugin'] ?? ''}',
         id: '${j['id'] ?? ''}',
         label: '${j['label'] ?? ''}',
         icon: j['icon'] as String?,
-        shortcut: j['shortcut'] as String?,
+        shortcut: (j['shortcut'] as String?)?.isEmpty == true ? null : j['shortcut'] as String?,
         message: (j['message'] as String?)?.isEmpty == true ? null : j['message'] as String?,
         dangerous: j['dangerous'] != false,
+        type: '${j['type'] ?? 'shell'}',
         argv: [for (final a in (j['argv'] as List? ?? const [])) '$a'],
+        background: j['background'] == true,
+        patchType: '${j['patchType'] ?? 'merge'}',
+        inputs: [for (final i in asMapList(j['inputs'])) PluginInput.fromJson(i)],
         consented: j['consented'] == true,
       );
+
+  /// Identity for change detection (what the UI shows and runs).
+  String get signature => '$plugin/$id/$type/${argv.join(' ')}/$consented/${[for (final i in inputs) '${i.name}=${i.defaultValue}'].join(',')}';
 }
 
 /// One plugin's resolved sections for an object.
@@ -262,13 +339,22 @@ class PluginPanelOut {
   /// Sections: {title, icon?, collapsed?, blocks: [{type, …}]}.
   final List<Json> sections;
   final List<PluginDiag> errors;
-  const PluginPanelOut({required this.plugin, required this.name, this.sections = const [], this.errors = const []});
+
+  /// What related objects or metrics couldn't be read.
+  final List<String> notes;
+
+  /// Seconds after which to render again while open (0 = only when the
+  /// object changes): the panel reads related objects, metrics or `now`.
+  final int refresh;
+  const PluginPanelOut({required this.plugin, required this.name, this.sections = const [], this.errors = const [], this.notes = const [], this.refresh = 0});
 
   factory PluginPanelOut.fromJson(Json j) => PluginPanelOut(
         plugin: '${j['plugin'] ?? ''}',
         name: '${j['name'] ?? ''}',
         sections: asMapList(j['sections']),
         errors: [for (final d in asMapList(j['errors'])) PluginDiag.fromJson(d)],
+        notes: [for (final n in (j['notes'] as List? ?? const [])) '$n'],
+        refresh: (j['refresh'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -282,4 +368,10 @@ class PluginPanelData {
         panels: [for (final p in asMapList(j['panels'])) PluginPanelOut.fromJson(p)],
         actions: [for (final a in asMapList(j['actions'])) PluginAction.fromJson(a)],
       );
+
+  /// The soonest refresh any panel asks for (null = none).
+  Duration? get refresh {
+    final secs = [for (final p in panels) if (p.refresh > 0) p.refresh];
+    return secs.isEmpty ? null : Duration(seconds: secs.reduce((a, b) => a < b ? a : b));
+  }
 }

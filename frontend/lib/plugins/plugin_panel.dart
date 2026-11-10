@@ -1,28 +1,27 @@
-/// Plugin sections in the inspector's Overview tab, and plugin shell
-/// actions in its header. Both come from `GET /api/plugins/panel`, which
-/// the backend renders from the object (the UI runs no plugin code).
+/// Plugin sections in the inspector's Overview tab, and plugin actions in
+/// its header. Both come from `GET /api/plugins/panel`, which the backend
+/// renders from the object, its related objects and metrics (the UI runs
+/// no plugin code).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../actions/actions.dart';
-import '../api/client.dart';
 import '../panels/panel.dart';
-import '../state/log_dock.dart';
-import '../ui/terminal/exec_protocol.dart';
-import '../ui/terminal/open_terminal.dart' show localShellSupported;
-import '../ui/terminal/terminal_tab.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
 import 'blocks.dart';
+import 'plugin_actions.dart';
 import 'plugin_api.dart';
 import 'plugin_host.dart';
-import 'plugin_icons.dart';
 
-/// [base] with the plugins' sections after its own, and their shell
-/// actions after its actions.
+export 'plugin_actions.dart' show pluginActions, runPluginAction, showPluginConsent;
+
+/// [base] with the plugins' sections after its own, and their actions
+/// after its actions.
 class PluginComposedPanel extends ResourcePanel {
   final ResourcePanel base;
   const PluginComposedPanel(this.base);
@@ -49,24 +48,10 @@ class PluginComposedPanel extends ResourcePanel {
   List<ResourceAction> actions(PanelContext ctx) => [...base.actions(ctx), ...pluginActions(ctx)];
 }
 
-/// The plugin shell actions last offered for [ctx]'s object (none on
-/// read-only contexts: the backend doesn't offer them there).
-List<ResourceAction> pluginActions(PanelContext ctx) {
-  if (ctx.app.readOnly || !localShellSupported) return const [];
-  return [
-    for (final a in pluginHost.actionsFor(ctx.uid))
-      ResourceAction(
-        id: 'plugin.${a.plugin}.${a.id}',
-        label: a.label,
-        icon: pluginIcon(a.icon) ?? Icons.terminal,
-        tooltip: '${a.argv.join(' ')}  (${a.plugin} plugin; runs on this computer)',
-        run: (context) => runPluginAction(context, ctx, a),
-      ),
-  ];
-}
-
 /// The plugins' sections for one object. Refetched when the object
-/// changes (its resourceVersion) or a plugin is reloaded.
+/// changes (its resourceVersion) or a plugin is reloaded, and while open
+/// every few seconds when they read related objects, metrics or `now`
+/// (the backend answers from the warm watch cache).
 class PluginSections extends StatefulWidget {
   final PanelContext ctx;
   const PluginSections({super.key, required this.ctx});
@@ -80,6 +65,8 @@ class _PluginSectionsState extends State<PluginSections> {
   Object? _error;
   String? _fetchedFor;
   int _seq = 0;
+  int _tick = 0;
+  Timer? _refresh;
 
   @override
   void initState() {
@@ -89,6 +76,7 @@ class _PluginSectionsState extends State<PluginSections> {
 
   @override
   void dispose() {
+    _refresh?.cancel();
     pluginHost.removeListener(_onHost);
     super.dispose();
   }
@@ -97,7 +85,7 @@ class _PluginSectionsState extends State<PluginSections> {
     if (mounted) setState(() {});
   }
 
-  String get _key => '${dig(widget.ctx.object, ['metadata', 'resourceVersion'])}@${pluginHost.generation}@${widget.ctx.app.readOnly}';
+  String get _key => '${dig(widget.ctx.object, ['metadata', 'resourceVersion'])}@${pluginHost.generation}@${widget.ctx.app.readOnly}@$_tick';
 
   void _fetchIfNeeded() {
     final key = _key;
@@ -109,6 +97,8 @@ class _PluginSectionsState extends State<PluginSections> {
       if (!mounted || seq != _seq) return;
       final d = PluginPanelData.fromJson(j);
       pluginHost.setActions(ctx.uid, d.actions);
+      pluginHost.bindActions(pluginTargetKey(ctx.type.gk, ctx.namespace, ctx.name), () => pluginActions(widget.ctx));
+      _schedule(d.refresh);
       setState(() {
         _data = d;
         _error = null;
@@ -116,6 +106,14 @@ class _PluginSectionsState extends State<PluginSections> {
     }, onError: (Object e) {
       if (!mounted || seq != _seq) return;
       setState(() => _error = e);
+    });
+  }
+
+  void _schedule(Duration? every) {
+    _refresh?.cancel();
+    if (every == null) return;
+    _refresh = Timer(every, () {
+      if (mounted) setState(() => _tick++);
     });
   }
 
@@ -137,114 +135,34 @@ class _PluginSectionsState extends State<PluginSections> {
               for (final e in p.errors) PluginErrorText('$e'),
             ]),
           ),
+        if (p.notes.isNotEmpty) PluginNotes(p.notes),
         for (final s in p.sections) PluginSectionView(s),
       ],
     ]);
   }
 }
 
-/// Runs plugin action [a] on [ctx]'s object: first-use consent to the
-/// plugin's permissions, a confirmation with the full command on every
-/// run, then the command in a new dock tab.
-Future<void> runPluginAction(BuildContext context, PanelContext ctx, PluginAction a) async {
-  final api = ctx.api;
-  if (ctx.app.readOnly) return;
-  if (!a.consented) {
-    final info = pluginHost.state.plugins.where((p) => p.id == a.plugin).firstOrNull;
-    if (info == null) return;
-    final ok = await showPluginConsent(context, info);
-    if (ok != true || !context.mounted) return;
-    try {
-      pluginHost.applyJson(await api.putPluginConsent(info.id, info.permissionsHash));
-    } on ApiException catch (e) {
-      if (context.mounted) showActionError(context, e.message);
-      return;
-    }
-    if (!context.mounted) return;
-  }
-  final ok = await confirmAction(
-    context,
-    title: '${a.label}?',
-    message: a.message,
-    kubeContext: ctx.app.currentContext,
-    objectName: ctx.name,
-    confirmLabel: 'Run',
-    destructive: a.dangerous,
-    extra: Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+/// What a plugin's related objects or metrics couldn't read ("Secrets
+/// aren't served", "not allowed to list secrets in demo"): a quiet line
+/// above its sections, which render with what there is.
+class PluginNotes extends StatelessWidget {
+  final List<String> notes;
+  const PluginNotes(this.notes, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('The ${a.plugin} plugin runs this on your computer, with your credentials:', style: Theme.of(context).textTheme.bodySmall),
-        const SizedBox(height: 6),
-        CodeBlock(a.argv.map(_quote).join(' ')),
-      ]),
-    ),
-  );
-  if (ok != true || !context.mounted) return;
-  final tab = TerminalTab(
-    transport: execTransportFor(api),
-    request: ExecRequest.pluginAction({
-      ...ctx.type.ref.toQuery(),
-      if (ctx.namespace != null) 'namespace': ctx.namespace!,
-      'name': ctx.name,
-      'plugin': a.plugin,
-      'action': a.id,
-    }, title: '${a.label} · ${ctx.name}'),
-  );
-  context.read<LogDock>().add(tab);
-}
-
-String _quote(String s) => s.isEmpty || RegExp(r'''[\s'"$`\\|&;<>()*?#~]''').hasMatch(s) ? "'${s.replaceAll("'", r"'\''")}'" : s;
-
-/// Asks to agree to [p]'s permissions, browser-extension style. Asked on a
-/// plugin's first shell action, and again when its permissions change.
-Future<bool?> showPluginConsent(BuildContext context, PluginInfo p) {
-  final theme = Theme.of(context);
-  final perms = p.permissions;
-  Widget line(IconData icon, String head, String body) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, size: 16, color: theme.hintColor),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text.rich(TextSpan(children: [
-              TextSpan(text: '$head ', style: const TextStyle(fontWeight: FontWeight.w600)),
-              TextSpan(text: body),
-            ]), style: theme.textTheme.bodySmall),
-          ),
-        ]),
-      );
-  return showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Allow ${p.name}?'),
-      content: SizedBox(
-        width: 460,
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${p.name} ${p.version} is an unpacked plugin from ${p.dir}. It asks to:', style: theme.textTheme.bodySmall),
-          const SizedBox(height: 10),
-          line(Icons.visibility_outlined, 'Read', perms.read.isEmpty ? 'nothing' : perms.read.map(_kindName).join(', ')),
-          line(Icons.terminal, 'Run on this computer', perms.commands.isEmpty ? 'nothing' : perms.commands.join(', ')),
-          line(Icons.edit_outlined, 'Change', 'nothing (patch actions come in a later version)'),
-          const SizedBox(height: 8),
-          Row(children: [
-            Icon(Icons.info_outline, size: 14, color: severityColor(context, Severity.warn)),
+        for (final n in notes)
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(padding: const EdgeInsets.only(top: 1), child: Icon(Icons.info_outline, size: 13, color: severityColor(context, Severity.info))),
             const SizedBox(width: 6),
-            Expanded(
-              child: Text('Commands run with your own credentials. Each run still asks first and shows the full command.',
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-            ),
+            Expanded(child: Text(n, style: style)),
           ]),
-        ]),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, true), child: const Text('Allow')),
-      ],
-    ),
-  );
-}
-
-String _kindName(String key) {
-  final kind = key.split('/').last;
-  return key.startsWith('/') || !key.contains('/') ? kind : '$kind (${key.split('/').first})';
+      ]),
+    );
+  }
 }

@@ -446,6 +446,12 @@ class ApiClient {
   Future<Json> pluginPanel(ResourceRef r, {String? namespace, required String name}) async =>
       Map<String, dynamic>.from(await _get('plugins/panel', {...r.toQuery(), 'namespace': namespace, 'name': name}) as Map);
 
+  /// Runs a plugin's background shell action on one object: the backend
+  /// builds the command. Returns {argv, exitCode, output, timedOut}.
+  Future<Json> runPluginBackground(ResourceRef r, {String? namespace, required String name, required String plugin, required String action}) async =>
+      Map<String, dynamic>.from(await _send('POST', 'plugins/run',
+          {...r.toQuery(), 'namespace': namespace, 'name': name, 'plugin': plugin, 'action': action}, const {}) as Map);
+
   /// Plugin [id]'s icon.png.
   Future<Uint8List> pluginIcon(String id) async => (await _api.get('plugins/${Uri.encodeComponent(id)}/icon')).bodyBytes;
 

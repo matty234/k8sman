@@ -407,7 +407,10 @@ class ActionResult {
 
   /// Object created by the action (e.g. the Job from a CronJob trigger).
   final ObjectRef? created;
-  const ActionResult({required this.message, this.dryRun = false, this.context = '', this.created});
+
+  /// A dry run's change (plugin patch actions): shown before confirming.
+  final ActionPreview? preview;
+  const ActionResult({required this.message, this.dryRun = false, this.context = '', this.created, this.preview});
   factory ActionResult.fromJson(Json j) => ActionResult(
         message: j['message'] ?? '',
         dryRun: j['dryRun'] ?? false,
@@ -415,6 +418,22 @@ class ActionResult {
         created: j['created'] == null
             ? null
             : ObjectRef(group: j['created']['group'] ?? '', kind: j['created']['kind'] ?? '', name: j['created']['name'] ?? '', namespace: j['created']['namespace']),
+        preview: j['preview'] is Map ? ActionPreview.fromJson(Map<String, dynamic>.from(j['preview'] as Map)) : null,
+      );
+}
+
+/// The patch a dry run sent and the object before and after it (YAML).
+class ActionPreview {
+  final String patchType;
+  final Object? patch;
+  final String before;
+  final String after;
+  const ActionPreview({this.patchType = 'merge', this.patch, this.before = '', this.after = ''});
+  factory ActionPreview.fromJson(Json j) => ActionPreview(
+        patchType: '${j['patchType'] ?? 'merge'}',
+        patch: j['patch'],
+        before: '${j['before'] ?? ''}',
+        after: '${j['after'] ?? ''}',
       );
 }
 

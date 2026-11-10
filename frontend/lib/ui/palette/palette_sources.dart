@@ -7,6 +7,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../app/updates/update_controller.dart';
 import '../../modules/modules.dart';
+import '../../plugins/plugin_host.dart' show pluginHost, pluginTargetKey;
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../../state/table_controller.dart';
@@ -178,6 +179,18 @@ List<PaletteItem> paletteItems(BuildContext context) {
         aliases: const ['edit', 'yaml'],
         run: () => openResourceEditor(context, d),
       ),
+    // The inspected object's plugin actions (none on read-only contexts).
+    if (app.detail case final d? when !app.readOnly)
+      for (final a in pluginHost.boundActions(pluginTargetKey(d.type.gk, d.namespace, d.name)))
+        PaletteItem(
+          group: PaletteGroup.actions,
+          title: a.label.replaceAll('…', ''),
+          detail: d.name,
+          typeLabel: 'Plugin Action',
+          icon: _icon(a.icon),
+          aliases: ['plugin', a.id.split('.').skip(1).first],
+          run: () => a.run(context),
+        ),
     if (app.detail case final d? when !app.readOnly && d.type.custom && d.type.hasSubresource('status') && d.type.can('update'))
       PaletteItem(
         group: PaletteGroup.actions,
