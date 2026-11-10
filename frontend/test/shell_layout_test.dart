@@ -136,6 +136,15 @@ void main() {
     expect(tester.takeException(), isNull);
     dock.closeAll();
   });
+
+  testWidgets('opening the inspector does not shift the table columns', (tester) async {
+    await pumpShell(tester, FixtureApi(), size: const Size(2000, 900));
+    double x(String text) => tester.getTopLeft(find.text(text).first).dx;
+    final before = [x('Name'), x('Namespace'), x('Status')];
+    await _openWebPod(tester);
+    expect(_inspectorVisible(tester), isTrue);
+    expect([x('Name'), x('Namespace'), x('Status')], before);
+  });
 }
 
 Future<void> _expandContainer(WidgetTester tester, String name) async {

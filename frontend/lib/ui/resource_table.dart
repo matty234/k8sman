@@ -143,7 +143,7 @@ class _TableBodyState extends State<_TableBody> {
                 )
               : LayoutBuilder(
                   builder: (context, box) {
-                    final widths = _stableWidths(_columnWidths(tc.columns, box.maxWidth, app.tablePrefs.of(tc.type.gk).widths));
+                    final widths = _stableWidths(_columnWidths(tc.columns, box.maxWidth, app.tablePrefs.of(tc.type.gk).widths, nameFit: _nameFit(rows)));
                     final total = widths.fold<double>(0, (a, b) => a + b) + 18; // + gutters
                     return Scrollbar(
                       controller: _hScroll,
@@ -209,6 +209,28 @@ class _TableBodyState extends State<_TableBody> {
   /// The last widths, reused while equal so cached rows stay valid.
   List<double> _widths = const [];
   List<double> _stableWidths(List<double> w) => listEquals(w, _widths) ? _widths : _widths = w;
+
+  /// The width the longest row name needs in the name column (text plus
+  /// the cell's padding and status mark), worked out again only when the
+  /// rows change, and only ever growing while the table shows one kind so
+  /// the column doesn't jitter as rows come and go.
+  double? _nameFit(List<TableRowData> rows) {
+    if (identical(rows, _nameRows)) return _nameWidth;
+    _nameRows = rows;
+    var longest = '';
+    for (final r in rows) {
+      if (r.name.length > longest.length) longest = r.name;
+    }
+    if (longest.isEmpty) return _nameWidth;
+    final style = Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12.5, fontWeight: FontWeight.w500);
+    final p = TextPainter(text: TextSpan(text: longest, style: style), textDirection: TextDirection.ltr, maxLines: 1, textScaler: MediaQuery.textScalerOf(context))..layout();
+    final w = p.width + 40;
+    p.dispose();
+    return _nameWidth = math.max(_nameWidth ?? 0, w);
+  }
+
+  List<TableRowData>? _nameRows;
+  double? _nameWidth;
 
   // Toolbar and header, reused while what they show is unchanged (a watch
   // event usually changes neither). They still rebuild on their own
@@ -683,22 +705,24 @@ class _TableBodyState extends State<_TableBody> {
 
   static const _minColumnWidth = 40.0;
 
-  /// Fixed base widths (or the user's, from dragging a divider); spare
-  /// space goes to free-text columns the user hasn't sized.
-  static List<double> _columnWidths(List<ColumnDef> cols, double available, Map<String, double> sized) {
+  /// Fixed base widths (or the user's, from dragging a divider). An unsized
+  /// name column fits its longest name ([nameFit], 180–480px), so it doesn't
+  /// change width with the window; the spare space goes to the last other
+  /// free-text column (a labels column first). Opening the inspector then
+  /// narrows that column instead of sliding every column left.
+  static List<double> _columnWidths(List<ColumnDef> cols, double available, Map<String, double> sized, {double? nameFit}) {
     final w = [for (var i = 0; i < cols.length; i++) sized[cols[i].name] ?? _baseWidth(cols[i], i)];
+    final fitName = nameFit != null && cols.isNotEmpty && cols[0].query == '.metadata.name' && !sized.containsKey(cols[0].name);
+    if (fitName) w[0] = nameFit.clamp(180.0, 480.0);
     final sum = w.fold<double>(0, (a, b) => a + b) + 24;
     final stretchy = [
-      for (var i = 0; i < cols.length; i++)
+      for (var i = fitName ? 1 : 0; i < cols.length; i++)
         // Namespaces are short and repetitive: they keep their base width
         // rather than sharing the spare space with names and images.
         if ((cols[i].type == 'string' || cols[i].type == 'labels') && cols[i].query != '.metadata.namespace' && !sized.containsKey(cols[i].name)) i,
     ];
     if (sum < available && stretchy.isNotEmpty) {
-      final extra = (available - sum) / stretchy.length;
-      for (final i in stretchy) {
-        w[i] += extra;
-      }
+      w[stretchy.where((i) => cols[i].type == 'labels').lastOrNull ?? stretchy.last] += available - sum;
     }
     return w;
   }
