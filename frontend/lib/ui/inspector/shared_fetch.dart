@@ -32,6 +32,9 @@ class SharedFetch {
     return f;
   }
 
+  /// Whether [key] is cached (fetched or in flight) in this zone.
+  static bool has(String key) => identical(_cache[key]?.$1, Zone.current);
+
   /// Drops every entry whose key starts with [prefix] and notifies.
   static void invalidate(String prefix) {
     _cache.removeWhere((k, _) => k.startsWith(prefix));

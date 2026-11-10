@@ -29,7 +29,10 @@ class PanelTab {
   final String label;
   final IconData? icon;
   final Widget Function(BuildContext context, PanelContext ctx) builder;
-  const PanelTab({required this.label, this.icon, required this.builder});
+
+  /// A small widget after the label (e.g. a count); it may draw nothing.
+  final Widget Function(BuildContext context, PanelContext ctx)? badge;
+  const PanelTab({required this.label, this.icon, required this.builder, this.badge});
 }
 
 /// Renders kind-specific detail sections. The shell renders a quiet owner

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../ui/security/security_tab.dart' show SecurityInsight, securityTab;
 
 import '../../actions/actions.dart';
 import '../../api/models.dart';
@@ -29,6 +30,9 @@ class DeploymentPanel extends ResourcePanel {
 
   @override
   Set<String> get kinds => const {'apps/Deployment'};
+
+  @override
+  List<PanelTab> tabs(PanelContext ctx) => [securityTab(ctx)];
 
   @override
   List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx), workloadTerminalAction(ctx)];
@@ -84,7 +88,7 @@ class DeploymentPanel extends ResourcePanel {
             ),
           ...conditionInsights(asMapList(st['conditions'])),
         ],
-        extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}'))],
+        extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}')), SecurityInsight(ctx)],
         facts: [?ownerFact(ctx.object), replicasFact(ctx)],
       ),
       PodsList(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../ui/security/security_tab.dart' show SecurityInsight, securityTab;
 
 import '../../api/models.dart';
 import '../../metrics/workload_usage.dart';
@@ -64,6 +65,9 @@ class DaemonSetPanel extends ResourcePanel {
   Set<String> get kinds => const {'apps/DaemonSet'};
 
   @override
+  List<PanelTab> tabs(PanelContext ctx) => [securityTab(ctx)];
+
+  @override
   List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx), workloadTerminalAction(ctx)];
 
   @override
@@ -83,6 +87,7 @@ class DaemonSetPanel extends ResourcePanel {
     final mis = asIntOrNull(st['numberMisscheduled']) ?? 0;
     return [
       InspectorHeader(
+        extraInsights: [SecurityInsight(ctx)],
         headline: head.text,
         mark: head.severity,
         detail: head.detail,

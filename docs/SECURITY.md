@@ -137,6 +137,32 @@ Grouped per namespace so many workloads with the same issue are one row.
 | high CVEs without a fix | low |
 | `images.exposed-secret`: Trivy ExposedSecretReports (credentials baked into the image) | high |
 
+## Inspector Security tab
+
+Pods and pod controllers (Deployment, StatefulSet, DaemonSet, ReplicaSet, Job,
+CronJob) have a **Security** tab in the inspector, backed by
+`GET /api/security/object` (the same analysis, run over the object's
+namespace and sharing its run with the page):
+
+- **Findings** against the object, or for a Pod (or a ReplicaSet/Job with an
+  owner) against the controller at the top of its owner chain ("From
+  Deployment/web"), with Ignore… and the ignored ones (Un-ignore), as on the
+  page. Image-vulnerability findings are left to the next section.
+- **Image vulnerabilities** per container: the counts, the top five CVEs
+  (fixable first, each with its advisory link) and "Show all"; links to the
+  VulnerabilityReport and to the Security page filtered to the workload.
+  "Not scanned yet" while the operator hasn't reported on an image; one quiet
+  line with Add-ons… without the Trivy Operator.
+- **Security context**: the effective pod and per-container settings as a
+  table, risky values in the severity colours.
+- **Policy results**, when Kyverno is connected (its separate tab is dropped
+  for these kinds).
+
+The tab's label counts the open findings plus critical and high CVEs (red
+with anything critical, amber for high or medium). The Overview keeps one
+insight, only for a critical setting (privileged, hostPID, node-level
+capabilities, sensitive host paths), linking to the tab.
+
 ## Scanner integration
 
 Two sources, both optional:

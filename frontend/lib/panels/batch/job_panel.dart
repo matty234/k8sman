@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../ui/security/security_tab.dart' show SecurityInsight, securityTab;
 
 import '../../actions/actions.dart';
 import '../../api/client.dart';
@@ -24,6 +25,9 @@ class JobPanel extends ResourcePanel {
 
   @override
   Set<String> get kinds => {'batch/Job'};
+
+  @override
+  List<PanelTab> tabs(PanelContext ctx) => [securityTab(ctx)];
 
   @override
   bool get ownerInHeader => true;
@@ -181,6 +185,7 @@ class JobStatusHeader extends StatelessWidget {
     ];
 
     return InspectorHeader(
+      extraInsights: [SecurityInsight(ctx)],
       mark: mark,
       headline: headline,
       headlineTone: failing ? Severity.error : (st.label == 'Suspended' ? Severity.warn : null),

@@ -1,4 +1,5 @@
 import '../../ui/portforward/quick_forward.dart';
+import '../../ui/security/security_tab.dart' show securityTab;
 
 import 'package:flutter/material.dart';
 
@@ -30,6 +31,9 @@ class PodPanel extends ResourcePanel {
 
   @override
   bool get ownerInHeader => true;
+
+  @override
+  List<PanelTab> tabs(PanelContext ctx) => [securityTab(ctx)];
 
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) {
@@ -337,7 +341,6 @@ class _Configuration extends StatelessWidget {
     final spec = ctx.spec;
     final status = ctx.status;
     final qos = status['qosClass'] as String?;
-    final podSc = asMap(spec['securityContext']);
     final started = parseTime(status['startTime']);
     return KeyValueTable(keyWidth: 110, [
       if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), HintText(_qosHint(qos))])),
@@ -351,7 +354,6 @@ class _Configuration extends StatelessWidget {
       ),
       ('Restart policy', Text('${spec['restartPolicy'] ?? 'Always'} · grace ${spec['terminationGracePeriodSeconds'] ?? 30}s', style: small)),
       if (started != null) ('Started', InlineWrap([Text(started.toLocal().toString().split('.').first, style: small), AgeText(status['startTime'], suffix: ' ago')])),
-      if (podSc.isNotEmpty) ('Pod security', securityLine(context, podSc)),
     ]);
   }
 

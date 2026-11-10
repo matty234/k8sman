@@ -4,7 +4,8 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../panels/kyverno/index.dart';
 import 'module.dart';
-import 'modules.dart' show moduleStatuses;
+import '../ui/security/security_tab.dart' show securityTabKinds;
+import 'modules.dart' show moduleEnabled, moduleStatuses;
 
 /// Kyverno: policies, exceptions, cleanup policies and the standard policy
 /// reports (wgpolicyk8s.io) Kyverno writes. Adds panels for policies and
@@ -87,10 +88,18 @@ class KyvernoModule extends AppModule {
 
   @override
   List<PanelTab> inspectorTabs(PanelContext ctx) {
-    // Only where Kyverno is found (detection runs once per context).
-    final s = moduleStatuses.of(this, ctx.api, ctx.app.currentContext);
-    if (s == null || s.state != ModuleState.connected) return const [];
+    // Only where Kyverno is found (detection runs once per context). Pods
+    // and workloads show their results in the Security tab instead.
+    if (securityTabKinds.contains(ctx.type.gk) || !kyvernoConnected(ctx)) return const [];
     final tab = policyResultsTab(ctx);
     return tab == null ? const [] : [tab];
   }
+}
+
+/// Whether the Kyverno module is on and found on [ctx]'s cluster.
+bool kyvernoConnected(PanelContext ctx) {
+  const m = KyvernoModule();
+  if (!moduleEnabled(m.id, ctx.app.disabledModules)) return false;
+  final s = moduleStatuses.of(m, ctx.api, ctx.app.currentContext);
+  return s != null && s.state == ModuleState.connected;
 }

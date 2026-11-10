@@ -238,7 +238,7 @@ class _LiveObjectState extends State<_LiveObject> {
                     tabAlignment: TabAlignment.start,
                     tabs: [
                       const Tab(text: 'Overview', height: 34),
-                      for (final x in extraTabs) Tab(height: 34, child: Row(children: [if (x.icon != null) ...[Icon(x.icon, size: 14), const SizedBox(width: 4)], Text(x.label)])),
+                      for (final x in extraTabs) Tab(height: 34, child: Row(children: [if (x.icon != null) ...[Icon(x.icon, size: 14), const SizedBox(width: 4)], Text(x.label), ?x.badge?.call(context, ctx!)])),
                       const Tab(text: 'YAML', height: 34),
                       const Tab(text: 'Events', height: 34),
                     ],

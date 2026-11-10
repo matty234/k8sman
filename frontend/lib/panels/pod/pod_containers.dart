@@ -346,7 +346,8 @@ String probeTiming(Json p) => [
 /// A container's details, shown when its row is expanded, in small
 /// labelled groups (each hidden when empty): runtime (state, image,
 /// command), network (ports), health (probes, lifecycle hooks), config
-/// (env, mounts, resources) and security. Usage lives in the row header.
+/// (env, mounts, resources). Security is the inspector's Security tab.
+/// Usage lives in the row header.
 class ContainerDetails extends StatelessWidget {
   final PodContainer c;
   final String? namespace;
@@ -383,7 +384,6 @@ class ContainerDetails extends StatelessWidget {
     final env = asMapList(spec['env']);
     final envFrom = asMapList(spec['envFrom']);
     final mounts = asMapList(spec['volumeMounts']);
-    final sc = asMap(spec['securityContext']);
     // Running and ready says it all in the row: just when it started.
     final plainRunning = c.isRunning && c.kind != ContainerKind.init && (c.ready || c.kind == ContainerKind.ephemeral);
 
@@ -425,7 +425,6 @@ class ContainerDetails extends StatelessWidget {
           for (final e in hooks.entries) _Field(e.key, Text(_hookText(asMap(e.value)), style: small)),
         ]),
       if (config.isNotEmpty) QuietGroup(key: const ValueKey('container-group-config'), 'Config', config, gap: 10),
-      if (sc.isNotEmpty) QuietGroup(key: const ValueKey('container-group-security'), 'Security', [securityLine(context, sc)]),
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final (i, g) in groups.indexed) Padding(padding: EdgeInsets.only(top: i == 0 ? 0 : 14), child: g),
@@ -807,51 +806,3 @@ class _Port extends StatelessWidget {
   }
 }
 
-/// A (pod or container) securityContext as one quiet line: "non-root ·
-/// read-only root fs · no privilege escalation · drops ALL · seccomp
-/// default", risky settings in amber or red.
-Widget securityLine(BuildContext context, Json sc) {
-  final theme = Theme.of(context);
-  final small = theme.textTheme.bodySmall;
-  final err = severityColor(context, Severity.error);
-  final warn = severityColor(context, Severity.warn);
-  final parts = <(String, Color?)>[];
-  void add(String t, [Color? c]) => parts.add((t, c));
-  if (sc['privileged'] == true) add('privileged', err);
-  if (sc['runAsUser'] == 0) {
-    add('runs as root', err);
-  } else if (sc['runAsUser'] != null) {
-    add('uid ${sc['runAsUser']}');
-  }
-  if (sc['runAsNonRoot'] == true) add('non-root');
-  if (sc['runAsGroup'] != null) add('gid ${sc['runAsGroup']}');
-  if (sc['fsGroup'] != null) add('fsGroup ${sc['fsGroup']}');
-  if (sc['readOnlyRootFilesystem'] == true) add('read-only root fs');
-  if (sc['allowPrivilegeEscalation'] == false) add('no privilege escalation');
-  if (sc['allowPrivilegeEscalation'] == true) add('privilege escalation allowed', warn);
-  final caps = asMap(sc['capabilities']);
-  final added = [for (final a in (caps['add'] as List? ?? const [])) '$a'];
-  final dropped = [for (final d in (caps['drop'] as List? ?? const [])) '$d'];
-  if (added.isNotEmpty) add('adds ${added.join(', ')}', warn);
-  if (dropped.isNotEmpty) add('drops ${dropped.join(', ')}');
-  final seccomp = dig(sc, ['seccompProfile', 'type']);
-  if (seccomp != null) {
-    add(switch ('$seccomp') { 'RuntimeDefault' => 'seccomp default', 'Unconfined' => 'seccomp unconfined', _ => 'seccomp $seccomp' }, seccomp == 'Unconfined' ? warn : null);
-  }
-  if (sc['supplementalGroups'] is List) add('groups ${(sc['supplementalGroups'] as List).join(',')}');
-  if (sc['procMount'] != null) add('procMount ${sc['procMount']}', sc['procMount'] == 'Unmasked' ? warn : null);
-  for (final s in asMapList(sc['sysctls'])) {
-    add('${s['name']}=${s['value']}');
-  }
-  if (parts.isEmpty) return HintText(sc.keys.join(', '));
-  final sep = TextSpan(text: '  ·  ', style: small?.copyWith(color: theme.hintColor));
-  return Text.rich(
-    key: const ValueKey('security-line'),
-    TextSpan(style: small, children: [
-      for (final (i, (t, c)) in parts.indexed) ...[
-        if (i > 0) sep,
-        TextSpan(text: t, style: c == null ? null : TextStyle(color: c, fontWeight: FontWeight.w600)),
-      ],
-    ]),
-  );
-}

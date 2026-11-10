@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../ui/security/security_tab.dart' show SecurityInsight, securityTab;
 
 import '../../api/client.dart';
 import '../../api/models.dart';
@@ -80,6 +81,9 @@ class StatefulSetPanel extends ResourcePanel {
   Set<String> get kinds => const {'apps/StatefulSet'};
 
   @override
+  List<PanelTab> tabs(PanelContext ctx) => [securityTab(ctx)];
+
+  @override
   List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx), workloadTerminalAction(ctx)];
 
   @override
@@ -117,7 +121,7 @@ class StatefulSetPanel extends ResourcePanel {
           InspectorFigure.count(available, desired, 'available', zeroIsError: true),
         ],
         insights: conditionInsights(asMapList(st['conditions'])),
-        extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}'))],
+        extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}')), SecurityInsight(ctx)],
         facts: [
           ?ownerFact(ctx.object),
           replicasFact(ctx),

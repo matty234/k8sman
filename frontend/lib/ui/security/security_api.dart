@@ -13,6 +13,9 @@ import '../../util/k8s.dart';
 import '../widgets/partial_banner.dart' show parsePartialErrors;
 import '../../util/json.dart';
 
+/// The [SecurityApi] the inspector uses for [api]; tests swap in a fake.
+SecurityApi Function(ApiClient api) securityApiFor = SecurityApi.new;
+
 /// Talks to the backend behind an [ApiClient], reusing its base URL. Tests
 /// subclass this to serve canned JSON.
 class SecurityApi {
@@ -42,6 +45,11 @@ class SecurityApi {
 
   /// Removes one rule (the settings list).
   Future<void> removeIgnore(SecIgnoreRule rule) async => _setIgnores([for (final r in await ignores()) if (!r.sameTarget(rule)) r]);
+
+  /// One Pod or workload's findings and image scans (the inspector's
+  /// Security tab).
+  Future<ObjectSecurity> forObject({required String namespace, required String kind, required String name, String group = ''}) async =>
+      ObjectSecurity.fromJson(jsonObjectBody(await _http.get('/object', {'namespace': namespace, 'kind': kind, 'name': name, 'group': group})));
 
   Future<ScannerStatus> scanner() async => ScannerStatus.fromJson(jsonObjectBody(await _http.get('/scanner')));
 
@@ -525,4 +533,82 @@ class ScanResult {
         vulnerabilities: [for (final v in _maps(j['vulnerabilities'])) Cve.fromJson(v)],
         total: asInt(j['total']),
       );
+}
+
+/// One container's image of an object, with its full scan when there is one.
+class ObjectImage {
+  final String container;
+  final String image;
+  final bool scanned;
+  final String? source;
+  final String? scannedAt;
+  final VulnCounts counts;
+  final List<Cve> cves;
+
+  /// The VulnerabilityReport read, if any.
+  final ObjectRef? report;
+
+  const ObjectImage({required this.container, required this.image, this.scanned = false, this.source, this.scannedAt, this.counts = const VulnCounts(), this.cves = const [], this.report});
+
+  factory ObjectImage.fromJson(Json j) => ObjectImage(
+        container: asStr(j['container']),
+        image: asStr(j['image']),
+        scanned: j['scanned'] == true,
+        source: asStr(j['source']).isEmpty ? null : asStr(j['source']),
+        scannedAt: asStr(j['scannedAt']).isEmpty ? null : asStr(j['scannedAt']),
+        counts: VulnCounts.fromJson(asMap(j['counts'])),
+        cves: [for (final c in _maps(j['cves'])) Cve.fromJson(c)],
+        report: j['report'] is Map ? refFromJson(asMap(j['report'])) : null,
+      );
+}
+
+/// `GET /api/security/object`: one Pod or workload's security.
+class ObjectSecurity {
+  final ObjectRef object;
+
+  /// What findings are reported against: [object], or its top owner.
+  final ObjectRef target;
+  final List<SecFinding> findings;
+  final List<SecIgnored> ignored;
+  final List<ObjectImage> images;
+  final bool trivyOperator;
+  final Set<String> pending;
+  final Map<String, String> errors;
+
+  const ObjectSecurity({
+    required this.object,
+    required this.target,
+    this.findings = const [],
+    this.ignored = const [],
+    this.images = const [],
+    this.trivyOperator = false,
+    this.pending = const {},
+    this.errors = const {},
+  });
+
+  factory ObjectSecurity.fromJson(Json j) => ObjectSecurity(
+        object: refFromJson(asMap(j['object'])),
+        target: refFromJson(asMap(j['target'])),
+        findings: [for (final f in _maps(j['findings'])) SecFinding.fromJson(f)],
+        ignored: [for (final f in _maps(j['ignored'])) SecIgnored(SecFinding.fromJson(f), SecIgnoreRule.fromJson(asMap(f['rule'])))],
+        images: [for (final i in _maps(j['images'])) ObjectImage.fromJson(i)],
+        trivyOperator: j['trivyOperator'] == true,
+        pending: {for (final p in (j['pending'] as List?) ?? const []) '$p'},
+        errors: {for (final e in asMap(j['errors']).entries) e.key: '${e.value}'},
+      );
+
+  /// Whether findings come from an owner rather than the object itself.
+  bool get inherited => target.kind != object.kind || target.name != object.name;
+
+  /// Critical and high CVEs over every image, each image counted once.
+  ({int critical, int high}) get cveCounts {
+    var c = 0, h = 0;
+    final seen = <String>{};
+    for (final i in images) {
+      if (!i.scanned || !seen.add(i.image)) continue;
+      c += i.counts.critical;
+      h += i.counts.high;
+    }
+    return (critical: c, high: h);
+  }
 }

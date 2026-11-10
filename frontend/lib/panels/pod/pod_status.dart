@@ -5,6 +5,7 @@ import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../ui/inspector/inspector.dart';
 import '../../ui/logs/open_logs.dart';
+import '../../ui/security/security_tab.dart' show SecurityInsight;
 import '../../ui/theme.dart';
 import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
@@ -75,6 +76,7 @@ class PodStatusHeader extends StatelessWidget {
               tooltip: '$initsDone of ${inits.length} init containers completed'),
       ],
       insights: insights,
+      extraInsights: [SecurityInsight(ctx)],
       factsKeyWidth: 64,
       facts: _facts(context),
     );

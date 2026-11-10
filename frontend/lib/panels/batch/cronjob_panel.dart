@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../ui/security/security_tab.dart' show SecurityInsight, securityTab;
 import 'package:provider/provider.dart';
 
 import '../../actions/actions.dart';
@@ -84,6 +85,9 @@ class CronJobPanel extends ResourcePanel {
 
   @override
   Set<String> get kinds => {'batch/CronJob'};
+
+  @override
+  List<PanelTab> tabs(PanelContext ctx) => [securityTab(ctx)];
 
   @override
   bool get ownerInHeader => true;
@@ -234,6 +238,7 @@ class CronStatusHeader extends StatelessWidget {
         ]);
 
     return InspectorHeader(
+      extraInsights: [SecurityInsight(ctx)],
       mark: mark,
       headline: s.words,
       detail: detail,

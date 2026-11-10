@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../ui/security/security_tab.dart' show SecurityInsight, securityTab;
 
 import '../../ui/inspector/inspector.dart';
 import '../../util/k8s.dart';
@@ -23,6 +24,9 @@ class ReplicaSetPanel extends ResourcePanel {
 
   @override
   Set<String> get kinds => const {'apps/ReplicaSet'};
+
+  @override
+  List<PanelTab> tabs(PanelContext ctx) => [securityTab(ctx)];
 
   @override
   List<ResourceAction> actions(PanelContext ctx) => [workloadLogsAction(ctx)];
@@ -64,7 +68,7 @@ class ReplicaSetPanel extends ResourcePanel {
           if (byDeployment && !ctx.app.readOnly && !oldRevision)
             const Insight(Severity.neutral, 'Scaled by its Deployment', 'The Deployment resets manual scaling of this ReplicaSet.'),
         ],
-        extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}'))],
+        extraInsights: [HpaOverrideNote(ctx, key: ValueKey('hpa-${ctx.uid}')), SecurityInsight(ctx)],
         facts: [
           ('Owner', owners.isEmpty ? 'none (standalone ReplicaSet)' : OwnerLine(ctx.object)),
           replicasFact(ctx),
