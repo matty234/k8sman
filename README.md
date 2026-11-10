@@ -70,6 +70,8 @@ machine.
 
 <picture><source srcset="docs/images/demo-overview.avif" type="image/avif"><img src="docs/images/overview.png" alt="Overview: issue tiles, then the issues grouped by owning workload" width="100%"></picture>
 
+![The Issues tab in the dock: critical and warning issues across the cluster](docs/images/issues.png)
+
 - The **Overview** page ranks what's wrong: crash loops, image pull errors,
   OOM kills, stalled rollouts, failing CronJobs, node pressure, lost PVCs and more.
 - Issues are grouped under the workload that owns them, with quick fixes such
@@ -100,6 +102,8 @@ machine.
 ### Logs, terminals and port-forwards
 
 <picture><source srcset="docs/images/demo-logs.avif" type="image/avif"><img src="docs/images/terminal.png" alt="Logs streaming into the bottom dock, then a shell in the same pod" width="100%"></picture>
+
+![Merged logs from four pods with coloured per-pod prefixes and JSON/logfmt colouring](docs/images/stern.png)
 
 - **Logs**: follow, previous instance, timestamps, wrap, and search with
   highlighting or "only matching".

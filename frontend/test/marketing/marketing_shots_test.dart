@@ -26,6 +26,7 @@ import 'package:k8sman/main.dart';
 import 'package:k8sman/modules/helm_module.dart';
 import 'package:k8sman/state/app_state.dart';
 import 'package:k8sman/panels/argocd/app_diff.dart';
+import 'package:k8sman/state/issues_feed.dart';
 import 'package:k8sman/state/log_dock.dart';
 import 'package:k8sman/ui/column_editor.dart';
 import 'package:k8sman/ui/detail/detail_sidebar.dart';
@@ -195,6 +196,27 @@ class MarketingApi extends ApiClient {
 
   @override
   Future<String> objectYaml(ResourceRef r, {String? namespace, required String name, bool managedFields = false}) async => 'kind: Pod';
+
+  @override
+  Stream<AggregateMessage> aggregateLogs({
+    NamespaceScope scope = NamespaceScope.all,
+    List<String> selectors = const [],
+    List<String>? pods,
+    String? podRegex,
+    String? containerRegex,
+    String? container,
+    int tailLines = 200,
+    bool follow = true,
+    bool previous = false,
+    int? sinceSeconds,
+  }) {
+    final c = StreamController<AggregateMessage>();
+    for (final (pod, cont) in Demo.mergedPods) {
+      c.add(AggregateMessage(event: 'added', pod: pod, container: cont, namespace: 'payments'));
+    }
+    c.add(AggregateMessage(lines: Demo.mergedLogLines()));
+    return c.stream;
+  }
 
   @override
   Stream<LogMessage> logs({
@@ -792,6 +814,42 @@ class Demo {
     return null;
   }
 
+  static const mergedPods = [
+    ('payments-gateway-6b7d9c5f8-8wz4m', 'gateway'),
+    ('payments-gateway-6b7d9c5f8-vt9rn', 'gateway'),
+    ('ledger-0', 'ledger'),
+    ('ledger-1', 'ledger'),
+  ];
+
+  static List<AggLine> mergedLogLines() {
+    final now = DateTime.now().toUtc();
+    String ts(int ms) => now.subtract(Duration(milliseconds: ms)).toIso8601String();
+    const gw = [
+      '{"level":"info","msg":"charge authorised","order":"ord_8f21c","amount":4299,"currency":"EUR","latency_ms":182}',
+      '{"level":"info","msg":"charge authorised","order":"ord_8f21d","amount":1550,"currency":"EUR","latency_ms":141}',
+      '{"level":"warn","msg":"card issuer slow, retrying","order":"ord_8f21e","attempt":2,"latency_ms":1204}',
+      '{"level":"info","msg":"refund issued","order":"ord_7a90b","amount":2100,"currency":"EUR"}',
+      '{"level":"error","msg":"charge declined","order":"ord_8f21f","code":"insufficient_funds","amount":8800}',
+    ];
+    const lg = [
+      'level=info msg="journal entry committed" entry=je_5521 debit=acct_112 credit=acct_907 amount=4299',
+      'level=info msg="journal entry committed" entry=je_5522 debit=acct_112 credit=acct_907 amount=1550',
+      'level=warn msg="replica lag above threshold" lag_ms=640 replica=ledger-1',
+      'level=info msg="snapshot written" bytes=1048576 took=212ms',
+      'level=error msg="reconcile mismatch" entry=je_5519 expected=2100 got=2010',
+    ];
+    const order = [0, 2, 1, 3, 0, 1, 2, 3, 3, 0, 2, 1];
+    const pick = [0, 0, 1, 1, 2, 2, 3, 0, 4, 3, 4, 1];
+    return [
+      for (var i = 0; i < 36; i++)
+        () {
+          final (pod, cont) = mergedPods[order[i % 12]];
+          final pool = cont == 'gateway' ? gw : lg;
+          return AggLine(pod, cont, ts((36 - i) * 850), pool[(pick[i % 12] + i ~/ 12) % 5], 'payments');
+        }(),
+    ];
+  }
+
   static List<String> logLines(String pod, String container, {bool previous = false}) {
     final now = DateTime.now().toUtc();
     String ts(int s) => now.subtract(Duration(seconds: s)).toIso8601String().substring(0, 19);
@@ -944,6 +1002,7 @@ Future<Shot> pumpApp(
   Brightness brightness = Brightness.dark,
   List<Color> gradient = brandDark,
   void Function(AppState app)? configure,
+  bool issues = false,
 }) async {
   tester.view.physicalSize = _canvas;
   tester.view.devicePixelRatio = 1;
@@ -953,6 +1012,8 @@ Future<Shot> pumpApp(
   await app.init();
   configure?.call(app);
   final dock = LogDock(api);
+  final feed = IssuesFeed(api, app: app, dock: dock);
+  addTearDown(feed.dispose);
   await tester.pumpWidget(RepaintBoundary(
     key: _boundary,
     child: MarketingFrame(
@@ -963,11 +1024,13 @@ Future<Shot> pumpApp(
           Provider<ApiClient>.value(value: api),
           ChangeNotifierProvider<AppState>.value(value: app),
           ChangeNotifierProvider<LogDock>.value(value: dock),
+          ChangeNotifierProvider<IssuesFeed>.value(value: feed),
         ],
         child: K8sManApp(themeMode: brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light),
       ),
     ),
   ));
+  if (issues) await tester.runAsync(feed.refresh);
   await settle(tester);
   return Shot(app, dock, api);
 }
@@ -1193,5 +1256,32 @@ void main() {
     });
     await settle(tester);
     await capture(tester, 'multiselect');
+  });
+
+  shot('stern', (tester) async {
+    final s = await pumpApp(tester, configure: (app) => app.namespace = null);
+    s.dock.openAggregate('payments', podRegex: 'payments-gateway|ledger', title: '~payments-gateway|ledger', allContainers: true);
+    s.dock.setHeight(600);
+    await settle(tester, 10);
+    await capture(tester, 'stern');
+    s.dock.closeAll();
+  });
+
+  shot('inspector', (tester) async {
+    final s = await pumpApp(tester, configure: (app) => app.namespace = null);
+    await openPod(tester, s, 'web-6fd47b8fcb-4v4m9', 'storefront');
+    await inspectorWidth(tester, 520);
+    await tester.tap(find.text('nginx').last);
+    await settle(tester);
+    await age(tester);
+    await capture(tester, 'inspector');
+  });
+
+  shot('issues', (tester) async {
+    final s = await pumpApp(tester, issues: true, configure: (app) => app.namespace = null);
+    s.dock.showPane(DockPane.issues);
+    s.dock.setHeight(460);
+    await settle(tester, 8);
+    await capture(tester, 'issues');
   });
 }
