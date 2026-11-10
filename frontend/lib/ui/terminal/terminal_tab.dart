@@ -88,7 +88,7 @@ class TerminalTab extends DockTab {
   @override
   String get pod => _request.pod;
   @override
-  String get label => isLocal ? 'local · ${container ?? ''}' : '$pod/${container ?? 'default'}';
+  String get label => isLocal ? (_request.title ?? 'local · ${container ?? ''}') : '$pod/${container ?? 'default'}';
 
   /// A login shell on this machine rather than in a pod.
   bool get isLocal => _request.local;

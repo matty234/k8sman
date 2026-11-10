@@ -22,6 +22,7 @@ import 'hubble_module.dart';
 import 'metrics_module.dart';
 import 'kyverno_module.dart';
 import 'module.dart';
+import 'plugins_module.dart';
 import 'prometheus_module.dart';
 import 'upgrade_module.dart';
 
@@ -43,6 +44,7 @@ const List<AppModule> builtInModules = [
   HubbleModule(),
   KyvernoModule(),
   UpgradeModule(),
+  PluginsModule(),
 ];
 
 /// Whether module [id] is on: not turned off in [disabled], nor any module

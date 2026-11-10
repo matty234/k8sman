@@ -8,6 +8,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../modules/modules.dart' show moduleInspectorTabs, moduleStatuses;
 import '../../panels/registry.dart';
+import '../../plugins/plugin_host.dart';
 import '../../state/app_state.dart';
 import '../../state/reconnecting_watch.dart';
 import '../../util/k8s.dart';
@@ -83,6 +84,8 @@ class _LiveObjectState extends State<_LiveObject> {
     // Module tabs can depend on a module's detection (e.g. Hubble's Flows
     // tab only where Hubble is installed).
     moduleStatuses.addListener(_onModuleStatus);
+    // Plugin sections and actions arrive (and hot reload) on their own.
+    pluginHost.addListener(_onModuleStatus);
   }
 
   @override
@@ -155,6 +158,7 @@ class _LiveObjectState extends State<_LiveObject> {
   @override
   void dispose() {
     moduleStatuses.removeListener(_onModuleStatus);
+    pluginHost.removeListener(_onModuleStatus);
     _settle?.cancel();
     _spinTimer?.cancel();
     _watch.stop();

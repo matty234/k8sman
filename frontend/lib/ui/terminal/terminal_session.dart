@@ -96,6 +96,12 @@ class _TerminalSessionState extends State<TerminalSession> {
   }
 
   void _restart({String? shell, List<String>? command}) {
+    if (s.request.plugin != null) {
+      // Every run of a plugin action is confirmed: run it again from the
+      // object's actions.
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Run the plugin action again from the object’s actions (each run is confirmed)')));
+      return;
+    }
     s.restart(shell: shell, command: command);
     _focus.requestFocus();
   }

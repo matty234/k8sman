@@ -422,6 +422,33 @@ class ApiClient {
   /// The module validates them: a bad value is an [ApiException] (400).
   Future<void> putModuleSettings(String id, Json settings) => _send('PUT', 'settings/modules/${Uri.encodeComponent(id)}', const {}, settings);
 
+  // ---- runtime plugins (see lib/plugins and docs/PLUGINS.md) ----
+
+  /// Dev mode, the plugin folders and every plugin with its errors and
+  /// timings (`GET /api/plugins`).
+  Future<Json> plugins() async => Map<String, dynamic>.from(await _get('plugins') as Map);
+
+  Future<Json> putPluginSettings({bool? devMode, List<String>? devFolders}) async =>
+      Map<String, dynamic>.from(await _send('PUT', 'plugins/settings', const {}, {'devMode': ?devMode, 'devFolders': ?devFolders}) as Map);
+
+  Future<Json> setPluginEnabled(String id, bool enabled) async =>
+      Map<String, dynamic>.from(await _send('PUT', 'plugins/${Uri.encodeComponent(id)}/enabled', const {}, {'enabled': enabled}) as Map);
+
+  /// Agrees to plugin [id]'s permissions as shown ([permissionsHash]).
+  Future<Json> putPluginConsent(String id, String permissionsHash) async =>
+      Map<String, dynamic>.from(await _send('PUT', 'plugins/${Uri.encodeComponent(id)}/consent', const {}, {'permissionsHash': permissionsHash}) as Map);
+
+  Future<Json> deletePluginConsent(String id) async => Map<String, dynamic>.from(await _send('DELETE', 'plugins/${Uri.encodeComponent(id)}/consent', const {}, null) as Map);
+
+  Future<Json> reloadPlugins() async => Map<String, dynamic>.from(await _send('POST', 'plugins/reload', const {}, const {}) as Map);
+
+  /// The plugins' panel sections and shell actions for one object.
+  Future<Json> pluginPanel(ResourceRef r, {String? namespace, required String name}) async =>
+      Map<String, dynamic>.from(await _get('plugins/panel', {...r.toQuery(), 'namespace': namespace, 'name': name}) as Map);
+
+  /// Plugin [id]'s icon.png.
+  Future<Uint8List> pluginIcon(String id) async => (await _api.get('plugins/${Uri.encodeComponent(id)}/icon')).bodyBytes;
+
   // ---- CRD group icons (settings.json) ----
 
   /// Whether icons may be fetched from the internet: the saved choice

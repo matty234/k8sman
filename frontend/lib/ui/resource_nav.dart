@@ -8,6 +8,7 @@ import '../api/models.dart';
 import '../app/kubeconfig_picker.dart';
 import '../app/window_chrome.dart';
 import '../modules/modules.dart';
+import '../plugins/plugin_host.dart';
 import '../state/app_state.dart';
 import '../state/poller.dart';
 import '../state/startup_gate.dart';
@@ -59,12 +60,19 @@ Map<String, List<String>> _curatedFor(AppState app) => {
 /// The nav's icon for a kind (also used by the collapsed inspector tab).
 IconData kindIcon(ResourceType type) => _iconOf(type) ?? (type.custom ? Icons.extension_outlined : Icons.article_outlined);
 
-IconData? _iconOf(ResourceType type) => _kindIcons[type.gk] ?? moduleKindIcons[type.gk];
+IconData? _iconOf(ResourceType type) => _kindIcons[type.gk] ?? moduleKindIcons[type.gk] ?? pluginHost.kindIcons[type.gk];
 
 /// [kindIcon], except custom resources without a built-in glyph get their
-/// API group's app icon.
-Widget kindIconWidget(ResourceType type, {double size = 15, Color? color}) =>
-    type.custom && _iconOf(type) == null ? GroupIcon(group: type.group, size: size) : Icon(kindIcon(type), size: size, color: color);
+/// API group's app icon (or a plugin's icon.png).
+Widget kindIconWidget(ResourceType type, {double size = 15, Color? color}) {
+  if (type.custom && _iconOf(type) == null) {
+    final p = pluginHost.pngIconFor(type.gk);
+    final png = p == null ? null : pluginHost.iconBytes(p.id);
+    if (png != null) return Image.memory(png, width: size, height: size);
+    return GroupIcon(group: type.group, size: size);
+  }
+  return Icon(kindIcon(type), size: size, color: color);
+}
 
 const _kindIcons = <String, IconData>{
   '/Pod': Icons.view_in_ar_outlined,
@@ -298,9 +306,22 @@ class _ResourceNavState extends State<ResourceNav> with PollingState {
   @override
   void initState() {
     super.initState();
+    // Plugins add sidebar sections and kind icons (and hot reload).
+    pluginHost.addListener(_onPlugins);
+    pluginHost.attach(context.read<AppState>().api);
     poll(OverviewSummary.interval, _pollSummary);
     // First fetch once the first table has painted (see StartupGate).
     StartupGate.ready.then((_) => _pollSummary());
+  }
+
+  void _onPlugins() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    pluginHost.removeListener(_onPlugins);
+    super.dispose();
   }
 
   /// Fetches unless the Overview page did recently. Not while connecting.

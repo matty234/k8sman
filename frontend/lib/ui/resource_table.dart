@@ -299,6 +299,7 @@ class _TableBodyState extends State<_TableBody> {
       final v = rows[r].cells.elementAtOrNull(col);
       final t = switch (c.type) {
         'age' => parseTime(v) != null ? formatAge(parseTime(v)!) : cellText(v),
+        'until' => parseTime(v) != null ? formatUntil(parseTime(v)!) : cellText(v),
         'nodeos' => nodeOsOf(nodeFromOsCell(cellText(v)))?.label ?? '',
         _ => cellText(v),
       };
@@ -376,7 +377,7 @@ class _TableBodyState extends State<_TableBody> {
   static CellFilter? _cellFilter(TableController tc, TableRowData row, int? col) {
     if (col == null || col >= tc.columns.length) return null;
     final column = tc.columns[col];
-    if (const {'age', 'usage', 'labels', 'percent'}.contains(column.type)) return null;
+    if (const {'age', 'until', 'usage', 'labels', 'percent'}.contains(column.type)) return null;
     final key = fieldKey(column.name);
     final value = cellText(col < row.cells.length ? row.cells[col] : null).trim();
     if (key.isEmpty || value.isEmpty || value.length > 80 || value.contains('"')) return null;
@@ -632,6 +633,7 @@ class _TableBodyState extends State<_TableBody> {
     if (c.query == '.metadata.namespace') return 140;
     switch (c.type) {
       case 'age':
+      case 'until':
         return 80;
       case 'ratio':
         return 72;
@@ -1064,23 +1066,25 @@ class _HeaderState extends State<_Header> {
       child: Row(
         mainAxisAlignment: const {'number', 'quantity', 'usage', 'ratio'}.contains(c.type) ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          Flexible(
-            child: Text(
+          Flexible(child: () {
+            final name = Text(
               c.name,
               overflow: TextOverflow.ellipsis,
               style: style?.copyWith(
                 color: hovered || controller.sortColumn == i ? theme.colorScheme.onSurface : null,
                 fontWeight: controller.sortColumn == i ? FontWeight.w600 : null,
               ),
-            ),
-          ),
+            );
+            // Plugin columns: their description and plugin.
+            return c.plugin == null ? name : Tooltip(message: [?c.description, '${c.plugin} plugin'].join('\n'), child: name);
+          }()),
           if (controller.sortColumn == i) ...[
             const SizedBox(width: 2),
             Icon(controller.sortAscending ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 14, color: theme.hintColor),
           ],
           if (controller.columnErrors[i] != null)
             Tooltip(
-              message: 'jq error: ${controller.columnErrors[i]}\n${c.query}',
+              message: c.plugin != null ? '${c.plugin} plugin: ${controller.columnErrors[i]}' : 'jq error: ${controller.columnErrors[i]}\n${c.query}',
               child: Icon(Icons.warning_amber, size: 14, color: theme.colorScheme.error),
             ),
         ],
@@ -1413,6 +1417,17 @@ class TableCellView extends StatelessWidget {
           child: Text(
             t != null ? formatAge(t) : '$v',
             style: base?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+        );
+      case 'until':
+        // A future time as time left; red once it has passed.
+        final t = parseTime(v);
+        final passed = t != null && t.isBefore(DateTime.now());
+        return Tooltip(
+          message: t?.toLocal().toString() ?? '$v',
+          child: Text(
+            t != null ? formatUntil(t) : '$v',
+            style: base?.copyWith(color: passed ? severityColor(context, Severity.error) : null, fontFeatures: const [FontFeature.tabularFigures()]),
           ),
         );
       case 'status':

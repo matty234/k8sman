@@ -47,13 +47,26 @@ class ExecRequest {
   /// A login shell on this machine (`/api/local-shell`) instead of a pod.
   final bool local;
 
-  const ExecRequest({required this.namespace, required this.pod, this.container, this.command, this.shell = 'auto', this.cols, this.rows, this.local = false});
+  /// A plugin shell action instead of the login shell: `plugin`, `action`
+  /// and the object (`group`, `version`, `resource`, `namespace`,
+  /// `name`). The backend builds the command from the loaded plugin.
+  final Map<String, String>? plugin;
+
+  /// The dock tab's label (plugin actions).
+  final String? title;
+
+  const ExecRequest({required this.namespace, required this.pod, this.container, this.command, this.shell = 'auto', this.cols, this.rows, this.local = false, this.plugin, this.title});
 
   /// A local shell, pointed at the app's current context by the backend.
   const ExecRequest.localShell() : this(namespace: '', pod: '', local: true);
 
+  /// A plugin's shell action on this machine (see [plugin]).
+  const ExecRequest.pluginAction(Map<String, String> query, {required String title}) : this(namespace: '', pod: '', local: true, plugin: query, title: title);
+
   ExecRequest copyWith({String? container, List<String>? command, bool clearCommand = false, String? shell, int? cols, int? rows}) => ExecRequest(
         local: local,
+        plugin: plugin,
+        title: title,
         namespace: namespace,
         pod: pod,
         container: container ?? this.container,
@@ -66,7 +79,7 @@ class ExecRequest {
   /// Query parameters for `/api/exec`. The command goes JSON-encoded so
   /// arguments with spaces survive.
   Map<String, String> toQuery() => local
-      ? {if (cols != null) 'cols': '$cols', if (rows != null) 'rows': '$rows'}
+      ? {...?plugin, if (cols != null) 'cols': '$cols', if (rows != null) 'rows': '$rows'}
       : {
         'namespace': namespace,
         'pod': pod,

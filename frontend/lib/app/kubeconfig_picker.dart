@@ -37,6 +37,23 @@ class NativeFiles {
     }
   }
 
+  /// Shows an open panel for a folder (a plugin folder); returns its path.
+  /// Null when cancelled or when the platform has no folder panel.
+  static Future<String?> chooseDirectory({String confirm = 'Load'}) async {
+    if (_windows || _linux) {
+      try {
+        return await FileSelectorPlatform.instance.getDirectoryPathWithOptions(FileDialogOptions(confirmButtonText: confirm));
+      } on UnimplementedError {
+        return null;
+      }
+    }
+    try {
+      return await _channel.invokeMethod<String>('chooseDirectory', {'prompt': confirm});
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   static const _yaml = XTypeGroup(label: 'YAML', extensions: ['yaml', 'yml']);
 
   /// Shows an open panel for a `.yaml` / `.yml` file; returns the chosen path.

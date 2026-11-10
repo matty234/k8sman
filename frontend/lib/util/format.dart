@@ -13,6 +13,16 @@ String formatAge(DateTime? t, {DateTime? now}) {
   return '${d.inDays ~/ 365}y${d.inDays % 365}d';
 }
 
+/// Time left until [t], kubectl style ("29d", "3h"); once [t] has passed,
+/// the time since, with a minus ("-2d").
+String formatUntil(DateTime t, {DateTime? now}) {
+  final n = (now ?? DateTime.now()).toUtc();
+  final u = t.toUtc();
+  if (u.isBefore(n)) return '-${formatAge(u, now: n)}';
+  // The mirror image: as long ago as t is ahead.
+  return formatAge(n.subtract(u.difference(n)), now: n);
+}
+
 /// "5m ago" ('' when [t] is null).
 String formatAgo(DateTime? t, {DateTime? now}) => t == null ? '' : '${formatAge(t, now: now)} ago';
 

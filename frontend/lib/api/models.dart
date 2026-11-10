@@ -95,17 +95,29 @@ class ColumnDef {
   final String name;
   final String query;
 
-  /// string | number | age | status | bool | labels
+  /// string | number | age | until | status | bool | labels | …
   final String type;
-  const ColumnDef({required this.name, required this.query, this.type = 'string'});
 
-  factory ColumnDef.fromJson(Json j) =>
-      ColumnDef(name: j['name'] ?? '', query: j['query'] ?? '', type: (j['type'] as String?)?.isNotEmpty == true ? j['type'] : 'string');
+  /// The header tooltip (plugin columns).
+  final String? description;
 
-  Json toJson() => {'name': name, 'query': query, if (type != 'string') 'type': type};
+  /// The id of the plugin that defines the column (CEL, evaluated by the
+  /// backend); null for jq columns.
+  final String? plugin;
+  const ColumnDef({required this.name, required this.query, this.type = 'string', this.description, this.plugin});
+
+  factory ColumnDef.fromJson(Json j) => ColumnDef(
+        name: j['name'] ?? '',
+        query: j['query'] ?? '',
+        type: (j['type'] as String?)?.isNotEmpty == true ? j['type'] : 'string',
+        description: j['description'] as String?,
+        plugin: j['plugin'] as String?,
+      );
+
+  Json toJson() => {'name': name, 'query': query, if (type != 'string') 'type': type, 'description': ?description, 'plugin': ?plugin};
 
   ColumnDef copyWith({String? name, String? query, String? type}) =>
-      ColumnDef(name: name ?? this.name, query: query ?? this.query, type: type ?? this.type);
+      ColumnDef(name: name ?? this.name, query: query ?? this.query, type: type ?? this.type, description: description, plugin: plugin);
 }
 
 class TableRowData {

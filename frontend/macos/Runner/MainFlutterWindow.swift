@@ -118,6 +118,9 @@ class MainFlutterWindow: NSWindow {
         self?.chooseFile(startingAt: args?["directory"] as? String, result: result)
       case "chooseYaml":
         self?.chooseYaml(result: result)
+      case "chooseDirectory":
+        let args = call.arguments as? [String: Any]
+        self?.chooseDirectory(prompt: args?["prompt"] as? String ?? "Choose", result: result)
       case "saveYaml":
         let args = call.arguments as? [String: Any]
         self?.saveYaml(
@@ -223,6 +226,21 @@ class MainFlutterWindow: NSWindow {
   }
 
   /// Open panel for a .yaml / .yml file (importing saved views).
+  /// Open panel for a folder (Settings ▸ Integrations ▸ Plugins: "Load
+  /// plugin folder…"); returns its path.
+  private func chooseDirectory(prompt: String, result: @escaping FlutterResult) {
+    let panel = NSOpenPanel()
+    panel.title = "Choose a folder"
+    panel.prompt = prompt
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.canCreateDirectories = false
+    panel.allowsMultipleSelection = false
+    panel.beginSheetModal(for: self) { response in
+      result(response == .OK ? panel.url?.path : nil)
+    }
+  }
+
   private func chooseYaml(result: @escaping FlutterResult) {
     let panel = NSOpenPanel()
     panel.title = "Choose a YAML file"

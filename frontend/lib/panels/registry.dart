@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../api/models.dart';
 import '../modules/modules.dart';
+import '../plugins/plugin_host.dart';
+import '../plugins/plugin_panel.dart';
 import '../state/app_state.dart';
 import '../ui/widgets/common.dart';
 import 'admission/admission_panels.dart';
@@ -41,10 +43,17 @@ final Map<String, (ResourcePanel, String?)> _byKind = {
 
 /// The panel for a resource type: a dedicated one, else the fallback. With
 /// [app], panels of modules the user turned off are skipped.
+///
+/// Runtime plugins that add sections or actions to the kind wrap it (see
+/// [PluginComposedPanel]).
 ResourcePanel panelFor(ResourceType t, [AppState? app]) {
   final e = _byKind[t.gk];
   final on = e != null && (e.$2 == null || app == null || moduleEnabled(e.$2!, app.disabledModules));
-  return (on ? e.$1 : null) ?? customFallbackPanel ?? const BasicFallbackPanel();
+  final panel = (on ? e.$1 : null) ?? customFallbackPanel ?? const BasicFallbackPanel();
+  if (app == null) return panel;
+  pluginHost.attach(app.api);
+  if (!moduleEnabled(pluginsModuleId, app.disabledModules) || !pluginHost.contributesTo(t.gk)) return panel;
+  return PluginComposedPanel(panel);
 }
 
 /// Minimal fallback: spec + status trees and conditions.
