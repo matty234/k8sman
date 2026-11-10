@@ -67,13 +67,119 @@ class PodContainer {
     if (isRunning) {
       if (kind == ContainerKind.init) return Severity.warn; // still initialising
       if (kind == ContainerKind.ephemeral) return Severity.ok;
-      return ready ? Severity.ok : Severity.warn;
+      if (!ready) return Severity.warn;
+      // Running and ready, but restarting: the restart pattern's colour
+      // (the same rule as the pod's header).
+      return restartKind(this)?.severity ?? Severity.ok;
     }
     return Severity.neutral;
   }
 
-  /// Problem containers get a coloured card border.
-  bool get hasProblem => severity == Severity.error || severity == Severity.warn || restarts > 0;
+  /// Problem containers start open with their actions showing. Clean-exit
+  /// restarts (info) aren't a problem.
+  bool get hasProblem => severity == Severity.error || severity == Severity.warn;
+}
+
+/// How a container keeps restarting, from its last termination.
+enum RestartKind {
+  /// Exit code 0 (Completed): the process finishes and is started again.
+  cleanExit,
+  oomKilled,
+
+  /// A non-zero exit code.
+  error,
+
+  /// Waiting in CrashLoopBackOff.
+  crashLoop,
+}
+
+extension RestartKindInfo on RestartKind {
+  Severity get severity => switch (this) {
+        RestartKind.cleanExit => Severity.info,
+        RestartKind.error => Severity.warn,
+        RestartKind.oomKilled || RestartKind.crashLoop => Severity.error,
+      };
+
+  /// For the header's detail line: "Ready, but restarting: clean exits".
+  String get short => switch (this) {
+        RestartKind.cleanExit => 'clean exits',
+        RestartKind.error => 'exits with errors',
+        RestartKind.oomKilled => 'OOMKilled',
+        RestartKind.crashLoop => 'CrashLoopBackOff',
+      };
+}
+
+/// The container's restart pattern, or null when it hasn't restarted.
+RestartKind? restartKind(PodContainer c) {
+  if (c.isWaiting && c.waiting['reason'] == 'CrashLoopBackOff') return RestartKind.crashLoop;
+  if (c.restarts == 0) return null;
+  final lt = c.lastTerminated;
+  if (lt['reason'] == 'OOMKilled') return RestartKind.oomKilled;
+  if (lt.isEmpty) return RestartKind.error;
+  final code = (lt['exitCode'] as num?)?.toInt();
+  return code == 0 || lt['reason'] == 'Completed' ? RestartKind.cleanExit : RestartKind.error;
+}
+
+/// Kinds whose pods are meant to run until replaced (a ReplicaSet stands
+/// for its Deployment): a clean exit there is suspicious.
+const _longRunningOwners = {'ReplicaSet', 'Deployment', 'StatefulSet', 'DaemonSet'};
+
+/// Explains a container's restarts: what its exits look like and how often
+/// ("Exits cleanly (code 0) about every 44m · 130× in 4d"), coloured by
+/// [restartKind]. The rate is the restart count over the pod's age (since
+/// [podStart]). [ownerKind] (the pod's controller) adds a hint for clean
+/// exits; [named] puts the container's name first (pods with several).
+/// Null when the container hasn't restarted.
+Insight? restartInsight(PodContainer c, {DateTime? podStart, String? ownerKind, bool named = false, DateTime? now}) {
+  final kind = restartKind(c);
+  if (kind == null) return null;
+  final at = now ?? DateTime.now();
+  final lt = c.lastTerminated;
+  final code = (lt['exitCode'] as num?)?.toInt();
+  final reason = lt['reason'] as String?;
+  final oom = reason == 'OOMKilled';
+  final n = c.restarts;
+  String span(Duration d) => formatAge(at.subtract(d), now: at);
+
+  // How often: "about every 44m · 130× in 4d", or "once, 2h ago".
+  final age = podStart == null ? null : at.toUtc().difference(podStart.toUtc());
+  final finished = parseTime(lt['finishedAt']);
+  final String rate;
+  if (n >= 2 && age != null && age > Duration.zero) {
+    rate = 'about every ${span(age ~/ n)} · $n× in ${span(age)}';
+  } else if (n == 1) {
+    rate = finished == null ? 'once' : 'once, ${formatAgo(finished, now: at)}';
+  } else {
+    rate = n == 0 ? '' : '$n×';
+  }
+
+  final String what;
+  if (lt.isEmpty) {
+    what = 'restarts';
+  } else if (oom) {
+    what = 'OOMKilled';
+  } else if (code == 0 || reason == 'Completed') {
+    what = 'exits cleanly (code 0)';
+  } else {
+    what = 'exits with code ${code ?? '?'} (${reason ?? 'Error'})';
+  }
+  final phrase = [what, if (rate.isNotEmpty) rate].join(' ');
+  final body = kind == RestartKind.crashLoop ? 'CrashLoopBackOff: $phrase' : phrase;
+  final text = named ? '${c.name}: $body' : '${body[0].toUpperCase()}${body.substring(1)}';
+
+  final started = parseTime(lt['startedAt']);
+  final ran = started != null && finished != null ? 'last ran ${formatAge(at.subtract(finished.difference(started)), now: at)}' : null;
+  final hint = code == null || oom ? null : exitCodeHint(code);
+  final detail = <String>[
+    if (oom) dig(c.spec, ['resources', 'limits', 'memory']) == null ? 'no memory limit: the node ran short of memory' : 'exceeds its memory limit${_memLimit(c)}',
+    if (kind == RestartKind.error || kind == RestartKind.crashLoop) ?hint,
+    ?ran,
+    if (kind == RestartKind.cleanExit && _longRunningOwners.contains(ownerKind))
+      'a process that finishes normally may belong in a Job or CronJob, or its main loop is exiting',
+    if (lt['message'] != null) 'termination message: ${'${lt['message']}'.trim()}',
+    if (kind != RestartKind.cleanExit) 'see the previous instance\'s logs',
+  ];
+  return Insight(kind.severity, text, detail.isEmpty ? null : detail.join(' · '));
 }
 
 List<PodContainer> podContainers(Json pod) {
@@ -91,6 +197,14 @@ List<PodContainer> podContainers(Json pod) {
   ];
 }
 
+
+/// The pod's only long-running container (one regular container and no
+/// sidecars), or null when it has several (or none). Such a pod's
+/// inspector shows the container inline rather than as a list.
+PodContainer? singleMainContainer(List<PodContainer> cs) {
+  final main = [for (final c in cs) if (c.kind == ContainerKind.regular || c.kind == ContainerKind.sidecar) c];
+  return main.length == 1 && main.single.kind == ContainerKind.regular ? main.single : null;
+}
 
 String? exitCodeHint(int code) => switch (code) {
       0 => null,
@@ -119,10 +233,28 @@ String describeTerminated(Json t, {bool withAge = true}) {
   return parts.join(' · ');
 }
 
+/// Each restarting container's [restartInsight], in container order.
+List<(PodContainer, Insight)> podRestartInsights(Json pod, {DateTime? now}) {
+  final podStart = parseTime(dig(pod, ['status', 'startTime'])) ?? parseTime(dig(pod, ['metadata', 'creationTimestamp']));
+  final ownerKind = podControllerKind(pod);
+  final all = podContainers(pod);
+  // Names only when there are several containers to tell apart (not for
+  // the one a single-container pod shows inline).
+  final single = singleMainContainer(all)?.name;
+  return [
+    for (final c in all)
+      if (restartInsight(c, podStart: podStart, ownerKind: ownerKind, named: all.length > 1 && c.name != single, now: now) case final i?) (c, i),
+  ];
+}
+
 /// Builds the "why isn't this ready?" explanation from conditions and
-/// container states. Empty list = nothing noteworthy.
-List<Insight> podInsights(Json pod) {
+/// container states. Empty list = nothing noteworthy. Without [restarts]
+/// the restart insights (see [restartInsight]) are left out.
+List<Insight> podInsights(Json pod, {bool restarts = true, DateTime? now}) {
   final out = <Insight>[];
+  final all = podContainers(pod);
+  final restartsOf = {for (final (c, i) in podRestartInsights(pod, now: now)) c.name: i};
+  var explained = false; // by a restart insight, shown or not
   final spec = asMap(pod['spec']);
   final status = asMap(pod['status']);
   final phase = '${status['phase'] ?? ''}';
@@ -151,7 +283,7 @@ List<Insight> podInsights(Json pod) {
     out.add(const Insight(Severity.warn, 'Waiting to be scheduled onto a node'));
   }
 
-  for (final c in podContainers(pod)) {
+  for (final c in all) {
     if (!c.hasStatus) continue;
     final who = '${c.kind == ContainerKind.regular ? 'Container' : '${c.kind.label} container'} ${c.name}';
     if (c.isWaiting) {
@@ -159,21 +291,7 @@ List<Insight> podInsights(Json pod) {
       final msg = c.waiting['message'] as String?;
       switch (reason) {
         case 'CrashLoopBackOff':
-          final lt = c.lastTerminated;
-          final code = (lt['exitCode'] as num?)?.toInt();
-          final hint = code == null ? null : exitCodeHint(code);
-          final oom = lt['reason'] == 'OOMKilled';
-          out.add(Insight(
-            Severity.error,
-            '$who is in CrashLoopBackOff: restarted ${c.restarts} time${c.restarts == 1 ? '' : 's'}'
-            '${lt.isEmpty ? '' : ', last exit code ${code ?? '?'} (${lt['reason'] ?? 'Error'}) ${formatAgo(parseTime(lt['finishedAt']))}'}',
-            [
-              if (oom) 'killed for exceeding its memory limit${_memLimit(c)}',
-              if (!oom && hint != null) 'exit $code: $hint',
-              if (lt['message'] != null) 'termination message: ${'${lt['message']}'.trim()}',
-              'see the previous instance\'s logs',
-            ].join(' · '),
-          ));
+          break; // the restart insight below explains it
         case 'ImagePullBackOff' || 'ErrImagePull' || 'InvalidImageName' || 'ErrImageNeverPull':
           out.add(Insight(Severity.error, '$who can\'t pull image ${c.spec['image'] ?? ''} ($reason)',
               [?msg, 'check the image name/tag, registry reachability and imagePullSecrets'].join(' · ')));
@@ -209,20 +327,17 @@ List<Insight> podInsights(Json pod) {
         }
       }
     }
-    // Restarts on an otherwise-healthy container are still worth flagging.
-    if (c.restarts > 0 && !(c.isWaiting && c.waiting['reason'] == 'CrashLoopBackOff')) {
-      final lt = c.lastTerminated;
-      out.add(Insight(
-        lt['reason'] == 'OOMKilled' ? Severity.error : Severity.warn,
-        '$who has restarted ${c.restarts} time${c.restarts == 1 ? '' : 's'}',
-        lt.isEmpty ? null : 'last termination: ${describeTerminated(lt)}${lt['reason'] == 'OOMKilled' ? ' — memory limit${_memLimit(c)}' : ''}',
-      ));
+    // How it restarts (or crash-loops), even when otherwise healthy.
+    final r = restartsOf[c.name];
+    if (r != null) {
+      explained = true;
+      if (restarts) out.add(r);
     }
   }
 
   // Fall back to the Ready condition when containers didn't explain it.
   final ready = conds['Ready'];
-  if (out.isEmpty && ready != null && ready['status'] != 'True' && phase != 'Succeeded') {
+  if (out.isEmpty && !explained && ready != null && ready['status'] != 'True' && phase != 'Succeeded') {
     out.add(Insight(Severity.warn, 'Not ready: ${ready['reason'] ?? 'unknown reason'}', ready['message'] as String?));
   }
   final gates = asMapList(spec['readinessGates']);
@@ -231,6 +346,54 @@ List<Insight> podInsights(Json pod) {
     if (conds[t]?['status'] != 'True') out.add(Insight(Severity.warn, 'Readiness gate $t is not True', conds[t]?['message'] as String?));
   }
   return out;
+}
+
+/// The kind of the pod's controller (else its first owner), e.g. `ReplicaSet`.
+String? podControllerKind(Json pod) {
+  final owners = asMapList(dig(pod, ['metadata', 'ownerReferences']));
+  if (owners.isEmpty) return null;
+  return '${owners.firstWhere((o) => o['controller'] == true, orElse: () => owners.first)['kind']}';
+}
+
+/// The value an env var's `fieldRef` or `resourceFieldRef` ([valueFrom])
+/// resolves to in [pod], for [container] (its spec), or null when it can't
+/// be told from the objects (an unset limit defaults to the node's
+/// allocatable, for one).
+String? resolveEnvSource(Json pod, Json container, Json valueFrom) {
+  final field = dig<String>(valueFrom, ['fieldRef', 'fieldPath']);
+  if (field != null) {
+    final m = RegExp(r'''^metadata\.(labels|annotations)\['(.*)'\]$''').firstMatch(field);
+    if (m != null) return dig<Object>(pod, ['metadata', m[1]!, m[2]!])?.toString();
+    List<String> ips(String key) => [for (final i in asMapList(dig(pod, ['status', key]))) if (i['ip'] != null) '${i['ip']}'];
+    final v = switch (field) {
+      'metadata.name' || 'metadata.namespace' || 'metadata.uid' => dig<Object>(pod, field.split('.')),
+      'spec.nodeName' || 'status.podIP' || 'status.hostIP' => dig<Object>(pod, field.split('.')),
+      'spec.serviceAccountName' => dig<Object>(pod, ['spec', 'serviceAccountName']) ?? dig<Object>(pod, ['spec', 'serviceAccount']),
+      'status.podIPs' => ips('podIPs').join(',').ifEmpty(),
+      'status.hostIPs' => ips('hostIPs').join(',').ifEmpty(),
+      _ => null,
+    };
+    return v?.toString();
+  }
+  final r = asMap(valueFrom['resourceFieldRef']);
+  final resource = r['resource'] as String?;
+  if (resource == null) return null;
+  final name = r['containerName'] as String?;
+  final spec = name == null || name.isEmpty || name == container['name']
+      ? container
+      : [for (final k in const ['containers', 'initContainers']) ...asMapList(dig(pod, ['spec', k]))].where((c) => c['name'] == name).firstOrNull;
+  if (spec == null) return null;
+  final parts = resource.split('.'); // limits.cpu, requests.memory
+  if (parts.length != 2) return null;
+  final q = dig<Object>(spec, ['resources', parts[0], parts[1]]);
+  if (q == null) return null;
+  final cpu = parts[1] == 'cpu';
+  double? base(Object? x) => cpu ? (parseCpuMillis(x) == null ? null : parseCpuMillis(x)! / 1000) : parseBytes(x);
+  final value = base(q);
+  final divisor = r['divisor'] == null ? 1.0 : base(r['divisor']);
+  if (value == null || divisor == null || divisor <= 0) return null;
+  // The kubelet rounds up to a whole number of divisors.
+  return '${(value / divisor - 1e-9).ceil()}';
 }
 
 String _memLimit(PodContainer c) {

@@ -8,6 +8,7 @@ import 'package:k8sman/panels/pod/pod_logic.dart';
 import 'package:k8sman/ui/inspector/inspector.dart';
 
 import '../../support/harness.dart';
+import 'package:k8sman/util/k8s.dart' show Severity;
 import 'package:k8sman/util/pod.dart';
 
 Json fixture(String name) => jsonDecode(File('../dev/fixtures/$name.json').readAsStringSync()) as Json;
@@ -36,6 +37,58 @@ void main() {
       expect(cs[1].status['imageID'], contains('nginx@sha256'));
     });
 
+    test('restarts are explained by their pattern; env fields resolve from the pod', () {
+      final now = DateTime.utc(2026, 11, 10, 12);
+      final start = now.subtract(const Duration(days: 4));
+      PodContainer web(Json lastTerminated, {int restarts = 130, Json? state, Json limits = const {}}) => PodContainer(
+            ContainerKind.regular,
+            {'name': 'web', 'resources': {'limits': limits}},
+            {
+              'name': 'web',
+              'ready': state == null,
+              'restartCount': restarts,
+              'state': state ?? {'running': {}},
+              'lastState': {'terminated': lastTerminated},
+            },
+          );
+      final ran = {'startedAt': '2026-11-10T11:00:00Z', 'finishedAt': '2026-11-10T11:43:00Z'};
+
+      final clean = restartInsight(web({'exitCode': 0, 'reason': 'Completed', ...ran}), podStart: start, ownerKind: 'ReplicaSet', now: now)!;
+      expect(clean.severity, Severity.info);
+      expect(clean.text, 'Exits cleanly (code 0) about every 44m · 130× in 4d');
+      expect(clean.detail, contains('last ran 43m'));
+      expect(clean.detail, contains('Job or CronJob'));
+      expect(web({'exitCode': 0}).severity, Severity.info); // the dot agrees
+
+      final err = restartInsight(web({'exitCode': 1, 'reason': 'Error', ...ran}, restarts: 2), podStart: start, named: true, now: now)!;
+      expect((err.severity, err.text), (Severity.warn, 'web: exits with code 1 (Error) about every 2d · 2× in 4d'));
+      expect(err.detail, startsWith('general application error · last ran 43m'));
+
+      final oom = restartInsight(web({'exitCode': 137, 'reason': 'OOMKilled', ...ran}, limits: {'memory': '128Mi'}), podStart: start, now: now)!;
+      expect((oom.severity, oom.detail?.split(' · ').first), (Severity.error, 'exceeds its memory limit (128Mi)'));
+
+      final loop = web({'exitCode': 3, 'reason': 'Error'}, restarts: 6, state: {'waiting': {'reason': 'CrashLoopBackOff'}});
+      expect(restartKind(loop), RestartKind.crashLoop);
+      expect(restartInsight(loop, podStart: now.subtract(const Duration(minutes: 6)), now: now)!.text, startsWith('CrashLoopBackOff: exits with code 3 (Error) about every 1m'));
+      expect(restartInsight(web({}, restarts: 0), now: now), isNull);
+
+      final pod = {
+        'metadata': {'name': 'web-0', 'namespace': 'default', 'labels': {'tier': 'front'}},
+        'spec': {'nodeName': 'node-1'},
+        'status': {'podIPs': [{'ip': '10.0.0.5'}, {'ip': 'fd00::5'}]},
+      };
+      final c = {'name': 'web', 'resources': {'limits': {'memory': '256Mi', 'cpu': '1500m'}}};
+      String? field(String path) => resolveEnvSource(pod, c, {'fieldRef': {'fieldPath': path}});
+      expect(field('metadata.namespace'), 'default');
+      expect(field("metadata.labels['tier']"), 'front');
+      expect(field('spec.nodeName'), 'node-1');
+      expect(field('status.podIPs'), '10.0.0.5,fd00::5');
+      expect(field('status.hostIP'), isNull); // unknown: the source only
+      expect(resolveEnvSource(pod, c, {'resourceFieldRef': {'resource': 'limits.memory', 'divisor': '1Mi'}}), '256');
+      expect(resolveEnvSource(pod, c, {'resourceFieldRef': {'resource': 'limits.cpu'}}), '2'); // rounded up
+      expect(resolveEnvSource(pod, c, {'resourceFieldRef': {'resource': 'requests.cpu'}}), isNull);
+    });
+
   });
 
   testWidgets('pod-web overview renders all sections', (tester) async {
@@ -54,7 +107,7 @@ void main() {
     await tester.pump();
     expect(find.text('HTTP :http/ · 5s · fails after 3'), findsOneWidget); // readiness, one line
     expect(find.text('Burstable'), findsOneWidget);
-    expect(find.text('field metadata.name'), findsOneWidget);
+    expect(find.text('metadata.name'), findsOneWidget); // POD_NAME, resolved
     expect(find.textContaining('heartbeat'), findsOneWidget); // command CodeBlock
   });
 
