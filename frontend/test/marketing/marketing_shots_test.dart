@@ -913,6 +913,9 @@ class MarketingFrame extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(radius),
             child: Stack(children: [
+              // Stands in for the window's vibrancy behind the transparent
+              // macOS sidebar (AppColors.sidebar).
+              Positioned.fill(child: ColoredBox(color: dark ? const Color(0xFF232428) : const Color(0xFFF1F1F3))),
               Positioned.fill(
                 child: MediaQuery(
                   data: MediaQueryData(size: _appSize, platformBrightness: brightness),
