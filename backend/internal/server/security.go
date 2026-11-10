@@ -33,6 +33,7 @@ const (
 func (s *Server) securityRoutes() {
 	sc := security.NewScanner()
 	s.mux.HandleFunc("GET /api/security", func(w http.ResponseWriter, r *http.Request) { s.handleSecurity(w, r, sc) })
+	s.mux.HandleFunc("GET /api/security/object", func(w http.ResponseWriter, r *http.Request) { s.handleSecurityObject(w, r, sc) })
 	s.mux.HandleFunc("GET /api/security/scanner", func(w http.ResponseWriter, r *http.Request) { s.handleScannerStatus(w, r, sc) })
 	s.mux.HandleFunc("POST /api/security/scan", func(w http.ResponseWriter, r *http.Request) { handleScan(w, r, sc) })
 }
@@ -101,6 +102,59 @@ func (s *Server) handleSecurity(w http.ResponseWriter, r *http.Request, sc *secu
 	// Ignore rules are applied here, to this request's own result, not in
 	// the shared run: editing them takes effect on the next fetch.
 	security.ApplyIgnores(res, s.settings.SecurityIgnores(c.Context))
+	res.Errors = errStrings(errs)
+	httpx.WriteJSON(w, 200, res)
+}
+
+// handleSecurityObject is the security of one Pod or workload, for the
+// inspector's Security tab: ?namespace=&kind=&name= (group optional). It
+// shares the namespace's security run with /api/security?namespace=, waits
+// up to the soft deadline like it, and names what is still loading in
+// `pending`.
+func (s *Server) handleSecurityObject(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
+	q := r.URL.Query()
+	obj := security.ObjectRef{Group: q.Get("group"), Kind: q.Get("kind"), Name: q.Get("name"), Namespace: q.Get("namespace")}
+	if obj.Namespace == "" || obj.Kind == "" || obj.Name == "" || q.Get("namespaces") != "" {
+		writeErr(w, httpx.BadRequest("want namespace, kind and name"))
+		return
+	}
+	if allowed := s.allowedNamespaces(); len(allowed) > 0 && !allowed.Contains(obj.Namespace) {
+		httpx.WriteError(w, http.StatusForbidden, "Forbidden", "namespace "+obj.Namespace+" is outside this context's allowlist")
+		return
+	}
+	rbacOf := func(ns string) string {
+		if len(s.allowedNamespaces()) > 0 {
+			return ns
+		}
+		return ""
+	}
+	l, c, _, ok := softRequest(s, w, r, securitySoftWait, securityMaxWait, &s.securityRuns,
+		func(c *cluster.Clients, ns string) string { return fmt.Sprintf("%p|%s|%s", c, ns, rbacOf(ns)) },
+		func(c *cluster.Clients, ns string) *securityLists { return startSecurity(c, ns, rbacOf(ns)) })
+	if !ok {
+		return
+	}
+	in, pending, errs := l.snap()
+	if err, ok := errs["pods"]; ok {
+		writeErr(w, err)
+		return
+	}
+	in.Now = time.Now()
+	in.Namespace = obj.Namespace
+	// The object is shown wherever it lives, system namespaces included.
+	in.IncludeSystem = true
+	in.Pending = security.PendingCategories(pending)
+	res := security.AnalyzeObject(in, obj, s.settings.SecurityIgnores(c.Context))
+	// Images scanned on demand with the local trivy CLI.
+	for i := range res.Images {
+		img := &res.Images[i]
+		if img.Scanned {
+			continue
+		}
+		if cr := sc.Cached(img.Image); cr != nil {
+			img.Scanned, img.Source, img.ScannedAt, img.Counts, img.CVEs = true, "trivy-cli", cr.ScannedAt, cr.Counts, cr.Vulnerabilities
+		}
+	}
 	res.Errors = errStrings(errs)
 	httpx.WriteJSON(w, 200, res)
 }

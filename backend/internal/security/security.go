@@ -191,7 +191,11 @@ type analyzer struct {
 }
 
 // Analyze runs every check over in.
-func Analyze(in Input) *Result {
+func Analyze(in Input) *Result { return analyze(in).res }
+
+// analyze runs every check over in and keeps the analyzer (its units and
+// owner indexes) for callers that look up one object.
+func analyze(in Input) *analyzer {
 	now := in.Now
 	if now.IsZero() {
 		now = time.Now()
@@ -220,7 +224,7 @@ func Analyze(in Input) *Result {
 	if len(in.Pending) > 0 {
 		a.res.Pending = in.Pending
 	}
-	return a.res
+	return a
 }
 
 // scope is the parsed Input.Namespace.
