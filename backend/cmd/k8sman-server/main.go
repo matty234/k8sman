@@ -13,18 +13,31 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/columns"
 	"github.com/matty234/k8sman/backend/internal/icons"
+	"github.com/matty234/k8sman/backend/internal/plugins"
 	"github.com/matty234/k8sman/backend/internal/portforward"
 	"github.com/matty234/k8sman/backend/internal/server"
 	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
+// stringList is a repeatable string flag.
+type stringList []string
+
+func (l *stringList) String() string     { return strings.Join(*l, ",") }
+func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "plugin" {
+		os.Exit(pluginCommand(os.Args[2:]))
+	}
+	var pluginDev stringList
+	flag.Var(&pluginDev, "plugin-dev", "load the plugin in this folder (or the plugins in its subfolders) in dev mode, hot reloaded; repeatable")
 	var (
 		addr         = flag.String("addr", "127.0.0.1:7443", "listen address (keep on loopback; port 0 picks a free one)")
 		kubeconfig   = flag.String("kubeconfig", "", "kubeconfig path (default: the one chosen in the app, else $KUBECONFIG or ~/.kube/config)")
@@ -76,7 +89,12 @@ func main() {
 	// Machine-readable ready line so a parent process can discover the port.
 	fmt.Fprintf(os.Stdout, "K8SMAN_LISTENING %s\n", ln.Addr().String())
 
-	srv := &http.Server{Handler: server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st, NoRemoteIcons: *noRemoteIcon, IconCacheDir: *iconCache, AuthToken: token})}
+	// Plugins load in the background (dev mode only in this version).
+	ph := plugins.NewHost(plugins.Options{InstalledDir: filepath.Join(filepath.Dir(*settingsPath), "plugins"), FlagDirs: pluginDev, Settings: st})
+	ph.Start()
+	defer ph.Close()
+
+	srv := &http.Server{Handler: server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st, NoRemoteIcons: *noRemoteIcon, IconCacheDir: *iconCache, AuthToken: token, Plugins: ph})}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)

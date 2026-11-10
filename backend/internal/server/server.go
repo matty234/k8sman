@@ -27,6 +27,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/kcache"
 	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/metrics"
+	"github.com/matty234/k8sman/backend/internal/plugins"
 	"github.com/matty234/k8sman/backend/internal/portforward"
 	"github.com/matty234/k8sman/backend/internal/settings"
 )
@@ -47,6 +48,8 @@ type Server struct {
 	overviewRuns overviewRuns
 	// securityRuns shares one in-flight security run per context and scope.
 	securityRuns runRegistry[*securityLists]
+	// plugins are the runtime plugins (nil = none; see plugins.go).
+	plugins *plugins.Host
 }
 
 // Options configures optional server behaviour.
@@ -63,11 +66,13 @@ type Options struct {
 	// checkAccess in guard.go). Shorter than MinTokenLength (or empty) means
 	// every request is refused with 401: there is no unauthenticated mode.
 	AuthToken string
+	// Plugins is the runtime plugin host. Optional.
+	Plugins *plugins.Host
 }
 
 // New builds the server and registers routes.
 func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, opts Options) *Server {
-	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, settings: opts.Settings, mux: http.NewServeMux(), token: opts.AuthToken}
+	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, settings: opts.Settings, mux: http.NewServeMux(), token: opts.AuthToken, plugins: opts.Plugins}
 	if s.settings == nil {
 		s.settings, _ = settings.Open("")
 	}
@@ -94,7 +99,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	metrics.Register(s.mux, mgr, s.allowedNamespaces)
 	s.iconRoutes(opts)
 	// Integrations (Argo CD, Helm, GPUs, …): see module.go.
-	s.modules = builtinModules()
+	s.modules = append(builtinModules(), &pluginsModule{s: s})
 	s.mountModules()
 	return s
 }
@@ -104,7 +109,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 func worksDisconnected(path string) bool {
 	return path == "/api/health" || path == "/api/contexts" ||
 		strings.HasPrefix(path, "/api/kubeconfigs") || strings.HasPrefix(path, "/api/portforwards") ||
-		strings.HasPrefix(path, "/api/settings/")
+		strings.HasPrefix(path, "/api/settings/") || (strings.HasPrefix(path, "/api/plugins") && path != "/api/plugins/panel")
 }
 
 func (s *Server) routes() {
@@ -345,17 +350,35 @@ func (rq resourceQuery) listOptions() metav1.ListOptions {
 // columnsFor.
 func (s *Server) tableColumns(ctx context.Context, c *cluster.Clients, rq resourceQuery) (cols []columns.Column, isDefault bool) {
 	if rq.Columns != nil {
-		return rq.Columns, false
+		return s.resolvePluginColumns(c, rq.Type, rq.Columns), false
 	}
 	return s.columnsFor(ctx, c, rq.Type)
 }
 
-// columnsFor resolves user override → built-in → CRD printer columns → generic.
+// columnsFor resolves user override → built-in → CRD printer columns →
+// generic, with plugin columns added to the defaults (and resolved in an
+// override that kept them).
 func (s *Server) columnsFor(ctx context.Context, c *cluster.Clients, rt cluster.ResourceType) (cols []columns.Column, isDefault bool) {
 	if cols, ok := s.store.Get(columns.Key(rt.Group, rt.Resource)); ok {
-		return cols, false
+		return s.resolvePluginColumns(c, rt, cols), false
 	}
-	return columns.Defaults(rt, c.PrinterColumns(ctx, rt.GVR())), true
+	return s.defaultColumns(ctx, c, rt), true
+}
+
+// defaultColumns is the kind's defaults plus its plugin columns.
+func (s *Server) defaultColumns(ctx context.Context, c *cluster.Clients, rt cluster.ResourceType) []columns.Column {
+	cols := columns.Defaults(rt, c.PrinterColumns(ctx, rt.GVR()))
+	if s.pluginsOn() {
+		cols = s.plugins.Columns(c.Context, rt, cols)
+	}
+	return cols
+}
+
+func (s *Server) resolvePluginColumns(c *cluster.Clients, rt cluster.ResourceType, cols []columns.Column) []columns.Column {
+	if !s.pluginsOn() {
+		return cols
+	}
+	return s.plugins.Resolve(c.Context, rt, cols)
 }
 
 // ---- table model -----------------------------------------------------------
@@ -419,9 +442,20 @@ type builtRow struct {
 
 func newTableBuilder(cols []columns.Column, includeObject bool) *tableBuilder {
 	key, _ := json.Marshal(cols)
+	tag := string(key)
+	for _, c := range cols {
+		if c.Plugin != "" {
+			// A reloaded plugin's columns must not reuse memoised cells.
+			tag += fmt.Sprintf("|%s@%d", c.Plugin, c.Rev)
+		}
+	}
 	return &tableBuilder{eval: columns.NewEvaluator(cols), includeObject: includeObject, colErrs: map[int]string{},
-		tag: rowTag{cols: string(key), includeObject: includeObject}}
+		tag: rowTag{cols: tag, includeObject: includeObject}}
 }
+
+// nowTick is how often memoised rows with time-dependent plugin columns
+// (ones that read `now`) are re-evaluated.
+const nowTick = 30 * time.Second
 
 func (b *tableBuilder) row(u *unstructured.Unstructured) Row { return b.build(u).Row }
 
@@ -435,9 +469,12 @@ func (b *tableBuilder) build(u *unstructured.Unstructured) *builtRow {
 			extra = string(fp)
 		}
 	}
+	if b.eval.UsesNow() && b.memo != nil {
+		extra += "|now=" + strconv.FormatInt(time.Now().Truncate(nowTick).Unix(), 10)
+	}
 	compute := func() any {
 		eval := obj
-		if b.memo != nil {
+		if b.memo != nil && b.eval.WritesInput() {
 			// Shared with other goroutines (the watch cache): gojq writes
 			// to its input, so evaluate a private copy.
 			eval = columns.PrivateCopy(obj)
@@ -756,7 +793,7 @@ func (s *Server) handleGetColumns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cols, isDefault := s.columnsFor(r.Context(), c, rq.Type)
-	defaults := columns.Defaults(rq.Type, c.PrinterColumns(r.Context(), rq.Type.GVR()))
+	defaults := s.defaultColumns(r.Context(), c, rq.Type)
 	httpx.WriteJSON(w, 200, map[string]any{"columns": cols, "isDefault": isDefault, "defaults": defaults})
 }
 
@@ -819,7 +856,7 @@ func (s *Server) handlePreviewColumns(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	b := newTableBuilder(body.Columns, false)
+	b := newTableBuilder(s.resolvePluginColumns(c, rq.Type, body.Columns), false)
 	b.decorate = s.usageDecorator(r.Context(), c, rq)
 	httpx.WriteJSON(w, 200, b.table(rq.Type, false, list))
 }

@@ -163,10 +163,12 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 	defer ws.close()
 
 	cols, isDefault := s.tableColumns(ctx, c, rq)
+	colsKey := pluginColumnsKey(cols)
+	pluginsChanged := s.plugins.Changed()
 	includeObject := r.URL.Query().Get("includeObject") == "true"
 	sub := s.subscribe(c, rq) // one stream, or a namespace set merged
 
-	defer sub.Close()
+	defer func() { sub.Close() }()
 	live := s.newLiveUsage(c, rq) // periodic usage refresh for pods/nodes
 	defer live.stop()
 	out := newFrameWriter(ws, r.URL.Query().Get("batch") == "true")
@@ -180,6 +182,18 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 		case <-out.due():
 			if out.flush() != nil {
 				return
+			}
+		case <-pluginsChanged:
+			// A plugin was loaded, reloaded or turned off: when that changes
+			// this table's columns, resubscribe, which starts with a
+			// snapshot built with the new columns.
+			pluginsChanged = s.plugins.Changed()
+			nc, nd := s.tableColumns(ctx, c, rq)
+			if k := pluginColumnsKey(nc); k != colsKey {
+				cols, isDefault, colsKey = nc, nd, k
+				sub.Close()
+				sub = s.subscribe(c, rq)
+				b = nil
 			}
 		case <-live.tick():
 			if b == nil {

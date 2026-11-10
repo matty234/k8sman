@@ -3,6 +3,9 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -10,7 +13,74 @@ import (
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/columns"
+	"github.com/matty234/k8sman/backend/internal/plugins"
 )
+
+// benchPluginColumns are three plugin (CEL) columns on Pods, and the same
+// three as jq columns.
+const benchPluginManifest = `apiVersion: k8sman.dev/v1
+id: bench
+name: Bench
+version: 1.0.0
+permissions:
+  read: [/Pod]
+kinds:
+  /Pod:
+    columns:
+      - name: Phase2
+        value: object.status.phase
+      - name: Node2
+        value: object.spec.?nodeName.orValue("")
+      - name: Ready2
+        type: status
+        value: 'conditionTrue(object, "Ready") ? "Ready" : "Not ready"'
+`
+
+var benchJQColumns = []columns.Column{
+	{Name: "Phase2", Query: ".status.phase"},
+	{Name: "Node2", Query: `.spec.nodeName // ""`},
+	{Name: "Ready2", Query: `if ([.status.conditions[]? | select(.type == "Ready" and .status == "True")] | length) > 0 then "Ready" else "Not ready" end`, Type: "status"},
+}
+
+// BenchmarkTableSnapshot renders a 1,500-pod snapshot with the default
+// columns, plus three jq columns, plus three plugin columns; cold (empty
+// row memo) and warm (every row memoised). The plugin budget
+// (docs/PLUGINS.md §8) is cold ≤ +10 ms and warm +0 over the defaults.
+func BenchmarkTableSnapshot(b *testing.B) {
+	items := benchPods(1500)
+	base := columns.Defaults(podsType, nil)
+	dir := b.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, plugins.ManifestFile), []byte(benchPluginManifest), 0o644); err != nil {
+		b.Fatal(err)
+	}
+	h := plugins.NewHost(plugins.Options{FlagDirs: []string{dir}})
+	h.Reload()
+	defer h.Close()
+	plug := h.Columns("bench", podsType, base)
+	if len(plug) != len(base)+3 {
+		b.Fatalf("plugin columns not added: %d", len(plug))
+	}
+	for _, tc := range []struct {
+		name string
+		cols []columns.Column
+	}{{"defaults", base}, {"jq3", append(slices.Clone(base), benchJQColumns...)}, {"plugin3", plug}} {
+		b.Run(tc.name+"/cold", func(b *testing.B) {
+			for b.Loop() {
+				tb := newTableBuilder(tc.cols, false)
+				tb.memo = mapMemo()
+				tb.tableOf(podsType, true, items, "1")
+			}
+		})
+		b.Run(tc.name+"/warm", func(b *testing.B) {
+			memo := mapMemo()
+			for b.Loop() {
+				tb := newTableBuilder(tc.cols, false)
+				tb.memo = memo
+				tb.tableOf(podsType, true, items, "1")
+			}
+		})
+	}
+}
 
 // benchPods builds n pods shaped like the perf-load ones.
 func benchPods(n int) []*unstructured.Unstructured {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -120,6 +121,44 @@ func readOnlyShellNotice(contextName string) string {
 		"credentials and can change the cluster.\x1b[0m\r\n"
 }
 
+// pluginShellSpec turns spec into plugin action ?plugin=&action= on the
+// object ?group=&version=&resource=&namespace=&name=: refused on
+// read-only contexts, without the user's consent to the plugin's
+// permissions, or when the action isn't offered for the object (its
+// `when`). The command must be in the plugin's permissions.commands (the
+// loader checks) and is run without a shell, one argument per entry, with
+// the object's variables also exported as K8SMAN_<NAME>.
+func (s *Server) pluginShellSpec(r *http.Request, spec *localShellSpec, kubeconfig string) error {
+	q := r.URL.Query()
+	if !s.pluginsOn() {
+		return errors.New("plugins are turned off")
+	}
+	if s.isReadOnly() {
+		return errors.New("plugin actions are hidden and refused on read-only contexts")
+	}
+	c, rq, err := s.parseResource(r.Context(), r)
+	if err != nil {
+		return err
+	}
+	u, err := s.pluginObject(r.Context(), c, rq, q.Get("name"))
+	if err != nil {
+		return err
+	}
+	a, err := s.plugins.ShellAction(c.Context, rq.Type, u.Object, q.Get("plugin"), q.Get("action"))
+	if err != nil {
+		return err
+	}
+	vars := s.shellVars(r.Context(), c, rq, u, kubeconfig)
+	argv := a.Argv(vars)
+	path, err := exec.LookPath(argv[0])
+	if err != nil {
+		return fmt.Errorf("%s isn't installed on this computer (or not on the PATH): %w", argv[0], err)
+	}
+	spec.Shell, spec.Args = path, argv[1:]
+	spec.Env = append(append(spec.Env, vars.Env()...), a.ExtraEnv(vars)...)
+	return nil
+}
+
 func (s *Server) handleLocalShell(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -152,6 +191,14 @@ func (s *Server) handleLocalShell(w http.ResponseWriter, r *http.Request) {
 
 	spec := localShellSpec{Dir: home, Env: localShellEnv(os.Environ(), chain, contextName)}
 	spec.Shell, spec.Args = userShell()
+	if q.Get("plugin") != "" {
+		// A plugin's shell action: the command comes from the loaded
+		// plugin, never from the request.
+		if err := s.pluginShellSpec(r, &spec, chain); err != nil {
+			fail(err)
+			return
+		}
+	}
 	if cols, err1 := strconv.Atoi(q.Get("cols")); err1 == nil {
 		if rows, err2 := strconv.Atoi(q.Get("rows")); err2 == nil && cols > 0 && rows > 0 && cols < 1<<16 && rows < 1<<16 {
 			spec.Cols, spec.Rows = uint16(cols), uint16(rows)
@@ -168,7 +215,7 @@ func (s *Server) handleLocalShell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := &wsBinaryWriter{ws: ws}
-	if contextName != "" && s.isReadOnly() {
+	if contextName != "" && s.isReadOnly() && q.Get("plugin") == "" {
 		_, _ = out.Write([]byte(readOnlyShellNotice(contextName)))
 	}
 
