@@ -92,7 +92,7 @@ func (s *Server) logSettingsRoutes() {
 			writeErr(w, httpx.BadRequest("body must be {\"newestFirst\"?: bool, \"colourSyntax\"?: bool}: %v", err))
 			return
 		}
-		if err := s.settings.Update(func(st *settings.Settings) { 
+		if err := s.settings.Update(func(st *settings.Settings) {
 			if body.NewestFirst != nil {
 				st.LogsNewestFirst = *body.NewestFirst
 			}
