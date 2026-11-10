@@ -1,0 +1,18 @@
+# A PolicyException: its column (the other kinds' columns are in
+# cleanuppolicy.yaml and updaterequest.yaml).
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: allow-debug
+  namespace: demo
+spec:
+  exceptions:
+    - policyName: require-labels
+      ruleNames: [check-app-label]
+    - policyName: disallow-latest
+      ruleNames: [check-tag]
+  match:
+    any:
+      - resources:
+          kinds: [Pod]
+          names: [debug-*]

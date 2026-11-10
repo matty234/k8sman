@@ -1,0 +1,50 @@
+# A namespaced Policy in its older shape (the action for the whole
+# policy), not ready yet, and a report in its namespace that names it as
+# "namespace/name".
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: limit-replicas
+  namespace: demo
+  uid: 6c1f0a2e-0000-4000-8000-000000000002
+  creationTimestamp: "2025-12-01T00:00:00Z"
+spec:
+  validationFailureAction: Audit
+  admission: false
+  rules:
+    - name: max-replicas
+      match:
+        any:
+          - resources:
+              kinds: [Deployment]
+      validate:
+        message: At most 5 replicas.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.replicas }}"
+                operator: GreaterThan
+                value: 5
+status:
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: Pending
+---
+apiVersion: wgpolicyk8s.io/v1alpha2
+kind: PolicyReport
+metadata:
+  name: 7d1e0b3f-0000-4000-8000-0000000000b1
+  namespace: demo
+scope:
+  apiVersion: apps/v1
+  kind: Deployment
+  name: web
+  namespace: demo
+  uid: 7d1e0b3f-0000-4000-8000-0000000000b1
+results:
+  - policy: demo/limit-replicas
+    rule: max-replicas
+    result: fail
+    message: At most 5 replicas.
+summary: {pass: 0, fail: 1, warn: 0, error: 0, skip: 0}

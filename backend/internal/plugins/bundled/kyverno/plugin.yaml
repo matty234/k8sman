@@ -1,0 +1,422 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json
+#
+# Kyverno (kyverno.io, policies.kyverno.io) and the policy reports it writes
+# (wgpolicyk8s.io), bundled with k8sman: compiled into the backend, on by
+# default, switched off in Settings ▸ Integrations like a module. It
+# replaced the built-in kyverno module, which has been removed (see
+# docs/PLUGINS.md, "Bundled plugins").
+#
+# Policy results on any object come from the "*" entry: the PolicyReports
+# (ClusterPolicyReports for cluster-scoped objects) that the object owns,
+# as Kyverno 1.10+ writes them (one report per resource, owned by it). Any
+# engine that writes per-resource PolicyReports shows there too.
+#
+# Iterate on it with developer mode: load this folder (Settings ▸
+# Integrations ▸ Plugins ▸ Load plugin folder…, or --plugin-dev
+# backend/internal/plugins/bundled/kyverno); the folder overrides the
+# bundled copy while it is loaded.
+# Without a cluster: k8sman-server plugin test backend/internal/plugins/bundled/kyverno
+apiVersion: k8sman.dev/v1
+id: kyverno
+name: Kyverno
+version: 1.0.0
+description: Policies, exceptions and policy reports (kyverno.io, wgpolicyk8s.io), with policy results on any object.
+authors: [k8sman]
+homepage: https://kyverno.io
+
+permissions:
+  read:
+    - kyverno.io/ClusterPolicy
+    - kyverno.io/Policy
+    - policies.kyverno.io/ValidatingPolicy
+    - policies.kyverno.io/ImageValidatingPolicy
+    - policies.kyverno.io/MutatingPolicy
+    - policies.kyverno.io/GeneratingPolicy
+    - policies.kyverno.io/DeletingPolicy
+    - kyverno.io/PolicyException
+    - policies.kyverno.io/PolicyException
+    - kyverno.io/CleanupPolicy
+    - kyverno.io/ClusterCleanupPolicy
+    - kyverno.io/UpdateRequest
+    - wgpolicyk8s.io/PolicyReport
+    - wgpolicyk8s.io/ClusterPolicyReport
+
+# Only the kinds the cluster serves are listed.
+nav:
+  title: Kyverno
+  after: Access Control
+  kinds:
+    - kyverno.io/ClusterPolicy
+    - kyverno.io/Policy
+    - policies.kyverno.io/ValidatingPolicy
+    - policies.kyverno.io/ImageValidatingPolicy
+    - policies.kyverno.io/MutatingPolicy
+    - policies.kyverno.io/GeneratingPolicy
+    - policies.kyverno.io/DeletingPolicy
+    - kyverno.io/PolicyException
+    - policies.kyverno.io/PolicyException
+    - kyverno.io/CleanupPolicy
+    - kyverno.io/ClusterCleanupPolicy
+    - kyverno.io/UpdateRequest
+    - wgpolicyk8s.io/PolicyReport
+    - wgpolicyk8s.io/ClusterPolicyReport
+
+kinds:
+  # ClusterPolicy and Policy share all of this (anchors per field: merge
+  # keys aren't supported).
+  kyverno.io/ClusterPolicy:
+    icon: policy
+    variables: &policyVariables
+      rules: object.spec.?rules.orValue([])
+      # Older policies set the action for the policy, newer ones per rule.
+      action: >-
+        has(object.spec.validationFailureAction) ? string(object.spec.validationFailureAction) :
+        variables.rules.map(r, string(r.?validate.?failureAction.orValue(""))).filter(a, a != "").distinct().join(",")
+      ready: >-
+        has(object.status) && has(object.status.ready) ? (object.status.ready == true ? "True" : "False") :
+        string(condition(object, "Ready").?status.orValue(""))
+      # What results name this policy by: "ns/name" for a Policy.
+      key: 'ns == "" ? object.metadata.name : ns + "/" + object.metadata.name'
+      # Panels only (they read related): this policy's results in the
+      # reports, one per resource, failures first.
+      results: &policyResults >-
+        (related.reports + related.clusterReports).map(rep, rep.?results.orValue([])
+          .filter(r, string(r.?policy.orValue("")) == variables.key || (ns != "" && string(r.?policy.orValue("")) == object.metadata.name))
+          .map(r, (size(r.?resources.orValue([])) > 0 ? r.resources : [rep.?scope.orValue({})]).map(res, {
+            "result": string(r.?result.orValue("")), "rule": string(r.?rule.orValue("")),
+            "severity": string(r.?severity.orValue("")), "message": string(r.?message.orValue("")),
+            "resource": res, "namespace": string(res.?namespace.orValue(rep.metadata.?namespace.orValue("")))}))).flatten().flatten()
+      counts: &counts >-
+        ["fail", "error", "warn", "skip", "pass"].map(k, [k, size(variables.results.filter(r, r.result == k))])
+      failing: variables.results.filter(r, r.result != "pass")
+    related: &policyRelated
+      # The reports that mention this policy: in its namespace (a Policy) or
+      # every namespace (a ClusterPolicy), and the cluster's reports. Read
+      # only by the Results section, so only when the policy is open.
+      reports:
+        kind: wgpolicyk8s.io/PolicyReport
+        filter: &mentions >-
+          item.?results.orValue([]).exists(r, string(r.?policy.orValue("")) == variables.key ||
+            (ns != "" && string(r.?policy.orValue("")) == object.metadata.name))
+        limit: 2000
+      clusterReports:
+        kind: wgpolicyk8s.io/ClusterPolicyReport
+        when: ns == ""
+        filter: *mentions
+        limit: 2000
+    columns: &policyColumns
+      - name: Action
+        value: variables.action
+      - name: Background
+        type: bool
+        value: object.spec.?background.orValue(true) != false
+      - name: Ready
+        type: status
+        value: variables.ready
+      - name: Rules
+        type: number
+        value: size(variables.rules)
+    panel: &policyPanel
+      generic: replace
+      sections:
+        - title: Policy
+          icon: policy
+          blocks:
+            - type: fields
+              items:
+                - label: Action
+                  value: variables.action
+                - label: Background
+                  value: 'object.spec.?background.orValue(true) == false ? "off" : "on"'
+                - label: Admission
+                  value: 'object.spec.?admission.orValue(true) == false ? "off" : "on"'
+                - label: Rules
+                  type: number
+                  value: size(variables.rules)
+        - title: Rules
+          icon: rule
+          summary: string(size(variables.rules))
+          blocks:
+            - type: table
+              rows: variables.rules
+              limit: 50
+              empty: No rules
+              columns:
+                - name: Rule
+                  value: row.?name.orValue("")
+                - name: Type
+                  value: >-
+                    has(row.validate) ? "validate" : has(row.mutate) ? "mutate" : has(row.generate) ? "generate" :
+                    has(row.verifyImages) ? "verifyImages" : "other"
+                # The kinds the rule matches, from any, all and resources.
+                - name: Kinds
+                  value: >-
+                    (row.?match.?any.orValue([]) + row.?match.?all.orValue([]) + [row.?match.orValue({})])
+                      .map(f, f.?resources.?kinds.orValue([])).flatten().map(k, string(k)).distinct().join(", ")
+                - name: Message
+                  detail: true
+                  value: >-
+                    string(row.?validate.?message.orValue(row.?mutate.?message.orValue(row.?generate.?message.orValue(""))))
+                # The rule itself (match, exclude, preconditions and what it
+                # does) as YAML.
+                - name: Definition
+                  type: code
+                  detail: true
+                  value: >-
+                    {?"match": row.?match, ?"exclude": row.?exclude, ?"preconditions": row.?preconditions,
+                     ?"validate": row.?validate, ?"mutate": row.?mutate, ?"generate": row.?generate, ?"verifyImages": row.?verifyImages}
+        - title: Status
+          icon: checklist
+          when: variables.ready != "" || size(object.?status.?conditions.orValue([])) > 0
+          blocks:
+            - type: fields
+              items:
+                - label: Ready
+                  type: status
+                  value: variables.ready
+            - type: conditions
+              when: size(object.?status.?conditions.orValue([])) > 0
+            - type: chips              # rules of each sort: validate=2, …
+              when: size(object.?status.?rulecount.orValue({})) > 0
+              items: object.status.rulecount
+        - title: Results
+          icon: fact_check
+          summary: string(size(variables.results))
+          blocks:
+            - &countBadges
+              type: badges
+              items:
+                - &countBadge
+                  when: variables.counts[0][1] > 0
+                  text: string(variables.counts[0][1]) + " fail"
+                  severity: '"error"'
+                - when: variables.counts[1][1] > 0
+                  text: string(variables.counts[1][1]) + " error"
+                  severity: '"error"'
+                - when: variables.counts[2][1] > 0
+                  text: string(variables.counts[2][1]) + " warn"
+                  severity: '"warning"'
+                - when: variables.counts[3][1] > 0
+                  text: string(variables.counts[3][1]) + " skip"
+                  severity: '"neutral"'
+                - when: variables.counts[4][1] > 0
+                  text: string(variables.counts[4][1]) + " pass"
+                  severity: '"ok"'
+            - type: message
+              severity: info
+              when: size(variables.results) == 0
+              text: '"No results in the policy reports"'
+            - type: table
+              when: size(variables.failing) > 0
+              rows: '["fail", "error", "warn", "skip"].map(k, variables.failing.filter(r, r.result == k)).flatten() + variables.failing.filter(r, !(r.result in ["fail", "error", "warn", "skip"]))'
+              limit: 50
+              columns:
+                - &resultColumn
+                  name: Result
+                  type: status
+                  value: row.result
+                - name: Rule
+                  value: row.rule
+                - &resourceColumn
+                  name: Resource
+                  value: string(row.resource.?kind.orValue("")) + "/" + string(row.resource.?name.orValue(""))
+                  link: >-
+                    has(row.resource.kind) && has(row.resource.name)
+                      ? ref(string(row.resource.?apiVersion.orValue("")).contains("/") ? string(row.resource.apiVersion).split("/")[0] : "",
+                            string(row.resource.kind), row.namespace, string(row.resource.name))
+                      : dyn(null)
+                - &messageColumn
+                  name: Message
+                  detail: true
+                  value: row.message
+    # Settings ▸ Integrations: "ClusterPolicies: 12 · not ready: 1 · Policies: 3".
+    status:
+      label: ClusterPolicies
+      counts:
+        - &notReady
+          label: not ready
+          severity: warning
+          when: variables.ready == "False"
+
+  kyverno.io/Policy:
+    icon: policy
+    variables: *policyVariables
+    related: *policyRelated
+    columns: *policyColumns
+    panel: *policyPanel
+    status:
+      label: Policies
+      counts:
+        - *notReady
+
+  # Kyverno 1.14+ policy kinds and exceptions: icons in the sidebar, the
+  # generic panel.
+  policies.kyverno.io/ValidatingPolicy: {icon: rule}
+  policies.kyverno.io/ImageValidatingPolicy: {icon: verified}
+  policies.kyverno.io/MutatingPolicy: {icon: edit_note}
+  policies.kyverno.io/GeneratingPolicy: {icon: auto_awesome}
+  policies.kyverno.io/DeletingPolicy: {icon: delete_sweep}
+  policies.kyverno.io/PolicyException: {icon: gpp_maybe}
+
+  kyverno.io/PolicyException:
+    icon: gpp_maybe
+    columns:
+      - name: Policies
+        value: object.spec.?exceptions.orValue([]).map(e, string(e.?policyName.orValue(""))).join(",")
+
+  kyverno.io/CleanupPolicy: &cleanup
+    icon: cleaning_services
+    columns:
+      - name: Schedule
+        value: object.spec.?schedule.orValue("")
+      - name: Last Execution
+        type: age
+        value: object.?status.?lastExecutionTime
+  kyverno.io/ClusterCleanupPolicy: *cleanup
+
+  kyverno.io/UpdateRequest:
+    icon: sync_alt
+    columns:
+      - name: Type
+        value: object.spec.?requestType.orValue("")
+      - name: Policy
+        value: object.spec.?policy.orValue("")
+      - name: State
+        type: status
+        value: object.?status.?state.orValue("")
+
+  # PolicyReport and ClusterPolicyReport: the summary, the scope and the
+  # results, failures first.
+  wgpolicyk8s.io/PolicyReport: &report
+    icon: fact_check
+    variables:
+      # One result per resource: the entry's resources, else the scope.
+      results: &reportResults >-
+        object.?results.orValue([]).map(r, (size(r.?resources.orValue([])) > 0 ? r.resources : [object.?scope.orValue({})]).map(res, {
+          "result": string(r.?result.orValue("")), "policy": string(r.?policy.orValue("")), "rule": string(r.?rule.orValue("")),
+          "severity": string(r.?severity.orValue("")), "message": string(r.?message.orValue("")), "source": string(r.?source.orValue("")),
+          "resource": res, "namespace": string(res.?namespace.orValue(ns))})).flatten()
+      ordered: &ordered >-
+        ["fail", "error", "warn", "skip", "pass"].map(k, variables.results.filter(r, r.result == k)).flatten()
+          + variables.results.filter(r, !(r.result in ["fail", "error", "warn", "skip", "pass"]))
+      summary: object.?summary.orValue({})
+    columns:
+      - name: Pass
+        type: number
+        value: object.?summary.?pass.orValue(0)
+      - name: Fail
+        type: number
+        value: object.?summary.?fail.orValue(0)
+      - name: Warn
+        type: number
+        value: object.?summary.?warn.orValue(0)
+      - name: Error
+        type: number
+        value: object.?summary.?error.orValue(0)
+      - name: Skip
+        type: number
+        value: object.?summary.?skip.orValue(0)
+      - name: Scope
+        value: 'has(object.scope) ? string(object.scope.?kind.orValue("")) + "/" + string(object.scope.?name.orValue("")) : ""'
+    panel:
+      generic: replace
+      sections:
+        - title: Summary
+          icon: fact_check
+          blocks:
+            - type: badges
+              items:
+                - text: string(variables.summary.?fail.orValue(0)) + " fail"
+                  severity: 'variables.summary.?fail.orValue(0) == 0 ? "neutral" : "error"'
+                - text: string(variables.summary.?error.orValue(0)) + " error"
+                  severity: 'variables.summary.?error.orValue(0) == 0 ? "neutral" : "error"'
+                - text: string(variables.summary.?warn.orValue(0)) + " warn"
+                  severity: 'variables.summary.?warn.orValue(0) == 0 ? "neutral" : "warning"'
+                - text: string(variables.summary.?skip.orValue(0)) + " skip"
+                  severity: '"neutral"'
+                - text: string(variables.summary.?pass.orValue(0)) + " pass"
+                  severity: 'variables.summary.?pass.orValue(0) == 0 ? "neutral" : "ok"'
+            - type: fields
+              when: has(object.scope)
+              items:
+                - label: Scope
+                  value: string(object.scope.?kind.orValue("")) + "/" + string(object.scope.?name.orValue(""))
+                  link: >-
+                    ref(string(object.scope.?apiVersion.orValue("")).contains("/") ? string(object.scope.apiVersion).split("/")[0] : "",
+                        string(object.scope.?kind.orValue("")), string(object.scope.?namespace.orValue(ns)), string(object.scope.?name.orValue("")))
+        - title: Results
+          icon: list_alt
+          summary: string(size(variables.results))
+          blocks:
+            - type: table
+              rows: variables.ordered
+              limit: 50
+              empty: No results
+              columns:
+                - *resultColumn
+                - &policyColumn
+                  name: Policy
+                  value: 'row.policy.contains("/") ? row.policy.split("/")[1] : row.policy'
+                  link: &policyLink >-
+                    row.policy.contains("/") ? ref("kyverno.io", "Policy", row.policy.split("/")[0], row.policy.split("/")[1]) :
+                    row.source.replace("Kyverno", "").endsWith("ValidatingPolicy") || row.source.endsWith("MutatingPolicy") || row.source.endsWith("GeneratingPolicy")
+                      ? ref("policies.kyverno.io", row.source.replace("Kyverno", ""), row.policy)
+                      : ref("kyverno.io", "ClusterPolicy", row.policy)
+                - name: Rule
+                  value: row.rule
+                - *resourceColumn
+                - *messageColumn
+  wgpolicyk8s.io/ClusterPolicyReport: *report
+
+  # Any other object: its policy results, as a tab, or as a section of the
+  # Security tab on Pods and workloads. Kyverno's own kinds, the reports
+  # and Events have none.
+  "*":
+    variables:
+      skip: >-
+        string(object.?apiVersion.orValue("")).split("/")[0] in ["kyverno.io", "policies.kyverno.io", "wgpolicyk8s.io"] ||
+        string(object.?kind.orValue("")) == "Event"
+      # Panels only (they read related): every result of the reports the
+      # object owns.
+      results: >-
+        (related.reports + related.clusterReports).map(rep, rep.?results.orValue([]).map(r, {
+          "result": string(r.?result.orValue("")), "policy": string(r.?policy.orValue("")), "rule": string(r.?rule.orValue("")),
+          "severity": string(r.?severity.orValue("")), "message": string(r.?message.orValue("")), "source": string(r.?source.orValue(""))})).flatten()
+      ordered: *ordered
+      counts: *counts
+    related:
+      # Reports owned by the object (Kyverno 1.10+ writes one per
+      # resource, owned by it): a scan of the namespace's reports in the
+      # watch cache, by uid.
+      reports:
+        kind: wgpolicyk8s.io/PolicyReport
+        owner: true
+        when: ns != "" && !variables.skip
+      clusterReports:
+        kind: wgpolicyk8s.io/ClusterPolicyReport
+        owner: true
+        when: ns == "" && !variables.skip
+    panel:
+      tabs:
+        - title: Policy results
+          icon: policy
+          into: security
+          when: size(variables.results) > 0
+          sections:
+            - title: Policy results
+              icon: policy
+              summary: >-
+                variables.counts.filter(c, c[1] > 0).map(c, string(c[1]) + " " + string(c[0])).join(" · ")
+              blocks:
+                - *countBadges
+                - type: table
+                  rows: variables.ordered
+                  limit: 50
+                  columns:
+                    - *resultColumn
+                    - *policyColumn
+                    - name: Rule
+                      value: row.rule
+                    - name: Severity
+                      value: row.severity
+                    - *messageColumn

@@ -1,0 +1,10 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: kyverno.io/CleanupPolicy demo/remove-old-jobs
+columns:
+  - name: Schedule
+    value: 0 * * * *
+  - name: Last Execution
+    value: "2025-12-31T23:00:00Z"
+panel:
+  refresh: 30
+  sections: []

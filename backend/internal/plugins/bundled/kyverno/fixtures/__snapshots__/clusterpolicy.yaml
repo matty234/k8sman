@@ -1,0 +1,166 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: kyverno.io/ClusterPolicy require-labels
+columns:
+  - name: Action
+    value: Enforce
+  - name: Background
+    value: true
+  - name: Ready
+    value: "True"
+  - name: Rules
+    value: 2
+panel:
+  refresh: 5
+  sections:
+    - blocks:
+        - items:
+            - label: Action
+              type: text
+              value: Enforce
+            - label: Background
+              type: text
+              value: "on"
+            - label: Admission
+              type: text
+              value: "on"
+            - label: Rules
+              type: number
+              value: 2
+          type: fields
+      icon: policy
+      title: Policy
+    - blocks:
+        - columns:
+            - name: Rule
+              type: text
+            - name: Type
+              type: text
+            - name: Kinds
+              type: text
+            - detail: true
+              name: Message
+              type: text
+            - detail: true
+              name: Definition
+              type: code
+          empty: No rules
+          limit: 50
+          rows:
+            - - value: check-app-label
+              - value: validate
+              - value: Pod, Deployment
+              - value: The label app is required.
+              - value: |-
+                  exclude:
+                    any:
+                      - resources:
+                          namespaces:
+                            - kube-system
+                  match:
+                    any:
+                      - resources:
+                          kinds:
+                            - Pod
+                            - Deployment
+                          namespaces:
+                            - demo
+                  validate:
+                    failureAction: Enforce
+                    message: The label app is required.
+                    pattern:
+                      metadata:
+                        labels:
+                          app: ?*
+            - - value: add-team
+              - value: mutate
+              - value: Pod
+              - value: ""
+              - value: |-
+                  match:
+                    resources:
+                      kinds:
+                        - Pod
+                  mutate:
+                    patchStrategicMerge:
+                      metadata:
+                        labels:
+                          +(team): default
+          total: 2
+          type: table
+      icon: rule
+      summary: "2"
+      title: Rules
+    - blocks:
+        - items:
+            - label: Ready
+              type: status
+              value: "True"
+          type: fields
+        - conditions:
+            - message: Ready
+              reason: Succeeded
+              status: "True"
+              type: Ready
+          type: conditions
+        - items:
+            generate: 0
+            mutate: 1
+            validate: 1
+            verifyimages: 0
+          type: chips
+      icon: checklist
+      title: Status
+    - blocks:
+        - items:
+            - severity: error
+              text: 1 fail
+            - severity: warning
+              text: 2 warn
+            - severity: ok
+              text: 1 pass
+          type: badges
+        - columns:
+            - name: Result
+              type: status
+            - name: Rule
+              type: text
+            - name: Resource
+              type: text
+            - detail: true
+              name: Message
+              type: text
+          limit: 50
+          rows:
+            - - value: fail
+              - value: check-app-label
+              - link:
+                  group: ""
+                  kind: Pod
+                  name: web-0
+                  namespace: demo
+                value: Pod/web-0
+              - value: 'validation error: The label app is required.'
+            - - value: warn
+              - value: check-app-label
+              - link:
+                  group: ""
+                  kind: Pod
+                  name: worker-1
+                  namespace: legacy
+                value: Pod/worker-1
+              - value: label app is missing
+            - - value: warn
+              - value: check-app-label
+              - link:
+                  group: ""
+                  kind: Pod
+                  name: worker-2
+                  namespace: legacy
+                value: Pod/worker-2
+              - value: label app is missing
+          total: 3
+          type: table
+      icon: fact_check
+      summary: "4"
+      title: Results
+status: 'ClusterPolicies: 1 · not ready: 0'

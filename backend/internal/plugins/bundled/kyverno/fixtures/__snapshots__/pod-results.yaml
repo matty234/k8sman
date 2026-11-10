@@ -1,0 +1,56 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: /Pod demo/web-0
+panel:
+  refresh: 5
+  sections: []
+  tabs:
+    - icon: policy
+      into: security
+      sections:
+        - blocks:
+            - items:
+                - severity: error
+                  text: 1 fail
+                - severity: ok
+                  text: 1 pass
+              type: badges
+            - columns:
+                - name: Result
+                  type: status
+                - name: Policy
+                  type: text
+                - name: Rule
+                  type: text
+                - name: Severity
+                  type: text
+                - detail: true
+                  name: Message
+                  type: text
+              limit: 50
+              rows:
+                - - value: fail
+                  - link:
+                      group: kyverno.io
+                      kind: ClusterPolicy
+                      name: require-labels
+                      namespace: demo
+                    value: require-labels
+                  - value: check-app-label
+                  - value: medium
+                  - value: 'validation error: The label app is required.'
+                - - value: pass
+                  - link:
+                      group: kyverno.io
+                      kind: ClusterPolicy
+                      name: disallow-latest
+                      namespace: demo
+                    value: disallow-latest
+                  - value: check-tag
+                  - value: ""
+                  - value: ""
+              total: 2
+              type: table
+          icon: policy
+          summary: 1 fail · 1 pass
+          title: Policy results
+      title: Policy results

@@ -1,0 +1,44 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: /Namespace demo
+panel:
+  refresh: 5
+  sections: []
+  tabs:
+    - icon: policy
+      into: security
+      sections:
+        - blocks:
+            - items:
+                - severity: warning
+                  text: 1 warn
+              type: badges
+            - columns:
+                - name: Result
+                  type: status
+                - name: Policy
+                  type: text
+                - name: Rule
+                  type: text
+                - name: Severity
+                  type: text
+                - detail: true
+                  name: Message
+                  type: text
+              limit: 50
+              rows:
+                - - value: warn
+                  - link:
+                      group: kyverno.io
+                      kind: ClusterPolicy
+                      name: require-ns-owner
+                      namespace: ""
+                    value: require-ns-owner
+                  - value: check-owner-label
+                  - value: ""
+                  - value: label owner is missing
+              total: 1
+              type: table
+          icon: policy
+          summary: 1 warn
+          title: Policy results
+      title: Policy results

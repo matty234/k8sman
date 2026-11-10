@@ -1,0 +1,124 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: wgpolicyk8s.io/PolicyReport demo/7d1e0b3f-0000-4000-8000-0000000000a1
+columns:
+  - name: Pass
+    value: 1
+  - name: Fail
+    value: 1
+  - name: Warn
+    value: 1
+  - name: Error
+    value: 0
+  - name: Skip
+    value: 1
+  - name: Scope
+    value: Pod/web-0
+panel:
+  refresh: 5
+  sections:
+    - blocks:
+        - items:
+            - severity: error
+              text: 1 fail
+            - severity: neutral
+              text: 0 error
+            - severity: warning
+              text: 1 warn
+            - severity: neutral
+              text: 1 skip
+            - severity: ok
+              text: 1 pass
+          type: badges
+        - items:
+            - label: Scope
+              link:
+                group: ""
+                kind: Pod
+                name: web-0
+                namespace: demo
+              type: text
+              value: Pod/web-0
+          type: fields
+      icon: fact_check
+      title: Summary
+    - blocks:
+        - columns:
+            - name: Result
+              type: status
+            - name: Policy
+              type: text
+            - name: Rule
+              type: text
+            - name: Resource
+              type: text
+            - detail: true
+              name: Message
+              type: text
+          empty: No results
+          limit: 50
+          rows:
+            - - value: fail
+              - link:
+                  group: kyverno.io
+                  kind: ClusterPolicy
+                  name: require-labels
+                  namespace: demo
+                value: require-labels
+              - value: check-app-label
+              - link:
+                  group: ""
+                  kind: Pod
+                  name: web-0
+                  namespace: demo
+                value: Pod/web-0
+              - value: 'validation error: The label app is required.'
+            - - value: warn
+              - link:
+                  group: kyverno.io
+                  kind: Policy
+                  name: limit-memory
+                  namespace: demo
+                value: limit-memory
+              - value: check-limits
+              - link:
+                  group: ""
+                  kind: Pod
+                  name: web-0
+                  namespace: demo
+                value: Pod/web-0
+              - value: memory limit is not set
+            - - value: skip
+              - link:
+                  group: policies.kyverno.io
+                  kind: ValidatingPolicy
+                  name: check-probes
+                  namespace: demo
+                value: check-probes
+              - value: ""
+              - link:
+                  group: ""
+                  kind: Pod
+                  name: web-0
+                  namespace: demo
+                value: Pod/web-0
+              - value: ""
+            - - value: pass
+              - link:
+                  group: kyverno.io
+                  kind: ClusterPolicy
+                  name: disallow-latest
+                  namespace: demo
+                value: disallow-latest
+              - value: check-tag
+              - link:
+                  group: ""
+                  kind: Pod
+                  name: web-0
+                  namespace: demo
+                value: Pod/web-0
+              - value: ""
+          total: 4
+          type: table
+      icon: list_alt
+      summary: "4"
+      title: Results

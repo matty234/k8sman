@@ -1,0 +1,14 @@
+# A CleanupPolicy that last ran an hour ago.
+apiVersion: kyverno.io/v2
+kind: CleanupPolicy
+metadata:
+  name: remove-old-jobs
+  namespace: demo
+spec:
+  schedule: "0 * * * *"
+  match:
+    any:
+      - resources:
+          kinds: [Job]
+status:
+  lastExecutionTime: "2025-12-31T23:00:00Z"
