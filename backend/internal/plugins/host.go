@@ -160,6 +160,9 @@ func loadPlugin(dir, source string, eager bool) *Plugin {
 		for _, key := range m.KindOrder {
 			p.diags = append(p.diags, p.kindErrs[key]...)
 		}
+		// A kind entry that doesn't compile is off (the others work), and
+		// on a reload the previous version is kept (see mergeLocked).
+		p.failed = hasErrors(p.diags)
 	}
 	return p
 }
