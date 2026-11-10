@@ -49,7 +49,7 @@ var builtin = map[string][]Column{
 	"jobs.batch": {
 		{Name: "Status", Type: "status", Query: `jobstatus`},
 		{Name: "Completions", Query: `"\(.status.succeeded // 0)/\(.spec.completions // 1)"`},
-		{Name: "Duration", Query: `if .status.startTime then (((.status.completionTime // (now | todate)) | fromdate) - (.status.startTime | fromdate) | tostring + "s") else "" end`},
+		{Name: "Duration", Query: `duration(.status.startTime; .status.completionTime)`},
 		ageCol,
 	},
 	"cronjobs.batch": {
@@ -64,7 +64,7 @@ var builtin = map[string][]Column{
 		{Name: "Cluster-IP", Query: `.spec.clusterIP`},
 		{Name: "External-IP", Query: `([.status.loadBalancer.ingress[]? | .ip // .hostname] + (.spec.externalIPs // [])) | join(",")`},
 		{Name: "Ports", Query: `[.spec.ports[]? | "\(.port)\(if .nodePort then ":\(.nodePort)" else "" end)/\(.protocol // "TCP")"] | join(",")`},
-		{Name: "Selector", Query: `(.spec.selector // {}) | to_entries | map("\(.key)=\(.value)") | join(",")`},
+		{Name: "Selector", Query: `.spec.selector | selector`},
 		ageCol,
 	},
 	"ingresses.networking.k8s.io": {
@@ -81,7 +81,7 @@ var builtin = map[string][]Column{
 		ageCol,
 	},
 	"networkpolicies.networking.k8s.io": {
-		{Name: "Pod Selector", Query: `(.spec.podSelector.matchLabels // {}) | to_entries | map("\(.key)=\(.value)") | join(",") | if . == "" then "<all>" else . end`},
+		{Name: "Pod Selector", Query: `.spec.podSelector | selector | if . == "" then "<all>" else . end`},
 		{Name: "Policy Types", Query: `.spec.policyTypes // [] | join(",")`},
 		ageCol,
 	},
@@ -128,8 +128,8 @@ var builtin = map[string][]Column{
 		ageCol,
 	},
 	"nodes": {
-		{Name: "Status", Type: "status", Query: `([.status.conditions[]? | select(.type == "Ready") | if .status == "True" then "Ready" else "NotReady" end] | first // "Unknown") + (if .spec.unschedulable then ",SchedulingDisabled" else "" end)`},
-		{Name: "Roles", Query: `[(.metadata.labels // {}) | keys[] | select(startswith("node-role.kubernetes.io/")) | ltrimstr("node-role.kubernetes.io/")] | join(",")`},
+		{Name: "Status", Type: "status", Query: `nodestatus`},
+		{Name: "Roles", Query: `noderoles`},
 		{Name: "Version", Query: `.status.nodeInfo.kubeletVersion`},
 		// The OS image first (so it sorts and filters by it), then the other
 		// signals the UI needs to name the OS and platform, tab-separated.
@@ -138,7 +138,7 @@ var builtin = map[string][]Column{
 		usageCPU,
 		usageMemory,
 		{Name: "Alloc CPU", Type: "quantity", Query: `.status.allocatable.cpu`},
-		{Name: "Alloc Memory", Type: "quantity", Query: `.status.allocatable.memory | if test("Ki$") then (rtrimstr("Ki") | tonumber / 1024 | round | tostring) + "Mi" else . end`},
+		{Name: "Alloc Memory", Type: "bytes", Query: `.status.allocatable.memory | tobytes`},
 		ageCol,
 	},
 	"namespaces": {
@@ -180,14 +180,14 @@ var builtin = map[string][]Column{
 		ageCol,
 	},
 	"servicemonitors.monitoring.coreos.com": {
-		{Name: "Selector", Query: `(.spec.selector.matchLabels // {}) | to_entries | map("\(.key)=\(.value)") | join(",")`},
+		{Name: "Selector", Query: `.spec.selector | selector`},
 		{Name: "Namespaces", Query: `if .spec.namespaceSelector.any then "any" else ((.spec.namespaceSelector.matchNames // []) | join(",")) end`},
 		{Name: "Endpoints", Query: `[.spec.endpoints[]? | (.port // .targetPort // "?" | tostring) + (.path // "")] | join(", ")`},
 		{Name: "Interval", Query: `[.spec.endpoints[]?.interval | select(.)] | unique | join(",")`},
 		ageCol,
 	},
 	"podmonitors.monitoring.coreos.com": {
-		{Name: "Selector", Query: `(.spec.selector.matchLabels // {}) | to_entries | map("\(.key)=\(.value)") | join(",")`},
+		{Name: "Selector", Query: `.spec.selector | selector`},
 		{Name: "Namespaces", Query: `if .spec.namespaceSelector.any then "any" else ((.spec.namespaceSelector.matchNames // []) | join(",")) end`},
 		{Name: "Endpoints", Query: `[.spec.podMetricsEndpoints[]? | (.port // .targetPort // .portNumber // "?" | tostring) + (.path // "")] | join(", ")`},
 		{Name: "Interval", Query: `[.spec.podMetricsEndpoints[]?.interval | select(.)] | unique | join(",")`},
@@ -197,14 +197,14 @@ var builtin = map[string][]Column{
 		{Name: "Version", Query: `.spec.version // ""`},
 		{Name: "Ready", Type: "ratio", Query: `"\(.status.availableReplicas // 0)/\(.spec.replicas // 1)"`},
 		{Name: "Retention", Query: `.spec.retention // "24h"`},
-		{Name: "Status", Type: "status", Query: `([.status.conditions[]? | select(.type == "Available")][0] | if . == null then "" elif .status == "True" then "Available" else (.reason // "Unavailable") end)`},
+		{Name: "Status", Type: "status", Query: `condition("Available") | if . == null then "" elif .status == "True" then "Available" else .reason // "Unavailable" end`},
 		ageCol,
 	},
 	"alertmanagers.monitoring.coreos.com": {
 		{Name: "Version", Query: `.spec.version // ""`},
 		{Name: "Ready", Type: "ratio", Query: `"\(.status.availableReplicas // 0)/\(.spec.replicas // 1)"`},
 		{Name: "Retention", Query: `.spec.retention // "120h"`},
-		{Name: "Status", Type: "status", Query: `([.status.conditions[]? | select(.type == "Available")][0] | if . == null then "" elif .status == "True" then "Available" else (.reason // "Unavailable") end)`},
+		{Name: "Status", Type: "status", Query: `condition("Available") | if . == null then "" elif .status == "True" then "Available" else .reason // "Unavailable" end`},
 		ageCol,
 	},
 	"horizontalpodautoscalers.autoscaling": {
@@ -228,7 +228,7 @@ var builtin = map[string][]Column{
 	"applicationsets.argoproj.io": {
 		{Name: "Generators", Query: `[.spec.generators[]? | ` + argoGenerator + `] | join(", ")`},
 		{Name: "Apps", Type: "number", Query: `.status.resourcesCount // (.status.resources // [] | length)`},
-		{Name: "Status", Type: "status", Query: `if any(.status.conditions[]?; .type == "ErrorOccurred" and .status == "True") then "Error" elif any(.status.conditions[]?; .type == "ResourcesUpToDate" and .status == "True") then "UpToDate" else (.status.health.status // "") end`},
+		{Name: "Status", Type: "status", Query: `if condition("ErrorOccurred").status == "True" then "Error" elif condition("ResourcesUpToDate").status == "True" then "UpToDate" else .status.health.status // "" end`},
 		ageCol,
 	},
 	"appprojects.argoproj.io": {
@@ -242,7 +242,7 @@ var builtin = map[string][]Column{
 		{Name: "Status", Type: "status", Query: argoWFPhase},
 		{Name: "Progress", Query: `.status.progress // ""`},
 		{Name: "Started", Type: "age", Query: `.status.startedAt`},
-		{Name: "Duration", Query: `if .status.startedAt then (((.status.finishedAt // (now | todate)) | fromdateiso8601) - (.status.startedAt | fromdateiso8601)) | ` + argoWFDuration + ` else "" end`},
+		{Name: "Duration", Query: `duration(.status.startedAt; .status.finishedAt)`},
 		{Name: "From", Query: `if .spec.workflowTemplateRef then (if .spec.workflowTemplateRef.clusterScope then "cwft/" else "wft/" end) + .spec.workflowTemplateRef.name elif .metadata.labels["workflows.argoproj.io/cron-workflow"] then "cron/" + .metadata.labels["workflows.argoproj.io/cron-workflow"] else "" end`},
 		{Name: "Message", Query: `.status.message // ""`},
 		ageCol,
@@ -398,12 +398,6 @@ func draClasses(reqs string) string {
 const argoWFPhase = `(.status.phase // "") as $p
 	| if $p == "Running" and (.spec.suspend == true or any(.status.nodes[]?; .type == "Suspend" and .phase == "Running")) then "Suspended"
 	elif $p == "" then "Pending" else $p end`
-
-// argoWFDuration formats seconds as 45s / 3m20s / 2h05m / 3d4h.
-const argoWFDuration = `floor | if . < 60 then "\(.)s"
-	elif . < 3600 then "\(. / 60 | floor)m\(. % 60 | tostring | if length < 2 then "0" + . else . end)s"
-	elif . < 86400 then "\(. / 3600 | floor)h\((. % 3600) / 60 | floor | tostring | if length < 2 then "0" + . else . end)m"
-	else "\(. / 86400 | floor)d\((. % 86400) / 3600 | floor)h" end`
 
 var argoWFTemplateCols = []Column{
 	{Name: "Entrypoint", Query: `.spec.entrypoint // ""`},

@@ -237,7 +237,7 @@ func compile(query string) (*gojq.Code, error) {
 	if err != nil {
 		return nil, err
 	}
-	code, err := gojq.Compile(q, append(jqFunctions, statusFunctions...)...)
+	code, err := gojq.Compile(q, queryFunctions...)
 	if err != nil {
 		return nil, err
 	}
@@ -367,6 +367,9 @@ func run(code *gojq.Code, obj map[string]any) (any, error) {
 		return out, nil
 	}
 }
+
+// queryFunctions are every helper a column query can call.
+var queryFunctions = append(append(append([]gojq.CompilerOption{}, jqFunctions...), statusFunctions...), helperFunctions...)
 
 // jqFunctions are the helpers column queries can call besides jq's own:
 //

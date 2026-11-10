@@ -116,7 +116,11 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 
 - Live tables over watches for every kind.
 - jq-defined columns with a column editor (live preview, field picker, column
-  types), saved per resource type.
+  types), saved per resource type. Besides jq's own functions, queries can
+  call `podstatus`, `deploymentstatus`, `statefulsetstatus`,
+  `daemonsetstatus`, `jobstatus`, `nodestatus`, `noderoles`,
+  `condition("Ready")`, `duration(start; end)`, `selector`, `tobytes` and
+  `base64size` (see `backend/internal/columns/helper_funcs.go`).
 - Sorting, including quantity-aware sorting. A filter that combines terms
   (`status=Running restarts>3`, `status!=Running`, `memory>256Mi`, `age<1h`)
   and suggests columns and their values as you type. `!text` (or `-text`)
