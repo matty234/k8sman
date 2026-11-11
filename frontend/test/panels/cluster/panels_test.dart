@@ -80,6 +80,25 @@ void main() {
     expect(app.selectedType?.kind, 'Deployment');
   });
 
+
+  testWidgets('Namespace: a warning on a long-named object does not overflow at the narrowest inspector width', (tester) async {
+    final api = FakeApiClient(eventItems: [
+      {
+        'type': 'Warning',
+        'reason': 'FailedScheduling',
+        'message': '0/3 nodes are available: 3 Insufficient cpu. preemption: 0/3 nodes are available: 3 No preemption victims found for incoming pod.',
+        'lastTimestamp': DateTime.now().subtract(const Duration(minutes: 2)).toUtc().toIso8601String(),
+        'involvedObject': {'kind': 'Pod', 'name': 'batch-job-with-a-very-long-generated-name-abcdefghij-0123456789'},
+        'source': {'component': 'default-scheduler'},
+        'metadata': {'name': 'ev1', 'namespace': 'demo', 'uid': 'ev1'},
+      },
+    ]);
+    await pumpPanel(tester, _dev('ns-demo'), api: api, size: const Size(320, 2400));
+    expect(find.text('2m ago'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    final age = tester.getTopRight(find.text('2m ago')).dx;
+    expect(age, lessThanOrEqualTo(320));
+  });
 }
 
 Json _quota() => {

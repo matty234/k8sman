@@ -673,7 +673,7 @@ class ResourceLink extends StatelessWidget {
     final theme = Theme.of(context);
     final text = label ?? '${ref.kind}/${ref.name}';
     final known = app.typeFor(ref.group, ref.kind) != null;
-    if (!known) return Text(text, style: theme.textTheme.bodySmall);
+    if (!known) return Text(text, maxLines: singleLine ? 1 : null, overflow: singleLine ? TextOverflow.ellipsis : null, style: theme.textTheme.bodySmall);
     return Hoverable(
       onTap: () => app.openRef(ref),
       builder: (h) => Text(text,

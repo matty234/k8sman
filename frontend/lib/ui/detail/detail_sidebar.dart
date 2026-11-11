@@ -593,9 +593,10 @@ class EventList extends StatelessWidget {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Text('${e['reason'] ?? ''}', style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+                  Flexible(child: Text('${e['reason'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600))),
                   if ((e['count'] ?? 1) > 1) Text('  ×${e['count']}', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
                   const Spacer(),
+                  const SizedBox(width: 8),
                   AgeText(e['lastTimestamp'] ?? e['eventTime'] ?? dig(e, ['metadata', 'creationTimestamp']), suffix: ' ago'),
                 ]),
                 Text('${e['message'] ?? ''}', style: theme.textTheme.bodySmall),

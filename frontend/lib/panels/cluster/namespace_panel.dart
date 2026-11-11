@@ -407,7 +407,7 @@ class _WarningsState extends State<_Warnings> {
                 child: Row(children: [
                   Icon(Icons.subdirectory_arrow_right, size: 12, color: theme.hintColor),
                   const SizedBox(width: 2),
-                  ResourceLink(ObjectRef.fromOwnerRef(asMap(e['involvedObject']), namespace: widget.namespace)),
+                  Flexible(child: _EventTarget(ObjectRef.fromOwnerRef(asMap(e['involvedObject']), namespace: widget.namespace))),
                 ]),
               ),
               EventList([e]),
@@ -415,4 +415,16 @@ class _WarningsState extends State<_Warnings> {
           ]);
         },
       );
+}
+
+/// The "Kind/name" link of an event, one line with the full name on hover.
+class _EventTarget extends StatelessWidget {
+  final ObjectRef target;
+  const _EventTarget(this.target);
+
+  @override
+  Widget build(BuildContext context) {
+    final text = '${target.kind}/${target.name}';
+    return Tooltip(message: text, child: ResourceLink(target, singleLine: true));
+  }
 }
