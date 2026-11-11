@@ -278,8 +278,127 @@ and launches the app in the background with `HOME` pointed at a scratch
 directory, so your settings and chosen kubeconfig are neither used nor
 changed. Each run takes about four minutes.
 
+## Wire format and streaming lists for the cache
+
+Two ways to make the cache's reads cheaper were measured: protobuf instead
+of JSON for built-in kinds, and streaming lists (`sendInitialEvents`,
+KEP-3157) instead of LIST plus WATCH. Protobuf is used for the
+metadata-first fill of Secrets and ConfigMaps; everything else was left as
+it was.
+
+**Setup.** Synthetic: `BenchmarkLeanList` (400 Secrets, 100 of them Helm
+releases with 100 KB-1 MB random payloads; 400 ConfigMaps) and
+`BenchmarkPodsList` (2,000 two-container Pods), Apple M1 Pro. Real: a
+remote v1.34 cluster over a link of about 2 MB/s, read only, with a
+throwaway probe that ran the same code paths (387 Secrets, 34 MB of JSON
+almost all Helm releases; 553 Pods; 236 ConfigMaps; 179 CRDs). Wire bytes
+are TLS bytes read from the socket, so they include gzip (the API server
+compresses LISTs; client-go asks for it). Peak heap is
+`/memory/classes/heap/objects` sampled every 0.5 ms with `GOGC=50`, as the
+server runs.
+
+**Protobuf, synthetic** (decode into the cache's representation; fills
+summarise, Pods convert to unstructured):
+
+| | JSON | protobuf |
+|---|---|---|
+| Secrets fill: bytes (gzip) | 68.9 MB (67.8 MB) | 51.6 MB (51.6 MB) |
+| Secrets fill: CPU | 870 ms | 7.5 ms |
+| Secrets fill: allocated | 213 MB, 66k allocs | 108 MB, 41k allocs |
+| ConfigMaps fill: CPU | 443 ms | 5.7 ms |
+| ConfigMaps fill: allocated | 162 MB, 59k allocs | 60 MB, 38k allocs |
+| 2,000 Pods: bytes | 9.4 MB | 5.5 MB |
+| 2,000 Pods: CPU | 233 ms | 101 ms |
+| 2,000 Pods: allocated | 145 MB, 2.75M allocs | 110 MB, 1.29M allocs |
+
+A JSON fill spends its time decoding the values into Go strings (base64,
+for Secrets) only to measure them; the protobuf fill decodes them as byte
+slices and takes their length. Pods have no such payload, and converting
+the typed Pod to unstructured gives back part of the gain.
+
+**Protobuf, real cluster** (whole fill or LIST; wall time varies ±40% with
+the link, so medians of 3-7 runs):
+
+| | JSON | protobuf |
+|---|---|---|
+| Secrets fill: wire | 23.9 MB | 19.0 MB |
+| Secrets fill: wall | 16.1 s | 10.6 s |
+| Secrets fill: CPU | 2.0 s | 1.0 s |
+| Secrets fill: peak heap | 32 MB | 20 MB |
+| ConfigMaps fill: wire, wall | 0.46 MB, 0.48 s | 0.44 MB, 0.39 s |
+| ConfigMaps fill: CPU | 190 ms | 80 ms |
+| CRDs fill: wire, wall | 3.4 MB, 2.0 s | 3.6 MB, 1.8 s |
+| CRDs fill: CPU, peak heap | 0.9 s, 47 MB | 0.5 s, 38 MB |
+| Pods LIST: wire, wall | 2.2 MB, 1.4 s | 1.8 MB, 0.87 s |
+| Pods LIST: CPU, peak heap | 0.7 s, 106 MB | 0.45 s, 71 MB |
+
+Gzip already shrinks JSON's base64, so protobuf saves a fifth of the
+Secret bytes, not a quarter; the fill is bound by the link, and wall time
+follows the bytes.
+
+**Decision.**
+
+- *Fills of Secrets and ConfigMaps: protobuf* (`kcache/proto.go`). The
+  pages are requested with `Accept: application/vnd.kubernetes.protobuf,
+  application/json` through client-go's scheme and summarised from the
+  typed objects; a server that answers JSON is decoded as JSON
+  (`TestProtoFillFallsBackToJSON`). The summaries are the JSON ones (the
+  benchmark checks every object). `protoFill` switches it off.
+- *Full objects (Pods, Events, ReplicaSets and every other kind, and all
+  watches): JSON.* The gain is real (Pods: a third of the wall time, CPU
+  and peak heap) but a typed decode keeps only the fields client-go's
+  types know. The cache is what the inspector and `/api/items` read, and
+  the API server is often newer than client-go, so a field added in a newer
+  Kubernetes would silently vanish from them; the conversion also adds
+  `creationTimestamp: null` to embedded templates (seen on 18 of 553 real
+  Pods). Watch events are few after the first LIST, so protobuf watches
+  would save little.
+- *CRDs: JSON.* The API server does serve CRD objects in protobuf, but the
+  types aren't in client-go's scheme (another module), the compressed
+  bytes were slightly larger and the wall time within noise.
+
+**Streaming lists (WatchList).** client-go v0.33 has the `WatchListClient`
+gate (beta, off by default; `KUBE_FEATURE_WatchListClient=true`). With it
+on, reflectors and the dynamic client's `List` send `sendInitialEvents`,
+but `List` still collects every object into one list, so only the API
+server saves memory. There is no helper for consuming the stream object by
+object; a cache would watch with `sendInitialEvents=true`,
+`resourceVersionMatch=NotOlderThan` and `allowWatchBookmarks=true` and take
+the bookmark annotated `k8s.io/initial-events-end` as the end of the
+snapshot. The v1.34 test cluster honoured it. As one stream it would
+replace the fill's paging and the separate watch, summarising each object
+as it arrives.
+
+Measured on the real cluster, against the paged fill (Secrets) or the
+single LIST (Pods, ConfigMaps):
+
+| | wire | wall | peak heap | first object |
+|---|---|---|---|---|
+| Secrets, paged fill, JSON | 23.9 MB | 12.8-16.9 s | 32 MB | 0.5-2 s |
+| Secrets, stream, JSON | 33.8 MB | 17.0 s | 14 MB | 31 ms |
+| Secrets, stream, protobuf | 25.3 MB | 13.4-16.1 s | 8-11 MB | 33-44 ms |
+| Pods, LIST, JSON | 2.2 MB | 1.3-1.4 s | 106 MB | (one list) |
+| Pods, stream, JSON | 11.7 MB | 4.8-4.9 s | 50 MB | 30 ms |
+| Pods, stream, protobuf | 8.8 MB | 3.8-4.1 s | 52 MB | 100 ms |
+| ConfigMaps, paged fill, JSON | 0.46 MB | 0.36 s | 8.5 MB | 61 ms |
+| ConfigMaps, stream, JSON | 3.0 MB | 1.2 s | 5.9 MB | 27 ms |
+
+It halves the peak heap, as expected, but the API server does not gzip
+watch streams: Pods cost 5× the bytes and 3.5× the time, Secrets 40% more
+bytes (their payloads barely compress, so it's closer). Time to first
+object doesn't matter here: metadata-first tables already show their rows
+from the metadata LIST, and full tables publish one snapshot. Peak heap
+during a fill is already bounded by the page size (50 objects). So
+streaming lists were not adopted. Reconsider if the API server starts
+compressing watches, or for a cluster on a fast link where memory is the
+constraint; fallback would need care, since a server with WatchList off
+rejects `sendInitialEvents` (422) but one older than v1.27 ignores it and
+never sends the end bookmark.
+
 ## Tried, or considered, and not done
 
+- **Protobuf for full objects and watches in the cache, and streaming
+  lists:** see [Wire format and streaming lists](#wire-format-and-streaming-lists-for-the-cache).
 - **Protobuf for the typed client.** The same clientset backs raw requests
   that expect JSON (`DoRaw` against metrics.k8s.io, which metrics-server can
   answer in protobuf, and the service proxy to Prometheus/Alertmanager/Argo
@@ -342,7 +461,8 @@ and selector set, shared by every user:
   metadata-only LIST (`PartialObjectMetadataList`) is the first SNAPSHOT,
   rows marked `pending` for the cells that read more than plain metadata
   paths. A fill then pages through the full objects (50 per request, at
-  most 4 fills at once, cancelled when the last watcher leaves), keeps a
+  most 4 fills at once, cancelled when the last watcher leaves; protobuf
+  for Secrets and ConfigMaps), keeps a
   summary of each (Secrets: type, keys and value sizes; ConfigMaps: keys
   and sizes; CRDs: everything but the schemas) and sends the rows as
   MODIFIED, one batch per page. The watch starts from the fill's
@@ -427,6 +547,8 @@ QUICK=1 N=3 tools/perf/run.sh /tmp/k8sman-server smoke # fast subset
 
 # 3. micro-benchmark: rendering a 1,500-pod SNAPSHOT
 (cd backend && go test ./internal/server -run '^$' -bench TableSnapshot -benchmem)
+#    metadata-first loading and JSON against protobuf (heavy kinds, Pods)
+(cd backend && go test ./internal/kcache -run '^$' -bench 'LeanList|PodsList' -benchmem)
 
 # 4. frontend benchmarks
 (cd frontend && K8SMAN_PERF=1 flutter test test/perf/table_perf_test.dart)
