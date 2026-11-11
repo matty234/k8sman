@@ -307,6 +307,10 @@ class PluginsState {
   final String installedDir;
   final int generation;
   final bool readOnly;
+
+  /// Install directory updates that ask for no new permissions by
+  /// themselves (the backend's daily check).
+  final bool autoUpdate;
   final List<PluginInfo> plugins;
   const PluginsState({
     this.devMode = false,
@@ -316,6 +320,7 @@ class PluginsState {
     this.installedDir = '',
     this.generation = 0,
     this.readOnly = false,
+    this.autoUpdate = false,
     this.plugins = const [],
   });
 
@@ -327,6 +332,7 @@ class PluginsState {
         installedDir: '${j['installedDir'] ?? ''}',
         generation: (j['generation'] as num?)?.toInt() ?? 0,
         readOnly: j['readOnly'] == true,
+        autoUpdate: j['autoUpdate'] == true,
         plugins: [for (final p in asMapList(j['plugins'])) PluginInfo.fromJson(p)],
       );
 
@@ -356,6 +362,9 @@ class DirectoryPlugin {
   /// An update asks for other permissions (consent again).
   final bool permissionsChanged;
 
+  /// The plugin's kinds the current cluster serves (group/Kind).
+  final List<String> matched;
+
   const DirectoryPlugin({
     required this.id,
     required this.name,
@@ -370,6 +379,7 @@ class DirectoryPlugin {
     this.reason = '',
     this.installedVersion = '',
     this.permissionsChanged = false,
+    this.matched = const [],
   });
 
   factory DirectoryPlugin.fromJson(Json j) => DirectoryPlugin(
@@ -386,7 +396,21 @@ class DirectoryPlugin {
         reason: '${j['reason'] ?? ''}',
         installedVersion: '${j['installedVersion'] ?? ''}',
         permissionsChanged: j['permissionsChanged'] == true,
+        matched: [for (final k in (j['matched'] as List? ?? const [])) '$k'],
       );
+
+  /// Why it's suggested: "This cluster has Cluster, Backup and Pooler
+  /// (postgresql.cnpg.io)", the served kinds by group.
+  String get matchReason {
+    final byGroup = <String, List<String>>{};
+    for (final k in matched) {
+      final i = k.indexOf('/');
+      (byGroup[i < 0 ? '' : k.substring(0, i)] ??= []).add(i < 0 ? k : k.substring(i + 1));
+    }
+    String list(List<String> xs) => xs.length < 2 ? xs.join() : '${xs.sublist(0, xs.length - 1).join(', ')} and ${xs.last}';
+    final parts = [for (final e in byGroup.entries) e.key.isEmpty ? list(e.value) : '${list(e.value)} (${e.key})'];
+    return parts.isEmpty ? '' : 'This cluster has ${parts.join('; ')}';
+  }
 }
 
 /// `GET /api/plugins/directory`.
@@ -396,12 +420,21 @@ class DirectoryState {
   final String status;
   final String error;
   final List<DirectoryPlugin> plugins;
-  const DirectoryState({this.status = 'ok', this.error = '', this.plugins = const []});
+
+  /// The installed directory plugins with a newer version.
+  final List<DirectoryPlugin> updates;
+
+  /// Plugins for what the current cluster serves (not installed, built
+  /// in or unpacked; compatible). Never installed by themselves.
+  final List<DirectoryPlugin> suggested;
+  const DirectoryState({this.status = 'ok', this.error = '', this.plugins = const [], this.updates = const [], this.suggested = const []});
 
   factory DirectoryState.fromJson(Json j) => DirectoryState(
         status: '${j['status'] ?? 'ok'}',
         error: '${j['error'] ?? ''}',
         plugins: [for (final p in asMapList(j['plugins'])) DirectoryPlugin.fromJson(p)],
+        updates: [for (final p in asMapList(j['updates'])) DirectoryPlugin.fromJson(p)],
+        suggested: [for (final p in asMapList(j['suggested'])) DirectoryPlugin.fromJson(p)],
       );
 
   DirectoryPlugin? byId(String id) => plugins.where((p) => p.id == id).firstOrNull;

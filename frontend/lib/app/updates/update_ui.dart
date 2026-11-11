@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../ui/theme.dart';
 import '../../util/format.dart';
 import '../../ui/widgets/common.dart' show AppLogo;
+import '../../plugins/plugin_notices.dart' show PluginNoticeBanners, pluginNotices;
 import 'update_controller.dart';
 
 const repoUrl = 'https://github.com/matty234/k8sman';
@@ -45,17 +46,21 @@ class _UpdateHostState extends State<UpdateHost> {
     final update = updates?.bannerUpdate;
     return Stack(children: [
       widget.child,
-      if (updates != null && update != null)
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: UpdateBanner(
-            update: update,
-            manual: updates.manualInstall,
-            onInstall: updates.install,
-            onDismiss: updates.dismiss,
-          ),
-        ),
+      Positioned(
+        right: 16,
+        bottom: 16,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+          // The plugin directory's notices (suggestions, plugin updates).
+          PluginNoticeBanners(notices: pluginNotices),
+          if (updates != null && update != null)
+            UpdateBanner(
+              update: update,
+              manual: updates.manualInstall,
+              onInstall: updates.install,
+              onDismiss: updates.dismiss,
+            ),
+        ]),
+      ),
     ]);
   }
 }

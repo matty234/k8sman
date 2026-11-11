@@ -1508,7 +1508,15 @@ Homebrew and the Linux packages link it as `k8sman`.
 - **Updates** are checked when the Plugins page opens and daily while any
   plugin is installed. Same permissions: install on click (or
   automatically, if turned on). New permissions: ask again. Revoked
-  versions are disabled on the next check.
+  versions are disabled on the next check. The app shows the count on
+  Settings ▸ Integrations ▸ Plugins and a dismissible "Updates for 2
+  plugins" notice.
+- **Suggestions.** Browse leads with "Suggested for this cluster": plugins
+  the current cluster has kinds for ("This cluster has Cluster, Backup and
+  Pooler (postgresql.cnpg.io)") that are compatible and not installed,
+  built in or unpacked. On connecting to a context with new suggestions the
+  app shows one quiet notice ("3 plugins match what's installed on this
+  cluster"); nothing installs without the usual consent.
 - **Unsigned plugins** load only in dev mode, carry an "Unpacked" badge, and
   are never updated.
 
@@ -2426,6 +2434,24 @@ Plugins page on open. Endpoints: `GET /api/plugins/directory[?refresh]`,
 until the hash agreed to is sent), `POST /api/plugins/directory/uninstall
 {id}`. `k8sman://plugins/install?id=<id>` opens Settings ▸ Plugins at
 that plugin's consent.
+
+Suggestions match each plugin's index `kinds` (group/Kind, core `/Kind`)
+against the current context's cached discovery, in the backend:
+`suggested` (with `matched` kinds) in `GET /api/plugins/directory` and
+in `GET /api/plugins/directory/updates`, the app's notice feed. The app
+asks that on start, after connecting to each context, daily and after a
+plugin change; it reuses an index up to a day old (`NoticeFresh`) and
+doesn't retry a failed fetch for 10 minutes, so a context switch doesn't
+fetch. It answers `{status, context, updates, suggested,
+unseenSuggestions, unseenUpdates}`; the notices show only with status
+`ok`. Review or Dismiss posts `POST /api/plugins/directory/seen
+{context, suggestions, updates}`, kept in settings.json as
+`plugins.seenSuggestions[context]` (plugin ids) and `plugins.seenUpdates`
+(id@version): a notice comes back only for a plugin or version not seen.
+`plugins.autoUpdate` (Settings ▸ Plugins, off by default; `PUT
+/api/plugins/settings {autoUpdate}`) makes the daily check, and turning
+it on, install the updates whose permissions hash equals the installed
+one, then reload; updates with new permissions wait for consent.
 
 ## The v1 freeze
 

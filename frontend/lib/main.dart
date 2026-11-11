@@ -10,6 +10,7 @@ import 'app/updates/github_releases.dart';
 import 'app/updates/update_controller.dart';
 import 'app/updates/update_ui.dart';
 import 'app/window_chrome.dart';
+import 'plugins/plugin_notices.dart' show pluginNotices;
 import 'state/app_state.dart';
 import 'state/issues_feed.dart';
 import 'state/log_dock.dart';
@@ -57,6 +58,8 @@ void main(List<String> args) {
   backend.start();
   issues.start();
   updates.start();
+  // Plugin directory notices: suggestions for each context, and updates.
+  pluginNotices.attach(app);
 }
 
 class K8sManApp extends StatelessWidget {

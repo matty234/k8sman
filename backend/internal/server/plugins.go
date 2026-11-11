@@ -27,7 +27,7 @@ import (
 // loaded by internal/plugins (docs/PLUGINS.md).
 //
 //	GET    /api/plugins                 dev mode, folders and every plugin with its errors and timings
-//	PUT    /api/plugins/settings        {devMode?, devFolders?, useModule?}
+//	PUT    /api/plugins/settings        {devMode?, devFolders?, useModule?, autoUpdate?}
 //	PUT    /api/plugins/{id}/enabled    {enabled}
 //	PUT    /api/plugins/{id}/consent    {permissionsHash}: agree to the plugin's permissions
 //	DELETE /api/plugins/{id}/consent
@@ -38,7 +38,8 @@ import (
 //	GET    /api/plugins/events          WebSocket: {"generation": n} on every change
 //	POST   /api/plugins/run             ?plugin&action&group&version&resource&namespace&name: a background shell action
 //	GET    /api/plugins/directory       ?refresh: the plugin directory (Browse), with the updates available
-//	GET    /api/plugins/directory/updates     the installed directory plugins with a newer version
+//	GET    /api/plugins/directory/updates     the app's notices: updates, plugins suggested for the current context, and whether any is unseen
+//	POST   /api/plugins/directory/seen        {context, suggestions, updates}: the notices were reviewed or dismissed
 //	POST   /api/plugins/directory/install     {id, permissionsHash?}: {consent} to ask, or (consented) installed: as GET /api/plugins
 //	POST   /api/plugins/directory/uninstall   {id}
 //
@@ -72,6 +73,7 @@ func (m *pluginsModule) Routes(r httpx.Router, d Deps) {
 	r.HandleFunc("POST /api/plugins/run", s.handlePluginRun)
 	r.HandleFunc("GET /api/plugins/directory", s.handlePluginDirectory)
 	r.HandleFunc("GET /api/plugins/directory/updates", s.handlePluginDirectory)
+	r.HandleFunc("POST /api/plugins/directory/seen", s.handlePluginNoticesSeen)
 	r.HandleFunc("POST /api/plugins/directory/install", s.handlePluginInstall)
 	r.HandleFunc("POST /api/plugins/directory/uninstall", s.handlePluginUninstall)
 }
@@ -90,12 +92,67 @@ func (s *Server) handlePluginDirectory(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, httpx.BadRequest("plugins are off"))
 		return
 	}
-	st := s.pluginDirectory().State(r.Context(), r.URL.Query().Get("refresh") != "")
+	served, kubeContext := s.servedKinds(r.Context()), ""
+	if c := s.mgr.Clients(); c != nil {
+		kubeContext = c.Context
+	}
 	if strings.HasSuffix(r.URL.Path, "/updates") {
-		httpx.WriteJSON(w, http.StatusOK, map[string]any{"status": st.Status, "error": st.Error, "updates": st.Updates})
+		// The app's notices (on start, daily and after a context switch):
+		// the cached index, unless it's a day old.
+		st := s.pluginDirectory().State(r.Context(), plugins.NoticeFresh, served)
+		ps := settings.PluginSettings{}
+		if p := s.settings.Get().Plugins; p != nil {
+			ps = *p
+		}
+		unseenSuggestions := slices.ContainsFunc(st.Suggested, func(p plugins.DirectoryPlugin) bool {
+			return !slices.Contains(ps.SeenSuggestions[kubeContext], p.ID)
+		})
+		unseenUpdates := slices.ContainsFunc(st.Updates, func(p plugins.DirectoryPlugin) bool {
+			return !slices.Contains(ps.SeenUpdates, p.ID+"@"+p.Version)
+		})
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"status": st.Status, "error": st.Error, "context": kubeContext,
+			"updates": st.Updates, "suggested": st.Suggested, "unseenSuggestions": unseenSuggestions, "unseenUpdates": unseenUpdates})
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, st)
+	maxAge := plugins.IndexFresh
+	if r.URL.Query().Get("refresh") != "" {
+		maxAge = 0
+	}
+	httpx.WriteJSON(w, http.StatusOK, s.pluginDirectory().State(r.Context(), maxAge, served))
+}
+
+// handlePluginNoticesSeen records that the app's plugin notices were
+// reviewed or dismissed: the suggestions for a context, and updates
+// (id@version). A notice shows again only for something not seen.
+func (s *Server) handlePluginNoticesSeen(w http.ResponseWriter, r *http.Request) {
+	body, ok := httpx.DecodeJSON[struct {
+		Context     string   `json:"context"`
+		Suggestions []string `json:"suggestions"`
+		Updates     []string `json:"updates"`
+	}](w, r, 64<<10)
+	if !ok {
+		return
+	}
+	err := s.settings.UpdatePlugins(func(p *settings.PluginSettings) {
+		if len(body.Suggestions) > 0 && body.Context != "" {
+			if p.SeenSuggestions == nil {
+				p.SeenSuggestions = map[string][]string{}
+			}
+			seen := append(slices.Clone(p.SeenSuggestions[body.Context]), body.Suggestions...)
+			slices.Sort(seen)
+			p.SeenSuggestions[body.Context] = slices.Compact(seen)
+		}
+		if len(body.Updates) > 0 {
+			seen := append(slices.Clone(p.SeenUpdates), body.Updates...)
+			slices.Sort(seen)
+			p.SeenUpdates = slices.Compact(seen)
+		}
+	})
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handlePluginInstall installs a plugin from the directory: without the
@@ -186,6 +243,7 @@ func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"devMode":      s.plugins.DevMode(),
 		"devModeSaved": ps.DevMode,
+		"autoUpdate":   ps.AutoUpdate,
 		"devFolders":   folders,
 		"flagFolders":  flags,
 		"installedDir": installed,
@@ -203,6 +261,8 @@ func (s *Server) handlePluginSettings(w http.ResponseWriter, r *http.Request) {
 		// UseModule: bundled plugin ids whose module replaces them (to
 		// compare the two; see bundled.ReplacesModule).
 		UseModule *[]string `json:"useModule"`
+		// AutoUpdate: install same-permission updates from the directory.
+		AutoUpdate *bool `json:"autoUpdate"`
 	}](w, r, 64<<10)
 	if !ok {
 		return
@@ -237,10 +297,17 @@ func (s *Server) handlePluginSettings(w http.ResponseWriter, r *http.Request) {
 		if body.UseModule != nil {
 			p.UseModule = slices.Compact(slices.Sorted(slices.Values(*body.UseModule)))
 		}
+		if body.AutoUpdate != nil {
+			p.AutoUpdate = *body.AutoUpdate
+		}
 	})
 	if err != nil {
 		writeErr(w, err)
 		return
+	}
+	if body.AutoUpdate != nil && *body.AutoUpdate {
+		// Turning it on applies the updates waiting now, not tomorrow.
+		go s.pluginDirectory().AutoUpdate(context.Background())
 	}
 	s.plugins.Reload()
 	s.handlePlugins(w, r)

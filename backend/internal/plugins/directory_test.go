@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,6 +41,9 @@ func TestDirectoryInstall(t *testing.T) {
 		"good.tar.gz":  targz("demo/plugin.yaml", demoManifest),
 		"evil.tar.gz":  targz("../escape.yaml", demoManifest),
 		"wrong.tar.gz": targz("demo/plugin.yaml", demoManifest),
+		// Updates: 1.1.0 asks for another command, 1.2.0 for nothing new.
+		"perms.tar.gz": targz("demo/plugin.yaml", strings.NewReplacer("version: 1.0.0", "version: 1.1.0", "commands: [widgetctl]", "commands: [widgetctl, otherctl]").Replace(demoManifest)),
+		"same.tar.gz":  targz("demo/plugin.yaml", strings.Replace(demoManifest, "version: 1.0.0", "version: 1.2.0", 1)),
 	}
 	entry := func(id, pkg, sum string) IndexEntry {
 		return IndexEntry{ID: id, Name: id, Version: "1.0.0", Permissions: Permissions{Read: []string{"example.com/Widget"}, Commands: []string{"widgetctl"}},
@@ -51,13 +55,18 @@ func TestDirectoryInstall(t *testing.T) {
 		entry("evil", "evil.tar.gz", sha(pkgs["evil.tar.gz"])),
 		entry("wrong", "wrong.tar.gz", strings.Repeat("0", 64)),
 	}}
-	data, _ := json.Marshal(idx)
+	var data atomic.Pointer[[]byte]
+	publish := func() {
+		b, _ := json.Marshal(idx)
+		data.Store(&b)
+	}
+	publish()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/index.json":
-			_, _ = w.Write(data)
+			_, _ = w.Write(*data.Load())
 		case r.URL.Path == "/index.json.sig":
-			_, _ = w.Write(SignIndex(data, priv))
+			_, _ = w.Write(SignIndex(*data.Load(), priv))
 		case strings.HasPrefix(r.URL.Path, "/pkg/"):
 			_, _ = w.Write(pkgs[strings.TrimPrefix(r.URL.Path, "/pkg/")])
 		default:
@@ -71,7 +80,7 @@ func TestDirectoryInstall(t *testing.T) {
 	d := NewDirectory(h, srv.URL+"/index.json", base64.StdEncoding.EncodeToString(pub))
 	ctx := context.Background()
 
-	if s := d.State(ctx, true); s.Status != DirOK || len(s.Plugins) != 3 || s.Plugins[0].State != "install" {
+	if s := d.State(ctx, 0, nil); s.Status != DirOK || len(s.Plugins) != 3 || s.Plugins[0].State != "install" {
 		t.Fatalf("state: %+v", s)
 	}
 	t.Run("sha mismatch", func(t *testing.T) {
@@ -96,8 +105,35 @@ func TestDirectoryInstall(t *testing.T) {
 		if len(list) != 1 || list[0].Source != SourceDirectory || !list[0].Active || !list[0].Consented || list[0].Unpacked {
 			t.Fatalf("list = %+v", list)
 		}
-		if s := d.State(ctx, false); s.Plugins[0].State != "installed" {
+		if s := d.State(ctx, IndexFresh, nil); s.Plugins[0].State != "installed" {
 			t.Fatalf("state after install: %+v", s.Plugins[0])
+		}
+	})
+	// Automatic updates install only what asks for no new permissions,
+	// and only with the setting on.
+	t.Run("auto-update", func(t *testing.T) {
+		version := func() string { return st.Get().Plugins.Installed["demo"].Version }
+		perms := entry("demo", "perms.tar.gz", sha(pkgs["perms.tar.gz"]))
+		perms.Version, perms.Permissions.Commands = "1.1.0", []string{"widgetctl", "otherctl"}
+		idx.Plugins = append(idx.Plugins, perms)
+		publish()
+		d.State(ctx, 0, nil)
+		_ = st.UpdatePlugins(func(p *settings.PluginSettings) { p.AutoUpdate = true })
+		if got := d.AutoUpdate(ctx); len(got) != 0 || version() != "1.0.0" {
+			t.Fatalf("new permissions updated without consent: %v, %s", got, version())
+		}
+		same := entry("demo", "same.tar.gz", sha(pkgs["same.tar.gz"]))
+		same.Version = "1.2.0"
+		idx.Plugins = append(idx.Plugins, same)
+		publish()
+		d.State(ctx, 0, nil)
+		_ = st.UpdatePlugins(func(p *settings.PluginSettings) { p.AutoUpdate = false })
+		if got := d.AutoUpdate(ctx); len(got) != 0 || version() != "1.0.0" {
+			t.Fatalf("updated with the setting off: %v, %s", got, version())
+		}
+		_ = st.UpdatePlugins(func(p *settings.PluginSettings) { p.AutoUpdate = true })
+		if got := d.AutoUpdate(ctx); len(got) != 1 || version() != "1.2.0" || h.List(nil)[0].Version != "1.2.0" {
+			t.Fatalf("auto-update = %v, %s", got, version())
 		}
 	})
 }

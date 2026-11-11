@@ -124,6 +124,16 @@ type PluginSettings struct {
 	// (docs/PLUGINS.md §10), by id: <settings dir>/plugins/<id>. A folder
 	// there without a record is an unpacked plugin (dev mode only).
 	Installed map[string]InstalledPlugin `json:"installed,omitempty"`
+	// AutoUpdate: the daily directory check installs updates that ask
+	// for no new permissions (the permissions hash is unchanged).
+	AutoUpdate bool `json:"autoUpdate,omitempty"`
+	// SeenSuggestions maps a kube context → the directory plugins already
+	// suggested for it (the notice was reviewed or dismissed); the notice
+	// shows again only when another plugin starts matching.
+	SeenSuggestions map[string][]string `json:"seenSuggestions,omitempty"`
+	// SeenUpdates are the updates (id@version) whose notice was reviewed
+	// or dismissed.
+	SeenUpdates []string `json:"seenUpdates,omitempty"`
 }
 
 // InstalledPlugin is one plugin installed from the plugin directory.
@@ -141,7 +151,7 @@ func (p *PluginSettings) clone() *PluginSettings {
 		return nil
 	}
 	return &PluginSettings{DevMode: p.DevMode, DevFolders: slices.Clone(p.DevFolders), Disabled: slices.Clone(p.Disabled), Consent: maps.Clone(p.Consent), UseModule: slices.Clone(p.UseModule),
-		Installed: maps.Clone(p.Installed)}
+		Installed: maps.Clone(p.Installed), AutoUpdate: p.AutoUpdate, SeenSuggestions: maps.Clone(p.SeenSuggestions), SeenUpdates: slices.Clone(p.SeenUpdates)}
 }
 
 // UpdatePlugins applies fn to the plugin settings and saves them.
@@ -152,7 +162,8 @@ func (st *Store) UpdatePlugins(fn func(p *PluginSettings)) error {
 			p = &PluginSettings{}
 		}
 		fn(p)
-		if !p.DevMode && len(p.DevFolders) == 0 && len(p.Disabled) == 0 && len(p.Consent) == 0 && len(p.UseModule) == 0 && len(p.Installed) == 0 {
+		if !p.DevMode && len(p.DevFolders) == 0 && len(p.Disabled) == 0 && len(p.Consent) == 0 && len(p.UseModule) == 0 && len(p.Installed) == 0 &&
+			!p.AutoUpdate && len(p.SeenSuggestions) == 0 && len(p.SeenUpdates) == 0 {
 			p = nil
 		}
 		s.Plugins = p

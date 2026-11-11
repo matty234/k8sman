@@ -16,6 +16,7 @@ import '../ui/widgets/common.dart';
 import '../util/k8s.dart' show Severity, asMap;
 import 'plugin_api.dart';
 import 'plugin_host.dart';
+import 'plugin_notices.dart';
 import 'plugin_actions.dart' show showPluginConsent;
 
 /// A plugin id to install, from a `k8sman://plugins/install?id=<id>`
@@ -38,6 +39,7 @@ class _PluginsSettingsState extends State<PluginsSettings> {
   DirectoryState? _dir;
   final _search = TextEditingController();
   String? _installing;
+  final _browseKey = GlobalKey(debugLabel: 'plugins-browse');
 
   @override
   void initState() {
@@ -50,12 +52,17 @@ class _PluginsSettingsState extends State<PluginsSettings> {
     // Opening the page checks the directory (and so for updates).
     _loadDirectory(refresh: true);
     pluginInstallRequest.addListener(_takeInstallRequest);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _takeInstallRequest());
+    pluginBrowseRequest.addListener(_takeBrowseRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _takeInstallRequest();
+      _takeBrowseRequest();
+    });
   }
 
   @override
   void dispose() {
     pluginInstallRequest.removeListener(_takeInstallRequest);
+    pluginBrowseRequest.removeListener(_takeBrowseRequest);
     _search.dispose();
     super.dispose();
   }
@@ -72,6 +79,18 @@ class _PluginsSettingsState extends State<PluginsSettings> {
       d = DirectoryState(status: 'offline', error: '$e');
     }
     if (mounted) setState(() => _dir = d);
+    // The page's own check feeds the update badges and notice.
+    pluginNotices.takeDirectory(d);
+  }
+
+  /// A notice's Review: Browse, once the settings form has opened.
+  void _takeBrowseRequest() {
+    if (!pluginBrowseRequest.value || !mounted) return;
+    pluginBrowseRequest.value = false;
+    Future<void>.delayed(const Duration(milliseconds: 250), () {
+      final c = _browseKey.currentContext;
+      if (c != null && c.mounted) Scrollable.ensureVisible(c, alignment: 0.05, duration: const Duration(milliseconds: 200));
+    });
   }
 
   void _takeInstallRequest() {
@@ -224,6 +243,16 @@ class _PluginsSettingsState extends State<PluginsSettings> {
                 onUninstall: () => _uninstall(p),
               ),
           const SizedBox(height: 12),
+          SettingRow(
+            label: 'Install plugin updates automatically',
+            description: 'When they don’t ask for new permissions (checked daily). Updates that ask for new permissions always wait for you.',
+            trailing: SettingSwitch(
+              key: const ValueKey('plugins-auto-update'),
+              value: s.autoUpdate,
+              onChanged: _busy ? null : (v) => _call((api) => api.putPluginSettings(autoUpdate: v)),
+            ),
+          ),
+          const SizedBox(height: 12),
           _browse(context),
         ]);
       },
@@ -246,7 +275,8 @@ extension on _PluginsSettingsState {
       'invalid' => 'The plugin directory’s list couldn’t be verified, so it isn’t shown.',
       _ => d!.plugins.isEmpty ? 'The plugin directory is empty.' : null,
     };
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    void install(DirectoryPlugin p) => _install(p.id, hash: p.state == 'update' && !p.permissionsChanged ? p.permissionsHash : null);
+    return Column(key: _browseKey, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SettingsGroupTitle(
         'Browse',
         trailing: IconButton(
@@ -271,15 +301,35 @@ extension on _PluginsSettingsState {
         listenable: _search,
         builder: (context, _) {
           final q = _search.text.trim().toLowerCase();
+          // Suggested for this cluster: on top, while not searching (and
+          // then not again in the list below).
+          final suggested = q.isEmpty ? d?.suggested ?? const <DirectoryPlugin>[] : const <DirectoryPlugin>[];
+          final ids = {for (final p in suggested) p.id};
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (suggested.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('Suggested for this cluster', key: const ValueKey('plugins-suggested'), style: theme.textTheme.titleSmall),
+              ),
+              for (final p in suggested)
+                _DirectoryCard(
+                  key: ValueKey('plugin-suggested-${p.id}'),
+                  plugin: p,
+                  why: p.matchReason,
+                  installing: _installing == p.id,
+                  busy: _busy || _installing != null,
+                  onInstall: () => install(p),
+                ),
+              Padding(padding: const EdgeInsets.only(top: 14), child: Text('All plugins', style: theme.textTheme.titleSmall)),
+            ],
             for (final p in d?.plugins ?? const <DirectoryPlugin>[])
-              if (q.isEmpty || [p.id, p.name, p.description, ...p.kinds, ...p.authors].any((s) => s.toLowerCase().contains(q)))
+              if (!ids.contains(p.id) && (q.isEmpty || [p.id, p.name, p.description, ...p.kinds, ...p.authors].any((s) => s.toLowerCase().contains(q))))
                 _DirectoryCard(
                   key: ValueKey('plugin-dir-${p.id}'),
                   plugin: p,
                   installing: _installing == p.id,
                   busy: _busy || _installing != null,
-                  onInstall: () => _install(p.id, hash: p.state == 'update' && !p.permissionsChanged ? p.permissionsHash : null),
+                  onInstall: () => install(p),
                 ),
           ]);
         },
@@ -295,7 +345,10 @@ class _DirectoryCard extends StatelessWidget {
   final bool installing;
   final bool busy;
   final VoidCallback onInstall;
-  const _DirectoryCard({super.key, required this.plugin, required this.installing, required this.busy, required this.onInstall});
+
+  /// Why it's suggested ("This cluster has …"), or null.
+  final String? why;
+  const _DirectoryCard({super.key, required this.plugin, required this.installing, required this.busy, required this.onInstall, this.why});
 
   @override
   Widget build(BuildContext context) {
@@ -338,6 +391,8 @@ class _DirectoryCard extends StatelessWidget {
               const SizedBox(width: 6),
               Text(p.state == 'update' ? '${p.installedVersion} → ${p.version}' : p.version, style: hint),
             ]),
+            if (why case final w? when w.isNotEmpty)
+              Padding(padding: const EdgeInsets.only(top: 2), child: Text(w, style: hint?.copyWith(color: theme.colorScheme.primary))),
             if (p.description.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(p.description, style: theme.textTheme.bodySmall)),
             if (about.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(about, style: hint)),
             if (p.state == 'update' && p.permissionsChanged)

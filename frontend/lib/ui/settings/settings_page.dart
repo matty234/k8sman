@@ -13,6 +13,7 @@ import '../../app/updates/update_controller.dart';
 import '../../app/updates/update_ui.dart';
 import '../../modules/modules.dart';
 import '../../plugins/plugin_host.dart';
+import '../../plugins/plugin_notices.dart';
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../addons/addons_view.dart';
@@ -499,6 +500,12 @@ class _SectionList extends StatelessWidget {
                       style: theme.textTheme.bodyMedium?.copyWith(color: fg, fontWeight: on ? FontWeight.w600 : FontWeight.w400),
                     ),
                   ),
+                  // Integrations: the plugin updates waiting (outside a search).
+                  if (counts == null && s == SettingsSection.integrations)
+                    ListenableBuilder(
+                      listenable: pluginNotices,
+                      builder: (context, _) => pluginNotices.updates.isEmpty ? const SizedBox.shrink() : CountBadge(pluginNotices.updates.length),
+                    ),
                   if (n != null && n > 0) Text('$n', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor, fontFeatures: const [FontFeature.tabularFigures()])),
                 ]),
               );

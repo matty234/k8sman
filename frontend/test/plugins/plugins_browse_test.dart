@@ -17,26 +17,32 @@ class _DirectoryApi extends FakeApiClient {
   Future<Json> plugins() async => {'generation': 1, 'plugins': []};
 
   @override
-  Future<Json> pluginDirectory({bool refresh = false}) async => {
-        'status': 'ok',
-        'plugins': [
-          {
-            'id': 'cert-manager',
-            'name': 'cert-manager',
-            'version': '1.2.0',
-            'description': 'Certificates at a glance',
-            'authors': ['k8sman'],
-            'kinds': ['cert-manager.io/Certificate'],
-            'permissions': {
-              'read': ['cert-manager.io/Certificate', '/Secret'],
-              'commands': ['cmctl'],
-            },
-            'permissionsHash': 'abc',
-            'state': 'install',
-          },
-          {'id': 'external-secrets', 'name': 'External Secrets', 'version': '1.0.0', 'state': 'builtin'},
-        ],
-      };
+  Future<Json> pluginDirectory({bool refresh = false}) async {
+    final certManager = {
+      'id': 'cert-manager',
+      'name': 'cert-manager',
+      'version': '1.2.0',
+      'description': 'Certificates at a glance',
+      'authors': ['k8sman'],
+      'kinds': ['cert-manager.io/Certificate', 'cert-manager.io/Issuer'],
+      'permissions': {
+        'read': ['cert-manager.io/Certificate', '/Secret'],
+        'commands': ['cmctl'],
+      },
+      'permissionsHash': 'abc',
+      'state': 'install',
+      'matched': ['cert-manager.io/Certificate', 'cert-manager.io/Issuer'],
+    };
+    return {
+      'status': 'ok',
+      'plugins': [
+        certManager,
+        {'id': 'external-secrets', 'name': 'External Secrets', 'version': '1.0.0', 'state': 'builtin'},
+      ],
+      // The cluster serves its kinds: suggested, once, at the top.
+      'suggested': [certManager],
+    };
+  }
 
   @override
   Future<Json> installPlugin(String id, {String? permissionsHash}) async {
@@ -60,7 +66,7 @@ class _DirectoryApi extends FakeApiClient {
 }
 
 void main() {
-  testWidgets('Browse lists the directory and Install asks for consent first', (tester) async {
+  testWidgets('Browse suggests plugins for the cluster and Install asks for consent first', (tester) async {
     final api = _DirectoryApi();
     tester.view.physicalSize = const Size(900, 1400);
     tester.view.devicePixelRatio = 1;
@@ -74,6 +80,9 @@ void main() {
     expect(find.text('Browse'), findsOneWidget);
     expect(find.text('Certificates at a glance'), findsOneWidget);
     expect(find.text('Built in'), findsOneWidget);
+    expect(find.text('Suggested for this cluster'), findsOneWidget);
+    expect(find.text('This cluster has Certificate and Issuer (cert-manager.io)'), findsOneWidget);
+    expect(find.byKey(const ValueKey('plugin-dir-cert-manager')), findsNothing, reason: 'listed once, as a suggestion');
 
     await tester.tap(find.byKey(const ValueKey('plugin-install-cert-manager')));
     // The card's progress spins behind the dialog: no pumpAndSettle.

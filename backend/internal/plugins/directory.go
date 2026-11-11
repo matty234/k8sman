@@ -54,6 +54,11 @@ const (
 	// checkEvery is how often installed directory plugins are checked
 	// for updates and revocations.
 	checkEvery = 24 * time.Hour
+	// NoticeFresh is how old an index the app's notices (suggestions for
+	// a context, updates) reuse: a context switch doesn't fetch again.
+	NoticeFresh = checkEvery
+	// IndexFresh is how old an index Browse reuses.
+	IndexFresh = indexFresh
 )
 
 // packageExts are the file types a package may hold.
@@ -148,6 +153,9 @@ type DirectoryPlugin struct {
 	// PermissionsChanged: an update asks for other permissions than the
 	// installed version (it needs consent again).
 	PermissionsChanged bool `json:"permissionsChanged,omitempty"`
+	// Matched are the plugin's kinds the current cluster serves (given a
+	// served lookup); a suggestion has at least one.
+	Matched []string `json:"matched,omitempty"`
 }
 
 // DirectoryState is GET /api/plugins/directory.
@@ -159,6 +167,10 @@ type DirectoryState struct {
 	Plugins   []DirectoryPlugin `json:"plugins"`
 	// Updates are the installed directory plugins with a newer version.
 	Updates []DirectoryPlugin `json:"updates"`
+	// Suggested are the plugins to install for the current cluster: it
+	// serves at least one of their kinds, and they are compatible, not
+	// installed, built in or loaded unpacked. Nothing installs by itself.
+	Suggested []DirectoryPlugin `json:"suggested"`
 }
 
 // Pending is an install waiting for consent, or one just done.
@@ -214,6 +226,12 @@ func (d *Directory) index(ctx context.Context, maxAge time.Duration) (*Index, st
 		idx, st, e := d.idx, d.status, d.lastErr
 		d.mu.Unlock()
 		return idx, st, e
+	}
+	// The notices don't retry a failed fetch on every context switch.
+	if d.idx == nil && maxAge > indexFresh && d.status != "" && d.status != DirOK && d.now().Sub(d.checked) < indexFresh {
+		st, e := d.status, d.lastErr
+		d.mu.Unlock()
+		return nil, st, e
 	}
 	d.mu.Unlock()
 
@@ -329,15 +347,13 @@ func versionNewer(a, b string) bool {
 	return err1 == nil && err2 == nil && va.GreaterThan(vb)
 }
 
-// State lists the directory for Browse, with the updates available.
-// refresh fetches the index again (the Plugins page opening).
-func (d *Directory) State(ctx context.Context, refresh bool) DirectoryState {
-	maxAge := indexFresh
-	if refresh {
-		maxAge = 0
-	}
+// State lists the directory for Browse, with the updates available and,
+// given served (the kind keys the current cluster serves; nil = unknown),
+// the plugins suggested for the cluster. It reuses an index fetched
+// within maxAge (0 = fetch again: the Plugins page opening).
+func (d *Directory) State(ctx context.Context, maxAge time.Duration, served func(string) bool) DirectoryState {
 	idx, status, errText := d.index(ctx, maxAge)
-	out := DirectoryState{Status: status, Error: errText, URL: d.url, Plugins: []DirectoryPlugin{}, Updates: []DirectoryPlugin{}}
+	out := DirectoryState{Status: status, Error: errText, URL: d.url, Plugins: []DirectoryPlugin{}, Updates: []DirectoryPlugin{}, Suggested: []DirectoryPlugin{}}
 	d.mu.Lock()
 	if !d.checked.IsZero() {
 		t := d.checked
@@ -367,8 +383,16 @@ func (d *Directory) State(ctx context.Context, refresh bool) DirectoryState {
 		dp.Icon, dp.Readme, dp.URL = d.resolve(dp.Icon), d.resolve(dp.Readme), d.resolve(dp.URL)
 		dp.PermissionsHash = permissionsHash(id, dp.Permissions)
 		rec, installed := st.Installed[id]
+		bundled, unpacked := d.loaded(id)
+		if served != nil {
+			for _, k := range dp.Kinds {
+				if served(k) {
+					dp.Matched = append(dp.Matched, k)
+				}
+			}
+		}
 		switch {
-		case d.isBundled(id):
+		case bundled:
 			dp.State = "builtin"
 		case installed:
 			dp.InstalledVersion = rec.Version
@@ -383,6 +407,10 @@ func (d *Directory) State(ctx context.Context, refresh bool) DirectoryState {
 		out.Plugins = append(out.Plugins, dp)
 		if dp.State == "update" {
 			out.Updates = append(out.Updates, dp)
+		}
+		// "install" is neither installed, built in nor incompatible.
+		if dp.State == "install" && !unpacked && len(dp.Matched) > 0 {
+			out.Suggested = append(out.Suggested, dp)
 		}
 	}
 	return out
@@ -403,14 +431,28 @@ func (d *Directory) resolve(u string) string {
 
 // isBundled reports whether id is a plugin built into the app.
 func (d *Directory) isBundled(id string) bool {
+	bundled, _ := d.loaded(id)
+	return bundled
+}
+
+// loaded reports whether plugin id is built into the app, and whether
+// one is loaded unpacked (a dev or --plugin-dev folder, or a folder in
+// the installed folder without a directory record).
+func (d *Directory) loaded(id string) (bundled, unpacked bool) {
 	d.host.mu.RLock()
 	defer d.host.mu.RUnlock()
 	for _, p := range d.host.plugins {
-		if p.source == SourceBundled && p.ID() == id {
-			return true
+		if p.ID() != id {
+			continue
+		}
+		switch p.source {
+		case SourceBundled:
+			bundled = true
+		case SourceDev, SourceFlag, SourceInstalled:
+			unpacked = true
 		}
 	}
-	return false
+	return bundled, unpacked
 }
 
 // Install installs (or updates) plugin id from the directory. It
@@ -652,8 +694,38 @@ func (d *Directory) Uninstall(id string) error {
 	return nil
 }
 
+// AutoUpdate installs the updates that ask for no new permissions (the
+// installed version's permissions hash is unchanged) when the setting is
+// on; updates with other permissions wait for consent in the app. It
+// returns the ids updated.
+func (d *Directory) AutoUpdate(ctx context.Context) []string {
+	if !d.settings().AutoUpdate {
+		return nil
+	}
+	var done []string
+	for _, u := range d.State(ctx, indexFresh, nil).Updates {
+		rec, ok := d.settings().Installed[u.ID]
+		if u.PermissionsChanged || !ok || rec.PermissionsHash != u.PermissionsHash {
+			continue
+		}
+		// The installed hash as consent: Install refuses a package whose
+		// permissions differ from it.
+		pend, err := d.Install(ctx, u.ID, rec.PermissionsHash)
+		if err != nil {
+			log.Printf("plugins: directory: updating %s: %v", u.ID, err)
+			continue
+		}
+		if pend.Installed {
+			log.Printf("plugins: directory: updated %s to %s", u.ID, pend.Version)
+			done = append(done, u.ID)
+		}
+	}
+	return done
+}
+
 // Run checks the index daily while any directory plugin is installed
-// (revoked versions are turned off), until ctx ends.
+// (revoked versions are turned off, and with the AutoUpdate setting
+// same-permission updates install), until ctx ends.
 func (d *Directory) Run(ctx context.Context) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
@@ -667,7 +739,9 @@ func (d *Directory) Run(ctx context.Context) {
 		due := d.now().Sub(d.checked) >= checkEvery
 		d.mu.Unlock()
 		if due && d.key != nil && len(d.settings().Installed) > 0 {
-			d.index(ctx, 0)
+			if idx, _, _ := d.index(ctx, 0); idx != nil {
+				d.AutoUpdate(ctx)
+			}
 		}
 	}
 }

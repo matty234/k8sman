@@ -435,8 +435,8 @@ class ApiClient {
 
   /// [useModule]: bundled plugins whose built-in module the app uses
   /// instead (to compare the two).
-  Future<Json> putPluginSettings({bool? devMode, List<String>? devFolders, List<String>? useModule}) async => Map<String, dynamic>.from(
-      await _send('PUT', 'plugins/settings', const {}, {'devMode': ?devMode, 'devFolders': ?devFolders, 'useModule': ?useModule}) as Map);
+  Future<Json> putPluginSettings({bool? devMode, List<String>? devFolders, List<String>? useModule, bool? autoUpdate}) async => Map<String, dynamic>.from(
+      await _send('PUT', 'plugins/settings', const {}, {'devMode': ?devMode, 'devFolders': ?devFolders, 'useModule': ?useModule, 'autoUpdate': ?autoUpdate}) as Map);
 
   Future<Json> setPluginEnabled(String id, bool enabled) async =>
       Map<String, dynamic>.from(await _send('PUT', 'plugins/${Uri.encodeComponent(id)}/enabled', const {}, {'enabled': enabled}) as Map);
@@ -467,6 +467,16 @@ class ApiClient {
   /// fetches its index again.
   Future<Json> pluginDirectory({bool refresh = false}) async =>
       Map<String, dynamic>.from(await _get('plugins/directory', {'refresh': refresh ? '1' : null}) as Map);
+
+  /// The app's plugin notices (`GET /api/plugins/directory/updates`):
+  /// {status, context, updates, suggested, unseenSuggestions,
+  /// unseenUpdates}, from the cached index.
+  Future<Json> pluginNotices() async => Map<String, dynamic>.from(await _get('plugins/directory/updates') as Map);
+
+  /// Records that the notices for [suggestions] (on [context]) and
+  /// [updates] (id@version) were reviewed or dismissed.
+  Future<void> markPluginNoticesSeen({required String context, List<String> suggestions = const [], List<String> updates = const []}) =>
+      _send('POST', 'plugins/directory/seen', const {}, {'context': context, 'suggestions': suggestions, 'updates': updates});
 
   /// Installs (or updates) plugin [id] from the directory: answers
   /// {consent: …} to ask the user, or, with the [permissionsHash] agreed

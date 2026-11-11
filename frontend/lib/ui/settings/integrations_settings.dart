@@ -6,6 +6,7 @@ import '../../modules/modules.dart';
 import '../../plugins/plugin_api.dart';
 import '../../plugins/plugin_host.dart';
 import '../../plugins/plugin_icons.dart';
+import '../../plugins/plugin_notices.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart' show Severity;
 import '../theme.dart';
@@ -96,9 +97,11 @@ class ModuleTile extends StatelessWidget {
     final icon = m.pages.isNotEmpty ? m.pages.first.icon : (m.kindIcons.values.firstOrNull ?? Icons.extension_outlined);
     return ListenableBuilder(
       key: expansion.keyFor(m.id),
-      listenable: Listenable.merge([moduleStatuses, expansion]),
+      listenable: Listenable.merge([moduleStatuses, expansion, if (m.id == pluginsModuleId) pluginNotices]),
       builder: (context, _) {
         final canOpen = settings != null && on;
+        // Plugins: the directory updates waiting.
+        final updates = m.id == pluginsModuleId ? pluginNotices.updates.length : 0;
         return IntegrationRow(
           id: m.id,
           name: m.name,
@@ -106,6 +109,7 @@ class ModuleTile extends StatelessWidget {
           icon: icon,
           on: on,
           tag: m.requires.isEmpty ? null : 'needs ${m.requires.map(_nameOf).join(', ')}',
+          badge: updates > 0 ? CountBadge(updates, key: const ValueKey('plugins-updates-badge'), tooltip: updates == 1 ? 'Update for 1 plugin' : 'Updates for $updates plugins') : null,
           status: on ? _statusOf(context, m, app) : null,
           onChanged: available
               ? (v) {
@@ -201,6 +205,9 @@ class IntegrationRow extends StatelessWidget {
   final bool on;
   final String? tag;
   final String? tagTooltip;
+
+  /// Beside the name (a count of updates).
+  final Widget? badge;
   final ModuleStatus? status;
   final ValueChanged<bool>? onChanged;
   final WidgetBuilder? settings;
@@ -215,6 +222,7 @@ class IntegrationRow extends StatelessWidget {
     required this.on,
     this.tag,
     this.tagTooltip,
+    this.badge,
     this.status,
     this.onChanged,
     this.settings,
@@ -236,6 +244,7 @@ class IntegrationRow extends StatelessWidget {
           const SizedBox(width: 8),
           Flexible(flex: 0, child: tagTooltip == null ? tagText : Tooltip(message: tagTooltip!, child: tagText)),
         ],
+        if (badge != null) ...[const SizedBox(width: 8), badge!],
       ]),
       if (description.isNotEmpty) ...[const SizedBox(height: 2), HighlightedText(description, style: hint)],
       if (status != null) Padding(padding: const EdgeInsets.only(top: 5), child: _StatusLine(status!)),
