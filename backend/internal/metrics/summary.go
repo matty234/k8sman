@@ -14,13 +14,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/matty234/k8sman/backend/internal/kapi"
 	"github.com/matty234/k8sman/backend/internal/kube"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -295,7 +295,7 @@ func (s *Service) readyNodes(ctx context.Context) ([]string, error) {
 		return kc.nodeList, kc.nodeErr
 	}
 	s.mu.Unlock()
-	body, err := s.get.Get(ctx, "/api/v1/nodes", nil)
+	body, err := s.get.Get(ctx, kapi.Nodes.Path("", ""), nil)
 	var names []string
 	if err == nil {
 		var list struct {
@@ -357,7 +357,7 @@ func (s *Service) refreshNode(ctx context.Context, name string) {
 
 	// Detached from the caller so a shared fetch survives one caller leaving.
 	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), summaryTimeout)
-	body, err := s.get.Get(fctx, "/api/v1/nodes/"+url.PathEscape(name)+"/proxy/stats/summary", nil)
+	body, err := s.get.Get(fctx, kapi.Nodes.Path("", name)+"/proxy/stats/summary", nil)
 	cancel()
 	var p *parsedSummary
 	if err == nil {

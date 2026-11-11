@@ -18,6 +18,7 @@ import (
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kapi"
 )
 
 // ActionRequest is the body of POST /api/actions/{action}. Target comes from
@@ -293,7 +294,7 @@ func triggerCronJob(ctx context.Context, c *cluster.Clients, ns, name string, dr
 	}
 	tmpl := cj.Spec.JobTemplate
 	job := map[string]any{
-		"apiVersion": "batch/v1",
+		"apiVersion": kapi.Jobs.APIVersion(),
 		"kind":       "Job",
 		"metadata": map[string]any{
 			"name":        jobName,
@@ -301,7 +302,7 @@ func triggerCronJob(ctx context.Context, c *cluster.Clients, ns, name string, dr
 			"labels":      tmpl.Labels,
 			"annotations": mergeMaps(tmpl.Annotations, map[string]string{"cronjob.kubernetes.io/instantiate": "manual"}),
 			"ownerReferences": []any{map[string]any{
-				"apiVersion": "batch/v1", "kind": "CronJob", "name": cj.Name, "uid": string(cj.UID), "controller": true,
+				"apiVersion": kapi.CronJobs.APIVersion(), "kind": "CronJob", "name": cj.Name, "uid": string(cj.UID), "controller": true,
 			}},
 		},
 	}

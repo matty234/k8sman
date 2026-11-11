@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kapi"
 	"github.com/matty234/k8sman/backend/internal/kcache"
 )
 
@@ -31,13 +32,13 @@ type ownedItem struct {
 var (
 	ownedListed = []schema.GroupVersionResource{
 		gvrPods, gvrReplicaSets, gvrJobs, gvrPVCs,
-		{Group: "apps", Version: "v1", Resource: "controllerrevisions"},
+		kapi.ControllerRevisions.GVR(),
 	}
 	ownedWarmOnly = []schema.GroupVersionResource{
 		gvrServices,
-		{Group: "discovery.k8s.io", Version: "v1", Resource: "endpointslices"},
-		{Version: "v1", Resource: "configmaps"},
-		{Version: "v1", Resource: "secrets"},
+		kapi.EndpointSlices.GVR(),
+		kapi.ConfigMaps.GVR(),
+		kapi.Secrets.GVR(),
 	}
 )
 

@@ -9,31 +9,32 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/matty234/k8sman/backend/internal/kapi"
 	"github.com/matty234/k8sman/backend/internal/kcache"
 	"github.com/matty234/k8sman/backend/internal/kube"
 )
 
 // GVRs of the built-in types the Overview and Security analyses list.
 var (
-	gvrPods                = schema.GroupVersionResource{Version: "v1", Resource: "pods"}
-	gvrNodes               = schema.GroupVersionResource{Version: "v1", Resource: "nodes"}
-	gvrNamespaces          = schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
-	gvrPVCs                = schema.GroupVersionResource{Version: "v1", Resource: "persistentvolumeclaims"}
-	gvrEvents              = schema.GroupVersionResource{Version: "v1", Resource: "events"}
-	gvrServices            = schema.GroupVersionResource{Version: "v1", Resource: "services"}
-	gvrServiceAccounts     = schema.GroupVersionResource{Version: "v1", Resource: "serviceaccounts"}
-	gvrDeployments         = schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
-	gvrStatefulSets        = schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}
-	gvrDaemonSets          = schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}
-	gvrReplicaSets         = schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}
-	gvrJobs                = schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}
-	gvrCronJobs            = schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "cronjobs"}
-	gvrIngresses           = schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}
-	gvrNetworkPolicies     = schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"}
-	gvrRoles               = schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"}
-	gvrRoleBindings        = schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"}
-	gvrClusterRoles        = schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"}
-	gvrClusterRoleBindings = schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}
+	gvrPods                = kapi.Pods.GVR()
+	gvrNodes               = kapi.Nodes.GVR()
+	gvrNamespaces          = kapi.Namespaces.GVR()
+	gvrPVCs                = kapi.PersistentVolumeClaims.GVR()
+	gvrEvents              = kapi.Events.GVR()
+	gvrServices            = kapi.Services.GVR()
+	gvrServiceAccounts     = kapi.ServiceAccounts.GVR()
+	gvrDeployments         = kapi.Deployments.GVR()
+	gvrStatefulSets        = kapi.StatefulSets.GVR()
+	gvrDaemonSets          = kapi.DaemonSets.GVR()
+	gvrReplicaSets         = kapi.ReplicaSets.GVR()
+	gvrJobs                = kapi.Jobs.GVR()
+	gvrCronJobs            = kapi.CronJobs.GVR()
+	gvrIngresses           = kapi.Ingresses.GVR()
+	gvrNetworkPolicies     = kapi.NetworkPolicies.GVR()
+	gvrRoles               = kapi.Roles.GVR()
+	gvrRoleBindings        = kapi.RoleBindings.GVR()
+	gvrClusterRoles        = kapi.ClusterRoles.GVR()
+	gvrClusterRoleBindings = kapi.ClusterRoleBindings.GVR()
 )
 
 // listTyped lists a built-in type through the shared watch cache and

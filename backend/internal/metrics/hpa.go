@@ -10,9 +10,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/matty234/k8sman/backend/internal/kapi"
 )
 
-// ---- HPA shapes (autoscaling/v2, only the fields we read) -------------------
+// ---- HPA shapes (kapi.HorizontalPodAutoscalers' version, autoscaling/v2;
+// only the fields we read) ----
 
 type hpaTarget struct {
 	Type               string `json:"type"`
@@ -89,11 +92,7 @@ func selectorString(ls *metav1.LabelSelector) string {
 }
 
 func (s *Service) listHPAs(ctx context.Context, namespace string) ([]hpaObject, error) {
-	path := "/apis/autoscaling/v2/horizontalpodautoscalers"
-	if namespace != "" {
-		path = "/apis/autoscaling/v2/namespaces/" + url.PathEscape(namespace) + "/horizontalpodautoscalers"
-	}
-	raw, err := s.get.Get(ctx, path, nil)
+	raw, err := s.get.Get(ctx, kapi.HorizontalPodAutoscalers.Path(namespace, ""), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +160,7 @@ const tolerance = 0.1
 // AnalyzeHPA reads an HPA, resolves its scale target's pods and evaluates
 // each metric against the live metrics APIs.
 func (s *Service) AnalyzeHPA(ctx context.Context, namespace, name string) (HPAAnalysis, error) {
-	raw, err := s.get.Get(ctx, "/apis/autoscaling/v2/namespaces/"+url.PathEscape(namespace)+"/horizontalpodautoscalers/"+url.PathEscape(name), nil)
+	raw, err := s.get.Get(ctx, kapi.HorizontalPodAutoscalers.Path(namespace, name), nil)
 	if err != nil {
 		return HPAAnalysis{}, err
 	}
@@ -487,7 +486,7 @@ type podReq struct {
 }
 
 func (s *Service) loadPodSet(ctx context.Context, namespace, selector string) (*podSet, error) {
-	raw, err := s.get.Get(ctx, "/api/v1/namespaces/"+url.PathEscape(namespace)+"/pods", url.Values{"labelSelector": {selector}})
+	raw, err := s.get.Get(ctx, kapi.Pods.Path(namespace, ""), url.Values{"labelSelector": {selector}})
 	if err != nil {
 		return nil, err
 	}

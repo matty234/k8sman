@@ -20,14 +20,10 @@ import (
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kapi"
 	"github.com/matty234/k8sman/backend/internal/kcache"
 	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/security"
-)
-
-const (
-	trivyGV   = "aquasecurity.github.io/v1alpha1"
-	gatewayGr = "gateway.networking.k8s.io"
 )
 
 func (s *Server) securityRoutes() {
@@ -159,28 +155,6 @@ func (s *Server) handleSecurityObject(w http.ResponseWriter, r *http.Request, sc
 	httpx.WriteJSON(w, 200, res)
 }
 
-// servedResources returns the resources served for group/version, or nil.
-func servedResources(c *cluster.Clients, gv string) map[string]bool {
-	l, err := c.Discovery.ServerResourcesForGroupVersion(gv)
-	if err != nil || l == nil {
-		return nil
-	}
-	out := map[string]bool{}
-	for _, r := range l.APIResources {
-		out[r.Name] = true
-	}
-	return out
-}
-
-func gatewayVersion(c *cluster.Clients) (string, map[string]bool) {
-	for _, v := range []string{"v1", "v1beta1"} {
-		if res := servedResources(c, gatewayGr+"/"+v); res != nil {
-			return v, res
-		}
-	}
-	return "", nil
-}
-
 // startSecurity starts every list the analysis needs, under its own context
 // (the hard limit), not the request's, so the lists survive a request that
 // answered early.
@@ -258,21 +232,19 @@ func startSecurity(c *cluster.Clients, ns, rbacNS string) *securityLists {
 		})
 	}
 	// Optional CRDs: skipped gracefully when not installed.
-	if v, res := gatewayVersion(c); v != "" {
+	if v, res := kapi.GatewayAPI.Served(c.Discovery); v != "" {
 		if res["gateways"] {
-			dyn("gateways", schema.GroupVersionResource{Group: gatewayGr, Version: v, Resource: "gateways"}, true,
+			dyn("gateways", kapi.GatewayAPI.GVR(v, "gateways"), true,
 				func(in *security.Input, v []unstructured.Unstructured) { in.Gateways = v })
 		}
 		if res["httproutes"] {
-			dyn("httproutes", schema.GroupVersionResource{Group: gatewayGr, Version: v, Resource: "httproutes"}, true,
+			dyn("httproutes", kapi.GatewayAPI.GVR(v, "httproutes"), true,
 				func(in *security.Input, v []unstructured.Unstructured) { in.HTTPRoutes = v })
 		}
 	}
-	if res := servedResources(c, trivyGV); res["vulnerabilityreports"] {
+	if tv, res := kapi.Trivy.Served(c.Discovery); res["vulnerabilityreports"] {
 		l.Set(func(in *security.Input) { in.TrivyOperator = true })
-		gvr := func(r string) schema.GroupVersionResource {
-			return schema.GroupVersionResource{Group: "aquasecurity.github.io", Version: "v1alpha1", Resource: r}
-		}
+		gvr := func(r string) schema.GroupVersionResource { return kapi.Trivy.GVR(tv, r) }
 		dyn("vulnerabilityreports", gvr("vulnerabilityreports"), true, func(in *security.Input, v []unstructured.Unstructured) { in.VulnerabilityReports = v })
 		if res["configauditreports"] {
 			dyn("configauditreports", gvr("configauditreports"), true, func(in *security.Input, v []unstructured.Unstructured) { in.ConfigAuditReports = v })
@@ -308,14 +280,14 @@ func (s *Server) handleScannerStatus(w http.ResponseWriter, r *http.Request, sc 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	op := OperatorStatus{Reports: []string{}}
-	if res := servedResources(c, trivyGV); res["vulnerabilityreports"] {
+	if tv, res := kapi.Trivy.Served(c.Discovery); res["vulnerabilityreports"] {
 		op.Installed = true
 		for _, k := range []string{"vulnerabilityreports", "configauditreports", "exposedsecretreports", "rbacassessmentreports", "clusterrbacassessmentreports"} {
 			if res[k] {
 				op.Reports = append(op.Reports, k)
 			}
 		}
-		l, err := c.Dynamic.Resource(schema.GroupVersionResource{Group: "aquasecurity.github.io", Version: "v1alpha1", Resource: "vulnerabilityreports"}).
+		l, err := c.Dynamic.Resource(kapi.Trivy.GVR(tv, "vulnerabilityreports")).
 			List(ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
 			op.Error = err.Error()

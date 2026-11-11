@@ -1,6 +1,10 @@
 package upgrade
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/matty234/k8sman/backend/internal/kapi"
+)
 
 // APIChange is one group/version/kind that Kubernetes deprecated and (when
 // RemovedIn is set) stopped serving.
@@ -31,74 +35,24 @@ func (a APIChange) APIVersion() string {
 }
 
 // MigrationGuide is the page the table comes from.
-const MigrationGuide = "https://kubernetes.io/docs/reference/using-api/deprecation-guide/"
+const MigrationGuide = kapi.MigrationGuide
 
-// APIChanges is the deprecated API table, from the Kubernetes "Deprecated
-// API Migration Guide" (MigrationGuide), covering the removals in 1.16
-// through 1.32, as the guide stood in 2025 (it lists no further removals of
-// beta or GA APIs after 1.32). Alpha APIs aren't covered: they can go in any
-// release. Update this table when the guide gains a section.
+// APIChanges is the deprecated API table (kapi.Removed), one entry per
+// kind. Edit the table in backend/internal/kapi.
 var APIChanges = func() []APIChange {
 	var out []APIChange
-	add := func(dep, rem int, apiVersion, replacement, note string, kinds ...string) {
-		group, version := splitAPIVersion(apiVersion)
-		for _, kr := range kinds {
+	for _, r := range kapi.Removed {
+		group, version := splitAPIVersion(r.APIVersion)
+		for _, kr := range r.Kinds {
 			kind, res, _ := strings.Cut(kr, ":")
-			c := APIChange{Group: group, Version: version, Kind: kind, Resource: res, RemovedIn: V(rem), Replacement: replacement, Note: note}
-			if dep > 0 {
-				c.DeprecatedIn = V(dep)
+			c := APIChange{Group: group, Version: version, Kind: kind, Resource: res, RemovedIn: V(r.RemovedIn), Replacement: r.Replacement, Note: r.Note}
+			if r.DeprecatedIn > 0 {
+				c.DeprecatedIn = V(r.DeprecatedIn)
 			}
 			c.Ephemeral = strings.HasSuffix(kind, "Review") || kind == "Event"
 			out = append(out, c)
 		}
 	}
-	// v1.32
-	add(29, 32, "flowcontrol.apiserver.k8s.io/v1beta3", "flowcontrol.apiserver.k8s.io/v1", "",
-		"FlowSchema:flowschemas", "PriorityLevelConfiguration:prioritylevelconfigurations")
-	// v1.29
-	add(26, 29, "flowcontrol.apiserver.k8s.io/v1beta2", "flowcontrol.apiserver.k8s.io/v1", "",
-		"FlowSchema:flowschemas", "PriorityLevelConfiguration:prioritylevelconfigurations")
-	// v1.27
-	add(24, 27, "storage.k8s.io/v1beta1", "storage.k8s.io/v1", "", "CSIStorageCapacity:csistoragecapacities")
-	// v1.26
-	add(23, 26, "flowcontrol.apiserver.k8s.io/v1beta1", "flowcontrol.apiserver.k8s.io/v1", "",
-		"FlowSchema:flowschemas", "PriorityLevelConfiguration:prioritylevelconfigurations")
-	add(23, 26, "autoscaling/v2beta2", "autoscaling/v2", "targetAverageUtilization and friends moved under target", "HorizontalPodAutoscaler:horizontalpodautoscalers")
-	// v1.25
-	add(21, 25, "batch/v1beta1", "batch/v1", "", "CronJob:cronjobs")
-	add(21, 25, "discovery.k8s.io/v1beta1", "discovery.k8s.io/v1", "topology became zone and hints", "EndpointSlice:endpointslices")
-	add(19, 25, "events.k8s.io/v1beta1", "events.k8s.io/v1", "", "Event:events")
-	add(22, 25, "autoscaling/v2beta1", "autoscaling/v2", "metric targets were restructured", "HorizontalPodAutoscaler:horizontalpodautoscalers")
-	add(21, 25, "policy/v1beta1", "policy/v1", "an empty selector now matches every pod in the namespace", "PodDisruptionBudget:poddisruptionbudgets")
-	add(21, 25, "policy/v1beta1", "", "PodSecurityPolicy is gone: use Pod Security Admission or a policy engine", "PodSecurityPolicy:podsecuritypolicies")
-	add(20, 25, "node.k8s.io/v1beta1", "node.k8s.io/v1", "", "RuntimeClass:runtimeclasses")
-	// v1.22
-	add(16, 22, "admissionregistration.k8s.io/v1beta1", "admissionregistration.k8s.io/v1", "failurePolicy now defaults to Fail and sideEffects is required",
-		"MutatingWebhookConfiguration:mutatingwebhookconfigurations", "ValidatingWebhookConfiguration:validatingwebhookconfigurations")
-	add(16, 22, "apiextensions.k8s.io/v1beta1", "apiextensions.k8s.io/v1", "a structural schema is required", "CustomResourceDefinition:customresourcedefinitions")
-	add(19, 22, "apiregistration.k8s.io/v1beta1", "apiregistration.k8s.io/v1", "", "APIService:apiservices")
-	add(19, 22, "authentication.k8s.io/v1beta1", "authentication.k8s.io/v1", "", "TokenReview:tokenreviews")
-	add(19, 22, "authorization.k8s.io/v1beta1", "authorization.k8s.io/v1", "",
-		"SubjectAccessReview:subjectaccessreviews", "LocalSubjectAccessReview:localsubjectaccessreviews", "SelfSubjectAccessReview:selfsubjectaccessreviews")
-	add(19, 22, "certificates.k8s.io/v1beta1", "certificates.k8s.io/v1", "signerName is required", "CertificateSigningRequest:certificatesigningrequests")
-	add(19, 22, "coordination.k8s.io/v1beta1", "coordination.k8s.io/v1", "", "Lease:leases")
-	add(19, 22, "extensions/v1beta1", "networking.k8s.io/v1", "backend.serviceName became backend.service.name; pathType is required", "Ingress:ingresses")
-	add(19, 22, "networking.k8s.io/v1beta1", "networking.k8s.io/v1", "backend.serviceName became backend.service.name; pathType is required",
-		"Ingress:ingresses", "IngressClass:ingressclasses")
-	add(17, 22, "rbac.authorization.k8s.io/v1beta1", "rbac.authorization.k8s.io/v1", "",
-		"ClusterRole:clusterroles", "ClusterRoleBinding:clusterrolebindings", "Role:roles", "RoleBinding:rolebindings")
-	add(14, 22, "scheduling.k8s.io/v1beta1", "scheduling.k8s.io/v1", "", "PriorityClass:priorityclasses")
-	add(19, 22, "storage.k8s.io/v1beta1", "storage.k8s.io/v1", "",
-		"CSIDriver:csidrivers", "CSINode:csinodes", "StorageClass:storageclasses", "VolumeAttachment:volumeattachments")
-	// v1.16
-	add(9, 16, "extensions/v1beta1", "networking.k8s.io/v1", "", "NetworkPolicy:networkpolicies")
-	add(9, 16, "extensions/v1beta1", "policy/v1beta1", "", "PodSecurityPolicy:podsecuritypolicies")
-	add(9, 16, "extensions/v1beta1", "apps/v1", "spec.selector is required and immutable",
-		"DaemonSet:daemonsets", "Deployment:deployments", "ReplicaSet:replicasets")
-	add(9, 16, "apps/v1beta1", "apps/v1", "spec.selector is required and immutable",
-		"Deployment:deployments", "StatefulSet:statefulsets", "ReplicaSet:replicasets")
-	add(9, 16, "apps/v1beta2", "apps/v1", "spec.selector is required and immutable",
-		"DaemonSet:daemonsets", "Deployment:deployments", "StatefulSet:statefulsets", "ReplicaSet:replicasets")
 	return out
 }()
 

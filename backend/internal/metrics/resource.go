@@ -11,6 +11,8 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/matty234/k8sman/backend/internal/kapi"
 )
 
 // ErrNoData means the API answered but has no samples yet (metrics-server
@@ -119,29 +121,37 @@ func (s *Service) Nodes(ctx context.Context) ([]NodeUsage, error) {
 	return items, err
 }
 
+// Resource metrics versions (kapi.ResourceMetrics): the newest, and the
+// oldest to fall back to.
+var (
+	resNewest = kapi.ResourceMetrics.Versions[0]
+	resOldest = kapi.ResourceMetrics.Versions[len(kapi.ResourceMetrics.Versions)-1]
+)
+
 // resourceVersion is the metrics.k8s.io version to request: the one status
-// detection chose (cached with the status), v1beta1 when unknown, or v1beta1
-// after a v1 request was NotFound (until the status is next refreshed).
+// detection chose (cached with the status), the oldest when unknown, or the
+// oldest after a request for the newest was NotFound (until the status is
+// next refreshed).
 func (s *Service) resourceVersion(ctx context.Context) string {
 	v := s.Status(ctx, false).Resource.Version
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if v == "" || (s.status != nil && s.status.resFallback) {
-		return "v1beta1"
+		return resOldest
 	}
 	return v
 }
 
-// getResource GETs a metrics.k8s.io path (e.g. "/nodes"). If v1 answers
-// NotFound (an APIService registered but not serving yet) it retries v1beta1
-// once and remembers the fallback.
+// getResource GETs a metrics.k8s.io path (e.g. "/nodes"). If the newest
+// version answers NotFound (an APIService registered but not serving yet)
+// it retries the oldest once and remembers the fallback.
 func (s *Service) getResource(ctx context.Context, path string, params url.Values) ([]byte, error) {
 	v := s.resourceVersion(ctx)
 	raw, err := s.get.Get(ctx, "/apis/"+ResourceGroup+"/"+v+path, params)
-	if err == nil || v != "v1" || !apierrors.IsNotFound(err) {
+	if err == nil || v != resNewest || v == resOldest || !apierrors.IsNotFound(err) {
 		return raw, err
 	}
-	raw, err2 := s.get.Get(ctx, "/apis/"+ResourceGroup+"/v1beta1"+path, params)
+	raw, err2 := s.get.Get(ctx, "/apis/"+ResourceGroup+"/"+resOldest+path, params)
 	if err2 != nil {
 		return nil, err
 	}

@@ -3,9 +3,12 @@ package security
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/matty234/k8sman/backend/internal/kapi"
 	"github.com/matty234/k8sman/backend/internal/kube"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -155,34 +158,27 @@ func (a *analyzer) practices() {
 	a.deprecatedAPIs()
 }
 
-// removedAPIs maps apiVersion (or apiVersion/Kind) to the Kubernetes
-// version that removed it.
-var removedAPIs = map[string]string{
-	"extensions/v1beta1":                     "1.16/1.22",
-	"apps/v1beta1":                           "1.16",
-	"apps/v1beta2":                           "1.16",
-	"networking.k8s.io/v1beta1":              "1.22",
-	"rbac.authorization.k8s.io/v1beta1":      "1.22",
-	"rbac.authorization.k8s.io/v1alpha1":     "1.22",
-	"batch/v1beta1":                          "1.25",
-	"batch/v2alpha1":                         "1.21",
-	"policy/v1beta1":                         "1.25",
-	"autoscaling/v2beta1":                    "1.25",
-	"autoscaling/v2beta2":                    "1.26",
-	"discovery.k8s.io/v1beta1":               "1.25",
-	"admissionregistration.k8s.io/v1beta1":   "1.22",
-	"apiextensions.k8s.io/v1beta1":           "1.22",
-	"scheduling.k8s.io/v1beta1":              "1.22",
-	"storage.k8s.io/v1beta1":                 "1.22/1.27",
-	"flowcontrol.apiserver.k8s.io/v1beta1":   "1.26",
-	"flowcontrol.apiserver.k8s.io/v1beta2":   "1.29",
-	"flowcontrol.apiserver.k8s.io/v1beta3":   "1.32",
-	"certificates.k8s.io/v1beta1":            "1.22",
-	"coordination.k8s.io/v1beta1":            "1.22",
-	"networking.k8s.io/v1beta1/IngressClass": "1.22",
-	"node.k8s.io/v1beta1":                    "1.25",
-	"events.k8s.io/v1beta1":                  "1.25",
-}
+// removedAPIs maps apiVersion to the Kubernetes release(s) that removed
+// it ("1.16/1.22" when its kinds went in different releases), from the
+// deprecated API table in backend/internal/kapi.
+var removedAPIs = func() map[string]string {
+	by := map[string][]int{}
+	for _, r := range kapi.Removed {
+		if !slices.Contains(by[r.APIVersion], r.RemovedIn) {
+			by[r.APIVersion] = append(by[r.APIVersion], r.RemovedIn)
+		}
+	}
+	out := make(map[string]string, len(by))
+	for gv, rs := range by {
+		slices.Sort(rs)
+		parts := make([]string, len(rs))
+		for i, r := range rs {
+			parts[i] = "1." + strconv.Itoa(r)
+		}
+		out[gv] = strings.Join(parts, "/")
+	}
+	return out
+}()
 
 // DeprecatedAPIVersion reads the apiVersion the object was last applied
 // with (kubectl's last-applied annotation) and returns it with the
@@ -195,9 +191,6 @@ func DeprecatedAPIVersion(m metav1.ObjectMeta) (apiVersion, removedIn string) {
 	var tm metav1.TypeMeta
 	if json.Unmarshal([]byte(raw), &tm) != nil {
 		return "", ""
-	}
-	if r, ok := removedAPIs[tm.APIVersion+"/"+tm.Kind]; ok {
-		return tm.APIVersion, r
 	}
 	if r, ok := removedAPIs[tm.APIVersion]; ok {
 		return tm.APIVersion, r

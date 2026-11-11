@@ -28,6 +28,7 @@ import (
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/httpx"
+	"github.com/matty234/k8sman/backend/internal/kapi"
 	"github.com/matty234/k8sman/backend/internal/kcache"
 	"github.com/matty234/k8sman/backend/internal/kube"
 	"github.com/matty234/k8sman/backend/internal/security"
@@ -140,11 +141,11 @@ func (m *upgradeModule) handleUpgrade(w http.ResponseWriter, r *http.Request) {
 }
 
 var (
-	gvrPDBs       = schema.GroupVersionResource{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"}
-	gvrPVs        = schema.GroupVersionResource{Version: "v1", Resource: "persistentvolumes"}
-	gvrSecrets    = schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
-	gvrValidating = schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingwebhookconfigurations"}
-	gvrMutating   = schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "mutatingwebhookconfigurations"}
+	gvrPDBs       = kapi.PodDisruptionBudgets.GVR()
+	gvrPVs        = kapi.PersistentVolumes.GVR()
+	gvrSecrets    = kapi.Secrets.GVR()
+	gvrValidating = kapi.ValidatingWebhookConfigurations.GVR()
+	gvrMutating   = kapi.MutatingWebhookConfigurations.GVR()
 )
 
 // startUpgrade starts every list the checks need, detached from the

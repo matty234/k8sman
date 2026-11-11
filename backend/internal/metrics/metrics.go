@@ -17,13 +17,15 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/kapi"
 )
 
-// API groups and the versions k8sman reads.
-const (
-	ResourceGroup = "metrics.k8s.io"
-	CustomGroup   = "custom.metrics.k8s.io"
-	ExternalGroup = "external.metrics.k8s.io"
+// API groups k8sman reads. Their versions, newest first, are in
+// backend/internal/kapi.
+var (
+	ResourceGroup = kapi.ResourceMetrics.Name
+	CustomGroup   = kapi.CustomMetrics.Name
+	ExternalGroup = kapi.ExternalMetrics.Name
 )
 
 // Getter performs a GET on an absolute API path (e.g. /apis/metrics.k8s.io/v1/nodes).
@@ -84,7 +86,8 @@ type cachedPods struct {
 type cachedStatus struct {
 	at  time.Time
 	val Status
-	// resFallback: v1 of metrics.k8s.io answered NotFound, use v1beta1.
+	// resFallback: the newest metrics.k8s.io version answered NotFound,
+	// use the oldest.
 	resFallback bool
 }
 

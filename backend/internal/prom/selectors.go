@@ -13,15 +13,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/matty234/k8sman/backend/internal/kapi"
 )
 
 // More operator resources.
 var (
-	ServiceMonitorGVR     = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "servicemonitors"}
-	PodMonitorGVR         = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "podmonitors"}
-	ProbeGVR              = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "probes"}
-	ScrapeConfigGVR       = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1alpha1", Resource: "scrapeconfigs"}
-	AlertmanagerConfigGVR = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1alpha1", Resource: "alertmanagerconfigs"}
+	ServiceMonitorGVR     = kapi.ServiceMonitors.GVR()
+	PodMonitorGVR         = kapi.PodMonitors.GVR()
+	ProbeGVR              = kapi.Probes.GVR()
+	ScrapeConfigGVR       = kapi.ScrapeConfigs.GVR()
+	AlertmanagerConfigGVR = kapi.AlertmanagerConfigs.GVR()
 )
 
 // selectable describes how a Prometheus (or Alertmanager) custom resource

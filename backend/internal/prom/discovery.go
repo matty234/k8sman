@@ -12,22 +12,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/matty234/k8sman/backend/internal/kapi"
 	"github.com/matty234/k8sman/backend/internal/ttlcache"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
 // Operator resources.
 var (
-	PrometheusGVR      = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "prometheuses"}
-	AlertmanagerGVR    = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "alertmanagers"}
-	PrometheusRuleGVR  = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "prometheusrules"}
+	PrometheusGVR      = kapi.Prometheuses.GVR()
+	AlertmanagerGVR    = kapi.Alertmanagers.GVR()
+	PrometheusRuleGVR  = kapi.PrometheusRules.GVR()
 	discoveryCacheTTL  = 30 * time.Second
 	failedDiscoveryTTL = 10 * time.Second
 )

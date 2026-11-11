@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/tools/portforward"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
+	"github.com/matty234/k8sman/backend/internal/kapi"
 )
 
 // Spec is the persisted definition of a forward.
@@ -723,10 +724,10 @@ func (c *connCounter) Write(p []byte) (int, error) {
 var _ io.Writer = (*connCounter)(nil)
 
 var workloadGVR = map[string]schema.GroupVersionResource{
-	"deployment":  {Group: "apps", Version: "v1", Resource: "deployments"},
-	"statefulset": {Group: "apps", Version: "v1", Resource: "statefulsets"},
-	"daemonset":   {Group: "apps", Version: "v1", Resource: "daemonsets"},
-	"replicaset":  {Group: "apps", Version: "v1", Resource: "replicasets"},
+	"deployment":  kapi.Deployments.GVR(),
+	"statefulset": kapi.StatefulSets.GVR(),
+	"daemonset":   kapi.DaemonSets.GVR(),
+	"replicaset":  kapi.ReplicaSets.GVR(),
 }
 
 // resolve picks a ready pod and the numeric container port, mirroring

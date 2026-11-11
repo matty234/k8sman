@@ -7,6 +7,8 @@ import (
 	"sort"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/matty234/k8sman/backend/internal/kapi"
 )
 
 // API states.
@@ -58,11 +60,12 @@ func (s Status) Of(group string) APIStatus {
 	}
 }
 
-// versionPreference orders versions newest-first for the groups we read.
+// versionPreference orders versions newest-first for the groups we read
+// (edit them in backend/internal/kapi).
 var versionPreference = map[string][]string{
-	ResourceGroup: {"v1", "v1beta1"},
-	CustomGroup:   {"v1beta2", "v1beta1"},
-	ExternalGroup: {"v1beta1"},
+	ResourceGroup: kapi.ResourceMetrics.Versions,
+	CustomGroup:   kapi.CustomMetrics.Versions,
+	ExternalGroup: kapi.ExternalMetrics.Versions,
 }
 
 type apiServiceList struct {
@@ -106,7 +109,7 @@ func (s *Service) Status(ctx context.Context, refresh bool) Status {
 }
 
 func (s *Service) fetchStatus(ctx context.Context) Status {
-	raw, err := s.get.Get(ctx, "/apis/apiregistration.k8s.io/v1/apiservices", nil)
+	raw, err := s.get.Get(ctx, kapi.APIServices.Path("", ""), nil)
 	if err != nil {
 		// No RBAC for APIServices: fall back to discovery per group.
 		return Status{

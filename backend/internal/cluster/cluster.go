@@ -20,6 +20,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
+
+	"github.com/matty234/k8sman/backend/internal/kapi"
 )
 
 // ResourceType describes one listable API resource discovered on the server.
@@ -99,7 +101,7 @@ type Clients struct {
 }
 
 // CRDGVR is the CustomResourceDefinition resource.
-var CRDGVR = schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
+var CRDGVR = kapi.CustomResourceDefinitions.GVR()
 
 // Resources discovers all listable resources (preferred version per group).
 // Set refresh to drop the discovery cache first (e.g. after installing a CRD).
