@@ -53,6 +53,11 @@ class ModuleStatus {
   static const checking = ModuleStatus(ModuleState.checking);
 }
 
+/// A module's user setting: on and off are explicit; auto (the default of
+/// modules with [AppModule.autoByDefault]) is on where [AppModule.detect]
+/// finds the integration and off elsewhere.
+enum ModuleMode { on, off, auto }
+
 /// One built-in integration. Override only what the module has.
 abstract class AppModule {
   const AppModule();
@@ -71,6 +76,15 @@ abstract class AppModule {
   /// Ids of modules this one needs (Add-ons installs through Helm): it is
   /// off while any of them is.
   List<String> get requires => const [];
+
+  /// Whether the module starts in [ModuleMode.auto]: active only on a
+  /// cluster where [detect] finds the integration, until the user turns it
+  /// on or off. Needs [detect]. The backend's AutoModule is the same
+  /// switch for its routes and background work.
+  bool get autoByDefault => false;
+
+  /// The quiet note on the Installed row while the module is on auto.
+  String get autoNote => 'Auto: on when found';
 
   /// Pages in the sidebar, the palette (`:` commands too) and the main area.
   List<AppPage> get pages => const [];

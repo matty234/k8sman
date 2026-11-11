@@ -15,7 +15,9 @@ import 'modules.dart' show moduleStatuses;
 /// "Can A reach B?"), a Flows tab in the inspector
 /// of pods, services, namespaces and workloads, and per-context relay
 /// settings. The backend's /api/hubble and its overview findings belong to
-/// the same module. Shown only on clusters where Hubble is found.
+/// the same module. On auto by default: active only on clusters where Hubble is found,
+/// until the user turns it on (then it stays on, with a "not on this
+/// cluster" status where it is missing) or off.
 class HubbleModule extends AppModule {
   const HubbleModule();
 
@@ -43,6 +45,12 @@ class HubbleModule extends AppModule {
           builder: (_) => const HubbleView(),
         ),
       ];
+
+  @override
+  bool get autoByDefault => true;
+
+  @override
+  String get autoNote => 'Auto: on when Hubble is found';
 
   @override
   Future<ModuleStatus> Function(ApiClient api) get detect => (api) async {

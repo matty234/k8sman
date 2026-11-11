@@ -71,7 +71,8 @@ class FixtureApi extends ApiClient {
   Set<String> disabledModules = {};
 
   @override
-  Future<({Set<String> disabled, Set<String> superseded})> getDisabledModules() async => (disabled: {...disabledModules}, superseded: <String>{});
+  Future<({Set<String> disabled, Set<String> enabled, Set<String> superseded})> getDisabledModules() async =>
+      (disabled: {...disabledModules}, enabled: <String>{}, superseded: <String>{});
 
   @override
   Future<bool> getAppLinks() async => false;
@@ -80,7 +81,7 @@ class FixtureApi extends ApiClient {
   Future<Map<String, String>> getLinkClusterMap() async => const {};
 
   @override
-  Future<void> putDisabledModules(Set<String> ids) async => disabledModules = {...ids};
+  Future<void> putDisabledModules(Set<String> ids, {Set<String>? enabled}) async => disabledModules = {...ids};
 
   @override
   Future<Json> getModuleSettings(String id) async => {};

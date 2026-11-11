@@ -398,7 +398,9 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   Read-only; a check the user may not run says so instead of failing.
 - **Add-ons**: one-click Helm installs of metrics-server, the Prometheus
   stack, Trivy Operator, Argo CD, Envoy Gateway and cert-manager.
-- **Hubble** (on clusters running Cilium with Hubble Relay): a **Map** of
+- **Hubble** (on clusters running Cilium with Hubble Relay; the integration
+  is on **auto** by default, so it appears, and does anything, only where a
+  Hubble Relay Service or Cilium with Hubble is found): a **Map** of
   which namespaces talk to each other and which receive from and send to
   the world, over the last 1, 5 or 15 minutes. The cluster is drawn as a
   disc with a lane per namespace: chords inside join namespaces that talk
@@ -473,4 +475,6 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   found, metrics-server available or not), checked once per cluster after
   the first table appears, and expands to the settings of those that have
   some: Hubble's relay, and Argo CD's sign-in (token, argocd CLI login or
-  initial admin password).
+  initial admin password). Hubble starts on **auto** (on where it is found,
+  off elsewhere, nothing probing or port-forwarding); its switch turns it
+  on everywhere or off, and "Use auto" on its row goes back.

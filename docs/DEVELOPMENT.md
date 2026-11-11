@@ -180,6 +180,16 @@ editor) are not modules. Each module can be turned off in **Settings ▸
 Integrations** (or the palette's **Integrations…**), saved as
 `disabledModules` in `settings.json`. Use the same id on both sides.
 
+A module can default to **auto** instead of on (only Hubble does): unless
+the user turned it on (`enabledModules`) or off (`disabledModules`, which
+wins), it is active only on a kube context where it is found. Backend: also
+implement `AutoModule` (`AutoDetect`, cheap and cached; `AutoProbe`, the one
+route that stays reachable so the UI can ask). While inactive its routes
+answer 404 (`reason: "ModuleInactive"`) and it adds no overview inputs, so
+nothing runs for it. Frontend: override `AppModule.autoByDefault` (with
+`detect`); the palette, inspector tabs and sidebar then follow detection
+(`moduleActive`), and Settings shows an "Auto" note on the row.
+
 **Backend** (`backend/internal/server/module.go`):
 
 1. Write a type that implements `Module`: `Name()` returns the id, and

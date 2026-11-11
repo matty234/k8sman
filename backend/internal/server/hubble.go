@@ -38,6 +38,15 @@ type hubbleModule struct {
 
 	// Reverse DNS for world addresses, shared by every context.
 	namer *hubble.Namer
+
+	// Auto-mode detection per context (see AutoDetect).
+	autoMu sync.Mutex
+	auto   map[string]hubbleAuto
+}
+
+type hubbleAuto struct {
+	at    time.Time
+	found bool
 }
 
 type hubbleDropsEntry struct {
@@ -64,12 +73,49 @@ func (m *hubbleModule) Routes(r httpx.Router, d Deps) {
 	m.dropsCache = map[string]hubbleDropsEntry{}
 	m.maps = map[string]*hubble.Traffic{}
 	m.namer = hubble.NewNamer()
+	m.auto = map[string]hubbleAuto{}
 	r.HandleFunc("GET /api/hubble/status", m.handleStatus)
 	r.HandleFunc("GET /api/hubble/flows", m.handleFlows)
 	r.HandleFunc("GET /api/hubble/drops", m.handleDrops)
 	r.HandleFunc("GET /api/hubble/connectivity", m.handleConnectivity)
 	r.HandleFunc("GET /api/hubble/map", m.handleMap)
 }
+
+// Hubble's default is "auto": see AutoModule.
+const (
+	hubbleFoundTTL   = 5 * time.Minute
+	hubbleMissingTTL = time.Minute
+)
+
+// AutoDetect implements AutoModule: a Hubble Relay Service or Cilium with
+// Hubble on (hubble.Present: a few small reads, no connection). The answer
+// is cached per context, longer when found, and a failed lookup counts as
+// not found, so a cluster without Cilium costs one quiet probe a minute
+// while it is in use.
+func (m *hubbleModule) AutoDetect(c *cluster.Clients) bool {
+	s := m.settings(c)
+	key := fmt.Sprintf("%p|%s", c, s.Relay)
+	m.autoMu.Lock()
+	defer m.autoMu.Unlock()
+	if e, ok := m.auto[key]; ok {
+		ttl := hubbleMissingTTL
+		if e.found {
+			ttl = hubbleFoundTTL
+		}
+		if time.Since(e.at) < ttl {
+			return e.found
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	found := hubble.Present(ctx, c.Typed, s)
+	m.auto[key] = hubbleAuto{at: time.Now(), found: found}
+	return found
+}
+
+// AutoProbe implements AutoModule: the status stays reachable while
+// Hubble is inactive.
+func (m *hubbleModule) AutoProbe() string { return "GET /api/hubble/status" }
 
 // ValidateSettings implements Configurable.
 func (m *hubbleModule) ValidateSettings(raw json.RawMessage) error {
@@ -90,6 +136,14 @@ func (m *hubbleModule) settings(c *cluster.Clients) hubble.Settings {
 
 func (m *hubbleModule) handleStatus(w http.ResponseWriter, r *http.Request) {
 	c := m.d.Mgr.Clients()
+	if !m.d.Settings.ModuleForcedOn(hubbleID) && !m.AutoDetect(c) {
+		// On auto and not found: answer without discovering or connecting.
+		httpx.WriteJSON(w, http.StatusOK, &hubble.Status{
+			Discovery: hubble.Discovery{}, State: hubble.StateNotInstalled,
+			Message: "Cilium with Hubble isn't installed on this cluster", CheckedAt: time.Now(),
+		})
+		return
+	}
 	httpx.WriteJSON(w, http.StatusOK, m.hub.Status(r.Context(), c, m.settings(c), r.URL.Query().Get("refresh") == "true"))
 }
 

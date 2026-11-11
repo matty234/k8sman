@@ -145,6 +145,29 @@ func Discover(ctx context.Context, cs kubernetes.Interface, s Settings) Discover
 	return d
 }
 
+// Present is the cheap check behind the module's "auto" mode: whether the
+// cluster has a Hubble Relay Service (the one s.Relay names, else found
+// by the chart's labels or name), or a cilium-config with enable-hubble
+// on. It only reads Services and ConfigMaps (a few small lookups, no
+// port-forward, no connection) and treats any error as "not found".
+func Present(ctx context.Context, cs kubernetes.Interface, s Settings) bool {
+	if s.Relay != "" {
+		ns, name, _, _ := splitRelay(s.Relay)
+		_, err := cs.CoreV1().Services(ns).Get(ctx, name, metav1.GetOptions{})
+		return err == nil
+	}
+	if findRelayService(ctx, cs, map[string]string{}) != nil {
+		return true
+	}
+	for _, ns := range ciliumNamespaces {
+		cm, err := cs.CoreV1().ConfigMaps(ns).Get(ctx, "cilium-config", metav1.GetOptions{})
+		if err == nil {
+			return cm.Data["enable-hubble"] == "true"
+		}
+	}
+	return false
+}
+
 // findRelayService looks for the relay by its chart labels across the
 // cluster, then by name in the usual namespaces.
 func findRelayService(ctx context.Context, cs kubernetes.Interface, errs map[string]string) *corev1.Service {

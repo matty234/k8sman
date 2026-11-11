@@ -278,7 +278,11 @@ class ModuleTile extends StatelessWidget {
     final app = context.watch<AppState>();
     final m = module;
     final disabled = app.disabledModules;
-    final on = moduleEnabled(m.id, disabled);
+    // The user's switch, and the effective state: a module on auto is on
+    // only where it is found (its row says so).
+    final userOn = moduleEnabled(m.id, disabled);
+    final mode = moduleMode(m, app);
+    final on = userOn && (mode != ModuleMode.auto || moduleDetected(m, app));
     // Off while a module it needs is off (Add-ons needs Helm).
     final available = m.requires.every((r) => moduleEnabled(r, disabled));
     final settings = m.settingsBuilder;
@@ -287,22 +291,44 @@ class ModuleTile extends StatelessWidget {
       key: expansion.keyFor(m.id),
       listenable: Listenable.merge([moduleStatuses, expansion]),
       builder: (context, _) {
-        final canOpen = settings != null && on;
+        final canOpen = settings != null && userOn;
         return IntegrationRow(
           id: m.id,
           name: m.name,
           description: m.description,
           icon: icon,
           on: on,
-          tag: m.requires.isEmpty ? null : 'needs ${m.requires.map(_nameOf).join(', ')}',
-          status: on ? _statusOf(context, m, app) : null,
+          tag: m.requires.isEmpty ? (mode == ModuleMode.auto ? m.autoNote : null) : 'needs ${m.requires.map(_nameOf).join(', ')}',
+          status: userOn ? _statusOf(context, m, app) : null,
           onChanged: available
               ? (v) {
+                  if (m.autoByDefault) {
+                    app.setModuleMode(m.id, v ? ModuleMode.on : ModuleMode.off);
+                    return;
+                  }
                   final next = {...disabled};
                   v ? next.remove(m.id) : next.add(m.id);
                   app.setDisabledModules(next);
                 }
               : null,
+          footer: [
+            if (m.autoByDefault && mode != ModuleMode.auto)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: ValueKey('integration-auto-${m.id}'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    minimumSize: const Size(0, 24),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  onPressed: () => app.setModuleMode(m.id, ModuleMode.auto),
+                  child: Text('Use auto (${m.autoNote.replaceFirst('Auto: ', '')})'),
+                ),
+              ),
+          ],
           settings: settings,
           open: canOpen && expansion.isOpen(m.id),
           onToggleOpen: canOpen ? () => expansion.toggle(m.id) : null,

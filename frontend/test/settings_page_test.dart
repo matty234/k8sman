@@ -34,6 +34,7 @@ void main() {
     rankCommand('settings integrations', app).sections.first.items.first.run();
     await tester.pump();
     expect(find.byKey(const ValueKey('settings-section-integrations')), findsOneWidget);
+    expect(find.text('Auto: on when Hubble is found'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('integration-expand-hubble')));
     await tester.tap(find.byKey(const ValueKey('integration-expand-hubble')));
     await tester.pump();

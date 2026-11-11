@@ -189,6 +189,9 @@ machine.
 
 ### Cilium Hubble
 
+On **auto** by default: it appears only on clusters where Hubble Relay (or
+Cilium with Hubble) is found. Turn it on or off in Settings ▸ Integrations.
+
 - A **Map** of who talks to whom: namespaces around a disc, chords between
   those that talk, and rays crossing the edge for traffic to and from the
   world (and through Cilium Ingress), over the last 1, 5 or 15 minutes.

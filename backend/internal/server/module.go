@@ -63,6 +63,21 @@ type OverviewSource interface {
 	OverviewInputs(l *OverviewLists)
 }
 
+// AutoModule is implemented by modules whose default is "auto" (only
+// Hubble for now): unless the user turned them on or off explicitly
+// (settings.json's enabledModules / disabledModules), they are active
+// only on a kube context where AutoDetect finds what they integrate with.
+// While inactive their routes answer 404 (reason ModuleInactive), they
+// feed no overview and run nothing in the background.
+type AutoModule interface {
+	// AutoDetect must be cheap and cached: it runs on every request to the
+	// module. It reports false on any error.
+	AutoDetect(c *cluster.Clients) bool
+	// AutoProbe is the one route pattern that stays reachable while the
+	// module is inactive, so the UI can ask whether it is there.
+	AutoProbe() string
+}
+
 // ActionSource is implemented by modules that add actions to
 // POST /api/actions/{action}.
 type ActionSource interface {
@@ -233,27 +248,45 @@ func (mr moduleRouter) HandleFunc(pattern string, h func(http.ResponseWriter, *h
 				fmt.Sprintf("the %s integration is turned off in k8sman's settings", mr.name))
 			return
 		}
+		if am := mr.s.autoModule(mr.name); am != nil && pattern != am.AutoProbe() && !mr.s.autoActive(am) {
+			httpx.WriteError(w, http.StatusNotFound, "ModuleInactive",
+				fmt.Sprintf("the %s integration is on \"auto\" and wasn't found on this cluster", mr.name))
+			return
+		}
 		h(w, r)
 	})
 }
 
-// handleGetModules returns {disabled: [ids], superseded: [ids]}: the
-// integrations the user turned off, and the modules bundled plugins
-// replace (off too, and not the user's choice). Works without a cluster
-// connection.
+// handleGetModules returns {disabled, enabled, auto, superseded}: the
+// integrations the user turned off, the ones they turned on explicitly
+// (only meaningful for the auto modules), the ids of modules whose
+// default is auto, and the modules bundled plugins replace (off too, and
+// not the user's choice). Works without a cluster connection.
 func (s *Server) handleGetModules(w http.ResponseWriter, r *http.Request) {
 	disabled := s.settings.Get().DisabledModules
 	if disabled == nil {
 		disabled = []string{}
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"disabled": disabled, "superseded": s.plugins.Superseded()})
+	enabled := s.settings.Get().EnabledModules
+	if enabled == nil {
+		enabled = []string{}
+	}
+	auto := []string{}
+	for _, m := range s.modules {
+		if _, ok := m.(AutoModule); ok {
+			auto = append(auto, m.Name())
+		}
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"disabled": disabled, "enabled": enabled, "auto": auto, "superseded": s.plugins.Superseded()})
 }
 
-// handlePutModules saves {disabled: [ids]}. Ids may name UI-only modules
+// handlePutModules saves {disabled: [ids], enabled: [ids]} (enabled is
+// left alone when absent). Ids may name UI-only modules
 // (e.g. "addons") too.
 func (s *Server) handlePutModules(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Disabled []string `json:"disabled"`
+		Disabled []string  `json:"disabled"`
+		Enabled  *[]string `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, httpx.BadRequest("body must be {\"disabled\": [...]}: %v", err))
@@ -262,6 +295,12 @@ func (s *Server) handlePutModules(w http.ResponseWriter, r *http.Request) {
 	if err := s.settings.SetDisabledModules(body.Disabled); err != nil {
 		writeErr(w, httpx.BadRequest("%v", err))
 		return
+	}
+	if body.Enabled != nil {
+		if err := s.settings.SetEnabledModules(*body.Enabled); err != nil {
+			writeErr(w, httpx.BadRequest("%v", err))
+			return
+		}
 	}
 	s.handleGetModules(w, r)
 }
@@ -280,9 +319,13 @@ func (s *Server) refuseReadOnly(w http.ResponseWriter) bool {
 func (s *Server) enabledModules() []Module {
 	out := make([]Module, 0, len(s.modules))
 	for _, m := range s.modules {
-		if !s.moduleOff(m.Name()) {
-			out = append(out, m)
+		if s.moduleOff(m.Name()) {
+			continue
 		}
+		if am, ok := m.(AutoModule); ok && !s.autoActive(am) {
+			continue
+		}
+		out = append(out, m)
 	}
 	return out
 }
@@ -297,6 +340,27 @@ func (s *Server) moduleOff(id string) bool {
 		return false
 	}
 	return s.settings.ModuleDisabled(id) || s.plugins.Supersedes(id)
+}
+
+// autoModule returns module id when its default is auto.
+func (s *Server) autoModule(id string) AutoModule {
+	for _, m := range s.modules {
+		if m.Name() == id {
+			am, _ := m.(AutoModule)
+			return am
+		}
+	}
+	return nil
+}
+
+// autoActive reports whether auto module am is active on the current
+// context: turned on explicitly, or detected there.
+func (s *Server) autoActive(am AutoModule) bool {
+	if s.settings.ModuleForcedOn(am.(Module).Name()) {
+		return true
+	}
+	c := s.mgr.Clients()
+	return c != nil && am.AutoDetect(c)
 }
 
 // OverviewLists runs the health overview's lists in parallel and collects

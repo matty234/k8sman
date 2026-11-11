@@ -49,10 +49,31 @@ bool moduleEnabled(String id, Set<String> disabled) {
   return m == null || m.requires.every((r) => moduleEnabled(r, disabled));
 }
 
-/// The modules that are on (see [AppState.disabledModules]).
+/// [m]'s mode (see [ModuleMode]): off when the user turned it off, on
+/// when they turned it on, else its default.
+ModuleMode moduleMode(AppModule m, AppState app) {
+  if (app.disabledModules.contains(m.id)) return ModuleMode.off;
+  if (!m.autoByDefault || app.forcedOnModules.contains(m.id)) return ModuleMode.on;
+  return ModuleMode.auto;
+}
+
+/// Whether [m], on auto, is found on the current cluster (false while it
+/// is being checked). Starts the check when it hasn't run.
+bool moduleDetected(AppModule m, AppState app) {
+  final s = moduleStatuses.of(m, app.api, app.currentContext);
+  return s != null && s.state != ModuleState.checking && s.state != ModuleState.notInstalled;
+}
+
+/// Whether [m] is active now: its switch is not off and, on auto, it is
+/// found on the current cluster.
+bool moduleActive(AppModule m, AppState app) =>
+    moduleEnabled(m.id, app.disabledModules) && (moduleMode(m, app) != ModuleMode.auto || moduleDetected(m, app));
+
+/// The modules that are active (see [AppState.disabledModules]; those on
+/// auto only where they are found).
 List<AppModule> enabledModules(AppState app) => [
       for (final m in builtInModules)
-        if (moduleEnabled(m.id, app.disabledModules)) m,
+        if (moduleActive(m, app)) m,
     ];
 
 /// [base] with each of [extra] inserted after the item [after] names (or
@@ -84,11 +105,16 @@ AppPage? pageFor(MainView v) => _pages[v]?.$1;
 /// module is on.
 bool pageEnabled(AppState app, MainView v) {
   final e = _pages[v];
-  return e != null && (e.$2 == null || enabledModules(app).contains(e.$2));
+  return e != null && (e.$2 == null || moduleEnabled(e.$2!.id, app.disabledModules));
 }
 
-/// [allPages] that are on, in order.
-List<AppPage> enabledPages(AppState app) => [for (final p in allPages) if (pageEnabled(app, p.view)) p];
+/// [allPages] that are on, in order: a module's only while it is active
+/// (on auto, where it is found). [pageEnabled] ignores detection, so a
+/// page that is open stays open.
+List<AppPage> enabledPages(AppState app) => [
+      for (final p in allPages)
+        if (pageEnabled(app, p.view) && (_pages[p.view]?.$2 == null || moduleActive(_pages[p.view]!.$2!, app))) p
+    ];
 
 /// The kinds enabled pages are the home of (`group/Kind` → page; see
 /// [AppPage.homeFor]). The first page to claim a kind wins.

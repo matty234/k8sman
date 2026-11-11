@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../modules/module.dart' show ModuleMode;
 import 'cluster_error.dart';
 import 'context_appearance.dart';
 import 'namespace_scope.dart';
@@ -879,6 +880,10 @@ class AppState extends ChangeNotifier {
   /// backend decides (settings.json's plugins.useModule brings one back).
   Set<String> supersededModules = const {};
 
+  /// Ids the user turned on explicitly: only meaningful for modules that
+  /// start on auto (see [ModuleMode]).
+  Set<String> forcedOnModules = const {};
+
   /// What the user turned off themselves (what [setDisabledModules] saves).
   Set<String> _userDisabledModules = const {};
 
@@ -890,6 +895,7 @@ class AppState extends ChangeNotifier {
       _userDisabledModules = Set.unmodifiable(m.disabled);
       supersededModules = Set.unmodifiable(m.superseded);
       disabledModules = Set.unmodifiable({...m.disabled, ...m.superseded});
+      forcedOnModules = Set.unmodifiable(m.enabled);
       notifyListeners();
     } catch (e) {
       debugPrint('integrations: $e');
@@ -905,6 +911,27 @@ class AppState extends ChangeNotifier {
     disabledModules = Set.unmodifiable({...save, ...supersededModules});
     notifyListeners();
     _moduleSaves = _moduleSaves.then((_) => api.putDisabledModules(save)).catchError((Object e) => debugPrint('save integrations: $e'));
+  }
+
+  /// Sets module [id]'s mode: off adds it to [disabledModules], on adds it
+  /// to [forcedOnModules], auto removes it from both. Saved in the
+  /// background.
+  void setModuleMode(String id, ModuleMode mode) {
+    final off = {..._userDisabledModules}..remove(id);
+    final on = {...forcedOnModules}..remove(id);
+    switch (mode) {
+      case ModuleMode.off:
+        off.add(id);
+      case ModuleMode.on:
+        on.add(id);
+      case ModuleMode.auto:
+        break;
+    }
+    _userDisabledModules = Set.unmodifiable(off);
+    forcedOnModules = Set.unmodifiable(on);
+    disabledModules = Set.unmodifiable({...off, ...supersededModules});
+    notifyListeners();
+    _moduleSaves = _moduleSaves.then((_) => api.putDisabledModules(off, enabled: on)).catchError((Object e) => debugPrint('save integrations: $e'));
   }
 
   /// The discovered type a pin points at (null: not on this cluster).

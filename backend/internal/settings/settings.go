@@ -56,8 +56,14 @@ type Settings struct {
 	// table preferences.
 	Tables map[string]TablePrefs `json:"tables,omitempty"`
 	// DisabledModules lists the integrations the user turned off (module
-	// ids such as "helm" or "argocd"). Absent = all on.
+	// ids such as "helm" or "argocd"). Absent = on (or auto, for a module
+	// whose default is auto: see EnabledModules). Existing files without
+	// enabledModules need no migration: explicit off stays off.
 	DisabledModules []string `json:"disabledModules,omitempty"`
+	// EnabledModules lists the integrations the user turned on explicitly:
+	// only meaningful for modules whose default is "auto" (on where
+	// detected, e.g. Hubble). DisabledModules wins over it.
+	EnabledModules []string `json:"enabledModules,omitempty"`
 	// Views are the saved views (see View), in the user's order. Records
 	// are kept as stored, so entries written by a newer version of the app
 	// (a higher "version") survive a downgrade untouched.
@@ -450,6 +456,7 @@ func (s Settings) clone() Settings {
 	out.SecurityIgnores = cloneIgnores(s.SecurityIgnores)
 	out.Tables = cloneTables(s.Tables)
 	out.DisabledModules = slices.Clone(s.DisabledModules)
+	out.EnabledModules = slices.Clone(s.EnabledModules)
 	out.Views = slices.Clone(s.Views)
 	out.ModuleSettings = cloneModuleSettings(s.ModuleSettings)
 	out.Namespaces = cloneNamespaces(s.Namespaces)
@@ -576,6 +583,17 @@ func (st *Store) ModuleDisabled(id string) bool {
 	return slices.Contains(st.s.DisabledModules, id)
 }
 
+// ModuleForcedOn reports whether the user turned the integration on
+// explicitly (and not off): it then stays on without detection.
+func (st *Store) ModuleForcedOn(id string) bool {
+	if st == nil {
+		return false
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return slices.Contains(st.s.EnabledModules, id) && !slices.Contains(st.s.DisabledModules, id)
+}
+
 var moduleID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 
 // SetDisabledModules replaces the list of turned-off integrations (kept
@@ -591,6 +609,23 @@ func (st *Store) SetDisabledModules(ids []string) error {
 		s.DisabledModules = nil
 		if len(ids) > 0 {
 			s.DisabledModules = ids
+		}
+	})
+}
+
+// SetEnabledModules replaces the list of explicitly turned-on
+// integrations (same rules as SetDisabledModules).
+func (st *Store) SetEnabledModules(ids []string) error {
+	for _, id := range ids {
+		if !moduleID.MatchString(id) {
+			return fmt.Errorf("invalid module id %q", id)
+		}
+	}
+	ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+	return st.Update(func(s *Settings) {
+		s.EnabledModules = nil
+		if len(ids) > 0 {
+			s.EnabledModules = ids
 		}
 	})
 }

@@ -408,15 +408,18 @@ class ApiClient {
 
   /// The modules the user turned off, and those a bundled plugin replaces
   /// (off too; not the user's choice).
-  Future<({Set<String> disabled, Set<String> superseded})> getDisabledModules() async {
+  Future<({Set<String> disabled, Set<String> enabled, Set<String> superseded})> getDisabledModules() async {
     final j = await _get('settings/modules') as Json;
     return (
       disabled: {for (final id in (j['disabled'] as List? ?? const [])) '$id'},
+      enabled: {for (final id in (j['enabled'] as List? ?? const [])) '$id'},
       superseded: {for (final id in (j['superseded'] as List? ?? const [])) '$id'},
     );
   }
 
-  Future<void> putDisabledModules(Set<String> ids) => _send('PUT', 'settings/modules', const {}, {'disabled': [...ids]..sort()});
+  /// [enabled]: the modules turned on explicitly (left alone when null).
+  Future<void> putDisabledModules(Set<String> ids, {Set<String>? enabled}) =>
+      _send('PUT', 'settings/modules', const {}, {'disabled': [...ids]..sort(), if (enabled != null) 'enabled': [...enabled]..sort()});
 
   /// Module [id]'s own settings for the current kube context ({} when none
   /// are saved). See `Configurable` in backend/internal/server/module.go.
