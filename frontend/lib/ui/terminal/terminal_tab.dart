@@ -88,13 +88,17 @@ class TerminalTab extends DockTab {
   @override
   String get pod => _request.pod;
   @override
-  String get label => isLocal ? (_request.title ?? 'local · ${container ?? ''}') : '$pod/${container ?? 'default'}';
+  String get label => isConsole ? (_request.title ?? 'console: $pod') : isLocal ? (_request.title ?? 'local · ${container ?? ''}') : '$pod/${container ?? 'default'}';
 
   /// A login shell on this machine rather than in a pod.
   bool get isLocal => _request.local;
 
+  /// A KubeVirt VMI serial console (no shell choice, no resize).
+  bool get isConsole => _request.console;
+
   /// What runs: an explicit command or the shell preference.
   String get commandLabel {
+    if (isConsole) return 'serial console';
     if (isLocal) {
       final sh = startedCommand?.firstOrNull;
       return sh == null ? 'login shell' : sh.split('/').last;

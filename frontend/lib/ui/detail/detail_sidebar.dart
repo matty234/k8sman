@@ -8,6 +8,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../app/diagnostics/diagnostics_log.dart' show DiagnosticsContext;
 import '../../modules/modules.dart' show moduleInspectorTabs, moduleStatuses;
+import '../../panels/kubevirt/kubevirt_actions.dart';
 import '../../panels/registry.dart';
 import '../../plugins/plugin_host.dart';
 import '../../plugins/plugin_panel.dart' show pluginPanels;
@@ -681,7 +682,7 @@ class _InstantTabViewState extends State<InstantTabView> {
 /// The actions offered for an object, in display order. Shared by the
 /// inspector header and the table's right-click menu so they always match.
 List<ResourceAction> resourceActionsFor(AppState app, DetailTarget t, ResourcePanel panel, PanelContext ctx) {
-  final extra = panel.actions(ctx);
+  final extra = [...panel.actions(ctx), ...hostKindActions(ctx)];
   final logs = extra.where((a) => a.id == kLogsActionId).toList();
   if (app.readOnly) return logs;
   final terminal = extra.where((a) => a.id == kTerminalActionId);

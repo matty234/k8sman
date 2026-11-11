@@ -310,6 +310,9 @@ class _Toolbar extends StatelessWidget {
               if (s.isLocal) ...[
                 TextSpan(text: 'local shell', style: monoStyle(context, size: 11)),
                 if ((s.container ?? '').isNotEmpty) TextSpan(text: ' · kubectl → ${s.container}', style: monoStyle(context, size: 11, color: theme.hintColor)),
+              ] else if (s.isConsole) ...[
+                TextSpan(text: s.pod, style: monoStyle(context, size: 11)),
+                TextSpan(text: ' / serial console', style: monoStyle(context, size: 11, color: theme.hintColor)),
               ] else ...[
                 TextSpan(text: s.pod, style: monoStyle(context, size: 11)),
                 TextSpan(text: ' / ${s.container ?? 'default'}', style: monoStyle(context, size: 11, color: theme.hintColor)),
@@ -323,7 +326,7 @@ class _Toolbar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        if (!s.isLocal) PopupMenuButton<String>(
+        if (!s.isLocal && !s.isConsole) PopupMenuButton<String>(
           popUpAnimationStyle: AnimationStyle.noAnimation,
           key: const ValueKey('terminal-shell-picker'),
           tooltip: 'Shell or command (restarts the session)',
@@ -436,7 +439,7 @@ class _StateBanner extends StatelessWidget {
       _ => switch (s.errorReason) {
           ExecReason.noShell => (Severity.warn, 'No shell in container ${s.container ?? ''}'),
           ExecReason.commandNotFound => (Severity.error, 'Command not found: ${s.commandLabel}'),
-          ExecReason.containerNotRunning => (Severity.warn, 'Container is not running'),
+          ExecReason.containerNotRunning => (Severity.warn, s.isConsole ? 'VM is not running' : 'Container is not running'),
           ExecReason.forbidden => (Severity.error, 'Not allowed'),
           ExecReason.connection => (Severity.error, 'Disconnected'),
           _ => (Severity.error, 'Could not start the session'),

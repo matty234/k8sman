@@ -103,6 +103,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.namespaceRoutes()
 	s.appearanceRoutes()
 	s.execRoutes()
+	s.vmConsoleRoutes()
 	s.localShellRoutes()
 	s.securityRoutes()
 	s.rbacRoutes()
