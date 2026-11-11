@@ -385,13 +385,8 @@ func (a *analyzer) indexOwners() {
 	}
 	for i := range a.in.Pods {
 		p := &a.in.Pods[i]
-		c := kube.ControllerOf(p.OwnerReferences)
-		hash := p.Labels[appsv1.DefaultDeploymentUniqueLabelKey]
-		if c == nil || c.Kind != "ReplicaSet" || hash == "" {
-			continue
-		}
-		if name, ok := strings.CutSuffix(c.Name, "-"+hash); ok && deps[kube.Key(p.Namespace, name)] {
-			a.rsOwn[kube.Key(p.Namespace, c.Name)] = &Owner{Group: "apps", Kind: "Deployment", Name: name}
+		if rs, dep, ok := kube.PodDeployment(p); ok && deps[kube.Key(p.Namespace, dep)] {
+			a.rsOwn[kube.Key(p.Namespace, rs)] = &Owner{Group: "apps", Kind: "Deployment", Name: dep}
 		}
 	}
 	for i := range a.in.ReplicaSets {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -42,6 +43,22 @@ func ControllerOf(refs []metav1.OwnerReference) *metav1.OwnerReference {
 		return &refs[0]
 	}
 	return nil
+}
+
+// PodDeployment names the Deployment a pod's ReplicaSet would belong to: a
+// Deployment's ReplicaSet is <deployment>-<pod-template-hash>, and its pods
+// carry the hash. ok is false unless the pod's controller is a ReplicaSet
+// named that way; callers check that the Deployment exists. It lets the
+// analysers resolve owners without listing ReplicaSets, whose old revisions
+// can run to tens of MB.
+func PodDeployment(p *corev1.Pod) (rs, deployment string, ok bool) {
+	c := ControllerOf(p.OwnerReferences)
+	hash := p.Labels["pod-template-hash"]
+	if c == nil || c.Kind != "ReplicaSet" || hash == "" {
+		return "", "", false
+	}
+	deployment, ok = strings.CutSuffix(c.Name, "-"+hash)
+	return c.Name, deployment, ok && deployment != ""
 }
 
 // Plural formats a count with the singular or plural noun: "1 pod", "2 pods".

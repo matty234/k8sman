@@ -253,6 +253,19 @@ func refFromOwner(ns string, r *metav1.OwnerReference) *ObjectRef {
 
 func (a *analyzer) indexOwners() {
 	a.rsOwn = map[string]*ObjectRef{}
+	// Deployments' ReplicaSets resolve from their pods (kube.PodDeployment):
+	// the server fetches only the ReplicaSets that don't.
+	deps := map[string]bool{}
+	for i := range a.in.Deployments {
+		d := &a.in.Deployments[i]
+		deps[kube.Key(d.Namespace, d.Name)] = true
+	}
+	for i := range a.in.Pods {
+		p := &a.in.Pods[i]
+		if rs, dep, ok := kube.PodDeployment(p); ok && deps[kube.Key(p.Namespace, dep)] {
+			a.rsOwn[kube.Key(p.Namespace, rs)] = &ObjectRef{Group: "apps", Kind: "Deployment", Name: dep, Namespace: p.Namespace}
+		}
+	}
 	for i := range a.in.ReplicaSets {
 		rs := &a.in.ReplicaSets[i]
 		if c := kube.ControllerOf(rs.OwnerReferences); c != nil {

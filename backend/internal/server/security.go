@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -13,6 +16,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -140,6 +144,12 @@ func (s *Server) handleSecurityObject(w http.ResponseWriter, r *http.Request, sc
 	// The object is shown wherever it lives, system namespaces included.
 	in.IncludeSystem = true
 	in.Pending = security.PendingCategories(pending)
+	if obj.Kind == "ReplicaSet" && obj.Group == "apps" {
+		// The run fetched only the ReplicaSets running pods need.
+		if rs, err := c.Typed.AppsV1().ReplicaSets(obj.Namespace).Get(r.Context(), obj.Name, metav1.GetOptions{}); err == nil {
+			in.ReplicaSets = append(slices.Clip(in.ReplicaSets), *rs)
+		}
+	}
 	res := security.AnalyzeObject(in, obj, s.settings.SecurityIgnores(c.Context))
 	// Images scanned on demand with the local trivy CLI.
 	for i := range res.Images {
@@ -200,7 +210,12 @@ func startSecurity(c *cluster.Clients, ns, rbacNS string) *securityLists {
 	listInto(l, kc, "deployments", gvrDeployments, ns, "", func(in *security.Input, v []appsv1.Deployment) { in.Deployments = v })
 	listInto(l, kc, "statefulsets", gvrStatefulSets, ns, "", func(in *security.Input, v []appsv1.StatefulSet) { in.StatefulSets = v })
 	listInto(l, kc, "daemonsets", gvrDaemonSets, ns, "", func(in *security.Input, v []appsv1.DaemonSet) { in.DaemonSets = v })
-	listInto(l, kc, "replicasets", gvrReplicaSets, ns, "", func(in *security.Input, v []appsv1.ReplicaSet) { in.ReplicaSets = v })
+	// Not every ReplicaSet (old revisions can be tens of MB): only those
+	// pods run under that don't resolve to a Deployment by name.
+	l.Go("replicasets", func() (func(*security.Input), error) {
+		rss, err := podReplicaSets(ctx, c, kc, ns)
+		return func(in *security.Input) { in.ReplicaSets = rss }, err
+	})
 	listInto(l, kc, "jobs", gvrJobs, ns, "", func(in *security.Input, v []batchv1.Job) { in.Jobs = v })
 	listInto(l, kc, "cronjobs", gvrCronJobs, ns, "", func(in *security.Input, v []batchv1.CronJob) { in.CronJobs = v })
 	listInto(l, kc, "services", gvrServices, ns, "", func(in *security.Input, v []corev1.Service) { in.Services = v })
@@ -323,4 +338,69 @@ func handleScan(w http.ResponseWriter, r *http.Request, sc *security.Scanner) {
 	default:
 		httpx.WriteJSON(w, 200, res)
 	}
+}
+
+// podReplicaSets fetches, one GET each, the ReplicaSets that pods in scope
+// ns run under and that don't resolve to a Deployment by name
+// (kube.PodDeployment): standalone ones and those of other controllers
+// (an Argo Rollout, say). Listing every ReplicaSet instead reads every old
+// revision's pod template. Gone ones are skipped; an error is returned only
+// when none could be read.
+func podReplicaSets(ctx context.Context, c *cluster.Clients, kc *kcache.Cache, ns string) ([]appsv1.ReplicaSet, error) {
+	pods, err := listTyped[corev1.Pod](ctx, kc, gvrPods, ns, "")
+	if err != nil {
+		return nil, err
+	}
+	// Without Deployments (forbidden, say) every referenced ReplicaSet is read.
+	deps, _ := listTyped[appsv1.Deployment](ctx, kc, gvrDeployments, ns, "")
+	have := make(map[string]bool, len(deps))
+	for i := range deps {
+		have[kube.Key(deps[i].Namespace, deps[i].Name)] = true
+	}
+	type ref struct{ ns, name string }
+	want := map[ref]bool{}
+	for i := range pods {
+		p := &pods[i]
+		if _, dep, ok := kube.PodDeployment(p); ok && have[kube.Key(p.Namespace, dep)] {
+			continue
+		}
+		if o := kube.ControllerOf(p.OwnerReferences); o != nil && o.Kind == "ReplicaSet" && kube.Group(o.APIVersion) == "apps" {
+			want[ref{p.Namespace, o.Name}] = true
+		}
+	}
+	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		out      []appsv1.ReplicaSet
+		firstErr error
+		failed   int
+	)
+	sem := make(chan struct{}, 8)
+	for r := range want {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			rs, err := c.Typed.AppsV1().ReplicaSets(r.ns).Get(ctx, r.name, metav1.GetOptions{})
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case err == nil:
+				out = append(out, *rs)
+			case !apierrors.IsNotFound(err):
+				failed++
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if failed > 0 && len(out) == 0 {
+		return nil, firstErr
+	}
+	slices.SortFunc(out, func(a, b appsv1.ReplicaSet) int {
+		return strings.Compare(kube.Key(a.Namespace, a.Name), kube.Key(b.Namespace, b.Name))
+	})
+	return out, nil
 }
