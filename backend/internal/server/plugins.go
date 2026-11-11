@@ -37,6 +37,13 @@ import (
 //	GET    /api/plugins/status          {plugins: {id: {text, severity, kinds, errors}}}: status lines (plugins_data.go)
 //	GET    /api/plugins/events          WebSocket: {"generation": n} on every change
 //	POST   /api/plugins/run             ?plugin&action&group&version&resource&namespace&name: a background shell action
+//	GET    /api/plugins/directory       ?refresh: the plugin directory (Browse), with the updates available
+//	GET    /api/plugins/directory/updates     the installed directory plugins with a newer version
+//	POST   /api/plugins/directory/install     {id, permissionsHash?}: {consent} to ask, or (consented) installed: as GET /api/plugins
+//	POST   /api/plugins/directory/uninstall   {id}
+//
+// Installing plugins changes this computer's state, not the cluster's, so
+// --read-only doesn't apply (as for the other plugin settings).
 //
 // Shell actions run through GET /api/local-shell?plugin=&action=&… (see
 // localshell.go), or POST /api/plugins/run in the background: the backend
@@ -63,6 +70,79 @@ func (m *pluginsModule) Routes(r httpx.Router, d Deps) {
 	r.HandleFunc("GET /api/plugins/status", s.handlePluginStatus)
 	r.HandleFunc("GET /api/plugins/events", s.handlePluginEvents)
 	r.HandleFunc("POST /api/plugins/run", s.handlePluginRun)
+	r.HandleFunc("GET /api/plugins/directory", s.handlePluginDirectory)
+	r.HandleFunc("GET /api/plugins/directory/updates", s.handlePluginDirectory)
+	r.HandleFunc("POST /api/plugins/directory/install", s.handlePluginInstall)
+	r.HandleFunc("POST /api/plugins/directory/uninstall", s.handlePluginUninstall)
+}
+
+func (s *Server) pluginDirectory() *plugins.Directory {
+	s.dirOnce.Do(func() {
+		if s.directory == nil {
+			s.directory = plugins.DirectoryFromEnv(s.plugins)
+		}
+	})
+	return s.directory
+}
+
+func (s *Server) handlePluginDirectory(w http.ResponseWriter, r *http.Request) {
+	if s.plugins == nil {
+		writeErr(w, httpx.BadRequest("plugins are off"))
+		return
+	}
+	st := s.pluginDirectory().State(r.Context(), r.URL.Query().Get("refresh") != "")
+	if strings.HasSuffix(r.URL.Path, "/updates") {
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"status": st.Status, "error": st.Error, "updates": st.Updates})
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, st)
+}
+
+// handlePluginInstall installs a plugin from the directory: without the
+// package's permissions hash (or with another) it answers {consent} for
+// the UI to ask; with it, the plugin is installed and the answer is the
+// plugin list. An update whose permissions are unchanged installs at once
+// when the UI sends the installed version's hash.
+func (s *Server) handlePluginInstall(w http.ResponseWriter, r *http.Request) {
+	body, ok := httpx.DecodeJSON[struct {
+		ID              string `json:"id"`
+		PermissionsHash string `json:"permissionsHash"`
+	}](w, r, 0)
+	if !ok {
+		return
+	}
+	if s.plugins == nil || body.ID == "" {
+		writeErr(w, httpx.BadRequest("no plugin to install"))
+		return
+	}
+	pend, err := s.pluginDirectory().Install(r.Context(), body.ID, body.PermissionsHash)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadGateway, "", err.Error())
+		return
+	}
+	if !pend.Installed {
+		httpx.WriteJSON(w, http.StatusOK, map[string]any{"consent": pend})
+		return
+	}
+	s.handlePlugins(w, r)
+}
+
+func (s *Server) handlePluginUninstall(w http.ResponseWriter, r *http.Request) {
+	body, ok := httpx.DecodeJSON[struct {
+		ID string `json:"id"`
+	}](w, r, 0)
+	if !ok {
+		return
+	}
+	if s.plugins == nil {
+		writeErr(w, httpx.BadRequest("plugins are off"))
+		return
+	}
+	if err := s.pluginDirectory().Uninstall(body.ID); err != nil {
+		writeErr(w, httpx.BadRequest("%v", err))
+		return
+	}
+	s.handlePlugins(w, r)
 }
 
 // pluginsOn reports whether any plugin's contributions apply: a bundled

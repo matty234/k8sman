@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -50,6 +51,10 @@ type Server struct {
 	securityRuns runRegistry[*securityLists]
 	// plugins are the runtime plugins (nil = none; see plugins.go).
 	plugins *plugins.Host
+	// directory installs plugins from the plugin directory (made on
+	// first use; see pluginDirectory).
+	directory *plugins.Directory
+	dirOnce   sync.Once
 	// pluginMetrics caches plugin metric queries (15 s per query).
 	pluginMetrics pluginMetricCache
 }
@@ -70,11 +75,13 @@ type Options struct {
 	AuthToken string
 	// Plugins is the runtime plugin host. Optional.
 	Plugins *plugins.Host
+	// Directory is the plugin directory (nil = plugins.DirectoryFromEnv).
+	Directory *plugins.Directory
 }
 
 // New builds the server and registers routes.
 func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, opts Options) *Server {
-	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, settings: opts.Settings, mux: http.NewServeMux(), token: opts.AuthToken, plugins: opts.Plugins}
+	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, settings: opts.Settings, mux: http.NewServeMux(), token: opts.AuthToken, plugins: opts.Plugins, directory: opts.Directory}
 	if s.settings == nil {
 		s.settings, _ = settings.Open("")
 	}

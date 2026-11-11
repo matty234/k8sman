@@ -237,6 +237,10 @@ final class BackendSupervisor {
     p.arguments = args
     var env = environment()
     env["K8SMAN_AUTH_TOKEN"] = newToken
+    // For plugins' minAppVersion (the plugin directory installs only what fits).
+    if let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+      env["K8SMAN_APP_VERSION"] = v
+    }
     p.environment = env
     p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
 

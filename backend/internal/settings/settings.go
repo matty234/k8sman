@@ -103,8 +103,8 @@ type Settings struct {
 
 // PluginSettings are the runtime plugin settings.
 type PluginSettings struct {
-	// DevMode loads plugins (in this version they load only in dev mode):
-	// those in <settings dir>/plugins and DevFolders, hot reloaded.
+	// DevMode loads unpacked plugins: folders in <settings dir>/plugins
+	// without an Installed record, and DevFolders, hot reloaded.
 	DevMode bool `json:"devMode,omitempty"`
 	// DevFolders are folders added with "Load plugin folder…": a plugin
 	// folder, or a folder of plugin folders.
@@ -120,13 +120,28 @@ type PluginSettings struct {
 	// settings.json. Absent = the plugin. An id whose module is gone is
 	// ignored.
 	UseModule []string `json:"useModule,omitempty"`
+	// Installed records the plugins installed from the plugin directory
+	// (docs/PLUGINS.md §10), by id: <settings dir>/plugins/<id>. A folder
+	// there without a record is an unpacked plugin (dev mode only).
+	Installed map[string]InstalledPlugin `json:"installed,omitempty"`
+}
+
+// InstalledPlugin is one plugin installed from the plugin directory.
+type InstalledPlugin struct {
+	Version         string `json:"version"`
+	SHA256          string `json:"sha256,omitempty"`
+	PermissionsHash string `json:"permissionsHash"`
+	// Revoked says why the installed version is off (the directory
+	// withdrew it); cleared by an update.
+	Revoked string `json:"revoked,omitempty"`
 }
 
 func (p *PluginSettings) clone() *PluginSettings {
 	if p == nil {
 		return nil
 	}
-	return &PluginSettings{DevMode: p.DevMode, DevFolders: slices.Clone(p.DevFolders), Disabled: slices.Clone(p.Disabled), Consent: maps.Clone(p.Consent), UseModule: slices.Clone(p.UseModule)}
+	return &PluginSettings{DevMode: p.DevMode, DevFolders: slices.Clone(p.DevFolders), Disabled: slices.Clone(p.Disabled), Consent: maps.Clone(p.Consent), UseModule: slices.Clone(p.UseModule),
+		Installed: maps.Clone(p.Installed)}
 }
 
 // UpdatePlugins applies fn to the plugin settings and saves them.
@@ -137,7 +152,7 @@ func (st *Store) UpdatePlugins(fn func(p *PluginSettings)) error {
 			p = &PluginSettings{}
 		}
 		fn(p)
-		if !p.DevMode && len(p.DevFolders) == 0 && len(p.Disabled) == 0 && len(p.Consent) == 0 && len(p.UseModule) == 0 {
+		if !p.DevMode && len(p.DevFolders) == 0 && len(p.Disabled) == 0 && len(p.Consent) == 0 && len(p.UseModule) == 0 && len(p.Installed) == 0 {
 			p = nil
 		}
 		s.Plugins = p

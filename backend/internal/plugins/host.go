@@ -28,7 +28,8 @@ import (
 const (
 	SourceDev       = "dev"       // a folder added in the app (settings.json)
 	SourceFlag      = "flag"      // --plugin-dev
-	SourceInstalled = "installed" // <settings dir>/plugins/<id>
+	SourceInstalled = "installed" // <settings dir>/plugins/<id>, unpacked (no directory record)
+	SourceDirectory = "directory" // <settings dir>/plugins/<id>, installed from the plugin directory
 	SourceBundled   = "bundled"   // compiled into the backend (internal/plugins/bundled)
 )
 
@@ -122,12 +123,17 @@ func (p *Plugin) PermissionsHash() string {
 	if p.m == nil {
 		return ""
 	}
-	perm := p.m.Permissions
+	return permissionsHash(p.m.ID, p.m.Permissions)
+}
+
+// permissionsHash is PermissionsHash for plugin id asking for perm (also
+// of an index entry, before its package is downloaded).
+func permissionsHash(id string, perm Permissions) string {
 	norm := Permissions{Read: slices.Sorted(slices.Values(perm.Read)), Patch: slices.Sorted(slices.Values(perm.Patch)), Commands: slices.Sorted(slices.Values(perm.Commands)), Prometheus: perm.Prometheus}
 	b, _ := json.Marshal(struct {
 		ID string
 		P  Permissions
-	}{p.m.ID, norm})
+	}{id, norm})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:8])
 }
@@ -258,8 +264,10 @@ func (h *Host) Start() {
 	go h.Reload()
 }
 
-// DevMode reports whether plugins load at all: in Milestone 1 only in
-// dev mode (Settings ▸ Plugins, or --plugin-dev).
+// DevMode reports whether unpacked plugins (dev folders, --plugin-dev,
+// folders dropped in the installed folder) load (Settings ▸ Plugins, or
+// --plugin-dev). Bundled plugins and those installed from the plugin
+// directory load either way.
 func (h *Host) DevMode() bool {
 	if h == nil {
 		return false
@@ -318,11 +326,11 @@ func (h *Host) Bump() {
 type folder struct{ dir, source string }
 
 // folders are the plugin folders to load: a folder with a plugin.yaml is
-// one plugin; otherwise each subfolder with one is.
+// one plugin; otherwise each subfolder with one is. Installed-folder
+// subfolders with a directory record load always; the rest only in dev
+// mode.
 func (h *Host) folders() []folder {
-	if !h.DevMode() {
-		return nil
-	}
+	dev, st := h.DevMode(), h.settings()
 	var out []folder
 	seen := map[string]bool{}
 	add := func(dir, source string) {
@@ -362,9 +370,27 @@ func (h *Host) folders() []folder {
 		}
 	}
 	if h.opts.InstalledDir != "" {
-		expand(h.opts.InstalledDir, SourceInstalled, false)
+		entries, _ := os.ReadDir(h.opts.InstalledDir)
+		for _, e := range entries {
+			// Dot folders are install staging (directory.go).
+			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+				continue
+			}
+			dir := filepath.Join(h.opts.InstalledDir, e.Name())
+			if _, err := os.Stat(filepath.Join(dir, ManifestFile)); err != nil {
+				continue
+			}
+			if _, ok := st.Installed[e.Name()]; ok {
+				add(dir, SourceDirectory)
+			} else if dev {
+				add(dir, SourceInstalled)
+			}
+		}
 	}
-	for _, d := range h.settings().DevFolders {
+	if !dev {
+		return out
+	}
+	for _, d := range st.DevFolders {
 		expand(d, SourceDev, true)
 	}
 	for _, d := range h.opts.FlagDirs {
@@ -382,7 +408,7 @@ func (h *Host) Reload() {
 	fs := h.folders()
 	loaded := h.loadBundled()
 	for _, f := range fs {
-		loaded = append(loaded, loadPlugin(f.dir, f.source, f.source != SourceInstalled))
+		loaded = append(loaded, loadPlugin(f.dir, f.source, f.source != SourceInstalled && f.source != SourceDirectory))
 	}
 	h.mu.Lock()
 	h.plugins = h.mergeLocked(loaded, nil)
@@ -434,7 +460,7 @@ func (h *Host) reloadDir(dir string) {
 	if old == nil {
 		return
 	}
-	np := loadPlugin(dir, old.source, old.source != SourceInstalled)
+	np := loadPlugin(dir, old.source, old.source != SourceInstalled && old.source != SourceDirectory)
 	h.mu.Lock()
 	h.plugins = h.mergeLocked([]*Plugin{np}, old)
 	h.bumpLocked()
@@ -499,10 +525,21 @@ func (h *Host) mergeLocked(loaded []*Plugin, old *Plugin) []*Plugin {
 	return list
 }
 
-// userPluginsOn reports whether the user's own plugins (dev folders and
-// the installed folder) apply: dev mode, and the host module on.
+// userPluginsOn reports whether the user's unpacked plugins (dev folders
+// and folders dropped in the installed folder) apply: dev mode, and the
+// host module on.
 func (h *Host) userPluginsOn(st settings.PluginSettings) bool {
 	return (len(h.opts.FlagDirs) > 0 || st.DevMode) && !h.opts.Settings.ModuleDisabled(HostModule)
+}
+
+// userOn reports whether non-bundled plugin p applies: one installed
+// from the directory needs only the host module on (and its version not
+// revoked); an unpacked one, userPluginsOn too.
+func (h *Host) userOn(st settings.PluginSettings, p *Plugin) bool {
+	if p.source == SourceDirectory {
+		return !h.opts.Settings.ModuleDisabled(HostModule) && st.Installed[filepath.Base(p.dir)].Revoked == ""
+	}
+	return h.userPluginsOn(st)
 }
 
 // active are the plugins whose contributions apply: loaded, not turned
@@ -514,15 +551,12 @@ func (h *Host) active() []*Plugin {
 		return nil
 	}
 	st := h.settings()
-	user := h.userPluginsOn(st)
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	override := map[string]bool{}
-	if user {
-		for _, p := range h.plugins {
-			if p.m != nil && p.source != SourceBundled {
-				override[p.m.ID] = true
-			}
+	for _, p := range h.plugins {
+		if p.m != nil && p.source != SourceBundled && h.userOn(st, p) {
+			override[p.m.ID] = true
 		}
 	}
 	out := make([]*Plugin, 0, len(h.plugins))
@@ -530,7 +564,7 @@ func (h *Host) active() []*Plugin {
 		if p.m == nil || slices.Contains(st.Disabled, p.m.ID) || h.usesModule(st, p.m.ID) {
 			continue
 		}
-		if p.source == SourceBundled && override[p.m.ID] || p.source != SourceBundled && !user {
+		if p.source == SourceBundled && override[p.m.ID] || p.source != SourceBundled && !h.userOn(st, p) {
 			continue
 		}
 		out = append(out, p)
@@ -938,8 +972,14 @@ type Info struct {
 	Authors     []string `json:"authors,omitempty"`
 	Homepage    string   `json:"homepage,omitempty"`
 	Dir         string   `json:"dir"`
-	// Source: dev, flag, installed or bundled.
+	// Source: dev, flag, installed (dropped in the installed folder),
+	// directory (installed from the plugin directory) or bundled.
 	Source string `json:"source"`
+	// Unpacked: not signed (dev, flag, installed); loads only in dev mode
+	// and is never updated.
+	Unpacked bool `json:"unpacked,omitempty"`
+	// Revoked says why a directory plugin's version is off.
+	Revoked string `json:"revoked,omitempty"`
 	// Active: its contributions apply now (loaded, on, not overridden or
 	// set aside for its module, and user plugins on for non-bundled ones).
 	Active bool `json:"active"`
@@ -1017,13 +1057,14 @@ func (h *Host) List(served func(key string) bool) []Info {
 	for _, p := range plugins {
 		if p.m != nil && p.source == SourceBundled {
 			bundled[p.m.ID] = true
-		} else if p.m != nil && h.userPluginsOn(st) {
+		} else if p.m != nil && h.userOn(st, p) {
 			user[p.m.ID] = true
 		}
 	}
 	out := make([]Info, 0, len(plugins))
 	for _, p := range plugins {
-		in := Info{ID: p.ID(), Name: p.Name(), Dir: p.dir, Source: p.source, Active: active[p], Loaded: p.m != nil, Diags: p.diags, Kinds: []KindInfo{},
+		in := Info{ID: p.ID(), Name: p.Name(), Dir: p.dir, Source: p.source, Unpacked: p.source == SourceDev || p.source == SourceFlag || p.source == SourceInstalled,
+			Active: active[p], Loaded: p.m != nil, Diags: p.diags, Kinds: []KindInfo{},
 			LoadMillis: ms(p.loadDur), LoadedAt: p.loadedAt, Stats: p.stats.snapshot()}
 		if p.source == SourceBundled {
 			in.Overridden = user[in.ID]
@@ -1031,6 +1072,9 @@ func (h *Host) List(served func(key string) bool) []Info {
 			in.UsingModule = h.usesModule(st, in.ID)
 		} else {
 			in.Overrides = in.ID != "" && bundled[in.ID]
+		}
+		if p.source == SourceDirectory {
+			in.Revoked = st.Installed[filepath.Base(p.dir)].Revoked
 		}
 		if in.Diags == nil {
 			in.Diags = []Diag{}

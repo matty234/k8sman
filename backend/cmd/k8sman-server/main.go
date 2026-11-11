@@ -64,6 +64,8 @@ func main() {
 	}
 
 	cluster.CacheDir = *cacheDir
+	// The app passes its version, for plugins' minAppVersion.
+	plugins.AppVersion = os.Getenv("K8SMAN_APP_VERSION")
 	st, err := settings.Open(*settingsPath)
 	if err != nil {
 		log.Printf("settings: %v (using defaults)", err)
@@ -96,8 +98,12 @@ func main() {
 		Bundled: bundled.FS, Replaces: bundled.ReplacesModule})
 	ph.Start()
 	defer ph.Close()
+	// The plugin directory checks for updates and revocations daily while
+	// any plugin from it is installed.
+	pdir := plugins.DirectoryFromEnv(ph)
+	go pdir.Run(context.Background())
 
-	srv := &http.Server{Handler: server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st, NoRemoteIcons: *noRemoteIcon, IconCacheDir: *iconCache, AuthToken: token, Plugins: ph})}
+	srv := &http.Server{Handler: server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st, NoRemoteIcons: *noRemoteIcon, IconCacheDir: *iconCache, AuthToken: token, Plugins: ph, Directory: pdir})}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
