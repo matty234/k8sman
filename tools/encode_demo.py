@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Encodes demo clips recorded by frontend/integration_test/demo_capture_test.dart.
 
-    tools/encode_demo.py <raw dir> <out dir> <scene> [--gif]
+    tools/encode_demo.py <raw dir> <out dir> <scene> [--gif] [--size WxH]
+                         [--crf N] [--suffix -dark]
 
 Reads <scene>.rgba (raw RGBA frames) and <scene>.json (width, height and
 per-frame timestamps in ms), resamples to a constant frame rate, and writes
-<out>/demo-<scene>.avif (1280x800, 15 fps) and, with --gif, a 960x600 GIF
-fallback.
+<out>/demo-<scene><suffix>.avif (1280x800 unless --size, 15 fps, SVT-AV1 at
+--crf, default 38) and, with --gif, a 960x600 GIF fallback. Record at
+DEMO_SCALE=2 for --size 2560x1600.
 """
 import json
 import os
@@ -50,17 +52,25 @@ def encode(raw, meta, fps, args):
 
 def main():
     raw_dir, out_dir, scene = sys.argv[1:4]
-    gif = "--gif" in sys.argv[4:]
+    opts = sys.argv[4:]
+    gif = "--gif" in opts
+
+    def opt(name, default):
+        return opts[opts.index(name) + 1] if name in opts else default
+
+    w, h = opt("--size", "1280x800").split("x")
+    crf = opt("--crf", "38")
+    suffix = opt("--suffix", "")
     raw = os.path.join(raw_dir, f"{scene}.rgba")
     with open(os.path.join(raw_dir, f"{scene}.json")) as f:
         meta = json.load(f)
-    avif = os.path.join(out_dir, f"demo-{scene}.avif")
+    avif = os.path.join(out_dir, f"demo-{scene}{suffix}.avif")
     encode(raw, meta, AVIF_FPS, [
-        "-vf", "scale=1280:800:flags=lanczos,format=yuv420p",
-        "-c:v", "libsvtav1", "-crf", "38", "-preset", "6", avif])
+        "-vf", f"scale={w}:{h}:flags=lanczos,format=yuv420p",
+        "-c:v", "libsvtav1", "-crf", crf, "-preset", "6", avif])
     print(f"{avif} {os.path.getsize(avif) // 1024} KB")
     if gif:
-        out = os.path.join(out_dir, f"demo-{scene}.gif")
+        out = os.path.join(out_dir, f"demo-{scene}{suffix}.gif")
         encode(raw, meta, GIF_FPS, [
             "-vf", "scale=960:600:flags=lanczos,split[a][b];"
                    "[a]palettegen=max_colors=128:stats_mode=diff[p];"
