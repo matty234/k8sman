@@ -559,19 +559,22 @@ class _GroupHeader extends StatelessWidget {
       onTap: onTap,
       cursor: SystemMouseCursors.basic,
       builder: (h) => Padding(
-        padding: EdgeInsets.fromLTRB(nested ? 26 : 18, nested ? 6 : 16, 14, 4),
+        padding: EdgeInsets.fromLTRB(nested ? 26 : 18, nested ? 8 : 16, 14, 4),
         child: Row(children: [
-          if (group != null) ...[GroupIcon(group: group!, size: 14), const SizedBox(width: 6)],
+          if (group != null) ...[GroupIcon(group: group!, size: nested ? 15 : 14), const SizedBox(width: 6)],
           Expanded(
             child: Text(title,
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: nested ? faint : theme.hintColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
-                )),
+                // CRD groups read as rows (a name, not a section label).
+                style: nested
+                    ? theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w500)
+                    : theme.textTheme.labelSmall?.copyWith(
+                        color: theme.hintColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                      )),
           ),
           if (problems != null)
             Tooltip(
@@ -677,7 +680,8 @@ class _NavItem extends StatelessWidget {
       key: ValueKey('nav-kind-${type.gk}'),
       leading: (color) => Icon(navKindIcon(type), size: 15, color: color),
       label: kindLabel(type),
-      indent: nested ? 18 : 10,
+      // Nested: the kind's icon lines up under its group's name.
+      indent: nested ? 41 : 10,
       selected: selected,
       trailing: p == null ? null : _ProblemBadge(problems: p),
       onTap: () => context.read<AppState>().selectType(type),
