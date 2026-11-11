@@ -3,19 +3,25 @@ package plugins
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/matty234/k8sman/backend/internal/cluster"
 )
 
-// Patch actions change the object they are offered for, and only through
+// Patch, subresource and create actions write to the cluster only through
 // the app's action path: POST /api/actions/plugin.<id>.<action> (read-only
-// refusal, availability, dry-run), which calls Host.PatchAction for the
-// body. The body is built here, in the backend, from the plugin's CEL and
-// the user's inputs, which are checked here too: the UI's form is a
-// convenience, not a check.
+// refusal, availability, dry-run), which calls Host.BuildAction for the
+// request. Patch actions change the object they are offered for,
+// subresource actions call one of its subresources (KubeVirt's restart),
+// create actions create an object that refers to it (a migration, a
+// snapshot). The body is built here, in the backend, from the plugin's
+// CEL and the user's inputs, which are checked here too: the UI's form is
+// a convenience, not a check.
 
 // InputError is an input the backend refused; Input names it.
 type InputError struct {
@@ -25,13 +31,22 @@ type InputError struct {
 
 func (e *InputError) Error() string { return e.Message }
 
-// PatchOut is a patch action's change, ready to send.
-type PatchOut struct {
+// Change is a patch, subresource or create action's request, built and
+// checked, ready to send.
+type Change struct {
 	Label string
-	// Type is merge or json.
-	Type string
-	// Body is the patch (JSON).
+	// Kind is patch, subresource or create.
+	Kind string
+	// PatchType is a patch's: merge or json.
+	PatchType string
+	// Body is JSON: the patch, the subresource's body, or the object to
+	// create.
 	Body []byte
+	// Subresource, Method, Group and Version are a subresource call's
+	// (Group and Version defaulted to the object's).
+	Subresource, Method, Group, Version string
+	// Object is the object to create; its namespace is "" or the object's.
+	Object map[string]any
 }
 
 // zeroInput is an input's value when neither the user nor its default
@@ -96,10 +111,10 @@ func coerceInput(in *Input, v any) (any, error) {
 	return s, nil
 }
 
-// patchBody checks the inputs and evaluates patch action ap's body for
-// the object in r. given are the user's values by input name (missing
-// ones take their default).
-func patchBody(ap actProg, r *renderer, given map[string]any) (*PatchOut, error) {
+// buildChange checks the inputs and evaluates action ap's body for the
+// object in r, of type rt. given are the user's values by input name
+// (missing ones take their default).
+func buildChange(ap actProg, r *renderer, rt cluster.ResourceType, given map[string]any) (*Change, error) {
 	a := ap.a
 	ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
 	defer cancel()
@@ -147,14 +162,75 @@ func patchBody(ap actProg, r *renderer, given map[string]any) (*PatchOut, error)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkPatch(a.Patch.Type, v); err != nil {
-		return nil, fmt.Errorf("%s: %w", a.Patch.Body.pos, err)
+	out := &Change{Label: a.Label, Kind: a.Kind()}
+	var bodyPos Pos
+	switch {
+	case a.Patch != nil:
+		bodyPos, out.PatchType = a.Patch.Body.pos, a.Patch.Type
+		err = checkPatch(a.Patch.Type, v)
+	case a.Subresource != nil:
+		sr := a.Subresource
+		bodyPos = sr.Body.pos
+		out.Subresource, out.Method = sr.Name, orDefault(sr.Method, "PUT")
+		out.Group, out.Version = rt.Group, rt.Version
+		if sr.Group != "" {
+			out.Group = sr.Group
+		}
+		if sr.Version != "" {
+			out.Version = sr.Version
+		}
+		if v == nil {
+			v = map[string]any{}
+		}
+		if _, ok := v.(map[string]any); !ok {
+			err = fmt.Errorf("a subresource body must be a map")
+		}
+	case a.Create != nil:
+		bodyPos = a.Create.Body.pos
+		out.Object, err = checkCreate(a.Create.Kind, r.act.namespace, v)
 	}
-	b, err := json.Marshal(v)
 	if err != nil {
+		return nil, fmt.Errorf("%s: %w", bodyPos, err)
+	}
+	if out.Body, err = json.Marshal(v); err != nil {
 		return nil, err
 	}
-	return &PatchOut{Label: a.Label, Type: a.Patch.Type, Body: b}, nil
+	return out, nil
+}
+
+// checkCreate checks a create body: a map with apiVersion and kind of
+// kind key, and metadata with a name or generateName, in no namespace
+// but ns (the object's).
+func checkCreate(key, ns string, v any) (map[string]any, error) {
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("a create body must be a map (the object)")
+	}
+	apiVersion, _ := obj["apiVersion"].(string)
+	kind, _ := obj["kind"].(string)
+	if apiVersion == "" || kind == "" {
+		return nil, fmt.Errorf("the object needs apiVersion and kind")
+	}
+	group := ""
+	if g, _, found := strings.Cut(apiVersion, "/"); found {
+		group = g
+	}
+	if got := group + "/" + kind; got != key {
+		return nil, fmt.Errorf("the object is a %s, but create.kind is %s", got, key)
+	}
+	if why := createDenied(key); why != "" {
+		return nil, errors.New(why)
+	}
+	md, _ := obj["metadata"].(map[string]any)
+	name, _ := md["name"].(string)
+	gen, _ := md["generateName"].(string)
+	if name == "" && gen == "" {
+		return nil, fmt.Errorf("the object needs metadata.name or metadata.generateName")
+	}
+	if n, set := md["namespace"]; set && n != ns && n != "" {
+		return nil, fmt.Errorf("the object's namespace must be the object's own (%q), not %v", ns, n)
+	}
+	return obj, nil
 }
 
 // checkPatch checks the body's shape: a non-empty map for a merge patch, a

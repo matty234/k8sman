@@ -46,6 +46,11 @@ type Permissions struct {
 	Patch      []string `yaml:"patch" json:"patch,omitempty"`
 	Commands   []string `yaml:"commands" json:"commands,omitempty"`
 	Prometheus bool     `yaml:"prometheus" json:"prometheus,omitempty"`
+	// Subresources are what subresource actions may call: kind key + "/" +
+	// subresource (kubevirt.io/VirtualMachine/restart). Since 0.2.20.
+	Subresources []string `yaml:"subresources" json:"subresources,omitempty"`
+	// Create are the kinds create actions may create. Since 0.2.20.
+	Create []string `yaml:"create" json:"create,omitempty"`
 }
 
 // Nav is a section of the sidebar's kinds list for the plugin's kinds
@@ -330,23 +335,71 @@ type TableColumn struct {
 	Severity Expr `yaml:"severity"`
 }
 
-// Action is a kind's action: a shell command run on this computer, or a
-// patch of the object through the app's action path
-// (POST /api/actions/plugin.<id>.<action>).
+// Action is a kind's action: a shell command run on this computer, or,
+// through the app's action path (POST /api/actions/plugin.<id>.<action>),
+// a patch of the object, a call of one of its subresources, or the
+// creation of an object that refers to it.
 type Action struct {
-	ID        string  `yaml:"id"`
-	Label     string  `yaml:"label"`
-	Icon      string  `yaml:"icon"`
-	When      Expr    `yaml:"when"`
-	Shortcut  string  `yaml:"shortcut"`
-	Dangerous *bool   `yaml:"dangerous"`
-	Confirm   *bool   `yaml:"confirm"`
-	Message   string  `yaml:"message"`
-	Shell     *Shell  `yaml:"shell"`
-	Patch     *Patch  `yaml:"patch"`
-	Inputs    []Input `yaml:"inputs"`
-	pos       Pos
+	ID        string `yaml:"id"`
+	Label     string `yaml:"label"`
+	Icon      string `yaml:"icon"`
+	When      Expr   `yaml:"when"`
+	Shortcut  string `yaml:"shortcut"`
+	Dangerous *bool  `yaml:"dangerous"`
+	Confirm   *bool  `yaml:"confirm"`
+	Message   string `yaml:"message"`
+	Shell     *Shell `yaml:"shell"`
+	Patch     *Patch `yaml:"patch"`
+	// Subresource and Create are since 0.2.20.
+	Subresource *Subresource `yaml:"subresource"`
+	Create      *Create      `yaml:"create"`
+	Inputs      []Input      `yaml:"inputs"`
+	pos         Pos
 }
+
+// Subresource is a subresource action's request: Method on
+// /apis/{group}/{version}/[namespaces/{ns}/]{resource}/{object}/{name}.
+type Subresource struct {
+	// Name is the subresource (restart, pause, …).
+	Name string `yaml:"name"`
+	// Method is PUT (default) or POST.
+	Method string `yaml:"method"`
+	// Group and Version serve it (default: the object's), e.g.
+	// subresources.kubevirt.io for KubeVirt's aggregated API.
+	Group   string `yaml:"group"`
+	Version string `yaml:"version"`
+	// Body is a map sent as JSON (default {}); it sees input.
+	Body Expr `yaml:"body"`
+}
+
+// Create is a create action's object.
+type Create struct {
+	// Kind is the kind key of the object created; must be in
+	// permissions.create.
+	Kind string `yaml:"kind"`
+	// Body is the object: a map with apiVersion, kind and metadata.name or
+	// metadata.generateName; it sees input.
+	Body Expr `yaml:"body"`
+}
+
+// Kind is shell, patch, subresource or create.
+func (a *Action) Kind() string {
+	switch {
+	case a.Shell != nil:
+		return "shell"
+	case a.Patch != nil:
+		return "patch"
+	case a.Subresource != nil:
+		return "subresource"
+	case a.Create != nil:
+		return "create"
+	}
+	return ""
+}
+
+// Writes is whether the action writes through the action path (patch,
+// subresource or create).
+func (a *Action) Writes() bool { return a.Patch != nil || a.Subresource != nil || a.Create != nil }
 
 // Patch is a patch action's change to the object.
 type Patch struct {
@@ -412,6 +465,7 @@ var (
 	alertSections   = []string{"pods", "workloads", "jobs", "nodes", "storage", "network", "custom"}
 	inputTypes      = []string{"string", "int", "bool", "enum"}
 	patchTypes      = []string{"merge", "json"}
+	subMethods      = []string{"PUT", "POST"}
 	messageSeverity = []string{"info", "warning", "error"}
 	// severities are what a severity expression returns (badges, section
 	// badges, field and cell values). severityAliases were accepted before
@@ -433,6 +487,46 @@ var (
 // their values, and can't change them.
 const secretKind = "/Secret"
 
+// Subresource and create actions never touch these: credentials, RBAC and
+// admission are not a plugin's to change, and the core group's pod and
+// service subresources are not what the feature is for.
+var (
+	deniedSubresources  = []string{"exec", "attach", "portforward", "proxy", "log", "eviction", "status", "scale", "binding", "token", "approval", "ephemeralcontainers"}
+	deniedSubresourceOn = []string{secretKind, "/ServiceAccount"}
+	deniedCreateKinds   = []string{secretKind, "/ServiceAccount"}
+	deniedCreateGroups  = []string{"rbac.authorization.k8s.io", "admissionregistration.k8s.io"}
+	subresourceNameRe   = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	subresourcePermRe   = regexp.MustCompile(`^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*/[a-z][a-z0-9-]*$`)
+	apiGroupRe          = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
+	apiVersionRe        = regexp.MustCompile(`^v[0-9]+((alpha|beta)[0-9]+)?$`)
+)
+
+// writeActionsVersion is the release that brought subresource and create
+// actions.
+const writeActionsVersion = "0.2.20"
+
+// subresourceDenied says why subresource sub of kind key can't be called
+// ("" = it can).
+func subresourceDenied(key, sub string) string {
+	switch {
+	case slices.Contains(deniedSubresources, sub):
+		return "plugins can't call the " + sub + " subresource"
+	case slices.Contains(deniedSubresourceOn, key):
+		return "plugins can't call subresources of " + key
+	}
+	return ""
+}
+
+// createDenied says why kind key can't be created by a plugin ("" = it
+// can).
+func createDenied(key string) string {
+	group, _, _ := strings.Cut(key, "/")
+	if slices.Contains(deniedCreateKinds, key) || slices.Contains(deniedCreateGroups, group) {
+		return "plugins can't create " + key
+	}
+	return ""
+}
+
 // relatedLimit caps the objects of a list relation (owner, selector or
 // filter) unless it sets limit, which can raise it to relatedMaxLimit.
 const (
@@ -442,9 +536,10 @@ const (
 
 // usage is what the kinds use of the permissions (checked both ways).
 type usage struct {
-	read, patch map[string]bool
-	commands    map[string]bool
-	prometheus  bool
+	read, patch          map[string]bool
+	subresources, create map[string]bool
+	commands             map[string]bool
+	prometheus           bool
 }
 
 // blockFields lists the fields each block type takes (besides type, when).
@@ -556,12 +651,30 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 			d.errAt(permAt("patch"), "permissions.patch: plugins can't change Secrets")
 		}
 	}
+	for _, k := range m.Permissions.Subresources {
+		if !subresourcePermRe.MatchString(k) {
+			d.errAt(permAt("subresources"), "permissions.subresources: %q is not a kind key and a subresource such as kubevirt.io/VirtualMachine/restart", k)
+			continue
+		}
+		i := strings.LastIndex(k, "/")
+		if why := subresourceDenied(k[:i], k[i+1:]); why != "" {
+			d.errAt(permAt("subresources"), "permissions.subresources: %s", why)
+		}
+	}
+	for _, k := range m.Permissions.Create {
+		switch {
+		case !kindKeyRe.MatchString(k):
+			d.errAt(permAt("create"), "permissions.create: %q is not a kind key such as kubevirt.io/VirtualMachineInstanceMigration", k)
+		case createDenied(k) != "":
+			d.errAt(permAt("create"), "permissions.create: %s", createDenied(k))
+		}
+	}
 	if len(m.Kinds) == 0 {
 		d.errAt(at("kinds"), "kinds is empty: a plugin contributes to at least one kind")
 	}
 	kindsNode := resolve(field(doc, "kinds"))
 	_, keyNodes := mapKeys(kindsNode)
-	used := &usage{read: map[string]bool{}, patch: map[string]bool{}, commands: map[string]bool{}}
+	used := &usage{read: map[string]bool{}, patch: map[string]bool{}, subresources: map[string]bool{}, create: map[string]bool{}, commands: map[string]bool{}}
 	for _, key := range m.KindOrder {
 		k := m.Kinds[key]
 		kn := keyNodes[key]
@@ -614,6 +727,19 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 		if !used.patch[k] {
 			d.warnAt(permAt("patch"), "permissions.patch: %s is declared but no patch action changes it", k)
 		}
+	}
+	for _, k := range m.Permissions.Subresources {
+		if !used.subresources[k] {
+			d.warnAt(permAt("subresources"), "permissions.subresources: %s is declared but no subresource action calls it", k)
+		}
+	}
+	for _, k := range m.Permissions.Create {
+		if !used.create[k] {
+			d.warnAt(permAt("create"), "permissions.create: %s is declared but no create action creates it", k)
+		}
+	}
+	if len(m.Permissions.Subresources)+len(m.Permissions.Create) > 0 && !versionAtLeast(m.MinAppVersion, writeActionsVersion) {
+		d.warnAt(permAt("subresources"), "subresource and create actions need k8sman ≥ %s: set minAppVersion: %q so older apps say so instead of failing to load", writeActionsVersion, writeActionsVersion)
 	}
 	for _, c := range m.Permissions.Commands {
 		if !used.commands[c] {
@@ -835,16 +961,22 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 		if msg := shortcutProblem(a.Shortcut); msg != "" {
 			d.warnAt(resolve(field(an, "shortcut")), "shortcut %q %s; it is ignored", a.Shortcut, msg)
 		}
-		if (a.Shell == nil) == (a.Patch == nil) {
-			d.errAt(an, "action %q needs exactly one of shell and patch", a.ID)
+		kinds := 0
+		for _, set := range []bool{a.Shell != nil, a.Patch != nil, a.Subresource != nil, a.Create != nil} {
+			if set {
+				kinds++
+			}
+		}
+		if kinds != 1 {
+			d.errAt(an, "action %q needs exactly one of shell, patch, subresource and create", a.ID)
 			continue
 		}
-		if a.Patch != nil {
-			a.validatePatch(d, m, key, an, used)
+		if a.Writes() {
+			a.validateWrite(d, m, key, an, used)
 			continue
 		}
 		if len(a.Inputs) > 0 {
-			d.errAt(resolve(field(an, "inputs")), "action %q: inputs are for patch actions only", a.ID)
+			d.errAt(resolve(field(an, "inputs")), "action %q: inputs are for patch, subresource and create actions only", a.ID)
 		}
 		sn := resolve(field(an, "shell"))
 		if a.Shell.Command == "" {
@@ -932,27 +1064,79 @@ func shortcutProblem(s string) string {
 	return ""
 }
 
-// validatePatch checks a patch action of kind key.
-func (a *Action) validatePatch(d *decoder, m *Manifest, key string, an *yaml.Node, used *usage) {
-	pn := resolve(field(an, "patch"))
+// versionAtLeast is whether semver v is at least min (false when v isn't
+// a version).
+func versionAtLeast(v, min string) bool {
+	have, err := semver.NewVersion(v)
+	return err == nil && !have.LessThan(semver.MustParse(min))
+}
+
+// validateWrite checks a patch, subresource or create action of kind key,
+// and its inputs.
+func (a *Action) validateWrite(d *decoder, m *Manifest, key string, an *yaml.Node, used *usage) {
+	kind := a.Kind()
+	pn := resolve(field(an, kind))
+	if key == "*" {
+		d.errAt(pn, `action %q: %s actions belong to a kind, not "*"`, a.ID, kind)
+	}
 	switch {
-	case key == "*":
-		d.errAt(pn, `action %q: patch actions belong to a kind, not "*"`, a.ID)
-	case key == secretKind:
-		d.errAt(pn, "action %q: plugins can't change Secrets", a.ID)
-	case !slices.Contains(m.Permissions.Patch, key):
-		d.errAt(pn, "action %q: %s is not in permissions.patch", a.ID, key)
-	default:
-		used.patch[key] = true
-	}
-	if !slices.Contains(patchTypes, a.Patch.Type) {
-		d.errAt(orNode(resolve(field(pn, "type")), pn), "patch.type must be merge or json")
-	}
-	if !a.Patch.Body.IsSet() {
-		d.errAt(pn, "patch.body is required")
+	case a.Patch != nil:
+		switch {
+		case key == "*":
+		case key == secretKind:
+			d.errAt(pn, "action %q: plugins can't change Secrets", a.ID)
+		case !slices.Contains(m.Permissions.Patch, key):
+			d.errAt(pn, "action %q: %s is not in permissions.patch", a.ID, key)
+		default:
+			used.patch[key] = true
+		}
+		if !slices.Contains(patchTypes, a.Patch.Type) {
+			d.errAt(orNode(resolve(field(pn, "type")), pn), "patch.type must be merge or json")
+		}
+		if !a.Patch.Body.IsSet() {
+			d.errAt(pn, "patch.body is required")
+		}
+	case a.Subresource != nil:
+		sr := a.Subresource
+		perm := key + "/" + sr.Name
+		switch {
+		case !subresourceNameRe.MatchString(sr.Name):
+			d.errAt(orNode(resolve(field(pn, "name")), pn), "subresource.name is required: lower-case letters, digits and dashes, e.g. restart")
+		case key == "*":
+		case subresourceDenied(key, sr.Name) != "":
+			d.errAt(pn, "action %q: %s", a.ID, subresourceDenied(key, sr.Name))
+		case !slices.Contains(m.Permissions.Subresources, perm):
+			d.errAt(pn, "action %q: %s is not in permissions.subresources", a.ID, perm)
+		default:
+			used.subresources[perm] = true
+		}
+		if sr.Method != "" && !slices.Contains(subMethods, sr.Method) {
+			d.errAt(resolve(field(pn, "method")), "subresource.method must be PUT or POST")
+		}
+		if sr.Group != "" && !apiGroupRe.MatchString(sr.Group) {
+			d.errAt(resolve(field(pn, "group")), "subresource.group must be an API group such as subresources.kubevirt.io")
+		}
+		if sr.Version != "" && !apiVersionRe.MatchString(sr.Version) {
+			d.errAt(resolve(field(pn, "version")), "subresource.version must be an API version such as v1")
+		}
+	case a.Create != nil:
+		c := a.Create
+		switch {
+		case !kindKeyRe.MatchString(c.Kind):
+			d.errAt(orNode(resolve(field(pn, "kind")), pn), "create.kind is required: the kind key of the object created, e.g. kubevirt.io/VirtualMachineInstanceMigration")
+		case createDenied(c.Kind) != "":
+			d.errAt(resolve(field(pn, "kind")), "action %q: %s", a.ID, createDenied(c.Kind))
+		case !slices.Contains(m.Permissions.Create, c.Kind):
+			d.errAt(resolve(field(pn, "kind")), "action %q: %s is not in permissions.create", a.ID, c.Kind)
+		default:
+			used.create[c.Kind] = true
+		}
+		if !c.Body.IsSet() {
+			d.errAt(pn, "create.body is required")
+		}
 	}
 	if a.Confirm != nil && !*a.Confirm {
-		d.warnAt(resolve(field(an, "confirm")), "patch actions are always confirmed; confirm is ignored")
+		d.warnAt(resolve(field(an, "confirm")), "%s actions are always confirmed; confirm is ignored", kind)
 	}
 	insNode := resolve(field(an, "inputs"))
 	names := map[string]bool{}

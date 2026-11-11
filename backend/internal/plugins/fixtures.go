@@ -301,13 +301,16 @@ func renderFixture(p *Plugin, cfg FixtureConfig, path string) ([]byte, error) {
 				for _, k := range []string{"plugin", "consented"} {
 					delete(a, k)
 				}
-				if ap.a.Patch != nil {
-					if body, err := patchBody(ap, r, nil); err != nil {
+				if ap.a.Writes() {
+					if ch, err := buildChange(ap, r, rt, nil); err != nil {
 						a["error"] = err.Error()
 					} else {
 						var b any
-						_ = json.Unmarshal(body.Body, &b)
+						_ = json.Unmarshal(ch.Body, &b)
 						a["body"] = b
+						if ch.Subresource != "" {
+							a["request"] = ch.Method + " " + strings.TrimPrefix(ch.Group+"/"+ch.Version, "/") + " " + rt.Resource + "/" + ch.Subresource
+						}
 					}
 				}
 				acts = append(acts, a)

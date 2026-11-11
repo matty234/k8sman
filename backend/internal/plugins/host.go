@@ -132,7 +132,11 @@ func (p *Plugin) PermissionsHash() string {
 // permissionsHash is PermissionsHash for plugin id asking for perm (also
 // of an index entry, before its package is downloaded).
 func permissionsHash(id string, perm Permissions) string {
-	norm := Permissions{Read: slices.Sorted(slices.Values(perm.Read)), Patch: slices.Sorted(slices.Values(perm.Patch)), Commands: slices.Sorted(slices.Values(perm.Commands)), Prometheus: perm.Prometheus}
+	sorted := func(l []string) []string { return slices.Sorted(slices.Values(l)) }
+	// Fields added later are omitempty, so they leave the hashes of
+	// plugins that don't use them as they were.
+	norm := Permissions{Read: sorted(perm.Read), Patch: sorted(perm.Patch), Commands: sorted(perm.Commands), Prometheus: perm.Prometheus,
+		Subresources: sorted(perm.Subresources), Create: sorted(perm.Create)}
 	b, _ := json.Marshal(struct {
 		ID string
 		P  Permissions
@@ -142,7 +146,7 @@ func permissionsHash(id string, perm Permissions) string {
 }
 
 // trusted plugins (bundled ones) need no consent: they ship with the app.
-// Their shell and patch actions are still confirmed on every run and
+// Their shell and write actions are still confirmed on every run and
 // refused on read-only contexts, as everyone's are.
 func (p *Plugin) trusted() bool { return p.source == SourceBundled }
 
@@ -914,33 +918,49 @@ func (h *Host) ShellAction(env Env, rt cluster.ResourceType, obj map[string]any,
 	return ap.a, nil
 }
 
-// PatchAction builds patch action actionID of plugin pluginID for obj
-// from the user's inputs: it checks that the action is offered and
-// consented to, that the plugin may patch the kind (never Secrets), and
-// the inputs (an *InputError names a bad one).
-func (h *Host) PatchAction(env Env, rt cluster.ResourceType, obj map[string]any, pluginID, actionID string, inputs map[string]any) (*PatchOut, error) {
+// BuildAction builds patch, subresource or create action actionID of
+// plugin pluginID for obj from the user's inputs: it checks that the
+// action is offered and consented to, that the plugin's permissions allow
+// it (never Secrets, nor the denied subresources and kinds), and the
+// inputs (an *InputError names a bad one).
+func (h *Host) BuildAction(env Env, rt cluster.ResourceType, obj map[string]any, pluginID, actionID string, inputs map[string]any) (*Change, error) {
 	p, ap, r, err := h.action(env, rt, obj, pluginID, actionID)
 	if err != nil {
 		return nil, err
 	}
-	key := KindKey(rt)
-	if ap.a.Patch == nil || key == secretKind || !slices.Contains(p.m.Permissions.Patch, key) {
+	if !p.mayWrite(KindKey(rt), ap.a) {
 		return nil, ErrNoAction
 	}
 	start := time.Now()
-	out, err := patchBody(ap, r, inputs)
+	out, err := buildChange(ap, r, rt, inputs)
 	p.stats.record(statAction, time.Since(start), err)
 	return out, err
 }
 
-// PatchTargets are the patch actions of the active plugins, as action
-// names (plugin.<id>.<action>) and the kind keys they apply to.
-func (h *Host) PatchTargets() map[string][]string {
+// mayWrite is whether p's permissions allow write action a on kind key
+// (checked at load too; again here, where the request is made).
+func (p *Plugin) mayWrite(key string, a *Action) bool {
+	perm := p.m.Permissions
+	switch {
+	case a.Patch != nil:
+		return key != secretKind && slices.Contains(perm.Patch, key)
+	case a.Subresource != nil:
+		return subresourceDenied(key, a.Subresource.Name) == "" && slices.Contains(perm.Subresources, key+"/"+a.Subresource.Name)
+	case a.Create != nil:
+		return createDenied(a.Create.Kind) == "" && slices.Contains(perm.Create, a.Create.Kind)
+	}
+	return false
+}
+
+// WriteTargets are the patch, subresource and create actions of the
+// active plugins, as action names (plugin.<id>.<action>) and the kind keys
+// they apply to.
+func (h *Host) WriteTargets() map[string][]string {
 	out := map[string][]string{}
 	for _, p := range h.active() {
 		for _, key := range p.m.KindOrder {
-			for _, a := range p.m.Kinds[key].Actions {
-				if a.Patch != nil && key != secretKind && slices.Contains(p.m.Permissions.Patch, key) {
+			for i := range p.m.Kinds[key].Actions {
+				if a := &p.m.Kinds[key].Actions[i]; p.mayWrite(key, a) {
 					out[ActionName(p.ID(), a.ID)] = append(out[ActionName(p.ID(), a.ID)], key)
 				}
 			}

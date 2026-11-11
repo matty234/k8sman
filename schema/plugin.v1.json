@@ -12,12 +12,30 @@
           "required": [
             "patch"
           ]
+        },
+        {
+          "required": [
+            "subresource"
+          ]
+        },
+        {
+          "required": [
+            "create"
+          ]
         }
       ],
       "properties": {
         "confirm": {
           "description": "Shell actions are always confirmed in this version.",
           "type": "boolean"
+        },
+        "create": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Create"
+            }
+          ],
+          "description": "Create an object that refers to this one (e.g. a migration or a snapshot). Since 0.2.20 (set minAppVersion)."
         },
         "dangerous": {
           "description": "Default true. Dangerous actions are styled as such; every plugin action is hidden on read-only contexts.",
@@ -111,7 +129,7 @@
           "type": "string"
         },
         "inputs": {
-          "description": "Form fields of a patch action, read as input.\u003cname\u003e.",
+          "description": "Form fields of a patch, subresource or create action, read as input.\u003cname\u003e.",
           "items": {
             "$ref": "#/$defs/Input"
           },
@@ -131,6 +149,14 @@
         },
         "shortcut": {
           "type": "string"
+        },
+        "subresource": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Subresource"
+            }
+          ],
+          "description": "Call a subresource of the object (e.g. KubeVirt's restart). Since 0.2.20 (set minAppVersion)."
         },
         "when": {
           "description": "CEL expression.",
@@ -643,6 +669,25 @@
       ],
       "type": "object"
     },
+    "Create": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "description": "CEL expression. The object: a map with apiVersion, kind (matching create.kind) and metadata.name or metadata.generateName; its namespace is the object's. Sees input.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Kind key of the object created; must be in permissions.create.",
+          "pattern": "^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "body"
+      ],
+      "type": "object"
+    },
     "FieldItem": {
       "additionalProperties": false,
       "properties": {
@@ -1030,6 +1075,14 @@
           },
           "type": "array"
         },
+        "create": {
+          "description": "Kinds create actions may create (never Secrets, ServiceAccounts, RBAC or admission kinds). Since 0.2.20 (set minAppVersion).",
+          "items": {
+            "pattern": "^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
         "patch": {
           "description": "Kinds patch actions may change (never Secrets).",
           "items": {
@@ -1049,6 +1102,14 @@
           "description": "Kinds the plugin reads: its own and related ones. Secrets: names and keys only.",
           "items": {
             "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "subresources": {
+          "description": "Subresources subresource actions may call: kind key + \"/\" + subresource, e.g. kubevirt.io/VirtualMachine/restart. Since 0.2.20 (set minAppVersion).",
+          "items": {
+            "pattern": "^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*/[a-z][a-z0-9-]*$",
             "type": "string"
           },
           "type": "array"
@@ -1314,6 +1375,39 @@
       "required": [
         "label",
         "when"
+      ],
+      "type": "object"
+    },
+    "Subresource": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "description": "CEL expression. A map sent as JSON (default {}); sees input.",
+          "type": "string"
+        },
+        "group": {
+          "description": "The API group serving it (default: the object's), e.g. subresources.kubevirt.io.",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "PUT",
+            "POST"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "The subresource; kind key + \"/\" + name must be in permissions.subresources.",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "version": {
+          "description": "Its API version (default: the object's).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
       ],
       "type": "object"
     },

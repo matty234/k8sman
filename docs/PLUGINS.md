@@ -233,6 +233,61 @@ on the table's selected row once the inspector has loaded that row's
 actions. The table's own keys win; the loader warns about a clash or a
 shortcut it can't bind.
 
+### Subresource and create actions
+
+*Since 0.2.20: set `minAppVersion: 0.2.20` (older apps reject the fields).*
+Two more kinds of action take the same path as patch actions (read-only
+refusal, consent, inputs checked by the backend, a confirmation):
+
+- **subresource** calls a subresource of the object with your
+  credentials: `PUT` (default) or `POST`
+  `/apis/{group}/{version}/namespaces/{ns}/{resource}/{name}/{subresource}`
+  (`/api/v1/…` for the core group, no `namespaces/{ns}` for cluster-scoped
+  kinds). `group` and `version` default to the object's; set them for an
+  aggregated API such as KubeVirt's `subresources.kubevirt.io`. `body` is
+  an optional CEL map (default `{}`). Subresource writes have no dry run,
+  so the confirmation shows the request (method, path, body) and nothing
+  is sent until you confirm.
+- **create** creates an object that refers to this one. `kind` is its kind
+  key; `body` (CEL) is the object: `apiVersion` and `kind` matching
+  `kind`, and `metadata.name` or `metadata.generateName`. A namespaced
+  object goes in the object's namespace (a body can't name another one);
+  a cluster-scoped one has none. The dry run is a server-side create; the
+  confirmation shows the object it would create, and the result names it.
+
+```yaml
+minAppVersion: 0.2.20
+permissions:
+  read: [kubevirt.io/VirtualMachine]
+  subresources: [kubevirt.io/VirtualMachine/restart]   # kind key + "/" + subresource
+  create: [kubevirt.io/VirtualMachineInstanceMigration]
+kinds:
+  kubevirt.io/VirtualMachine:
+    actions:
+      - id: restart
+        label: Restart
+        subresource:
+          name: restart
+          group: subresources.kubevirt.io
+          body: '{"gracePeriodSeconds": 0}'
+      - id: migrate
+        label: Migrate
+        dangerous: false
+        create:
+          kind: kubevirt.io/VirtualMachineInstanceMigration
+          body: >-
+            {"apiVersion": "kubevirt.io/v1", "kind": "VirtualMachineInstanceMigration",
+             "metadata": {"generateName": object.metadata.name + "-migration-"},
+             "spec": {"vmiName": object.metadata.name}}
+```
+
+Some subresources and kinds are never a plugin's, whatever it declares:
+the subresources `exec`, `attach`, `portforward`, `proxy`, `log`,
+`eviction`, `status`, `scale`, `binding`, `token`, `approval` and
+`ephemeralcontainers`, and any subresource of Secrets and ServiceAccounts;
+creating Secrets, ServiceAccounts, RBAC kinds (`rbac.authorization.k8s.io`)
+and admission kinds (`admissionregistration.k8s.io`).
+
 ### Alerts
 
 ```yaml
@@ -795,9 +850,11 @@ timestamp shown as time remaining ("29d"), red once it has passed. It keeps
 | `dangerous` | bool | default `true`; styles the action as dangerous. Every plugin action is hidden, and refused, on read-only contexts |
 | `confirm` | bool | k9s compatibility: every plugin action is confirmed in v1, so `false` is ignored (with a warning) |
 | `message` | string | extra text in the confirmation |
-| `shell` | Shell | exactly one of `shell` and `patch` |
+| `shell` | Shell | exactly one of `shell`, `patch`, `subresource` and `create` |
 | `patch` | Patch | |
-| `inputs` | list of Input | patch actions only |
+| `subresource` | Subresource | since 0.2.20; call a subresource of the object ([Subresource and create actions](#subresource-and-create-actions)) |
+| `create` | Create | since 0.2.20; create an object that refers to this one |
+| `inputs` | list of Input | patch, subresource and create actions |
 
 Shell (k9s-compatible, see below):
 
@@ -815,15 +872,32 @@ Patch:
 | `type` | enum | `merge` or `json` |
 | `body` | **CEL** | a map (merge) or a list of operations (json) |
 
+Subresource (since 0.2.20):
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | required; kind key + `/` + name must be in `permissions.subresources` |
+| `method` | enum | `PUT` (default) or `POST` |
+| `group`, `version` | string | the API serving it (default: the object's group and version) |
+| `body` | **CEL** | a map sent as JSON (default `{}`); sees `input` |
+
+Create (since 0.2.20):
+
+| Field | Type | Notes |
+|---|---|---|
+| `kind` | kind key | required; must be in `permissions.create` |
+| `body` | **CEL** | required; the object: `apiVersion` and `kind` matching `kind`, `metadata.name` or `metadata.generateName`; sees `input` |
+
 Input: `name`, `label`, `type` (`string`, `int`, `bool`, `enum`), `options`
 (enum only), `default` (**CEL**), `validate` (**CEL**, bool, sees `input`),
 `validateMessage`.
 
-Patch actions always confirm (the existing dialog: context named, a warning
-on non-local clusters, a dry-run first) and are refused on read-only
-contexts. There is no field to turn that off. Patch and scale are the only
-API actions in v1; the core already offers Scale for any kind with a scale
-subresource, so plugins don't redeclare it.
+Patch, subresource and create actions always confirm (the existing
+dialog: context named, a warning on non-local clusters, a dry-run first,
+or for a subresource the request) and are refused on read-only contexts.
+There is no field to turn that off. The core already offers Scale for any
+kind with a scale subresource, so plugins don't redeclare it (`scale` is
+not a subresource a plugin may call).
 
 ### Alert
 
@@ -1497,6 +1571,8 @@ note in the section).
 | `patch` | list of kind keys | patch actions on these kinds |
 | `commands` | list of string | executables shell actions may run |
 | `prometheus` | bool | PromQL queries |
+| `subresources` | list of `group/Kind/subresource` | subresource actions calling these (since 0.2.20; never the denied subresources, nor on Secrets or ServiceAccounts) |
+| `create` | list of kind keys | create actions creating these (since 0.2.20; never Secrets, ServiceAccounts, RBAC or admission kinds) |
 
 The loader checks both ways: anything used must be declared (load error),
 anything declared but unused is a warning. Declared rather than inferred so
@@ -1507,7 +1583,7 @@ forbidden list shows "not allowed to list Secrets in `cert-manager`" in the
 section that needed it; the rest of the panel renders. Plugin actions go through `POST /api/actions/{action}` (so
 `handleAction`'s read-only check, availability check and dry-run apply) and
 the UI's `runResourceAction`/`confirmAction`. On read-only contexts every
-plugin action, shell or patch, dangerous or not, is hidden and refused by
+plugin action, shell, patch, subresource or create, dangerous or not, is hidden and refused by
 the backend (question 3, §12).
 
 ## 7. Lifecycle
@@ -2634,6 +2710,38 @@ unseenSuggestions, unseenUpdates}`; the notices show only with status
 /api/plugins/settings {autoUpdate}`) makes the daily check, and turning
 it on, install the updates whose permissions hash equals the installed
 one, then reload; updates with new permissions wait for consent.
+
+### Subresource and create actions (0.2.20)
+
+An addition after the freeze, for a KubeVirt plugin (restart, pause,
+migrate, snapshot): optional `subresource` and `create` on an action, and
+`permissions.subresources` and `permissions.create`. Older apps reject the
+unknown fields, so such a plugin sets `minAppVersion: 0.2.20` (validate
+warns when it doesn't).
+
+- Both are `plugin.<id>.<action>` actions on the plugins module's
+  `ActionSource`, like patch actions: `Host.BuildAction` (was
+  `PatchAction`) checks consent, `when`, the inputs and the permissions
+  again and returns a `Change`; `RunAction` sends it.
+- Subresource: the path is built from the object's resource, namespace
+  and name, with `group`/`version` defaulting to the object's, and sent
+  through the clientset's REST client (the user's credentials). No dry
+  run: the dry-run step answers a preview with `patchType: subresource`
+  and `patch: {method, path, body}`, sending nothing.
+- Create: `create.kind` is declared on the action, not read from the
+  body, so permissions are checked both ways at load; at run the body's
+  `apiVersion`/`kind` must match it. The type comes from discovery
+  (`create` verb required), the namespace is the object's (a body naming
+  another is refused; cluster-scoped kinds get none). The dry run is a
+  `dryRun=All` create; the preview has `patchType: create`, `patch` the
+  object sent and `after` the server's answer as YAML; the result's
+  `created` names the object.
+- The new permission lists are in the permissions hash only when
+  non-empty (`omitempty`), so existing plugins keep their hash and
+  consent; a plugin that adds one is asked again.
+- Deny lists (`deniedSubresources`, `deniedCreateKinds`,
+  `deniedCreateGroups` in `manifest.go`) are load errors and are checked
+  again when an action is built.
 
 ## The v1 freeze
 

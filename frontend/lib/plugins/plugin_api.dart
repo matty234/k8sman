@@ -146,13 +146,24 @@ class PluginPermissions {
   final List<String> patch;
   final List<String> commands;
   final bool prometheus;
-  const PluginPermissions({this.read = const [], this.patch = const [], this.commands = const [], this.prometheus = false});
+
+  /// Subresources subresource actions may call (`group/Kind/subresource`),
+  /// and kinds create actions may create.
+  final List<String> subresources;
+  final List<String> create;
+  const PluginPermissions(
+      {this.read = const [], this.patch = const [], this.commands = const [], this.prometheus = false, this.subresources = const [], this.create = const []});
+
+  /// Whether the plugin may change anything in the cluster.
+  bool get writes => patch.isNotEmpty || subresources.isNotEmpty || create.isNotEmpty;
 
   factory PluginPermissions.fromJson(Json j) => PluginPermissions(
         read: [for (final x in (j['read'] as List? ?? const [])) '$x'],
         patch: [for (final x in (j['patch'] as List? ?? const [])) '$x'],
         commands: [for (final x in (j['commands'] as List? ?? const [])) '$x'],
         prometheus: j['prometheus'] == true,
+        subresources: [for (final x in (j['subresources'] as List? ?? const [])) '$x'],
+        create: [for (final x in (j['create'] as List? ?? const [])) '$x'],
       );
 }
 
@@ -471,7 +482,8 @@ class PluginInput {
 }
 
 /// An action offered for an object: a shell command run on this computer,
-/// or a patch of the object (through `POST /api/actions/plugin.<id>.<action>`).
+/// or (through `POST /api/actions/plugin.<id>.<action>`) a patch of the
+/// object, a call of one of its subresources, or the creation of an object.
 class PluginAction {
   final String plugin;
   final String id;
@@ -481,7 +493,8 @@ class PluginAction {
   final String? message;
   final bool dangerous;
 
-  /// shell or patch.
+  /// shell, or patch, subresource or create (writes through the action
+  /// path).
   final String type;
 
   /// A shell action's command exactly as it will run.
@@ -511,6 +524,10 @@ class PluginAction {
   });
 
   bool get isPatch => type == 'patch';
+
+  /// A patch, subresource or create action: a dry run (for a subresource,
+  /// a description of the request) to confirm, then the change.
+  bool get isWrite => type == 'patch' || type == 'subresource' || type == 'create';
 
   /// Its name on `POST /api/actions/{action}`.
   String get actionName => 'plugin.$plugin.$id';

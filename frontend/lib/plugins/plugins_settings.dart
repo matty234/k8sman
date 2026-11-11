@@ -400,11 +400,14 @@ class PluginRow extends StatelessWidget {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Expanded(
         child: Text(
-          'Reads ${perms.read.isEmpty ? 'nothing' : perms.read.map((k) => k == '*' ? 'every object you inspect' : k).join(', ')}. Runs ${perms.commands.isEmpty ? 'nothing' : perms.commands.join(', ')} on this computer.',
+          'Reads ${perms.read.isEmpty ? 'nothing' : perms.read.map((k) => k == '*' ? 'every object you inspect' : k).join(', ')}. Runs ${perms.commands.isEmpty ? 'nothing' : perms.commands.join(', ')} on this computer.'
+          '${perms.patch.isEmpty ? '' : ' Changes ${perms.patch.join(', ')}.'}'
+          '${perms.subresources.isEmpty ? '' : ' Calls ${perms.subresources.join(', ')}.'}'
+          '${perms.create.isEmpty ? '' : ' Creates ${perms.create.join(', ')}.'}',
           style: hint,
         ),
       ),
-      if (perms.commands.isNotEmpty) ...[
+      if (perms.commands.isNotEmpty || perms.writes) ...[
         const SizedBox(width: 8),
         p.consented
             ? TextButton(onPressed: busy ? null : () => c.call((api) => api.deletePluginConsent(p.id)), child: const Text('Revoke'))

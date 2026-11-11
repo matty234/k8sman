@@ -109,7 +109,7 @@ type blockProg struct {
 type actProg struct {
 	a    *Action
 	when *program
-	// body and inputs are a patch action's.
+	// body and inputs are a patch, subresource or create action's.
 	body   *program
 	inputs []inputProg
 }
@@ -469,8 +469,15 @@ func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
 			return c.restrict(e, env, want, actionCostLimit, "actions", true, false, false)
 		}
 		ap := actProg{a: a, when: act(a.When, env, cel.BoolType)}
-		if a.Patch != nil {
-			ap.body = act(a.Patch.Body, c.input, nil)
+		if a.Writes() {
+			switch {
+			case a.Patch != nil:
+				ap.body = act(a.Patch.Body, c.input, nil)
+			case a.Subresource != nil:
+				ap.body = act(a.Subresource.Body, c.input, nil)
+			case a.Create != nil:
+				ap.body = act(a.Create.Body, c.input, nil)
+			}
 			for j := range a.Inputs {
 				in := &a.Inputs[j]
 				ap.inputs = append(ap.inputs, inputProg{in: in, def: act(in.Default, env, nil), validate: act(in.Validate, c.input, cel.BoolType)})

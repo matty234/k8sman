@@ -219,11 +219,11 @@ func TestPatchActionInputs(t *testing.T) {
 		if len(acts) != 1 {
 			t.Fatalf("offered = %d actions, want resize (its when reads related)", len(acts))
 		}
-		out, err := patchBody(acts[0], r, inputs)
+		out, err := buildChange(acts[0], r, widgetType, inputs)
 		if err != nil {
 			return "", err
 		}
-		return out.Type + " " + string(out.Body), nil
+		return out.PatchType + " " + string(out.Body), nil
 	}
 	// Defaults: the object's size, the enum's first option. JSON numbers
 	// arrive as float64.
@@ -254,8 +254,8 @@ func TestPatchActionInputs(t *testing.T) {
 		t.Fatalf("offered without the secret: %d", len(acts))
 	}
 	// Without consent, the host refuses to build the patch.
-	if _, err := h.PatchAction(env, widgetType, widgetObj("w1", 3), "data", "resize", nil); !errors.Is(err, ErrNoConsent) {
-		t.Fatalf("PatchAction without consent: %v", err)
+	if _, err := h.BuildAction(env, widgetType, widgetObj("w1", 3), "data", "resize", nil); !errors.Is(err, ErrNoConsent) {
+		t.Fatalf("BuildAction without consent: %v", err)
 	}
 
 	// The loader keeps patches to declared kinds, and never Secrets.

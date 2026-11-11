@@ -667,8 +667,8 @@ func renderPanel(p *Plugin, kp *kindProgs, obj map[string]any, env Env) PanelOut
 type ActionOut struct {
 	Plugin string `json:"plugin"`
 	ID     string `json:"id"`
-	// Type is shell (a command on this computer) or patch (a change to
-	// the object through POST /api/actions/plugin.<plugin>.<id>).
+	// Type is shell (a command on this computer), or patch, subresource or
+	// create (a write through POST /api/actions/plugin.<plugin>.<id>).
 	Type      string `json:"type"`
 	Label     string `json:"label"`
 	Icon      string `json:"icon,omitempty"`
@@ -680,8 +680,8 @@ type ActionOut struct {
 	Argv []string `json:"argv,omitempty"`
 	// Background shell actions run without a dock tab.
 	Background bool `json:"background,omitempty"`
-	// PatchType and Inputs are a patch action's (inputs with their
-	// defaults evaluated for the object).
+	// PatchType is a patch action's; Inputs are a patch, subresource or
+	// create action's (with their defaults evaluated for the object).
 	PatchType string     `json:"patchType,omitempty"`
 	Inputs    []InputOut `json:"inputs,omitempty"`
 	// Consented is whether the user has agreed to the plugin's current
@@ -689,7 +689,7 @@ type ActionOut struct {
 	Consented bool `json:"consented"`
 }
 
-// InputOut is a patch action's form field.
+// InputOut is a write action's form field.
 type InputOut struct {
 	Name    string   `json:"name"`
 	Label   string   `json:"label"`
@@ -746,7 +746,10 @@ func actionOut(p *Plugin, ap actProg, r *renderer, vars func() ShellVars, consen
 		out.Type, out.Argv, out.Background = "shell", a.Argv(vars()), a.Shell.Background
 		return out
 	}
-	out.Type, out.PatchType = "patch", a.Patch.Type
+	out.Type = a.Kind()
+	if a.Patch != nil {
+		out.PatchType = a.Patch.Type
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
 	defer cancel()
 	r.ctx = ctx

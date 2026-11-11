@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"slices"
@@ -18,7 +19,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/yaml"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
@@ -35,9 +39,9 @@ import (
 //     permissions.read (the loader checks), from the shared watch cache;
 //   - metrics, through the Prometheus module's QueryVector, cached 15 s
 //     per query, and only while that module is on;
-//   - patch actions, through POST /api/actions/plugin.<id>.<action>
-//     (handleAction: read-only refusal, availability, dry-run), never on
-//     Secrets;
+//   - patch, subresource and create actions, through
+//     POST /api/actions/plugin.<id>.<action> (handleAction: read-only
+//     refusal, availability, dry-run), never on Secrets;
 //   - alerts, as an overview source over the overview's own lists.
 
 // pluginEnv is the evaluation environment for c.
@@ -155,11 +159,17 @@ func (mc *pluginMetricCache) query(ctx context.Context, c *cluster.Clients, inst
 	return samples, err
 }
 
-// ---- patch actions -----------------------------------------------------------
+// ---- write actions -----------------------------------------------------------
 
-// ActionPreview is a dry run's change: the patch and the object before and
-// after it (YAML, without managedFields and the like). Plugin patch
-// actions return one, shown in their confirmation.
+// ActionPreview is a dry run's change, shown in a plugin write action's
+// confirmation. PatchType says which sort:
+//
+//   - merge or json: a patch; Patch is it, Before and After the object
+//     around it (YAML, without managedFields and the like);
+//   - subresource: a subresource call, which has no dry run, so it is
+//     only described: Patch is {method, path, body};
+//   - create: Patch is the object sent, After the object the API server
+//     would create (Before is empty).
 type ActionPreview struct {
 	PatchType string          `json:"patchType"`
 	Patch     json.RawMessage `json:"patch"`
@@ -167,14 +177,14 @@ type ActionPreview struct {
 	After     string          `json:"after"`
 }
 
-// ActionTargets implements ActionSource: every patch action of the active
-// plugins, on its kind ("kind:group/Kind").
+// ActionTargets implements ActionSource: every patch, subresource and
+// create action of the active plugins, on its kind ("kind:group/Kind").
 func (m *pluginsModule) ActionTargets() map[string][]string {
 	if !m.s.pluginsOn() {
 		return nil
 	}
 	out := map[string][]string{}
-	for name, keys := range m.s.plugins.PatchTargets() {
+	for name, keys := range m.s.plugins.WriteTargets() {
 		for _, k := range keys {
 			out[name] = append(out[name], "kind:"+k)
 		}
@@ -182,9 +192,10 @@ func (m *pluginsModule) ActionTargets() map[string][]string {
 	return out
 }
 
-// RunAction implements ActionSource: a plugin's patch action. The body is
-// {"inputs": {name: value}, "dryRun"}. The plugin builds the patch from
-// the object as it is now and the inputs (checked here, not by the UI).
+// RunAction implements ActionSource: a plugin's patch, subresource or
+// create action. The body is {"inputs": {name: value}, "dryRun"}. The
+// plugin builds the request from the object as it is now and the inputs
+// (checked here, not by the UI).
 func (m *pluginsModule) RunAction(a ActionCall) (ActionResult, error) {
 	s := m.s
 	pluginID, actionID, ok := plugins.SplitActionName(a.Action)
@@ -204,21 +215,105 @@ func (m *pluginsModule) RunAction(a ActionCall) (ActionResult, error) {
 	if err != nil {
 		return ActionResult{}, err
 	}
-	po, err := s.plugins.PatchAction(s.pluginEnv(a.Clients), a.Type, before.Object, pluginID, actionID, body.Inputs)
+	ch, err := s.plugins.BuildAction(s.pluginEnv(a.Clients), a.Type, before.Object, pluginID, actionID, body.Inputs)
 	if err != nil {
 		return ActionResult{}, httpx.BadRequest("%v", err)
 	}
+	res := ActionResult{Message: ch.Label + ": " + a.Name, DryRun: a.DryRun, Context: a.Clients.Context}
+	switch ch.Kind {
+	case "subresource":
+		return runSubresource(a, ch, res)
+	case "create":
+		return s.runCreate(a, ch, before, res)
+	}
 	pt := types.MergePatchType
-	if po.Type == "json" {
+	if ch.PatchType == "json" {
 		pt = types.JSONPatchType
 	}
-	after, err := a.Resource.Patch(a.Ctx, a.Name, pt, po.Body, metav1.PatchOptions{FieldManager: fieldManager, DryRun: a.DryRunOpt})
+	after, err := a.Resource.Patch(a.Ctx, a.Name, pt, ch.Body, metav1.PatchOptions{FieldManager: fieldManager, DryRun: a.DryRunOpt})
 	if err != nil {
 		return ActionResult{}, err
 	}
-	res := ActionResult{Message: po.Label + ": " + a.Name, DryRun: a.DryRun, Context: a.Clients.Context}
 	if a.DryRun {
-		res.Preview = &ActionPreview{PatchType: po.Type, Patch: po.Body, Before: previewYAML(before), After: previewYAML(after)}
+		res.Preview = &ActionPreview{PatchType: ch.PatchType, Patch: ch.Body, Before: previewYAML(before), After: previewYAML(after)}
+	}
+	return res, nil
+}
+
+// subresourcePath is the URL path of subresource sub of object name, of
+// type rt in namespace ns, served by group/version.
+func subresourcePath(group, version string, rt cluster.ResourceType, ns, name, sub string) string {
+	p := "/apis/" + group + "/" + version
+	if group == "" {
+		p = "/api/" + version
+	}
+	if rt.Namespaced {
+		p += "/namespaces/" + url.PathEscape(ns)
+	}
+	return p + "/" + rt.Resource + "/" + url.PathEscape(name) + "/" + sub
+}
+
+// runSubresource calls a subresource with the user's credentials.
+// Subresource writes generally have no dry run, so a dry run describes
+// the request instead of sending it.
+func runSubresource(a ActionCall, ch *plugins.Change, res ActionResult) (ActionResult, error) {
+	path := subresourcePath(ch.Group, ch.Version, a.Type, a.Namespace, a.Name, ch.Subresource)
+	if a.DryRun {
+		req, err := json.Marshal(map[string]any{"method": ch.Method, "path": path, "body": json.RawMessage(ch.Body)})
+		if err != nil {
+			return ActionResult{}, err
+		}
+		res.Message += " (not sent: subresource calls have no dry run)"
+		res.Preview = &ActionPreview{PatchType: "subresource", Patch: req}
+		return res, nil
+	}
+	rc, ok := a.Clients.Typed.Discovery().RESTClient().(*rest.RESTClient)
+	if !ok || rc == nil {
+		return ActionResult{}, fmt.Errorf("no REST client for %s", a.Clients.Context)
+	}
+	err := rc.Verb(ch.Method).AbsPath(path).SetHeader("Content-Type", "application/json").Body(ch.Body).Do(a.Ctx).Error()
+	return res, err
+}
+
+// runCreate creates a create action's object, in the object's namespace
+// when its kind is namespaced (none when it is cluster-scoped).
+func (s *Server) runCreate(a ActionCall, ch *plugins.Change, before *unstructured.Unstructured, res ActionResult) (ActionResult, error) {
+	obj := runtime.DeepCopyJSON(ch.Object)
+	gv, err := schema.ParseGroupVersion(fmt.Sprint(obj["apiVersion"]))
+	if err != nil {
+		return ActionResult{}, httpx.BadRequest("apiVersion: %v", err)
+	}
+	kind := fmt.Sprint(obj["kind"])
+	rt, ok := s.typeForKey(a.Ctx, a.Clients, gv.Group+"/"+kind, gv.Version)
+	if !ok {
+		return ActionResult{}, httpx.BadRequest("the cluster doesn't serve %s %s", gv, kind)
+	}
+	if !slices.Contains(rt.Verbs, "create") {
+		return ActionResult{}, httpx.BadRequest("%s can't be created", kind)
+	}
+	md, _ := obj["metadata"].(map[string]any)
+	ns := ""
+	if rt.Namespaced {
+		if ns = before.GetNamespace(); ns == "" {
+			return ActionResult{}, httpx.BadRequest("%s is namespaced and %s isn't: there is no namespace to create it in", kind, a.Name)
+		}
+		md["namespace"] = ns
+	} else {
+		delete(md, "namespace")
+	}
+	var ri dynamic.ResourceInterface = a.Clients.Dynamic.Resource(rt.GVR())
+	if ns != "" {
+		ri = a.Clients.Dynamic.Resource(rt.GVR()).Namespace(ns)
+	}
+	created, err := ri.Create(a.Ctx, &unstructured.Unstructured{Object: obj}, metav1.CreateOptions{FieldManager: fieldManager, DryRun: a.DryRunOpt})
+	if err != nil {
+		return ActionResult{}, err
+	}
+	res.Message = fmt.Sprintf("%s: created %s %s", ch.Label, kind, created.GetName())
+	if a.DryRun {
+		res.Preview = &ActionPreview{PatchType: "create", Patch: ch.Body, After: previewYAML(created)}
+	} else {
+		res.Created = &ObjectRefJSON{Group: gv.Group, Kind: kind, Name: created.GetName(), Namespace: ns}
 	}
 	return res, nil
 }

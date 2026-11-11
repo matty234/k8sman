@@ -35,13 +35,19 @@ List<ResourceAction> pluginActions(PanelContext ctx) {
   if (ctx.app.readOnly) return const [];
   return [
     for (final a in pluginHost.actionsFor(ctx.uid))
-      if (a.isPatch || a.background || localShellSupported)
+      if (a.isWrite || a.background || localShellSupported)
         ResourceAction(
           id: 'plugin.${a.plugin}.${a.id}',
           label: a.label,
-          icon: pluginIcon(a.icon) ?? (a.isPatch ? Icons.edit_outlined : Icons.terminal),
-          tooltip: a.isPatch
-              ? '${a.message ?? 'Changes this ${ctx.type.kind}'} (${a.plugin} plugin; asks first)${_shortcutHint(a)}'
+          icon: pluginIcon(a.icon) ??
+              switch (a.type) {
+                'patch' => Icons.edit_outlined,
+                'subresource' => Icons.bolt_outlined,
+                'create' => Icons.add_circle_outline,
+                _ => Icons.terminal,
+              },
+          tooltip: a.isWrite
+              ? '${a.message ?? _writeSummary(a, ctx.type.kind)} (${a.plugin} plugin; asks first)${_shortcutHint(a)}'
               : '${a.argv.join(' ')}  (${a.plugin} plugin; runs on this computer)${_shortcutHint(a)}',
           run: (context) => runPluginAction(context, ctx, a),
         ),
@@ -49,6 +55,12 @@ List<ResourceAction> pluginActions(PanelContext ctx) {
 }
 
 String _shortcutHint(PluginAction a) => a.shortcut == null ? '' : ' · ${a.shortcut}';
+
+String _writeSummary(PluginAction a, String kind) => switch (a.type) {
+      'subresource' => 'Sends a request to this $kind',
+      'create' => 'Creates an object for this $kind',
+      _ => 'Changes this $kind',
+    };
 
 /// Runs plugin action [a] on [ctx]'s object: first-use consent to the
 /// plugin's permissions, then the action's own flow.
@@ -67,7 +79,7 @@ Future<void> runPluginAction(BuildContext context, PanelContext ctx, PluginActio
     }
     if (!context.mounted) return;
   }
-  if (a.isPatch) return runPluginPatch(context, ctx, a);
+  if (a.isWrite) return runPluginWrite(context, ctx, a);
   final ok = await confirmAction(
     context,
     title: '${a.label}?',
@@ -135,9 +147,10 @@ Future<void> _runBackground(BuildContext context, PanelContext ctx, PluginAction
   }
 }
 
-/// A patch action: its form (when it has inputs), a dry run whose change is
-/// shown in the confirmation, then the change itself.
-Future<void> runPluginPatch(BuildContext context, PanelContext ctx, PluginAction a) async {
+/// A patch, subresource or create action: its form (when it has inputs), a
+/// dry run whose change is shown in the confirmation (a subresource call,
+/// which has no dry run, is described instead), then the change itself.
+Future<void> runPluginWrite(BuildContext context, PanelContext ctx, PluginAction a) async {
   Future<ActionResult> call(Map<String, Object?> inputs, {required bool dryRun}) =>
       ctx.api.runAction(ctx.type.ref, namespace: ctx.namespace, name: ctx.name, action: a.actionName, body: {'inputs': inputs, if (dryRun) 'dryRun': true});
 
@@ -172,7 +185,11 @@ Future<void> runPluginPatch(BuildContext context, PanelContext ctx, PluginAction
     message: a.message,
     kubeContext: ctx.app.currentContext,
     objectName: ctx.name,
-    confirmLabel: 'Apply',
+    confirmLabel: switch (a.type) {
+      'subresource' => 'Send',
+      'create' => 'Create',
+      _ => 'Apply',
+    },
     destructive: a.dangerous,
     width: 600,
     extra: PluginPatchPreview(plugin: a.plugin, preview: preview.preview),
@@ -186,7 +203,9 @@ Future<void> runPluginPatch(BuildContext context, PanelContext ctx, PluginAction
   }
 }
 
-/// The change a dry run reported: the patch and the object's diff.
+/// The change a dry run reported: the patch and the object's diff; for a
+/// subresource call, the request (it has no dry run); for a create, the
+/// object the API server would create.
 class PluginPatchPreview extends StatelessWidget {
   final String plugin;
   final ActionPreview? preview;
@@ -197,6 +216,31 @@ class PluginPatchPreview extends StatelessWidget {
     final p = preview;
     final theme = Theme.of(context);
     if (p == null) return const SizedBox.shrink();
+    if (p.patchType == 'subresource') {
+      final req = p.patch is Map ? p.patch as Map : const {};
+      final body = req['body'];
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('The $plugin plugin sends this request with your credentials (not sent yet: subresource calls have no dry run):', style: theme.textTheme.bodySmall),
+          const SizedBox(height: 6),
+          CodeBlock([
+            '${req['method'] ?? 'PUT'} ${req['path'] ?? ''}',
+            if (body is Map && body.isNotEmpty) const JsonEncoder.withIndent('  ').convert(body),
+          ].join('\n\n')),
+        ]),
+      );
+    }
+    if (p.patchType == 'create') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('The $plugin plugin creates this object (a dry run passed):', style: theme.textTheme.bodySmall),
+          const SizedBox(height: 6),
+          DiffView(lines: diffLines('', p.after), shrinkWrap: true, maxRows: 60),
+        ]),
+      );
+    }
     final lines = diffLines(p.before, p.after);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -352,7 +396,7 @@ class _PluginInputsDialogState extends State<PluginInputsDialog> {
               const SizedBox(width: 6),
               Expanded(child: Text(_error!, key: const ValueKey('plugin-inputs-error'), style: TextStyle(color: severityColor(context, Severity.error)))),
             ]),
-          Text('Next: a dry run, then the change to confirm.', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+          Text(a.type == 'subresource' ? 'Next: the request to confirm.' : 'Next: a dry run, then the change to confirm.', style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
         ]),
       ),
       actions: [
@@ -402,6 +446,9 @@ Future<bool?> showPluginConsent(BuildContext context, PluginInfo p, {bool instal
           if (perms.prometheus) line(Icons.insights_outlined, 'Query', 'Prometheus (through the Prometheus integration)'),
           line(Icons.terminal, 'Run on this computer', perms.commands.isEmpty ? 'nothing' : perms.commands.join(', ')),
           line(Icons.edit_outlined, 'Change', perms.patch.isEmpty ? 'nothing' : '${perms.patch.map(_kindName).join(', ')} (with your confirmation)'),
+          if (perms.subresources.isNotEmpty)
+            line(Icons.bolt_outlined, 'Call', '${perms.subresources.map(_subresourceName).join(', ')} (with your confirmation)'),
+          if (perms.create.isNotEmpty) line(Icons.add_circle_outline, 'Create', '${perms.create.map(_kindName).join(', ')} (with your confirmation)'),
           const SizedBox(height: 8),
           Row(children: [
             Icon(Icons.info_outline, size: 14, color: severityColor(context, Severity.warn)),
@@ -419,6 +466,12 @@ Future<bool?> showPluginConsent(BuildContext context, PluginInfo p, {bool instal
       ],
     ),
   );
+}
+
+/// `kubevirt.io/VirtualMachine/restart` as "restart on VirtualMachine (kubevirt.io)".
+String _subresourceName(String perm) {
+  final i = perm.lastIndexOf('/');
+  return i < 0 ? perm : '${perm.substring(i + 1)} on ${_kindName(perm.substring(0, i))}';
 }
 
 String _kindName(String key) {
