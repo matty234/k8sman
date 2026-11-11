@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -118,8 +119,42 @@ func (s *Service) Nodes(ctx context.Context) ([]NodeUsage, error) {
 	return items, err
 }
 
+// resourceVersion is the metrics.k8s.io version to request: the one status
+// detection chose (cached with the status), v1beta1 when unknown, or v1beta1
+// after a v1 request was NotFound (until the status is next refreshed).
+func (s *Service) resourceVersion(ctx context.Context) string {
+	v := s.Status(ctx, false).Resource.Version
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v == "" || (s.status != nil && s.status.resFallback) {
+		return "v1beta1"
+	}
+	return v
+}
+
+// getResource GETs a metrics.k8s.io path (e.g. "/nodes"). If v1 answers
+// NotFound (an APIService registered but not serving yet) it retries v1beta1
+// once and remembers the fallback.
+func (s *Service) getResource(ctx context.Context, path string, params url.Values) ([]byte, error) {
+	v := s.resourceVersion(ctx)
+	raw, err := s.get.Get(ctx, "/apis/"+ResourceGroup+"/"+v+path, params)
+	if err == nil || v != "v1" || !apierrors.IsNotFound(err) {
+		return raw, err
+	}
+	raw, err2 := s.get.Get(ctx, "/apis/"+ResourceGroup+"/v1beta1"+path, params)
+	if err2 != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	if s.status != nil {
+		s.status.resFallback = true
+	}
+	s.mu.Unlock()
+	return raw, nil
+}
+
 func (s *Service) fetchNodes(ctx context.Context) ([]NodeUsage, error) {
-	raw, err := s.get.Get(ctx, "/apis/metrics.k8s.io/v1beta1/nodes", nil)
+	raw, err := s.getResource(ctx, "/nodes", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -178,15 +213,15 @@ func (s *Service) PodsSelected(ctx context.Context, namespace, labelSelector str
 }
 
 func (s *Service) fetchPods(ctx context.Context, namespace, labelSelector string) ([]PodUsage, error) {
-	path := "/apis/metrics.k8s.io/v1beta1/pods"
+	path := "/pods"
 	if namespace != "" {
-		path = "/apis/metrics.k8s.io/v1beta1/namespaces/" + url.PathEscape(namespace) + "/pods"
+		path = "/namespaces/" + url.PathEscape(namespace) + "/pods"
 	}
 	var params url.Values
 	if labelSelector != "" {
 		params = url.Values{"labelSelector": {labelSelector}}
 	}
-	raw, err := s.get.Get(ctx, path, params)
+	raw, err := s.getResource(ctx, path, params)
 	if err != nil {
 		return nil, err
 	}

@@ -6,7 +6,7 @@ alerts see the Prometheus pages.
 
 | API | Typical provider | Used for |
 |---|---|---|
-| `metrics.k8s.io/v1beta1` | metrics-server | live CPU/memory of nodes, pods and containers |
+| `metrics.k8s.io/v1` (falls back to `v1beta1`) | metrics-server | live CPU/memory of nodes, pods and containers |
 | `custom.metrics.k8s.io/v1beta2` (falls back to `v1beta1`) | prometheus-adapter | per-object application metrics (HPA `Pods` / `Object` metrics) |
 | `external.metrics.k8s.io/v1beta1` | KEDA, cloud adapters | metrics from outside the cluster (HPA `External` metrics) |
 

@@ -23,7 +23,7 @@ type APIStatus struct {
 	// Version is the version k8sman uses (the newest one registered).
 	Version  string   `json:"version,omitempty"`
 	Versions []string `json:"versions,omitempty"`
-	// APIService is the registration name, e.g. v1beta1.metrics.k8s.io.
+	// APIService is the registration name, e.g. v1.metrics.k8s.io.
 	APIService string `json:"apiService,omitempty"`
 	State      string `json:"state"`
 	Available  bool   `json:"available"`
@@ -60,7 +60,7 @@ func (s Status) Of(group string) APIStatus {
 
 // versionPreference orders versions newest-first for the groups we read.
 var versionPreference = map[string][]string{
-	ResourceGroup: {"v1beta1"},
+	ResourceGroup: {"v1", "v1beta1"},
 	CustomGroup:   {"v1beta2", "v1beta1"},
 	ExternalGroup: {"v1beta1"},
 }

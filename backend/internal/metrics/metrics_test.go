@@ -198,3 +198,15 @@ func TestAnalyzeHPA(t *testing.T) {
 		t.Fatalf("proposed %v limitedBy %q", *a.Proposed, a.LimitedBy)
 	}
 }
+
+func TestResourceVersionPreference(t *testing.T) {
+	// Both v1 and v1beta1 registered: v1 paths. v1beta1 only: v1beta1 paths.
+	f := newFake(t).on(apiservicesPath, "apiservices-metrics-v1.json").on("/apis/metrics.k8s.io/v1/nodes", "nodes.json")
+	if _, err := f.service().Nodes(context.Background()); err != nil || f.hits["/apis/metrics.k8s.io/v1/nodes"].Load() != 1 {
+		t.Fatalf("v1: %v", err)
+	}
+	f = healthy(t)
+	if _, err := f.service().Nodes(context.Background()); err != nil || f.hits["/apis/metrics.k8s.io/v1beta1/nodes"].Load() != 1 {
+		t.Fatalf("v1beta1: %v", err)
+	}
+}

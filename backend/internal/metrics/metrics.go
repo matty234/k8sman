@@ -26,7 +26,7 @@ const (
 	ExternalGroup = "external.metrics.k8s.io"
 )
 
-// Getter performs a GET on an absolute API path (e.g. /apis/metrics.k8s.io/v1beta1/nodes).
+// Getter performs a GET on an absolute API path (e.g. /apis/metrics.k8s.io/v1/nodes).
 // Errors for non-2xx responses are *apierrors.StatusError.
 type Getter interface {
 	Get(ctx context.Context, path string, params url.Values) ([]byte, error)
@@ -84,6 +84,8 @@ type cachedPods struct {
 type cachedStatus struct {
 	at  time.Time
 	val Status
+	// resFallback: v1 of metrics.k8s.io answered NotFound, use v1beta1.
+	resFallback bool
 }
 
 // New builds a Service over a Getter.

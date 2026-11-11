@@ -119,7 +119,7 @@ const addonCatalog = <Addon>[
     detectDeployments: ['kube-system/metrics-server'],
     links: [AddonLink.page('Nodes', MainView.nodes), AddonLink.kind('Pods', '', 'Pod')],
     nextSteps: 'Usage appears within a minute, once the first scrape completes, in the CPU and Memory columns of Nodes and Pods.',
-    clusterWide: 'an APIService (v1beta1.metrics.k8s.io) and ClusterRoles',
+    clusterWide: 'an APIService (metrics.k8s.io) and ClusterRoles',
     uninstallNote: 'kubectl top and HorizontalPodAutoscalers on CPU or memory stop working.',
   ),
   Addon(
