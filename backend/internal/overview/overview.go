@@ -375,6 +375,25 @@ func ownerFromRef(r *metav1.OwnerReference) *Owner {
 
 func (a *analyzer) indexOwners() {
 	a.rsOwn = map[string]*Owner{}
+	// A Deployment's ReplicaSet is named <deployment>-<pod-template-hash>,
+	// and its pods carry the hash, so pods and Deployments resolve the
+	// owner without listing ReplicaSets (old revisions make that list huge).
+	deps := map[string]bool{}
+	for i := range a.in.Deployments {
+		d := &a.in.Deployments[i]
+		deps[kube.Key(d.Namespace, d.Name)] = true
+	}
+	for i := range a.in.Pods {
+		p := &a.in.Pods[i]
+		c := kube.ControllerOf(p.OwnerReferences)
+		hash := p.Labels[appsv1.DefaultDeploymentUniqueLabelKey]
+		if c == nil || c.Kind != "ReplicaSet" || hash == "" {
+			continue
+		}
+		if name, ok := strings.CutSuffix(c.Name, "-"+hash); ok && deps[kube.Key(p.Namespace, name)] {
+			a.rsOwn[kube.Key(p.Namespace, c.Name)] = &Owner{Group: "apps", Kind: "Deployment", Name: name}
+		}
+	}
 	for i := range a.in.ReplicaSets {
 		rs := &a.in.ReplicaSets[i]
 		if c := kube.ControllerOf(rs.OwnerReferences); c != nil {

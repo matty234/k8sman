@@ -328,6 +328,16 @@ func TestAnalyzeScenario(t *testing.T) {
 	if crash.Owner == nil || *crash.Owner != (Owner{Group: "apps", Kind: "Deployment", Name: "web"}) {
 		t.Errorf("crashloop owner = %+v", crash.Owner)
 	}
+	// Without ReplicaSets (the server doesn't list them), pod-template-hash
+	// and the Deployments resolve the same owner.
+	lean := scenario()
+	lean.ReplicaSets = nil
+	for i := range lean.Pods {
+		lean.Pods[i].Labels = map[string]string{"pod-template-hash": "5c"}
+	}
+	if o := issuesBy(Analyze(lean), "crashLoop")[0].Owner; o == nil || *o != (Owner{Group: "apps", Kind: "Deployment", Name: "web"}) {
+		t.Errorf("crashloop owner without ReplicaSets = %+v", o)
+	}
 	if crash.Count != 10 || crash.Message != "container app last terminated: exit 1, Error; 10 restarts" {
 		t.Errorf("crashloop count/message = %d %q", crash.Count, crash.Message)
 	}

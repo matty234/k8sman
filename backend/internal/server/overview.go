@@ -85,7 +85,9 @@ func (s *Server) startOverview(c *cluster.Clients, ns string) *OverviewLists {
 	listInto(l.sourceRun, kc, "deployments", gvrDeployments, ns, "", func(in *overview.Input, v []appsv1.Deployment) { in.Deployments = v })
 	listInto(l.sourceRun, kc, "statefulsets", gvrStatefulSets, ns, "", func(in *overview.Input, v []appsv1.StatefulSet) { in.StatefulSets = v })
 	listInto(l.sourceRun, kc, "daemonsets", gvrDaemonSets, ns, "", func(in *overview.Input, v []appsv1.DaemonSet) { in.DaemonSets = v })
-	listInto(l.sourceRun, kc, "replicasets", gvrReplicaSets, ns, "", func(in *overview.Input, v []appsv1.ReplicaSet) { in.ReplicaSets = v })
+	// No ReplicaSets: pod-template-hash and the Deployments resolve a pod's
+	// owner (see overview.indexOwners), and the list of old revisions can
+	// be tens of MB.
 	listInto(l.sourceRun, kc, "jobs", gvrJobs, ns, "", func(in *overview.Input, v []batchv1.Job) { in.Jobs = v })
 	listInto(l.sourceRun, kc, "cronjobs", gvrCronJobs, ns, "", func(in *overview.Input, v []batchv1.CronJob) { in.CronJobs = v })
 	listInto(l.sourceRun, kc, "nodes", gvrNodes, "", "", func(in *overview.Input, v []corev1.Node) { in.Nodes = v })
