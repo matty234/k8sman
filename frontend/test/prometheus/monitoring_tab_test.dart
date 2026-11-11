@@ -27,7 +27,7 @@ class _Api extends PromApi {
               {
                 'group': 'api.rules',
                 'source': {'namespace': 'shop', 'name': 'api-alerts'},
-                'rule': {'type': 'alerting', 'name': 'ApiHighErrorRate', 'query': 'rate(errors_total{job="api"}[5m]) > 1', 'state': 'firing', 'health': 'ok'},
+                'rule': {'type': 'alerting', 'name': 'ApiHighErrorRate', 'query': 'rate(errors_total{job="api"}[5m]) > 1', 'state': 'firing', 'health': 'ok', 'duration': 300, 'labels': {'severity': 'warning'}, 'annotations': {'summary': 'Errors are high'}},
                 'activeAlerts': 1,
                 'reasons': ['has an alert for this pod', 'mentions job="api"'],
               },
@@ -104,8 +104,14 @@ void main() {
     expect(find.text('connection refused'), findsOneWidget);
     expect(find.text('Scrape config'), findsOneWidget);
     expect(find.text('ApiHighErrorRate'), findsWidgets);
-    expect(find.text('mentions job="api"'), findsOneWidget);
+    expect(find.textContaining('mentions job="api"'), findsOneWidget);
     expect(find.text('PrometheusRule shop/api-alerts'), findsOneWidget);
+    expect(find.text('rate(errors_total{job="api"}[5m]) > 1'), findsNothing);
+    await tester.tap(find.text('ApiHighErrorRate').last);
+    await tester.pump();
+    expect(find.text('rate(errors_total{job="api"}[5m]) > 1'), findsOneWidget);
+    expect(find.text('for 5m'), findsOneWidget);
+    expect(find.text('summary: Errors are high'), findsOneWidget);
 
     await _pump(tester, _notScraped);
     expect(tester.takeException(), isNull);

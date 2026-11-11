@@ -337,51 +337,156 @@ class _Alerts extends StatelessWidget {
   }
 }
 
-class _Rules extends StatelessWidget {
+class _Rules extends StatefulWidget {
   final ObjectApplies data;
   final String kind;
   const _Rules({required this.data, required this.kind});
 
   @override
+  State<_Rules> createState() => _RulesState();
+}
+
+class _RulesState extends State<_Rules> {
+  static const _limit = 8;
+  bool _all = false;
+
+  static int _rank(RuleMatch r) => switch (r.rule.state) {
+        'firing' => 0,
+        'pending' => 1,
+        _ => 2,
+      };
+
+  @override
   Widget build(BuildContext context) {
+    final data = widget.data;
+    final kind = widget.kind;
     final theme = Theme.of(context);
     final err = data.errors['rules'] ?? data.errors['prometheus'];
     final jobs = data.jobs.isEmpty ? '' : ' (job${data.jobs.length == 1 ? '' : 's'} ${data.jobs.map((j) => '"$j"').join(', ')})';
+    final sorted = [...data.rules]..sort((a, b) => _rank(a).compareTo(_rank(b)));
+    final shown = _all ? sorted : sorted.take(_limit).toList();
+    final sep = AppColors.of(context).separator;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       HintText('A best guess: rules with an alert for this ${kind.toLowerCase()}, or whose expression or labels mention its job$jobs, namespace or name.'),
       if (err != null) Padding(padding: const EdgeInsets.only(top: 6), child: HintText(err)),
       if (err == null && data.rules.isEmpty) const Padding(padding: EdgeInsets.only(top: 6), child: HintText('None found.')),
-      for (final r in data.rules)
-        Padding(
-          padding: const EdgeInsets.only(top: 9),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              if (r.rule.type == 'alerting')
-                StatusBadge(_state(r.rule.state), dense: true, severity: ruleStateBadge(r.rule.state, r.rule.labels['severity']))
-              else
-                const StatusBadge('Record', dense: true, severity: Severity.neutral),
-              Text(r.rule.name, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
-              if (r.source != null)
-                ResourceLink(
-                  ObjectRef(group: 'monitoring.coreos.com', kind: 'PrometheusRule', namespace: r.source!.namespace, name: r.source!.name),
-                  label: 'PrometheusRule ${r.source!.namespace}/${r.source!.name}',
-                )
-              else
-                HintText('group ${r.group}'),
-            ]),
-            const SizedBox(height: 3),
-            Wrap(spacing: 4, runSpacing: 3, children: [for (final why in r.reasons) Chipish(text: why)]),
-            const SizedBox(height: 3),
-            Text(r.rule.query, maxLines: 3, overflow: TextOverflow.ellipsis, style: monoStyle(context, size: 11, color: theme.hintColor)),
-          ]),
+      const SizedBox(height: 4),
+      for (final (i, r) in shown.indexed) ...[
+        if (i > 0) Divider(height: 1, color: sep),
+        _RuleRow(r),
+      ],
+      if (sorted.length > _limit && !_all)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: InkWell(
+            onTap: () => setState(() => _all = true),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('Show ${sorted.length - _limit} more', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
+            ),
+          ),
         ),
       if (data.rules.length < data.rulesTotal) Padding(padding: const EdgeInsets.only(top: 6), child: HintText('Showing ${data.rules.length} of ${data.rulesTotal}.')),
     ]);
   }
+}
+
+class _RuleRow extends StatefulWidget {
+  final RuleMatch r;
+  const _RuleRow(this.r);
+
+  @override
+  State<_RuleRow> createState() => _RuleRowState();
+}
+
+class _RuleRowState extends State<_RuleRow> {
+  bool _open = false;
 
   static String _state(String? s) => switch (s) {
         'firing' => 'Firing',
         'pending' => 'Pending',
         _ => 'Inactive',
       };
+
+  static String _dur(double secs) {
+    final s = secs.round();
+    if (s > 0 && s % 3600 == 0) return '${s ~/ 3600}h';
+    if (s > 0 && s % 60 == 0) return '${s ~/ 60}m';
+    return '${s}s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final r = widget.r;
+    final rule = r.rule;
+    final small = theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: theme.hintColor);
+    final severity = rule.labels['severity'];
+    final sub = [if (rule.type == 'alerting' && severity != null) severity, ...r.reasons].join(' · ');
+    final extra = {for (final e in rule.labels.entries) if (e.key != 'severity') e.key: e.value};
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      InkWell(
+        onTap: () => setState(() => _open = !_open),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(_open ? Icons.expand_more : Icons.chevron_right, size: 14, color: theme.hintColor),
+              const SizedBox(width: 4),
+              if (rule.type == 'alerting')
+                StatusBadge(_state(rule.state), dense: true, severity: ruleStateBadge(rule.state, severity))
+              else
+                const StatusBadge('Record', dense: true, severity: Severity.neutral),
+              const SizedBox(width: 6),
+              Flexible(
+                flex: 3,
+                child: Text(rule.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: r.source != null
+                      ? ResourceLink(
+                          ObjectRef(group: 'monitoring.coreos.com', kind: 'PrometheusRule', namespace: r.source!.namespace, name: r.source!.name),
+                          label: 'PrometheusRule ${r.source!.namespace}/${r.source!.name}',
+                          singleLine: true,
+                        )
+                      : Text('group ${r.group}', maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
+                ),
+              ),
+            ]),
+            if (sub.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 18, top: 2),
+                child: Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
+              ),
+          ]),
+        ),
+      ),
+      if (_open)
+        Padding(
+          padding: const EdgeInsets.only(left: 18, bottom: 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(color: AppColors.of(context).separator.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(4)),
+              child: SelectableText(rule.query, style: monoStyle(context, size: 11)),
+            ),
+            if (rule.duration > 0) Padding(padding: const EdgeInsets.only(top: 4), child: Text('for ${_dur(rule.duration)}', style: small)),
+            if (extra.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('labels: ${extra.entries.map((e) => '${e.key}="${e.value}"').join(', ')}', style: small),
+              ),
+            for (final a in rule.annotations.entries)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('${a.key}: ${a.value}', style: theme.textTheme.bodySmall),
+              ),
+          ]),
+        ),
+    ]);
+  }
 }
