@@ -337,6 +337,21 @@ and selector set, shared by every user:
   subscriber as the same ERROR frame. `Forbidden`/`NotFound` end the stream
   (and the socket) and the stream is forgotten, so the next attempt LISTs
   again (e.g. after an RBAC fix); other errors retry with 1s..30s backoff.
+- **Metadata first for heavy kinds.** Tables of the kinds in
+  `kapi.MetadataFirst` (Secrets, ConfigMaps, CRDs) use a lean stream: a
+  metadata-only LIST (`PartialObjectMetadataList`) is the first SNAPSHOT,
+  rows marked `pending` for the cells that read more than plain metadata
+  paths. A fill then pages through the full objects (50 per request, at
+  most 4 fills at once, cancelled when the last watcher leaves), keeps a
+  summary of each (Secrets: type, keys and value sizes; ConfigMaps: keys
+  and sizes; CRDs: everything but the schemas) and sends the rows as
+  MODIFIED, one batch per page. The watch starts from the fill's
+  resourceVersion with full objects, summarised per event; a 410 re-list
+  takes the same path. A table uses it only when its columns are
+  metadata paths or the kind's built-in ones (plus plugin columns on
+  Secrets, which see key names only); otherwise it watches full objects.
+  Snapshot readers wait for the fill; plugin lookups of ConfigMaps and
+  CRDs, the inspector and `/api/items` read full objects.
 - **Trimmed objects.** `metadata.managedFields` is dropped as objects enter
   the cache (nothing reads it there; the YAML tab GETs the live object), so
   `includeObject` rows and `/api/items` answered from the cache don't

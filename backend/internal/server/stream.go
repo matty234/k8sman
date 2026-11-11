@@ -167,7 +167,7 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 	colsKey := pluginColumnsKey(cols)
 	pluginsChanged := s.plugins.Changed()
 	includeObject := r.URL.Query().Get("includeObject") == "true"
-	rq.Lean = !includeObject
+	rq.Lean = !includeObject && summaryServes(rq.Type, cols)
 	sub := s.subscribe(c, rq) // one stream, or a namespace set merged
 
 	defer func() { sub.Close() }()
@@ -193,6 +193,7 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 			nc, nd := s.tableColumns(ctx, c, rq)
 			if k := pluginColumnsKey(nc); k != colsKey {
 				cols, isDefault, colsKey = nc, nd, k
+				rq.Lean = !includeObject && summaryServes(rq.Type, cols)
 				sub.Close()
 				sub = s.subscribe(c, rq)
 				b = nil

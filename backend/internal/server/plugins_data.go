@@ -75,8 +75,11 @@ func (l *pluginLookup) List(ctx context.Context, kindKey, ns, labelSelector, nam
 	if !rt.Namespaced {
 		ns = ""
 	}
-	// Lean: plugins see a Secret's key names, never its values.
-	key := kcache.Key{GVR: rt.GVR(), Namespace: ns, LabelSelector: labelSelector, Lean: true}
+	// Plugins see a Secret's key names, never its values, so Secrets come
+	// from a lean stream (summaries, see kcache.Key.Lean). Other heavy kinds
+	// (ConfigMaps, CRDs) are read in full: a plugin may read their bodies.
+	lean := rt.GVR().GroupResource() == kcache.SecretsGVR.GroupResource()
+	key := kcache.Key{GVR: rt.GVR(), Namespace: ns, LabelSelector: labelSelector, Lean: lean}
 	if name != "" {
 		key.FieldSelector = "metadata.name=" + name
 	}

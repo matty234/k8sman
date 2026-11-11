@@ -114,16 +114,18 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 
 ## Tables
 
-- Live tables over watches for every kind. The Secrets table lists Helm
-  release Secrets (`helm.sh/release.v1`, often most of a cluster's Secret
-  bytes) as metadata only, so it opens quickly; their Size is blank. The
-  inspector and YAML view still read the whole Secret.
+- Live tables over watches for every kind. Secrets, ConfigMaps and CRDs,
+  whose bodies are large (Helm releases, openAPI schemas), load metadata
+  first: rows appear at once with Name, Namespace and Age, body cells (Keys,
+  Size, Type, Group...) show "…" and fill in the background. The table
+  keeps only a summary of each object (key names and sizes, never a Secret
+  value); the inspector and YAML view read the whole object.
 - jq-defined columns with a column editor (live preview, field picker, column
   types), saved per resource type. Besides jq's own functions, queries can
   call `podstatus`, `deploymentstatus`, `statefulsetstatus`,
   `daemonsetstatus`, `jobstatus`, `nodestatus`, `noderoles`,
-  `condition("Ready")`, `duration(start; end)`, `selector`, `tobytes` and
-  `base64size` (see `backend/internal/columns/helper_funcs.go`).
+  `condition("Ready")`, `duration(start; end)`, `selector`, `tobytes`,
+  `base64size` and `textsize` (see `backend/internal/columns`).
 - Sorting, including quantity-aware sorting. A filter that combines terms
   (`status=Running restarts>3`, `status!=Running`, `memory>256Mi`, `age<1h`)
   and suggests columns and their values as you type. `!text` (or `-text`)

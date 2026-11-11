@@ -211,8 +211,10 @@ type resourceQuery struct {
 	Columns       []columns.Column
 	LabelSelector string
 	FieldSelector string
-	// Lean: the reader shows no Secret values (a table without objects),
-	// so the shared watch may leave them out (see kcache.Key.Lean).
+	// Lean: the reader needs only summaries of a heavy kind's objects (a
+	// table without objects whose columns a summary serves, see
+	// summaryServes), so the shared watch may load metadata first and keep
+	// summaries (see kcache.Key.Lean).
 	Lean bool
 }
 
@@ -399,6 +401,34 @@ func (s *Server) resolvePluginColumns(c *cluster.Clients, rt cluster.ResourceTyp
 	return s.plugins.Resolve(c.Context, rt, cols)
 }
 
+// summaryServes reports whether every column can be computed from the
+// summary a lean stream keeps of a heavy kind (kapi.MetadataFirst): plain
+// metadata paths and the kind's built-in columns, plus, for Secrets,
+// plugin columns (plugins see a Secret's key names only, which the summary
+// keeps). Anything else (a user's jq column reading a ConfigMap's values, a
+// plugin column of a CRD) needs full objects, so the table watches those.
+func summaryServes(rt cluster.ResourceType, cols []columns.Column) bool {
+	if !kcache.MetadataFirst(rt.GVR()) {
+		return true
+	}
+	builtin := map[string]bool{}
+	for _, c := range columns.Defaults(rt, nil) {
+		builtin[c.Query] = true
+	}
+	for _, c := range cols {
+		switch {
+		case c.Plugin != "":
+			if rt.GVR().GroupResource() != kcache.SecretsGVR.GroupResource() {
+				return false
+			}
+		case builtin[c.Query] || columns.MetadataOnly(c):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // ---- table model -----------------------------------------------------------
 
 // Row is one table row. Object is included only when requested.
@@ -412,6 +442,10 @@ type Row struct {
 	// Controlled is true when a controller owns the object (e.g. a pod of a
 	// ReplicaSet), so deleting it means the controller recreates it.
 	Controlled bool `json:"controlled,omitempty"`
+	// Pending lists the cells (column indexes) not known yet: the row is a
+	// metadata-only stand-in whose body is still loading (see
+	// kcache.Pending). Those cells are null; a MODIFIED row fills them.
+	Pending []int `json:"pending,omitempty"`
 }
 
 // Table is a list rendered through the column set.
@@ -440,6 +474,9 @@ type tableBuilder struct {
 	// jq columns of objects that changed.
 	memo memoFunc
 	tag  rowTag
+	// pending are the columns that read more than metadata: a stand-in's
+	// cells there are pending.
+	pending []int
 }
 
 type memoFunc func(u *unstructured.Unstructured, tag any, extra string, compute func() any) any
@@ -467,8 +504,14 @@ func newTableBuilder(cols []columns.Column, includeObject bool) *tableBuilder {
 			tag += fmt.Sprintf("|%s@%d", c.Plugin, c.Rev)
 		}
 	}
+	var pending []int
+	for i, c := range cols {
+		if !columns.MetadataOnly(c) {
+			pending = append(pending, i)
+		}
+	}
 	return &tableBuilder{eval: columns.NewEvaluator(cols), includeObject: includeObject, colErrs: map[int]string{},
-		tag: rowTag{cols: tag, includeObject: includeObject}}
+		tag: rowTag{cols: tag, includeObject: includeObject}, pending: pending}
 }
 
 // nowTick is how often memoised rows with time-dependent plugin columns
@@ -505,6 +548,12 @@ func (b *tableBuilder) build(u *unstructured.Unstructured) *builtRow {
 			ResourceVersion: u.GetResourceVersion(),
 			Cells:           cells,
 			Controlled:      metav1.GetControllerOf(u) != nil,
+		}
+		if kcache.Pending(u) && len(b.pending) > 0 {
+			r.Pending = b.pending
+			for _, i := range b.pending {
+				cells[i], errs[i] = nil, nil
+			}
 		}
 		br := &builtRow{Row: r, errs: errs}
 		if b.includeObject {
@@ -691,7 +740,8 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	includeObject := r.URL.Query().Get("includeObject") == "true"
-	rq.Lean = !includeObject
+	cols, isDefault := s.tableColumns(r.Context(), c, rq)
+	rq.Lean = !includeObject && summaryServes(rq.Type, cols)
 	// Served from a warm shared watch when one exists (e.g. the table is
 	// open), else listed directly.
 	snap, err := s.snapshot(r.Context(), c, rq)
@@ -699,7 +749,6 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	cols, isDefault := s.tableColumns(r.Context(), c, rq)
 	b := newTableBuilder(cols, includeObject)
 	b.decorate = s.decoratorFor(r.Context(), c, rq, b.eval)
 	b.memo = snap.memo
