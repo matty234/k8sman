@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/models.dart';
+import '../../app/diagnostics/diagnostics_log.dart' show DiagnosticsContext;
 import '../../app/window_chrome.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
@@ -89,7 +90,7 @@ class _DetailSectionState extends State<DetailSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         header,
-        if (_expanded) Padding(padding: const EdgeInsets.only(top: 4), child: widget.child),
+        if (_expanded) Padding(padding: const EdgeInsets.only(top: 4), child: DiagnosticsContext(label: widget.title, child: widget.child)),
       ],
     );
     if (widget.card) {

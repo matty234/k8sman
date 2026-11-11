@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../actions/actions.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
+import '../../app/diagnostics/diagnostics_log.dart' show DiagnosticsContext;
 import '../../modules/modules.dart' show moduleInspectorTabs, moduleStatuses;
 import '../../panels/registry.dart';
 import '../../plugins/plugin_host.dart';
@@ -252,7 +253,7 @@ class _LiveObjectState extends State<_LiveObject> {
                     // (selectable across lines and sections). SelectableText
                     // each carry their own scroll view, which could draw a
                     // frame or two scrolled and then slide into place.
-                    child: InstantTabView(children: [
+                    child: DiagnosticsContext(label: '${t.type.kind} inspector', child: InstantTabView(children: [
                       // Laid out in full (not a lazy ListView): a handful of
                       // sections, and the scrollbar keeps one size instead of
                       // re-estimating the height as sections scroll in.
@@ -268,10 +269,13 @@ class _LiveObjectState extends State<_LiveObject> {
                           MetadataSection(key: ValueKey('metadata-${ctx.uid}'), ctx: ctx),
                         ]),
                       )),
-                      for (final x in extraTabs) Builder(builder: (c) => x.builder(c, ctx)),
-                      YamlEditorTab(key: ValueKey('yaml-${ctx.uid}'), target: t, resourceVersion: dig<String>(obj, ['metadata', 'resourceVersion']) ?? '', editRequest: _editRequest),
-                      SelectionArea(child: _EventsTab(namespace: t.namespace, uid: ctx.uid)),
-                    ]),
+                      for (final x in extraTabs) DiagnosticsContext(label: x.label, child: Builder(builder: (c) => x.builder(c, ctx))),
+                      DiagnosticsContext(
+                        label: 'YAML',
+                        child: YamlEditorTab(key: ValueKey('yaml-${ctx.uid}'), target: t, resourceVersion: dig<String>(obj, ['metadata', 'resourceVersion']) ?? '', editRequest: _editRequest),
+                      ),
+                      DiagnosticsContext(label: 'Events', child: SelectionArea(child: _EventsTab(namespace: t.namespace, uid: ctx.uid))),
+                    ])),
                   ),
                 ])),
               ),
@@ -313,7 +317,13 @@ class _LiveObjectState extends State<_LiveObject> {
     try {
       return panel.buildSections(context, ctx);
     } catch (e, st) {
-      debugPrint('panel ${panel.runtimeType} failed: $e\n$st');
+      // To the console and Settings ▸ Diagnostics.
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: e,
+        stack: st,
+        library: 'k8sman',
+        context: ErrorDescription('building ${panel.runtimeType} sections'),
+      ));
       return [
         DetailSection(title: 'Panel error', icon: Icons.bug_report_outlined, child: InlineMessage('${panel.runtimeType}: $e', isError: true)),
         ...const BasicFallbackPanel().buildSections(context, ctx),

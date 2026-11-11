@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'api/client.dart';
 import 'app/backend.dart';
+import 'app/diagnostics/diagnostics_hooks.dart';
+import 'app/diagnostics/diagnostics_log.dart';
 import 'app/links.dart';
 import 'app/updates/github_releases.dart';
 import 'app/updates/update_controller.dart';
@@ -14,8 +16,9 @@ import 'plugins/plugin_notices.dart' show pluginNotices;
 import 'state/app_state.dart';
 import 'state/issues_feed.dart';
 import 'state/log_dock.dart';
-import 'modules/modules.dart' show kindHomes;
+import 'modules/modules.dart' show kindHomes, pageFor;
 import 'prometheus/metric_history_chart.dart' show ChartHoverScope;
+import 'ui/settings/settings_page.dart' show SettingsSection, showSettings;
 import 'ui/shell.dart';
 import 'ui/theme.dart';
 
@@ -42,6 +45,7 @@ void main(List<String> args) {
   // Windows and Linux a GitHub "latest release" check linking to the download.
   final noSparkle = !kIsWeb && defaultTargetPlatform != TargetPlatform.macOS;
   final updates = UpdateController(github: noSparkle ? GitHubReleases() : null, openUrl: launchUrl);
+  _installDiagnostics(app, updates);
   runApp(
     MultiProvider(
       providers: [
@@ -60,6 +64,30 @@ void main(List<String> args) {
   updates.start();
   // Plugin directory notices: suggestions for each context, and updates.
   pluginNotices.attach(app);
+}
+
+/// Errors go to the local diagnostics log (Settings ▸ Diagnostics), with
+/// where in the app they happened and the cluster's names to redact.
+void _installDiagnostics(AppState app, UpdateController updates) {
+  diagnostics
+    ..file = DiagnosticsLog.defaultFile()
+    ..appVersion = (() => updates.info.version.isNotEmpty ? updates.info.displayVersion : (buildVersion.isEmpty ? 'dev' : buildVersion))
+    ..place = () {
+      final page = app.view == MainView.resources
+          ? (app.selectedType == null ? 'Resources' : '${app.selectedType!.kind} table')
+          : (pageFor(app.view)?.label ?? app.view.name);
+      final d = app.detail;
+      return d == null ? page : '$page › ${d.type.kind} inspector';
+    }
+    ..sensitiveTerms = () => [
+          app.currentContext,
+          for (final c in app.contexts) ...[c.name, c.cluster, c.user],
+          ...app.namespaces,
+          ?app.detail?.name,
+          ?app.detail?.namespace,
+        ];
+  installDiagnostics(diagnostics, onReport: () => showSettings(app, section: SettingsSection.diagnostics));
+  diagnostics.load();
 }
 
 class K8sManApp extends StatelessWidget {

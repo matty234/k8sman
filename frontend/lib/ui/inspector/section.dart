@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/diagnostics/diagnostics_log.dart' show DiagnosticsContext;
 import '../widgets/common.dart';
 import '../widgets/editorial.dart' show SectionHeader;
 
@@ -71,7 +72,7 @@ class _InspectorSectionState extends State<InspectorSection> {
                   ),
           );
         }),
-        if (_open) Padding(padding: const EdgeInsets.only(top: 8), child: widget.child),
+        if (_open) Padding(padding: const EdgeInsets.only(top: 8), child: DiagnosticsContext(label: widget.title, child: widget.child)),
       ]),
     );
   }

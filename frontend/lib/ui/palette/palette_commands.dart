@@ -108,6 +108,21 @@ CommandResults rankCommand(
       ]),
     ], cmd);
   }
+  // `:diagnostics`: Settings ▸ Diagnostics.
+  if (cmd == 'diagnostics' || cmd == 'errors') {
+    return CommandResults([
+      PaletteSection(PaletteGroup.pages, [
+        PaletteItem(
+          group: PaletteGroup.pages,
+          title: 'Diagnostics',
+          typeLabel: 'Settings',
+          icon: _icon(SettingsSection.diagnostics.icon),
+          aliases: const ['diagnostics', 'errors'],
+          run: () => showSettings(app, section: SettingsSection.diagnostics),
+        ),
+      ]),
+    ], cmd);
+  }
   if (cmd == 'ctx' || cmd == 'context' || cmd == 'contexts') {
     final items = [
       for (final c in app.contexts)

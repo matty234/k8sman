@@ -18,6 +18,7 @@ import 'keys.dart' show shortcutLabel;
 import 'links_ui.dart';
 import 'overview/overview_summary.dart';
 import 'palette/command_palette.dart';
+import 'settings/diagnostics_settings.dart' show DiagnosticsBadge;
 import 'settings/settings_page.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
@@ -808,6 +809,8 @@ class _NavFooter extends StatelessWidget {
           icon: const Icon(Icons.settings_outlined),
           onPressed: () => openSettings(context),
         ),
+        // Debug builds: errors new since Diagnostics was last viewed.
+        DiagnosticsBadge(onTap: () => openSettings(context, section: SettingsSection.diagnostics)),
         const Spacer(),
         IconButton(
           key: const ValueKey('nav-rediscover'),

@@ -24,6 +24,7 @@ import '../keys.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'cluster_settings.dart';
+import 'diagnostics_settings.dart';
 import 'integrations_settings.dart';
 import 'settings_widgets.dart';
 import 'sidebar_settings.dart';
@@ -41,6 +42,8 @@ enum SettingsSection {
   addons('Add-ons', Icons.inventory_2_outlined, 'Cluster tools k8sman builds on (metrics-server, Prometheus, Trivy, …), installed with Helm on the current cluster.'),
   tables('Tables', Icons.table_rows_outlined, 'Each kind\'s table remembers its sort, column widths and filter.'),
   keyboard('Keyboard', Icons.keyboard_outlined, 'Shortcuts. Press ? outside a text field for this list anywhere.'),
+  diagnostics('Diagnostics', Icons.bug_report_outlined,
+      'Errors k8sman ran into, grouped. Kept on this computer and redacted; shared only if you copy the report or open an issue.'),
   about('About', Icons.info_outline, 'Version and updates.');
 
   final String title;
@@ -53,7 +56,7 @@ enum SettingsSection {
   static SettingsSection? parse(String arg) {
     final a = arg.trim().toLowerCase();
     if (a.isEmpty) return null;
-    const aliases = {'add-ons': addons, 'add-on': addons, 'helm': addons, 'modules': integrations, 'plugins': integrations, 'marketplace': integrations, 'shortcuts': keyboard, 'keys': keyboard, 'updates': about, 'kubeconfig': clusters, 'contexts': clusters};
+    const aliases = {'add-ons': addons, 'add-on': addons, 'helm': addons, 'modules': integrations, 'plugins': integrations, 'marketplace': integrations, 'shortcuts': keyboard, 'keys': keyboard, 'updates': about, 'errors': diagnostics, 'report': diagnostics, 'kubeconfig': clusters, 'contexts': clusters};
     return aliases[a] ?? values.where((s) => s.name.startsWith(a)).firstOrNull;
   }
 }
@@ -198,6 +201,7 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsSection.addons => _addonsSettings(),
         SettingsSection.tables => tableSettings(),
         SettingsSection.keyboard => _keyboardSettings(),
+        SettingsSection.diagnostics => diagnosticsSettings(),
         SettingsSection.about => _aboutSettings(),
       };
 

@@ -286,6 +286,14 @@ List<PaletteItem> paletteItems(BuildContext context) {
       ),
     PaletteItem(
       group: PaletteGroup.actions,
+      title: 'Diagnostics…',
+      typeLabel: 'Settings',
+      icon: _icon(SettingsSection.diagnostics.icon),
+      aliases: const ['errors', 'report', 'bug', 'settings'],
+      run: () => openSettings(context, section: SettingsSection.diagnostics),
+    ),
+    PaletteItem(
+      group: PaletteGroup.actions,
       title: 'About k8sman',
       typeLabel: 'Action',
       icon: _icon(Icons.info_outline),
