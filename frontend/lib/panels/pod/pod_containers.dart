@@ -548,7 +548,7 @@ class ContainerDetails extends StatelessWidget {
   }
 
   Widget _portsWidget(BuildContext context, List<Json> ports) => Wrap(spacing: 14, runSpacing: 4, children: [
-        for (final p in ports) _Port(p, key: ValueKey('container-port-${c.name}-${p['containerPort']}'), action: portAction),
+        for (final p in ports) _Port(p, key: ValueKey('container-port-${c.name}-${p['containerPort']}-${p['protocol'] ?? 'TCP'}'), action: portAction),
       ]);
 
   /// The resources to list: all of them, or (while the charts draw CPU and
