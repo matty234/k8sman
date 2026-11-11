@@ -13,6 +13,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/apimachinery/pkg/util/httpstream/wsstream"
@@ -119,7 +120,7 @@ func (s *Server) handleVMConsole(w http.ResponseWriter, r *http.Request) {
 	vmi, err := c.Dynamic.Resource(vmiGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 	switch {
 	case err == nil:
-		phase, _ := vmi.Object["status"].(map[string]any)["phase"].(string)
+		phase, _, _ := unstructured.NestedString(vmi.Object, "status", "phase")
 		if phase != "Running" {
 			if phase == "" {
 				phase = "not started"
