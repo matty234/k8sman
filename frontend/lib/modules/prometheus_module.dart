@@ -2,9 +2,11 @@ import 'package:flutter/widgets.dart';
 
 import '../api/client.dart';
 import '../panels/prometheus/index.dart';
+import '../prometheus/monitoring_tab.dart';
 import '../prometheus/prom_api.dart';
 import '../prometheus/prometheus_settings.dart';
 import 'module.dart';
+import 'modules.dart' show moduleStatuses;
 
 /// Prometheus Operator: Prometheus, Alertmanager, PrometheusRule and
 /// monitor panels (live rule and target state) and the Monitoring sidebar
@@ -37,10 +39,24 @@ class PrometheusModule extends AppModule {
           'monitoring.coreos.com/PrometheusRule',
           'monitoring.coreos.com/ServiceMonitor',
           'monitoring.coreos.com/PodMonitor',
+          'monitoring.coreos.com/Probe',
+          'monitoring.coreos.com/ScrapeConfig',
           'monitoring.coreos.com/Prometheus',
           'monitoring.coreos.com/Alertmanager',
+          'monitoring.coreos.com/AlertmanagerConfig',
         ]),
       ];
+
+  /// A Monitoring tab on Pods, Services and workloads (is it scraped, by
+  /// what, which alerts and rules apply) where Prometheus or the operator
+  /// is found.
+  @override
+  List<PanelTab> inspectorTabs(PanelContext ctx) {
+    if (!monitoringTabKinds.contains(ctx.type.gk)) return const [];
+    final s = moduleStatuses.of(this, ctx.api, ctx.app.currentContext);
+    if (s == null || s.state == ModuleState.checking || s.state == ModuleState.notInstalled) return const [];
+    return [monitoringTab(ctx)];
+  }
 
   /// Discovery's result: which Prometheus (and Alertmanager) was found and
   /// whether it answers. Shared with the alerts badge and the history

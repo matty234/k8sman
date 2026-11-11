@@ -9,6 +9,9 @@ import '../api/backend_http.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../util/k8s.dart';
+import 'monitoring_models.dart';
+
+export 'monitoring_models.dart';
 
 /// Talks to `/api/prom/*` on the backend behind an [ApiClient], reusing its
 /// base URL. Tests subclass it (or set [debugOverride]) to serve canned JSON.
@@ -51,6 +54,27 @@ class PromApi {
   /// ServiceMonitor / PodMonitor).
   Future<TargetsData> targets({String? kind, String? namespace, String? name, String? instance}) async =>
       TargetsData.fromJson(asMap(await getJson('targets', {'kind': kind, 'namespace': namespace, 'name': name, 'instance': instance})));
+
+  /// Is the object (Pod, Service or workload) scraped, by what, and why not.
+  Future<ObjectScrape> scrape({required String kind, required String namespace, required String name}) async =>
+      ObjectScrape.fromJson(asMap(await getJson('scrape', {'kind': kind, 'namespace': namespace, 'name': name})));
+
+  /// Alerts about the object and rules that refer to it.
+  Future<ObjectApplies> applies({required String kind, required String namespace, required String name}) async =>
+      ObjectApplies.fromJson(asMap(await getJson('applies', {'kind': kind, 'namespace': namespace, 'name': name})));
+
+  /// Alertmanager's running config (routes, receivers, inhibit rules), redacted.
+  Future<AMStatus> alertmanagerStatus({String? instance}) async => AMStatus.fromJson(asMap(await getJson('alertmanager', {'instance': instance})));
+
+  /// What a Prometheus / Alertmanager custom resource selects.
+  Future<Selection> selection({required String kind, required String namespace, required String name}) async =>
+      Selection.fromJson(asMap(await getJson('selection', {'kind': kind, 'namespace': namespace, 'name': name})));
+
+  /// Which Prometheus / Alertmanager custom resources select a monitor,
+  /// rule or AlertmanagerConfig.
+  Future<List<SelectedBy>> selectedBy({required String kind, required String namespace, required String name}) async => [
+        for (final i in asMapList(asMap(await getJson('selectedby', {'kind': kind, 'namespace': namespace, 'name': name}))['items'])) SelectedBy.fromJson(i),
+      ];
 
   Future<QueryData> query(String query, {String? instance}) async => QueryData.fromJson(asMap(await getJson('query', {'query': query, 'instance': instance})));
 
@@ -241,6 +265,9 @@ class PromAlert {
   final String? value;
   final ObjectRef? target;
 
+  /// The Alertmanager receivers the alert goes to.
+  final List<String> receivers;
+
   const PromAlert({
     required this.fingerprint,
     required this.alertname,
@@ -256,6 +283,7 @@ class PromAlert {
     this.source = 'alertmanager',
     this.value,
     this.target,
+    this.receivers = const [],
   });
 
   factory PromAlert.fromJson(Json j) => PromAlert(
@@ -273,6 +301,7 @@ class PromAlert {
         source: '${j['source'] ?? ''}',
         value: j['value'] as String?,
         target: refFromJson(j['target']),
+        receivers: List<String>.from(j['receivers'] ?? const []),
       );
 
   AlertSeverity get severity => AlertSeverity.parse(severityLabel);
@@ -511,7 +540,26 @@ class ScrapeTarget {
   final double lastScrapeDuration;
   final Map<String, String> labels;
   final ObjectRef? target;
-  const ScrapeTarget({required this.scrapeUrl, required this.health, this.lastError, this.lastScrape, this.lastScrapeDuration = 0, this.labels = const {}, this.target});
+  final String scrapePool;
+  final String? scrapeInterval;
+
+  /// An object's targets (`/api/prom/scrape`) also carry their job and the
+  /// operator object behind the scrape pool.
+  final String? job;
+  final MonitorRef? monitor;
+  const ScrapeTarget({
+    required this.scrapeUrl,
+    required this.health,
+    this.lastError,
+    this.lastScrape,
+    this.lastScrapeDuration = 0,
+    this.labels = const {},
+    this.target,
+    this.scrapePool = '',
+    this.scrapeInterval,
+    this.job,
+    this.monitor,
+  });
 
   factory ScrapeTarget.fromJson(Json j) => ScrapeTarget(
         scrapeUrl: '${j['scrapeUrl'] ?? ''}',
@@ -521,7 +569,24 @@ class ScrapeTarget {
         lastScrapeDuration: (j['lastScrapeDuration'] as num?)?.toDouble() ?? 0,
         labels: _strMap(j['labels']),
         target: refFromJson(j['target']),
+        scrapePool: '${j['scrapePool'] ?? ''}',
+        scrapeInterval: _nonEmpty(j['scrapeInterval'] as String?),
+        job: _nonEmpty(j['job'] as String?),
+        monitor: MonitorRef.maybe(j['monitor']),
       );
+}
+
+/// The operator object behind a scrape pool (`serviceMonitor/<ns>/<name>/<i>`).
+class MonitorRef {
+  final String kind, namespace, name;
+  final int endpoint;
+  const MonitorRef({required this.kind, required this.namespace, required this.name, this.endpoint = 0});
+
+  static MonitorRef? maybe(dynamic j) => j is Map && j['kind'] != null
+      ? MonitorRef(kind: '${j['kind']}', namespace: '${j['namespace'] ?? ''}', name: '${j['name'] ?? ''}', endpoint: (j['endpoint'] as num?)?.toInt() ?? 0)
+      : null;
+
+  ObjectRef get ref => ObjectRef(group: 'monitoring.coreos.com', kind: kind, namespace: namespace, name: name);
 }
 
 class TargetPool {
