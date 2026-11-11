@@ -1,0 +1,118 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: /Pod ml/train-0
+panel:
+  refresh: 5
+  sections:
+    - after: status
+      badge:
+        severity: ok
+        text: 2 GPUs
+      blocks:
+        - columns:
+            - mono: true
+              name: Device
+              type: text
+            - mono: true
+              name: Driver
+              type: text
+            - mono: true
+              name: Pool
+              type: text
+            - name: Details
+              type: text
+            - name: Claim
+              type: text
+            - detail: true
+              name: Shared with
+              type: text
+            - detail: true
+              mono: true
+              name: Attributes
+              type: text
+          limit: 50
+          rows:
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceSlice
+                  name: gpu-node-1-gpu.example.com-b7x2q
+                  namespace: ml
+                value: gpu-1
+              - value: gpu.example.com
+              - value: gpu-node-1
+              - value: Example GPU X1 · 80Gi
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: shared-gpu
+                  namespace: ml
+                value: shared-gpu (gpu)
+              - value: Shared with train-1
+              - value: driverVersion=2.4.0  index=1  productName=Example GPU X1  uuid=GPU-00000000-0000-4000-8000-000000000001  memory=80Gi
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceSlice
+                  name: gpu-node-1-gpu.example.com-b7x2q
+                  namespace: ml
+                value: gpu-0
+              - value: gpu.example.com
+              - value: gpu-node-1
+              - value: Example GPU X1 · 80Gi
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: train-0-gpu-h5k2w
+                  namespace: ml
+                value: train-0-gpu-h5k2w (gpu)
+              - value: ""
+              - value: driverVersion=2.4.0  index=0  productName=Example GPU X1  uuid=GPU-00000000-0000-4000-8000-000000000000  memory=80Gi
+          total: 2
+          type: table
+      icon: memory
+      summary: 2 claims
+      title: Attached devices
+    - after: configuration
+      blocks:
+        - columns:
+            - mono: true
+              name: Name
+              type: text
+            - name: Claim
+              type: text
+            - name: State
+              type: status
+            - name: Template
+              type: text
+            - name: Used by
+              type: text
+          limit: 20
+          rows:
+            - - value: gpu
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: train-0-gpu-h5k2w
+                  namespace: ml
+                value: train-0-gpu-h5k2w
+              - value: Allocated
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaimTemplate
+                  name: one-gpu
+                  namespace: ml
+                value: one-gpu
+              - value: trainer
+            - - value: shared
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: shared-gpu
+                  namespace: ml
+                value: shared-gpu
+              - value: Allocated
+              - value: ""
+              - value: trainer
+          total: 2
+          type: table
+      icon: memory
+      summary: "2"
+      title: Resource claims

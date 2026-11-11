@@ -1,0 +1,87 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: /Pod ml/train-2
+panel:
+  refresh: 5
+  sections:
+    - after: status
+      badge:
+        severity: warning
+        text: Waiting for devices
+      blocks:
+        - severity: warning
+          text: '0/3 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }, 2 cannot allocate all claims. preemption: 0/3 nodes are available: 3 Preemption is not helpful for scheduling.'
+          title: Unschedulable
+          type: message
+        - columns:
+            - name: Claim
+              type: text
+            - name: Requests
+              type: text
+            - name: Why
+              type: text
+          limit: 20
+          rows:
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: train-2-gpu-z6n4d
+                  namespace: ml
+                value: train-2-gpu-z6n4d
+              - value: 2 × gpu.example.com
+              - severity: warning
+                value: 'Not allocated: no node has matching devices free'
+            - - value: scratch
+              - value: ""
+              - severity: warning
+                value: Not created yet (from template scratch-fpga)
+          total: 2
+          type: table
+      icon: memory
+      summary: 2 claims
+      title: Attached devices
+    - after: configuration
+      blocks:
+        - columns:
+            - mono: true
+              name: Name
+              type: text
+            - name: Claim
+              type: text
+            - name: State
+              type: status
+            - name: Template
+              type: text
+            - name: Used by
+              type: text
+          limit: 20
+          rows:
+            - - value: gpu
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: train-2-gpu-z6n4d
+                  namespace: ml
+                value: train-2-gpu-z6n4d
+              - value: Pending
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaimTemplate
+                  name: one-gpu
+                  namespace: ml
+                value: one-gpu
+              - value: trainer
+            - - value: scratch
+              - value: not created yet
+              - value: Pending
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaimTemplate
+                  name: scratch-fpga
+                  namespace: ml
+                value: scratch-fpga
+              - value: trainer
+          total: 2
+          type: table
+      icon: memory
+      summary: "2"
+      title: Resource claims

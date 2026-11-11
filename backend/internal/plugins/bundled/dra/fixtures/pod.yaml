@@ -1,5 +1,6 @@
-# A pod with two claims: one from a template (its claim's name is in the
-# pod's status), one not created yet; containers use them.
+# A pending pod with three claims: one from a template (its claim's name
+# is in the pod's status), allocated; a shared one, not allocated yet; one
+# from a template, not created yet. Containers use them.
 apiVersion: v1
 kind: Pod
 metadata:
@@ -28,6 +29,42 @@ spec:
           - name: gpu
           - name: shared
 status:
+  phase: Pending
   resourceClaimStatuses:
     - name: gpu
       resourceClaimName: web-0-gpu-x7k2p
+---
+# Its template's claim, allocated (two GPUs and a NIC with admin access)
+# and reserved for it; the shared claim, not allocated yet.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: web-0-gpu-x7k2p
+  namespace: demo
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly: {deviceClassName: gpu.example.com, count: 2}
+      - name: nic
+        exactly: {deviceClassName: nic.example.com, adminAccess: true}
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpu, driver: gpu.example.com, pool: node-a, device: gpu-0}
+        - {request: gpu, driver: gpu.example.com, pool: node-a, device: gpu-1}
+        - {request: nic, driver: nic.example.com, pool: node-a, device: nic-0, adminAccess: true}
+  reservedFor:
+    - {resource: pods, name: web-0, uid: 2b6f0c1e-0000-4000-8000-0000000000aa}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: web-shared
+  namespace: demo
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly: {deviceClassName: gpu.example.com}

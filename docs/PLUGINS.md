@@ -2551,6 +2551,41 @@ generated schema, failing on a removed property or definition, a newly
 required property, a removed enum value, a new enum on an open field, a
 changed `const`, a narrowed `type` or `additionalProperties` closed.
 
+### DRA: attached devices (no format changes)
+
+The bundled `dra` plugin (1.1.0) puts a pod's, a workload's and a node's
+devices where they are seen; see its
+[README](../backend/internal/plugins/bundled/dra/README.md) for what each
+kind shows. Everything is v1 as frozen: no field was added.
+
+- **The joins are related lookups plus CEL.** A Pod reads its claims (a
+  `filter` on the claim names its spec and status give, in its namespace)
+  and the ResourceSlices of its node (a `filter` on `spec.nodeName`), and
+  matches each allocation result to its slice device by driver, pool and
+  name. A workload reads its pods (`selector: object.spec.selector`) and
+  the claims reserved for pods named after it (a `filter` on
+  `reservedFor[].name` prefixes, in the namespace), then keeps those of its
+  pods. A Node reads the claims whose allocation's node selector names it.
+  One shared variable (`allocRows`, a YAML anchor) turns a list of claims
+  into device rows for every kind; `[x].map(v, …)[0]` binds a value once.
+- **Header badges** are section badges: "2 GPUs" on the Pod's Attached
+  devices section, which is placed `after: status` so it is the second
+  thing on the panel. The format has no badge for the inspector's own
+  header; a section near the top carries it instead.
+- **No Devices column on Pods.** Plugin columns are always shown (no
+  hidden-by-default column in the format or the column editor), and a
+  claim count in every Pods table wasn't worth a column most clusters
+  leave empty.
+- **Cost.** Workloads without `resourceClaims` in their pod template, and
+  pods without claims, look nothing up (`when`). The Node's claim filter
+  reads the scheduler's node-local selector by index
+  (`nodeSelectorTerms[?0].?matchFields[?0].?values[?0]`) rather than with
+  comprehensions: it runs for every claim in the cluster, and the
+  comprehension form cost 9 ms per render against 3.9 ms.
+  `BenchmarkPluginData` (`filter-1000/node-slices`, M1 Pro) now has
+  1,000 slices and 1,000 claims cluster-wide: 3.9 ms, within the 5 ms
+  panel budget (1.3 ms before, with the slices alone).
+
 ### Installing from the directory
 
 `internal/plugins/directory.go` implements §10's install path. The index

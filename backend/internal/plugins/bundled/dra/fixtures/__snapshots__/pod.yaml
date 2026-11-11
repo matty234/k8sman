@@ -1,7 +1,105 @@
 # Written by `k8sman-server plugin test --update`: review changes before committing.
 object: /Pod demo/web-0
 panel:
+  refresh: 5
   sections:
+    - after: status
+      badge:
+        severity: warning
+        text: Waiting for devices
+      blocks:
+        - severity: warning
+          text: The pod starts once each of its claims is allocated and reserved for it.
+          title: Waiting for claims
+          type: message
+        - columns:
+            - name: Claim
+              type: text
+            - name: Requests
+              type: text
+            - name: Why
+              type: text
+          limit: 20
+          rows:
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: web-shared
+                  namespace: demo
+                value: web-shared
+              - value: 1 × gpu.example.com
+              - severity: warning
+                value: Not allocated yet
+            - - value: scratch
+              - value: ""
+              - severity: warning
+                value: Not created yet (from template scratch)
+          total: 2
+          type: table
+        - columns:
+            - mono: true
+              name: Device
+              type: text
+            - mono: true
+              name: Driver
+              type: text
+            - mono: true
+              name: Pool
+              type: text
+            - name: Details
+              type: text
+            - name: Claim
+              type: text
+            - detail: true
+              name: Shared with
+              type: text
+            - detail: true
+              mono: true
+              name: Attributes
+              type: text
+          limit: 50
+          rows:
+            - - value: gpu-0
+              - value: gpu.example.com
+              - value: node-a
+              - value: ""
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: web-0-gpu-x7k2p
+                  namespace: demo
+                value: web-0-gpu-x7k2p (gpu)
+              - value: ""
+              - value: ""
+            - - value: gpu-1
+              - value: gpu.example.com
+              - value: node-a
+              - value: ""
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: web-0-gpu-x7k2p
+                  namespace: demo
+                value: web-0-gpu-x7k2p (gpu)
+              - value: ""
+              - value: ""
+            - - value: nic-0
+              - value: nic.example.com
+              - value: node-a
+              - value: ""
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: web-0-gpu-x7k2p
+                  namespace: demo
+                value: web-0-gpu-x7k2p (nic)
+              - value: ""
+              - value: ""
+          total: 3
+          type: table
+      icon: memory
+      summary: 3 claims
+      title: Attached devices
     - after: configuration
       blocks:
         - columns:
@@ -10,6 +108,8 @@ panel:
               type: text
             - name: Claim
               type: text
+            - name: State
+              type: status
             - name: Template
               type: text
             - name: Used by
@@ -23,6 +123,7 @@ panel:
                   name: web-0-gpu-x7k2p
                   namespace: demo
                 value: web-0-gpu-x7k2p
+              - value: Allocated
               - link:
                   group: resource.k8s.io
                   kind: ResourceClaimTemplate
@@ -37,10 +138,12 @@ panel:
                   name: web-shared
                   namespace: demo
                 value: web-shared
+              - value: Pending
               - value: ""
               - value: init, web
             - - value: scratch
               - value: not created yet
+              - value: Pending
               - link:
                   group: resource.k8s.io
                   kind: ResourceClaimTemplate

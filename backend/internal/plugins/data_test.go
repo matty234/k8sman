@@ -623,26 +623,34 @@ func BenchmarkPluginData(b *testing.B) {
 		benchmarkDirectoryPlugins(b, repo)
 	}
 
-	// The dra plugin's Node section: a filter relation over 1,000
-	// ResourceSlices (cluster-wide), two of them the node's.
+	// The dra plugin's Node section: filter relations over 1,000
+	// ResourceSlices and 1,000 ResourceClaims (cluster-wide), two slices
+	// and three claims the node's, and the join of their devices.
 	dra, cfg, err := loadForFixtures("bundled/dra")
 	if err != nil {
 		b.Fatal(err)
 	}
-	nodeObjs, err := readFixture("bundled/dra/fixtures/node.yaml")
+	nodeObjs, err := readFixture("bundled/dra/fixtures/node-gpu.yaml")
 	if err != nil {
 		b.Fatal(err)
 	}
 	slices := make([]map[string]any, 1000)
+	claims := make([]map[string]any, 1000)
 	for i := range slices {
 		s := plain(nodeObjs[3]).(map[string]any)
 		s["metadata"].(map[string]any)["name"] = "slice-" + itoa(i)
 		s["spec"].(map[string]any)["nodeName"] = "node-" + itoa(i)
 		slices[i] = s
+		c := plain(nodeObjs[7]).(map[string]any)
+		c["metadata"].(map[string]any)["name"] = "claim-" + itoa(i)
+		term := c["status"].(map[string]any)["allocation"].(map[string]any)["nodeSelector"].(map[string]any)["nodeSelectorTerms"].([]any)[0]
+		term.(map[string]any)["matchFields"].([]any)[0].(map[string]any)["values"] = []any{"node-" + itoa(i)}
+		claims[i] = c
 	}
 	slices[10], slices[500] = nodeObjs[1], nodeObjs[2]
+	claims[10], claims[400], claims[800] = nodeObjs[4], nodeObjs[5], nodeObjs[6]
 	b.Run("filter-1000/node-slices", func(b *testing.B) {
-		env := Env{Context: "demo", Now: cfg.Now, Lookup: sliceLookup{"resource.k8s.io/ResourceSlice": slices}}
+		env := Env{Context: "demo", Now: cfg.Now, Lookup: sliceLookup{"resource.k8s.io/ResourceSlice": slices, "resource.k8s.io/ResourceClaim": claims}}
 		for b.Loop() {
 			po, ok := dra.panel(env, fixtureType(nodeObjs[0]), nodeObjs[0])
 			if !ok || len(po.Sections) != 1 {

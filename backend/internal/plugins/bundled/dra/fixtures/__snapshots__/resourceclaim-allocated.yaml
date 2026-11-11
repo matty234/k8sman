@@ -108,20 +108,42 @@ panel:
             - mono: true
               name: Pool
               type: text
+            - name: Details
+              type: text
+            - detail: true
+              mono: true
+              name: Attributes
+              type: text
           limit: 50
           rows:
             - - value: gpu
-              - value: gpu-0
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceSlice
+                  name: node-a-gpu.example.com-x2k9d
+                  namespace: demo
+                value: gpu-0
               - value: gpu.example.com
               - value: node-a
+              - value: a100 · 40Gi
+              - value: index=0  model=a100  memory=40Gi
             - - value: gpu
-              - value: gpu-1
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceSlice
+                  name: node-a-gpu.example.com-x2k9d
+                  namespace: demo
+                value: gpu-1
               - value: gpu.example.com
               - value: node-a
+              - value: a100 · 40Gi
+              - value: index=1  model=a100  memory=40Gi
             - - value: nic (admin)
               - value: nic-0
               - value: nic.example.com
               - value: node-a
+              - value: ""
+              - value: ""
           total: 3
           type: table
       icon: developer_board

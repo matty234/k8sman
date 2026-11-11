@@ -4,7 +4,86 @@ panel:
   refresh: 5
   sections:
     - after: overview
+      badge:
+        severity: info
+        text: 0/3 allocated
       blocks:
+        - columns:
+            - mono: true
+              name: Driver
+              type: text
+            - mono: true
+              name: Pool
+              type: text
+            - name: Allocated
+              type: text
+          limit: 20
+          rows:
+            - - value: gpu.example.com
+              - value: node-a
+              - value: 0 of 2 allocated
+            - - value: nic.example.com
+              - value: node-a
+              - value: 0 of 1 allocated
+          total: 2
+          type: table
+        - columns:
+            - mono: true
+              name: Device
+              type: text
+            - mono: true
+              name: Driver
+              type: text
+            - name: Details
+              type: text
+            - name: State
+              type: status
+            - name: Used by
+              type: text
+            - detail: true
+              name: Claim
+              type: text
+          empty: No devices
+          limit: 50
+          rows:
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceSlice
+                  name: node-a-gpu.example.com-x2k9d
+                  namespace: ""
+                value: gpu-0
+              - value: gpu.example.com
+              - value: ""
+              - severity: ok
+                value: Free
+              - value: ""
+              - value: ""
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceSlice
+                  name: node-a-gpu.example.com-x2k9d
+                  namespace: ""
+                value: gpu-1
+              - value: gpu.example.com
+              - value: ""
+              - severity: ok
+                value: Free
+              - value: ""
+              - value: ""
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceSlice
+                  name: node-a-nic.example.com-q8w4z
+                  namespace: ""
+                value: nic-0
+              - value: nic.example.com
+              - value: ""
+              - severity: ok
+                value: Free
+              - value: ""
+              - value: ""
+          total: 3
+          type: table
         - columns:
             - name: Slice
               type: text

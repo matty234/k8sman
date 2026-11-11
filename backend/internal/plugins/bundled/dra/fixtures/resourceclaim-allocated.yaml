@@ -87,3 +87,27 @@ spec:
   containers:
     - name: web
       image: example.com/web:1.0
+---
+# The slice its GPUs come from (the NIC's slice isn't here: its row has
+# no attributes).
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: node-a-gpu.example.com-x2k9d
+spec:
+  nodeName: node-a
+  driver: gpu.example.com
+  pool: {name: node-a, generation: 3, resourceSliceCount: 1}
+  devices:
+    - name: gpu-0
+      attributes:
+        gpu.example.com/model: {string: a100}
+        gpu.example.com/index: {int: 0}
+      capacity:
+        gpu.example.com/memory: {value: 40Gi}
+    - name: gpu-1
+      attributes:
+        gpu.example.com/model: {string: a100}
+        gpu.example.com/index: {int: 1}
+      capacity:
+        gpu.example.com/memory: {value: 40Gi}

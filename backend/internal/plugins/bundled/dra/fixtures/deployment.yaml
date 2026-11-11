@@ -1,0 +1,137 @@
+# A Deployment whose pods each claim two GPUs from a template: two pods
+# running with their devices, one pending. Then its pods, their claims, and
+# a pod and claim of another workload (not counted).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trainer
+  namespace: ml
+  uid: 7d1e0c2a-0000-4000-8000-000000000200
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: trainer
+  template:
+    metadata:
+      labels:
+        app: trainer
+    spec:
+      resourceClaims:
+        - name: gpus
+          resourceClaimTemplateName: two-gpus
+      containers:
+        - name: trainer
+          image: example.com/trainer:2.1
+          resources:
+            claims:
+              - name: gpus
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: trainer-6d4f8b9c7-2xk4p
+  namespace: ml
+  labels: {app: trainer}
+spec:
+  nodeName: gpu-node-1
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: trainer-6d4f8b9c7-8mz3q
+  namespace: ml
+  labels: {app: trainer}
+spec:
+  nodeName: gpu-node-2
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: trainer-6d4f8b9c7-t7w9r
+  namespace: ml
+  labels: {app: trainer}
+status:
+  phase: Pending
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: trainer-eval-0
+  namespace: ml
+  labels: {app: trainer-eval}
+spec:
+  nodeName: gpu-node-2
+status:
+  phase: Running
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: trainer-6d4f8b9c7-2xk4p-gpus-a1b2c
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpus
+        exactly: {deviceClassName: gpu.example.com, count: 2}
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpus, driver: gpu.example.com, pool: gpu-node-1, device: gpu-0}
+        - {request: gpus, driver: gpu.example.com, pool: gpu-node-1, device: gpu-1}
+  reservedFor:
+    - {resource: pods, name: trainer-6d4f8b9c7-2xk4p, uid: 7d1e0c2a-0000-4000-8000-000000000201}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: trainer-6d4f8b9c7-8mz3q-gpus-d3e4f
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpus
+        exactly: {deviceClassName: gpu.example.com, count: 2}
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpus, driver: gpu.example.com, pool: gpu-node-2, device: gpu-0}
+        - {request: gpus, driver: gpu.example.com, pool: gpu-node-2, device: gpu-1}
+  reservedFor:
+    - {resource: pods, name: trainer-6d4f8b9c7-8mz3q, uid: 7d1e0c2a-0000-4000-8000-000000000202}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: trainer-6d4f8b9c7-t7w9r-gpus-g5h6j
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpus
+        exactly: {deviceClassName: gpu.example.com, count: 2}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: trainer-eval-0-gpu-k7l8m
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly: {deviceClassName: gpu.example.com}
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpu, driver: gpu.example.com, pool: gpu-node-2, device: gpu-2}
+  reservedFor:
+    - {resource: pods, name: trainer-eval-0, uid: 7d1e0c2a-0000-4000-8000-000000000210}

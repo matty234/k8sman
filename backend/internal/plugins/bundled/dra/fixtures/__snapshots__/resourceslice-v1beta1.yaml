@@ -10,6 +10,7 @@ columns:
   - name: Devices
     value: 1
 panel:
+  refresh: 5
   sections:
     - blocks:
         - items:
@@ -33,7 +34,10 @@ panel:
           type: fields
       icon: developer_board
       title: Slice
-    - blocks:
+    - badge:
+        severity: info
+        text: 0/1 allocated
+      blocks:
         - columns:
             - mono: true
               name: Device
@@ -41,6 +45,8 @@ panel:
             - name: Capacity
               type: text
             - name: Taints
+              type: text
+            - name: Used by
               type: text
             - detail: true
               mono: true
@@ -51,6 +57,7 @@ panel:
           rows:
             - - value: fpga-0
               - value: 'lanes: 16'
+              - value: ""
               - value: ""
               - value: family=agilex  ready=true
           total: 1

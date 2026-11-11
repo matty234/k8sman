@@ -18,8 +18,8 @@
 apiVersion: k8sman.dev/v1
 id: dra
 name: Dynamic Resource Allocation
-version: 1.0.0
-description: Resource claims, templates, device classes and slices (resource.k8s.io), with claims on pods and devices on nodes.
+version: 1.1.0
+description: Resource claims, templates, device classes and slices (resource.k8s.io), with the devices attached to pods, workloads and nodes.
 authors: [k8sman]
 homepage: https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/
 
@@ -30,8 +30,13 @@ permissions:
     - resource.k8s.io/DeviceClass
     - resource.k8s.io/ResourceSlice
     - resource.k8s.io/DeviceTaintRule
-    - /Pod                    # a claim's pod (its template); a pod's claims
+    - /Pod                    # a claim's pod (its template); a pod's devices; a workload's pods
     - /Node                   # a node's devices
+    - apps/Deployment         # devices across a workload's pods
+    - apps/StatefulSet
+    - apps/DaemonSet
+    - apps/ReplicaSet
+    - batch/Job
 
 # Only the kinds the cluster serves are listed, so the section is absent
 # without DRA.
@@ -81,12 +86,47 @@ kinds:
       template: >-
         related.?pod.orValue({}).?spec.?resourceClaims.orValue([])
           .filter(e, e.name == variables.podClaimName).map(e, string(e.?resourceClaimTemplateName.orValue(""))).filter(t, t != "")
+      # Panels only: the allocated devices with their slices' entries.
+      claimList: '[object]'
+      devSlices: related.slices
+      # One row per allocated device of the claims in claimList: where it
+      # is (driver, pool, device), its request and that request's device
+      # class, the pods the claim is reserved for, and (src) the device's
+      # entry in its ResourceSlice among devSlices ({} when not there).
+      # Pods, workloads and Nodes share it.
+      allocRows: &allocRows >-
+        variables.claimList.map(c, [c.?spec.?devices.?requests.orValue([]).map(r, has(r.firstAvailable)
+            ? r.firstAvailable.map(a, {"n": string(r.name) + "/" + string(a.name), "c": string(a.?deviceClassName.orValue(""))})
+            : [{"n": string(r.name), "c": string(r.?exactly.orValue(r).?deviceClassName.orValue(""))}]).flatten()].map(classes,
+          c.?status.?allocation.?devices.?results.orValue([]).map(x, {
+            "claim": string(c.metadata.name),
+            "ns": string(c.metadata.?namespace.orValue("")),
+            "request": string(x.?request.orValue("")),
+            "driver": string(x.?driver.orValue("")),
+            "pool": string(x.?pool.orValue("")),
+            "device": string(x.?device.orValue("")),
+            "admin": x.?adminAccess.orValue(false) == true,
+            "class": (classes.filter(k, k.n == string(x.?request.orValue(""))).map(k, k.c) + [""])[0],
+            "pods": c.?status.?reservedFor.orValue([]).filter(u, u.?resource.orValue("") == "pods").map(u, string(u.?name.orValue(""))),
+            "src": (variables.devSlices
+              .filter(s, string(s.spec.?driver.orValue("")) == string(x.?driver.orValue(""))
+                && string(s.spec.?pool.?name.orValue("")) == string(x.?pool.orValue("")))
+              .map(s, s.spec.?devices.orValue([]).filter(d, string(d.?name.orValue("")) == string(x.?device.orValue("")))
+                .map(d, {"slice": string(s.metadata.name), "dev": d})).flatten() + [{"slice": "", "dev": {}}])[0]
+          }))[0]).flatten()
 
     related:
       pod:
         kind: /Pod
         when: variables.ownerPod != ""
         name: variables.ownerPod
+      # The slices the allocated devices come from (for their attributes).
+      slices:
+        kind: resource.k8s.io/ResourceSlice
+        when: size(variables.results) > 0
+        filter: >-
+          variables.results.exists(r, string(r.?driver.orValue("")) == string(item.spec.?driver.orValue(""))
+            && string(r.?pool.orValue("")) == string(item.spec.?pool.?name.orValue("")))
 
     columns:
       - name: State
@@ -166,21 +206,56 @@ kinds:
           summary: 'string(size(variables.results)) + (size(variables.results) == 1 ? " device" : " devices")'
           blocks:
             - type: table
-              rows: variables.results
+              rows: variables.allocRows
               limit: 50
               columns:
                 - name: Request
                   mono: true
-                  value: 'string(item.?request.orValue("")) + (item.?adminAccess.orValue(false) == true ? " (admin)" : "")'
-                - name: Device
+                  value: 'item.request + (item.admin ? " (admin)" : "")'
+                - &deviceColumn
+                  name: Device
                   mono: true
-                  value: item.?device.orValue("")
-                - name: Driver
+                  value: item.device
+                  link: 'item.src.slice != "" ? ref("resource.k8s.io", "ResourceSlice", item.src.slice) : dyn(null)'
+                - &driverColumn
+                  name: Driver
                   mono: true
-                  value: item.?driver.orValue("")
-                - name: Pool
+                  value: item.driver
+                - &poolColumn
+                  name: Pool
                   mono: true
-                  value: item.?pool.orValue("")
+                  value: item.pool
+                # From the device's slice: the first of its productName,
+                # model and profile attributes, and its memory capacity
+                # (any domain), e.g. "a100 · 40Gi".
+                - &detailsColumn
+                  name: Details
+                  value: >-
+                    [item.src.dev.?basic.orValue(item.src.dev)].map(b,
+                      ([(b.?attributes.orValue({}).map(k, string(k))
+                          .filter(k, (k.contains("/") ? k.substring(k.lastIndexOf("/") + 1) : k) in ["productName", "model", "profile"])
+                          .sort().map(k, [b.attributes[k]].map(a, has(a.string) ? string(a.string) : has(a.version) ? string(a.version) : "")[0])
+                          + [""])[0]]
+                        + b.?capacity.orValue({}).map(k, string(k))
+                          .filter(k, (k.contains("/") ? k.substring(k.lastIndexOf("/") + 1) : k) == "memory")
+                          .map(k, string(b.capacity[k].?value.orValue(b.capacity[k])))
+                      ).filter(v, v != "").join(" · "))[0]
+                # Every attribute and capacity of the device, the driver's
+                # domain prefix dropped.
+                - &attributesColumn
+                  name: Attributes
+                  detail: true
+                  mono: true
+                  value: >-
+                    [item.src.dev.?basic.orValue(item.src.dev)].map(b,
+                      (b.?attributes.orValue({}).map(k, string(k)).sort().map(k,
+                        (k.contains("/") ? k.substring(k.lastIndexOf("/") + 1) : k) + "="
+                          + [b.attributes[k]].map(a,
+                              has(a.string) ? string(a.string) : has(a.int) ? string(a.int) :
+                              has(a.bool) ? string(a.bool) : has(a.version) ? string(a.version) : string(a))[0])
+                      + b.?capacity.orValue({}).map(k, string(k)).sort().map(k,
+                        (k.contains("/") ? k.substring(k.lastIndexOf("/") + 1) : k) + "="
+                          + string(b.capacity[k].?value.orValue(b.capacity[k])))).join("  "))[0]
         - title: Reserved for
           icon: link
           when: size(variables.reserved) > 0 || variables.allocation.hasValue()
@@ -257,6 +332,18 @@ kinds:
     variables:
       selectors: object.spec.?selectors.orValue([]).map(s, string(s.?cel.?expression.orValue(""))).filter(e, e != "")
       configs: object.spec.?config.orValue([])
+      # Panels only: the devices allocated to its claims.
+      claimList: related.claims
+      devSlices: '[]'
+      allocRows: *allocRows
+    related:
+      claims:
+        kind: resource.k8s.io/ResourceClaim
+        filter: >-
+          item.?spec.?devices.?requests.orValue([]).exists(r,
+            string(r.?exactly.orValue(r).?deviceClassName.orValue("")) == object.metadata.name
+              || r.?firstAvailable.orValue([]).exists(a, string(a.?deviceClassName.orValue("")) == object.metadata.name))
+        limit: 500
     columns:
       - name: Selectors
         value: variables.selectors.join(" && ")
@@ -306,6 +393,35 @@ kinds:
                   type: code
                   detail: true
                   value: item.?opaque.?parameters.orValue(item)
+        # The claims that request this class, across namespaces.
+        - title: Claims
+          icon: link
+          when: size(related.claims) > 0
+          summary: string(size(related.claims))
+          badge:
+            when: size(variables.allocRows.filter(x, x.class == object.metadata.name)) > 0
+            text: >-
+              [size(variables.allocRows.filter(x, x.class == object.metadata.name))].map(n,
+                string(n) + (n == 1 ? " device allocated" : " devices allocated"))[0]
+            severity: '"info"'
+          blocks:
+            - type: table
+              rows: related.claims
+              limit: 20
+              columns:
+                - name: Claim
+                  value: item.metadata.namespace + "/" + item.metadata.name
+                  link: ref(item)
+                - name: State
+                  type: status
+                  value: >-
+                    !has(item.status) || !has(item.status.allocation) ? "Pending" :
+                    size(item.status.?reservedFor.orValue([])) > 0 ? "Reserved" : "Allocated"
+                - name: Devices
+                  value: >-
+                    item.?status.?allocation.?devices.?results.orValue([]).map(r,
+                      string(r.?pool.orValue("")) + "/" + string(r.?device.orValue(""))).join(", ")
+                  mono: true
 
   resource.k8s.io/ResourceSlice:
     icon: developer_board
@@ -319,6 +435,22 @@ kinds:
             string(e.key) + " " + string(e.operator)
               + (size(e.?values.orValue([])) > 0 ? " (" + e.values.map(v, string(v)).join(", ") + ")" : "")
           ).join(" and ")).join("\nor ")
+      # Panels only: the devices claims were allocated from this slice.
+      claimList: related.claims
+      devSlices: '[]'
+      allRows: *allocRows
+      allocRows: >-
+        variables.allRows.filter(x, x.driver == string(object.spec.?driver.orValue(""))
+          && x.pool == string(object.spec.?pool.?name.orValue("")))
+    related:
+      # Claims with a device allocated from this slice's driver and pool.
+      claims:
+        kind: resource.k8s.io/ResourceClaim
+        filter: >-
+          item.?status.?allocation.?devices.?results.orValue([]).exists(r,
+            string(r.?driver.orValue("")) == string(object.spec.?driver.orValue(""))
+              && string(r.?pool.orValue("")) == string(object.spec.?pool.?name.orValue("")))
+        limit: 500
     columns:
       - name: Node
         value: >-
@@ -368,6 +500,12 @@ kinds:
         - title: Devices
           icon: memory
           summary: string(size(variables.devices))
+          badge:
+            when: size(variables.devices) > 0
+            text: >-
+              string(size(variables.devices.filter(d, variables.allocRows.exists(x, x.device == string(d.?name.orValue("")))))) + "/"
+                + string(size(variables.devices)) + " allocated"
+            severity: '"info"'
           blocks:
             - type: table
               rows: variables.devices
@@ -387,6 +525,16 @@ kinds:
                   value: >-
                     item.?basic.orValue(item).?taints.orValue([]).map(t,
                       string(t.key) + (t.?value.orValue("") != "" ? "=" + string(t.value) : "") + ":" + string(t.?effect.orValue(""))).join(", ")
+                # The claim allocated the device, and its pods.
+                - name: Used by
+                  value: >-
+                    variables.allocRows.filter(x, x.device == string(item.?name.orValue(""))).map(x,
+                      x.ns + "/" + (size(x.pods) > 0 ? x.pods.join(", ") : "claim " + x.claim)).join(", ")
+                  link: >-
+                    [variables.allocRows.filter(x, x.device == string(item.?name.orValue("")))].map(u,
+                      size(u) == 0 ? dyn(null) :
+                      size(u[0].pods) == 1 ? ref("", "Pod", u[0].ns, u[0].pods[0]) :
+                      ref("resource.k8s.io", "ResourceClaim", u[0].ns, u[0].claim))[0]
                 # Attributes, the driver's own domain prefix dropped
                 # (gpu.example.com/model reads as model).
                 - name: Attributes
@@ -407,16 +555,132 @@ kinds:
       - name: Taint
         value: string(object.spec.?taint.?key.orValue("")) + ":" + string(object.spec.?taint.?effect.orValue(""))
 
-  # A pod's claims, after the Pod panel's Configuration section: each
-  # spec.resourceClaims entry, the claim behind it (its name is in the
-  # pod's status when a template made it) and the containers that use it.
+  # A pod's devices and claims. Attached devices, after the status: what
+  # its claims were allocated (with each device's slice attributes, and
+  # the other pods sharing a claim), or why a pending pod is still waiting
+  # for them; its header badge says "2 GPUs". Resource claims, after
+  # Configuration: each spec.resourceClaims entry, the claim behind it (its
+  # name is in the pod's status when a template made it) and the
+  # containers that use it.
   /Pod:
     variables:
       claims: object.spec.?resourceClaims.orValue([])
       containers: object.spec.?initContainers.orValue([]) + object.spec.?containers.orValue([]) + object.spec.?ephemeralContainers.orValue([])
       statuses: object.?status.?resourceClaimStatuses.orValue([])
+      claimRefs: >-
+        variables.claims.map(e, {
+          "name": string(e.name),
+          "claim": ((variables.statuses.filter(s, s.name == e.name).map(s, string(s.?resourceClaimName.orValue("")))
+            + [string(e.?resourceClaimName.orValue(""))]).filter(n, n != "") + [""])[0],
+          "template": string(e.?resourceClaimTemplateName.orValue("")),
+          "users": variables.containers.filter(c, c.?resources.?claims.orValue([]).exists(u, u.name == e.name)).map(c, string(c.name))})
+      claimNames: variables.claimRefs.map(e, e.claim).filter(n, n != "")
+      node: string(object.spec.?nodeName.orValue(""))
+      # The scheduler's message while the pod is unschedulable.
+      schedMessage: >-
+        [condition(object, "PodScheduled").orValue({})].map(c,
+          c.?status.orValue("") == "False" ? string(c.?message.orValue("")) : "")[0]
+      # Panels only (they read related).
+      claimList: related.claims
+      devSlices: related.slices
+      allocRows: *allocRows
+      labelRows: variables.allocRows
+      # "2 GPUs" when every device's class starts with a short word
+      # (gpu.example.com), "3 devices" otherwise.
+      deviceLabel: &deviceLabel >-
+        string(size(variables.labelRows)) + " " + [variables.labelRows.map(x, x.class.split(".")[0]).distinct()].map(cs,
+          size(cs) == 1 && cs[0].matches("^[a-z]{2,4}$")
+            ? cs[0].upperAscii() + (size(variables.labelRows) == 1 ? "" : "s")
+            : (size(variables.labelRows) == 1 ? "device" : "devices"))[0]
+      # A pending pod's claims that hold it back, each with why: not
+      # created yet, not allocated (no node has matching devices free, as
+      # the scheduler says), or allocated but not reserved for the pod
+      # (the claim's reservedFor is full at 256 consumers).
+      waiting: >-
+        object.?status.?phase.orValue("Pending") != "Pending" ? [] :
+        variables.claimRefs.map(e, [related.claims.filter(c, c.metadata.name == e.claim)].map(found, {
+          "name": e.name,
+          "claim": e.claim,
+          "requests": size(found) == 0 ? "" : found[0].?spec.?devices.?requests.orValue([]).map(r, has(r.firstAvailable)
+              ? "one of " + r.firstAvailable.map(a, string(a.?deviceClassName.orValue(""))).join(" | ")
+              : [r.?exactly.orValue(r)].map(q, (q.?allocationMode.orValue("ExactCount") == "All" ? "all" : string(q.?count.orValue(1)))
+                  + " × " + string(q.?deviceClassName.orValue("")))[0]).join(", "),
+          "why":
+            e.claim == "" ? (e.template != "" ? "Not created yet (from template " + e.template + ")" : "No claim")
+            : size(found) == 0 ? "Claim not found"
+            : !has(found[0].status) || !has(found[0].status.allocation)
+              ? (variables.schedMessage.contains("cannot allocate all claims")
+                  ? "Not allocated: no node has matching devices free" : "Not allocated yet")
+            : found[0].status.?reservedFor.orValue([]).exists(u, u.?name.orValue("") == object.metadata.name) ? ""
+            : size(found[0].status.?reservedFor.orValue([])) >= 256 ? "In use by 256 consumers, the most a claim takes (reservedFor is full)"
+            : "Allocated, not yet reserved for this pod"
+        })[0]).filter(w, w.why != "")
+    related:
+      claims:
+        kind: resource.k8s.io/ResourceClaim
+        when: size(variables.claimNames) > 0
+        filter: item.metadata.name in variables.claimNames
+      # Slices on the pod's node, and those not tied to one node.
+      slices:
+        kind: resource.k8s.io/ResourceSlice
+        when: variables.node != "" && size(variables.claimNames) > 0
+        filter: string(item.spec.?nodeName.orValue(variables.node)) == variables.node
     panel:
       sections:
+        - title: Attached devices
+          icon: memory
+          after: status
+          when: size(variables.claims) > 0
+          summary: 'string(size(variables.claims)) + (size(variables.claims) == 1 ? " claim" : " claims")'
+          badge:
+            when: size(variables.allocRows) > 0 || size(variables.waiting) > 0
+            text: 'size(variables.waiting) > 0 ? "Waiting for devices" : variables.deviceLabel'
+            severity: 'size(variables.waiting) > 0 ? "warning" : "ok"'
+          blocks:
+            - type: message
+              severity: warning
+              when: size(variables.waiting) > 0
+              title: 'variables.schedMessage != "" ? "Unschedulable" : "Waiting for claims"'
+              text: >-
+                variables.schedMessage != "" ? variables.schedMessage :
+                "The pod starts once each of its claims is allocated and reserved for it."
+            - type: table
+              when: size(variables.waiting) > 0
+              rows: variables.waiting
+              columns:
+                - name: Claim
+                  value: 'item.claim != "" ? item.claim : item.name'
+                  link: 'item.claim != "" ? ref("resource.k8s.io", "ResourceClaim", item.claim) : dyn(null)'
+                - name: Requests
+                  value: item.requests
+                - name: Why
+                  value: item.why
+                  severity: '"warning"'
+            - type: message
+              severity: info
+              when: size(variables.allocRows) == 0 && size(variables.waiting) == 0
+              text: >-
+                object.?status.?phase.orValue("") in ["Succeeded", "Failed"]
+                  ? "No devices: the pod has finished and its claims were released."
+                  : "No devices allocated."
+            - type: table
+              when: size(variables.allocRows) > 0
+              rows: variables.allocRows
+              limit: 50
+              columns:
+                - *deviceColumn
+                - *driverColumn
+                - *poolColumn
+                - *detailsColumn
+                - name: Claim
+                  value: 'item.claim + " (" + item.request + ")"'
+                  link: ref("resource.k8s.io", "ResourceClaim", item.claim)
+                - name: Shared with
+                  detail: true
+                  value: >-
+                    [item.pods.filter(p, p != object.metadata.name)].map(o,
+                      size(o) == 0 ? "" : "Shared with " + o.join(", "))[0]
+                - *attributesColumn
         - title: Resource claims
           icon: memory
           after: configuration
@@ -424,13 +688,7 @@ kinds:
           summary: string(size(variables.claims))
           blocks:
             - type: table
-              rows: >-
-                variables.claims.map(e, {
-                  "name": string(e.name),
-                  "claim": ((variables.statuses.filter(s, s.name == e.name).map(s, string(s.?resourceClaimName.orValue("")))
-                    + [string(e.?resourceClaimName.orValue(""))]).filter(n, n != "") + [""])[0],
-                  "template": string(e.?resourceClaimTemplateName.orValue("")),
-                  "users": variables.containers.filter(c, c.?resources.?claims.orValue([]).exists(u, u.name == e.name)).map(c, string(c.name))})
+              rows: variables.claimRefs
               columns:
                 - name: Name
                   mono: true
@@ -438,19 +696,150 @@ kinds:
                 - name: Claim
                   value: 'item.claim != "" ? item.claim : "not created yet"'
                   link: 'item.claim != "" ? ref("resource.k8s.io", "ResourceClaim", item.claim) : dyn(null)'
+                - name: State
+                  type: status
+                  value: >-
+                    item.claim == "" ? "Pending" :
+                    [related.claims.filter(c, c.metadata.name == item.claim)].map(f,
+                      size(f) == 0 ? "" : has(f[0].status) && has(f[0].status.allocation) ? "Allocated" : "Pending")[0]
                 - name: Template
                   value: item.template
                   link: 'item.template != "" ? ref("resource.k8s.io", "ResourceClaimTemplate", item.template) : dyn(null)'
                 - name: Used by
                   value: item.users.join(", ")
 
-  # A node's devices: the ResourceSlices published for it, after the
-  # node's status, pods and usage.
+  # Devices across a workload's pods, after its Pods section: the devices
+  # of the claims reserved for its pods (from the pod template's claims,
+  # or a claim they share), counted per device class ("8 × gpu.example.com
+  # across 4 pods"), and each pod's. Only workloads whose pod template
+  # has resourceClaims look anything up.
+  apps/Deployment: &workload
+    variables:
+      templateClaims: object.spec.?template.?spec.?resourceClaims.orValue([])
+      prefix: string(object.metadata.name) + "-"
+      # Panels only (they read related).
+      claimList: related.claims
+      devSlices: '[]'
+      allocRows: *allocRows
+      podNames: related.pods.map(p, string(p.metadata.name))
+      labelRows: variables.allocRows.filter(x, x.pods.exists(p, p in variables.podNames))
+      deviceLabel: *deviceLabel
+      perPod: >-
+        related.pods.map(p, [string(p.metadata.name)].map(n, {
+          "name": n,
+          "node": string(p.?spec.?nodeName.orValue("")),
+          "phase": string(p.?status.?phase.orValue("")),
+          "rows": variables.labelRows.filter(x, n in x.pods)})[0])
+      withDevices: variables.perPod.filter(p, size(p.rows) > 0)
+      waitingPods: variables.perPod.filter(p, size(p.rows) == 0 && p.phase == "Pending")
+    related:
+      pods:
+        kind: /Pod
+        when: size(variables.templateClaims) > 0
+        selector: object.spec.selector
+      # Claims reserved for pods named after the workload (its pods'
+      # names start with its own); the panel keeps those of its pods.
+      claims:
+        kind: resource.k8s.io/ResourceClaim
+        when: size(variables.templateClaims) > 0
+        filter: item.?status.?reservedFor.orValue([]).exists(r, string(r.?name.orValue("")).startsWith(variables.prefix))
+    panel:
+      sections:
+        - title: Devices
+          icon: memory
+          after: pods
+          when: size(variables.templateClaims) > 0
+          summary: 'string(size(variables.withDevices)) + " of " + string(size(variables.perPod)) + " pods"'
+          badge:
+            when: size(variables.labelRows) > 0
+            text: variables.deviceLabel
+            severity: '"ok"'
+          blocks:
+            - type: fields
+              items:
+                - label: Allocated
+                  value: >-
+                    size(variables.labelRows) == 0 ? "none" :
+                    variables.labelRows.map(x, x.class).distinct().map(k,
+                      string(size(variables.labelRows.filter(x, x.class == k))) + " × " + (k != "" ? k : "devices")).join(", ")
+                    + " across " + string(size(variables.withDevices)) + (size(variables.withDevices) == 1 ? " pod" : " pods")
+                - label: Waiting
+                  when: size(variables.waitingPods) > 0
+                  value: >-
+                    string(size(variables.waitingPods)) + (size(variables.waitingPods) == 1 ? " pod" : " pods")
+                      + " pending without devices"
+                  severity: '"warning"'
+                - label: Each pod claims
+                  value: >-
+                    variables.templateClaims.map(e, string(e.name)
+                      + (has(e.resourceClaimTemplateName) ? " (template " + string(e.resourceClaimTemplateName) + ")"
+                        : has(e.resourceClaimName) ? " (shared claim " + string(e.resourceClaimName) + ")" : "")).join(", ")
+            - type: table
+              rows: variables.perPod
+              limit: 50
+              empty: No pods
+              columns:
+                - name: Pod
+                  value: item.name
+                  link: ref("", "Pod", item.name)
+                - name: Node
+                  value: item.node
+                  link: 'item.node != "" ? ref("", "Node", item.node) : dyn(null)'
+                - name: Devices
+                  value: 'size(item.rows) > 0 ? string(size(item.rows)) : item.phase == "Pending" ? "waiting" : "none"'
+                  severity: 'size(item.rows) == 0 && item.phase == "Pending" ? "warning" : dyn(null)'
+                - name: Claims
+                  value: item.rows.map(x, x.claim).distinct().join(", ")
+                  link: >-
+                    [item.rows.map(x, x.claim).distinct()].map(cs,
+                      size(cs) == 1 ? ref("resource.k8s.io", "ResourceClaim", cs[0]) : dyn(null))[0]
+                - name: Device list
+                  detail: true
+                  mono: true
+                  value: item.rows.map(x, x.driver + " " + x.pool + "/" + x.device).join(", ")
+  apps/StatefulSet: *workload
+  apps/DaemonSet: *workload
+  apps/ReplicaSet: *workload
+  batch/Job: *workload
+
+  # A node's devices, after the node's status, pods and usage: per driver
+  # and pool how many are allocated ("6 of 8"), each device free or with
+  # the pod (or claim) using it, and the ResourceSlices published for it;
+  # the header badge says "6/8 allocated". The claims are those whose
+  # allocation is pinned to this node.
   /Node:
+    variables:
+      claimList: related.claims
+      devSlices: '[]'
+      allocRows: *allocRows
+      devices: >-
+        related.slices.map(s, [[string(s.spec.?driver.orValue("")), string(s.spec.?pool.?name.orValue(""))]].map(dp,
+          s.spec.?devices.orValue([]).map(d, [string(d.?name.orValue(""))].map(n, {
+            "device": n,
+            "driver": dp[0],
+            "pool": dp[1],
+            "src": {"slice": string(s.metadata.name), "dev": d},
+            "users": variables.allocRows.filter(x, x.device == n && x.driver == dp[0] && x.pool == dp[1]),
+            "tainted": d.?basic.orValue(d).?taints.orValue([]).exists(t, t.?effect.orValue("") in ["NoSchedule", "NoExecute"])})[0]))[0]).flatten()
+      used: variables.devices.filter(d, size(d.users) > 0)
+      pools: >-
+        variables.devices.map(d, d.driver + " " + d.pool).distinct().map(k,
+          [variables.devices.filter(d, d.driver + " " + d.pool == k)].map(ds, {
+            "driver": ds[0].driver, "pool": ds[0].pool, "total": size(ds), "used": size(ds.filter(d, size(d.users) > 0))})[0])
     related:
       slices:
         kind: resource.k8s.io/ResourceSlice
         filter: item.spec.?nodeName.orValue("") == object.metadata.name
+      # Claims allocated on this node: the scheduler pins an allocation of
+      # node-local devices with one term, matchFields metadata.name In
+      # (the node). Read by index, not with comprehensions: this runs for
+      # every claim in the cluster.
+      claims:
+        kind: resource.k8s.io/ResourceClaim
+        filter: >-
+          item.?status.?allocation.?nodeSelector.?nodeSelectorTerms[?0].?matchFields[?0].?values[?0].orValue("")
+            == object.metadata.name
+        limit: 500
     panel:
       sections:
         - title: DRA devices
@@ -458,7 +847,48 @@ kinds:
           after: overview
           when: size(related.slices) > 0
           summary: 'string(size(related.slices)) + (size(related.slices) == 1 ? " slice" : " slices")'
+          badge:
+            when: size(variables.devices) > 0
+            text: 'string(size(variables.used)) + "/" + string(size(variables.devices)) + " allocated"'
+            severity: 'size(variables.used) == size(variables.devices) ? "warning" : "info"'
           blocks:
+            - type: table
+              rows: variables.pools
+              columns:
+                - name: Driver
+                  mono: true
+                  value: item.driver
+                - name: Pool
+                  mono: true
+                  value: item.pool
+                - name: Allocated
+                  value: 'string(item.used) + " of " + string(item.total) + " allocated"'
+                  severity: 'item.used == item.total ? "warning" : dyn(null)'
+            - type: table
+              rows: variables.devices
+              limit: 50
+              empty: No devices
+              columns:
+                - *deviceColumn
+                - *driverColumn
+                - *detailsColumn
+                - name: State
+                  type: status
+                  value: 'size(item.users) > 0 ? "Allocated" : item.tainted ? "Tainted" : "Free"'
+                  severity: 'size(item.users) > 0 ? "info" : item.tainted ? "warning" : "ok"'
+                - name: Used by
+                  value: >-
+                    size(item.users) == 0 ? "" :
+                    size(item.users[0].pods) > 0 ? item.users[0].ns + "/" + item.users[0].pods.join(", ") :
+                    "claim " + item.users[0].ns + "/" + item.users[0].claim
+                  link: >-
+                    size(item.users) == 0 ? dyn(null) :
+                    size(item.users[0].pods) == 1 ? ref("", "Pod", item.users[0].ns, item.users[0].pods[0]) :
+                    ref("resource.k8s.io", "ResourceClaim", item.users[0].ns, item.users[0].claim)
+                - name: Claim
+                  detail: true
+                  value: >-
+                    item.users.filter(u, size(u.pods) > 0).map(u, "Claim " + u.ns + "/" + u.claim + " (" + u.request + (u.admin ? ", admin access" : "") + ")").join(", ")
             - type: table
               rows: related.slices
               columns:

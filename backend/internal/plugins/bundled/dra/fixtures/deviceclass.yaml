@@ -20,3 +20,48 @@ spec:
           kind: GpuConfig
           sharing:
             strategy: TimeSlicing
+---
+# Claims across namespaces: two request this class (one allocated, one
+# through firstAvailable, pending), one another class.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: train-0-gpu-h5k2w
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly: {deviceClassName: gpu.example.com, count: 2}
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpu, driver: gpu.example.com, pool: gpu-node-1, device: gpu-0}
+        - {request: gpu, driver: gpu.example.com, pool: gpu-node-1, device: gpu-1}
+  reservedFor:
+    - {resource: pods, name: train-0, uid: 7d1e0c2a-0000-4000-8000-000000000100}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: web-shared
+  namespace: demo
+spec:
+  devices:
+    requests:
+      - name: gpu
+        firstAvailable:
+          - {name: large, deviceClassName: gpu-large.example.com}
+          - {name: small, deviceClassName: gpu.example.com}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: nic-0
+  namespace: demo
+spec:
+  devices:
+    requests:
+      - name: nic
+        exactly: {deviceClassName: nic.example.com}

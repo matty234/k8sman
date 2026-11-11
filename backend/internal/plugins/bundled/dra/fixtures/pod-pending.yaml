@@ -1,0 +1,53 @@
+# A pending pod waiting for devices: its GPU claim exists but no node has
+# a matching device free (the scheduler says so), and its scratch claim
+# isn't created yet.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: train-2
+  namespace: ml
+  uid: 7d1e0c2a-0000-4000-8000-000000000102
+spec:
+  resourceClaims:
+    - name: gpu
+      resourceClaimTemplateName: one-gpu
+    - name: scratch
+      resourceClaimTemplateName: scratch-fpga
+  containers:
+    - name: trainer
+      image: example.com/trainer:2.1
+      resources:
+        claims:
+          - name: gpu
+          - name: scratch
+status:
+  phase: Pending
+  conditions:
+    - type: PodScheduled
+      status: "False"
+      reason: Unschedulable
+      message: "0/3 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }, 2 cannot allocate all claims. preemption: 0/3 nodes are available: 3 Preemption is not helpful for scheduling."
+  resourceClaimStatuses:
+    - name: gpu
+      resourceClaimName: train-2-gpu-z6n4d
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: train-2-gpu-z6n4d
+  namespace: ml
+  annotations:
+    resource.kubernetes.io/pod-claim-name: gpu
+  ownerReferences:
+    - apiVersion: v1
+      kind: Pod
+      name: train-2
+      uid: 7d1e0c2a-0000-4000-8000-000000000102
+      controller: true
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.example.com
+          count: 2

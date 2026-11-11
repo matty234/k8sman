@@ -36,3 +36,38 @@ spec:
         - key: example.com/unhealthy
           value: ecc
           effect: NoSchedule
+---
+# A claim with gpu-0 from this pool, and one from another node's pool.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: web-0-gpu-x7k2p
+  namespace: demo
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly: {deviceClassName: gpu.example.com}
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpu, driver: gpu.example.com, pool: node-a, device: gpu-0}
+  reservedFor:
+    - {resource: pods, name: web-0, uid: 2b6f0c1e-0000-4000-8000-0000000000aa}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: web-1-gpu-q2w3e
+  namespace: demo
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly: {deviceClassName: gpu.example.com}
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpu, driver: gpu.example.com, pool: node-b, device: gpu-1}

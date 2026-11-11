@@ -1,0 +1,94 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: apps/Deployment ml/trainer
+panel:
+  refresh: 5
+  sections:
+    - after: pods
+      badge:
+        severity: ok
+        text: 4 GPUs
+      blocks:
+        - items:
+            - label: Allocated
+              type: text
+              value: 4 × gpu.example.com across 2 pods
+            - label: Waiting
+              severity: warning
+              type: text
+              value: 1 pod pending without devices
+            - label: Each pod claims
+              type: text
+              value: gpus (template two-gpus)
+          type: fields
+        - columns:
+            - name: Pod
+              type: text
+            - name: Node
+              type: text
+            - name: Devices
+              type: text
+            - name: Claims
+              type: text
+            - detail: true
+              mono: true
+              name: Device list
+              type: text
+          empty: No pods
+          limit: 50
+          rows:
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: trainer-6d4f8b9c7-2xk4p
+                  namespace: ml
+                value: trainer-6d4f8b9c7-2xk4p
+              - link:
+                  group: ""
+                  kind: Node
+                  name: gpu-node-1
+                  namespace: ml
+                value: gpu-node-1
+              - value: "2"
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: trainer-6d4f8b9c7-2xk4p-gpus-a1b2c
+                  namespace: ml
+                value: trainer-6d4f8b9c7-2xk4p-gpus-a1b2c
+              - value: gpu.example.com gpu-node-1/gpu-0, gpu.example.com gpu-node-1/gpu-1
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: trainer-6d4f8b9c7-8mz3q
+                  namespace: ml
+                value: trainer-6d4f8b9c7-8mz3q
+              - link:
+                  group: ""
+                  kind: Node
+                  name: gpu-node-2
+                  namespace: ml
+                value: gpu-node-2
+              - value: "2"
+              - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: trainer-6d4f8b9c7-8mz3q-gpus-d3e4f
+                  namespace: ml
+                value: trainer-6d4f8b9c7-8mz3q-gpus-d3e4f
+              - value: gpu.example.com gpu-node-2/gpu-0, gpu.example.com gpu-node-2/gpu-1
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: trainer-6d4f8b9c7-t7w9r
+                  namespace: ml
+                value: trainer-6d4f8b9c7-t7w9r
+              - value: ""
+              - severity: warning
+                value: waiting
+              - value: ""
+              - value: ""
+          total: 3
+          type: table
+      icon: memory
+      summary: 2 of 3 pods
+      title: Devices

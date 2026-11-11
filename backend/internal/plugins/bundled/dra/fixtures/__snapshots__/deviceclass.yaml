@@ -4,6 +4,7 @@ columns:
   - name: Selectors
     value: device.driver == "gpu.example.com" && device.capacity["gpu.example.com"].memory.compareTo(quantity("40Gi")) >= 0
 panel:
+  refresh: 5
   sections:
     - blocks:
         - columns:
@@ -53,3 +54,38 @@ panel:
       icon: tune
       summary: "1"
       title: Config
+    - badge:
+        severity: info
+        text: 2 devices allocated
+      blocks:
+        - columns:
+            - name: Claim
+              type: text
+            - name: State
+              type: status
+            - mono: true
+              name: Devices
+              type: text
+          limit: 20
+          rows:
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: web-shared
+                  namespace: demo
+                value: demo/web-shared
+              - value: Pending
+              - value: ""
+            - - link:
+                  group: resource.k8s.io
+                  kind: ResourceClaim
+                  name: train-0-gpu-h5k2w
+                  namespace: ml
+                value: ml/train-0-gpu-h5k2w
+              - value: Reserved
+              - value: gpu-node-1/gpu-0, gpu-node-1/gpu-1
+          total: 2
+          type: table
+      icon: link
+      summary: "2"
+      title: Claims

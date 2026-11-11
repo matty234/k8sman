@@ -1,0 +1,165 @@
+# A running pod with two GPUs: one from its own claim (made from a
+# template), one from a claim it shares with train-1. Then its claims, a
+# claim of another pod, and the slices of its node and of another node.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: train-0
+  namespace: ml
+  uid: 7d1e0c2a-0000-4000-8000-000000000100
+spec:
+  nodeName: gpu-node-1
+  resourceClaims:
+    - name: gpu
+      resourceClaimTemplateName: one-gpu
+    - name: shared
+      resourceClaimName: shared-gpu
+  containers:
+    - name: trainer
+      image: example.com/trainer:2.1
+      resources:
+        claims:
+          - name: gpu
+          - name: shared
+status:
+  phase: Running
+  conditions:
+    - type: PodScheduled
+      status: "True"
+  resourceClaimStatuses:
+    - name: gpu
+      resourceClaimName: train-0-gpu-h5k2w
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: train-0-gpu-h5k2w
+  namespace: ml
+  annotations:
+    resource.kubernetes.io/pod-claim-name: gpu
+  ownerReferences:
+    - apiVersion: v1
+      kind: Pod
+      name: train-0
+      uid: 7d1e0c2a-0000-4000-8000-000000000100
+      controller: true
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.example.com
+          allocationMode: ExactCount
+          count: 1
+status:
+  allocation:
+    devices:
+      results:
+        - request: gpu
+          driver: gpu.example.com
+          pool: gpu-node-1
+          device: gpu-0
+    nodeSelector:
+      nodeSelectorTerms:
+        - matchFields:
+            - key: metadata.name
+              operator: In
+              values: [gpu-node-1]
+  reservedFor:
+    - resource: pods
+      name: train-0
+      uid: 7d1e0c2a-0000-4000-8000-000000000100
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: shared-gpu
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.example.com
+status:
+  allocation:
+    devices:
+      results:
+        - request: gpu
+          driver: gpu.example.com
+          pool: gpu-node-1
+          device: gpu-1
+    nodeSelector:
+      nodeSelectorTerms:
+        - matchFields:
+            - key: metadata.name
+              operator: In
+              values: [gpu-node-1]
+  reservedFor:
+    - resource: pods
+      name: train-0
+      uid: 7d1e0c2a-0000-4000-8000-000000000100
+    - resource: pods
+      name: train-1
+      uid: 7d1e0c2a-0000-4000-8000-000000000101
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: train-1-gpu-p9r3t
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.example.com
+status:
+  allocation:
+    devices:
+      results:
+        - request: gpu
+          driver: gpu.example.com
+          pool: gpu-node-1
+          device: gpu-2
+  reservedFor:
+    - resource: pods
+      name: train-1
+      uid: 7d1e0c2a-0000-4000-8000-000000000101
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: gpu-node-1-gpu.example.com-b7x2q
+spec:
+  nodeName: gpu-node-1
+  driver: gpu.example.com
+  pool: {name: gpu-node-1, generation: 1, resourceSliceCount: 1}
+  devices:
+    - name: gpu-0
+      attributes:
+        gpu.example.com/productName: {string: Example GPU X1}
+        gpu.example.com/index: {int: 0}
+        gpu.example.com/uuid: {string: GPU-00000000-0000-4000-8000-000000000000}
+        gpu.example.com/driverVersion: {version: 2.4.0}
+      capacity:
+        gpu.example.com/memory: {value: 80Gi}
+    - name: gpu-1
+      attributes:
+        gpu.example.com/productName: {string: Example GPU X1}
+        gpu.example.com/index: {int: 1}
+        gpu.example.com/uuid: {string: GPU-00000000-0000-4000-8000-000000000001}
+        gpu.example.com/driverVersion: {version: 2.4.0}
+      capacity:
+        gpu.example.com/memory: {value: 80Gi}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: gpu-node-2-gpu.example.com-c4v8m
+spec:
+  nodeName: gpu-node-2
+  driver: gpu.example.com
+  pool: {name: gpu-node-2, generation: 1, resourceSliceCount: 1}
+  devices:
+    - name: gpu-0

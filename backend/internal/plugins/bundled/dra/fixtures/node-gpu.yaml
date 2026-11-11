@@ -1,0 +1,180 @@
+# A GPU node: four GPUs (one tainted) and two NICs, four of the six
+# allocated, to claims in two namespaces (one shared by two pods, one
+# not reserved by any pod yet). A claim on another node and an unallocated
+# claim don't count.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-1
+  uid: 7d1e0c2a-0000-4000-8000-0000000001aa
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: gpu-node-1-gpu.example.com-b7x2q
+spec:
+  nodeName: gpu-node-1
+  driver: gpu.example.com
+  pool: {name: gpu-node-1, generation: 1, resourceSliceCount: 1}
+  devices:
+    - name: gpu-0
+      attributes:
+        gpu.example.com/productName: {string: Example GPU X1}
+        gpu.example.com/index: {int: 0}
+      capacity:
+        gpu.example.com/memory: {value: 80Gi}
+    - name: gpu-1
+      attributes:
+        gpu.example.com/productName: {string: Example GPU X1}
+        gpu.example.com/index: {int: 1}
+      capacity:
+        gpu.example.com/memory: {value: 80Gi}
+    - name: gpu-2
+      attributes:
+        gpu.example.com/productName: {string: Example GPU X1}
+        gpu.example.com/index: {int: 2}
+      capacity:
+        gpu.example.com/memory: {value: 80Gi}
+    - name: gpu-3
+      attributes:
+        gpu.example.com/productName: {string: Example GPU X1}
+        gpu.example.com/index: {int: 3}
+      capacity:
+        gpu.example.com/memory: {value: 80Gi}
+      taints:
+        - key: example.com/unhealthy
+          value: ecc
+          effect: NoSchedule
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: gpu-node-1-nic.example.com-r2d5f
+spec:
+  nodeName: gpu-node-1
+  driver: nic.example.com
+  pool: {name: gpu-node-1, generation: 1, resourceSliceCount: 1}
+  devices:
+    - name: nic-0
+      attributes:
+        nic.example.com/model: {string: Example NIC 200G}
+    - name: nic-1
+      attributes:
+        nic.example.com/model: {string: Example NIC 200G}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: gpu-node-2-gpu.example.com-c4v8m
+spec:
+  nodeName: gpu-node-2
+  driver: gpu.example.com
+  pool: {name: gpu-node-2, generation: 1, resourceSliceCount: 1}
+  devices:
+    - name: gpu-0
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: train-0-gpu-h5k2w
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.example.com
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpu, driver: gpu.example.com, pool: gpu-node-1, device: gpu-0}
+    nodeSelector:
+      nodeSelectorTerms:
+        - matchFields:
+            - {key: metadata.name, operator: In, values: [gpu-node-1]}
+  reservedFor:
+    - {resource: pods, name: train-0, uid: 7d1e0c2a-0000-4000-8000-000000000100}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: shared-gpu
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.example.com
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpu, driver: gpu.example.com, pool: gpu-node-1, device: gpu-1}
+    nodeSelector:
+      nodeSelectorTerms:
+        - matchFields:
+            - {key: metadata.name, operator: In, values: [gpu-node-1]}
+  reservedFor:
+    - {resource: pods, name: train-0, uid: 7d1e0c2a-0000-4000-8000-000000000100}
+    - {resource: pods, name: train-1, uid: 7d1e0c2a-0000-4000-8000-000000000101}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: render-gpu-k3j8s
+  namespace: batch
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.example.com
+      - name: nic
+        exactly:
+          deviceClassName: nic.example.com
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpu, driver: gpu.example.com, pool: gpu-node-1, device: gpu-2}
+        - {request: nic, driver: nic.example.com, pool: gpu-node-1, device: nic-0}
+    nodeSelector:
+      nodeSelectorTerms:
+        - matchFields:
+            - {key: metadata.name, operator: In, values: [gpu-node-1]}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: other-node-gpu
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.example.com
+status:
+  allocation:
+    devices:
+      results:
+        - {request: gpu, driver: gpu.example.com, pool: gpu-node-2, device: gpu-0}
+    nodeSelector:
+      nodeSelectorTerms:
+        - matchFields:
+            - {key: metadata.name, operator: In, values: [gpu-node-2]}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: train-2-gpu-z6n4d
+  namespace: ml
+spec:
+  devices:
+    requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.example.com
+          count: 2
