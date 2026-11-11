@@ -72,8 +72,9 @@ func (h *Host) Alerts(env Env, list AlertLister) ([]AlertHit, []error) {
 func (p *Plugin) alerts(env Env, list AlertLister) ([]AlertHit, []error) {
 	var hits []AlertHit
 	var errs []error
-	ctx, cancel := context.WithTimeout(context.Background(), pluginAlertBudget)
-	defer cancel()
+	// The budget is CEL time only: listing a kind into a cold cache can take
+	// seconds after connecting and must not count against it.
+	left := pluginAlertBudget
 	for _, key := range p.m.KindOrder {
 		k := p.m.Kinds[key]
 		if key == "*" || len(k.Alerts) == 0 {
@@ -90,8 +91,11 @@ func (p *Plugin) alerts(env Env, list AlertLister) ([]AlertHit, []error) {
 			}
 			continue
 		}
+		ctx, cancel := context.WithTimeout(context.Background(), left)
 		start := time.Now()
 		h, e := kp.evalAlerts(ctx, p.ID(), objs, env)
+		left -= time.Since(start)
+		cancel()
 		hits = append(hits, h...)
 		var err2 error
 		if len(e) > 0 {
@@ -99,7 +103,7 @@ func (p *Plugin) alerts(env Env, list AlertLister) ([]AlertHit, []error) {
 			errs = append(errs, fmt.Errorf("plugin %s: %w", p.ID(), e[0]))
 		}
 		p.stats.record(statAlert, time.Since(start), err2)
-		if ctx.Err() != nil {
+		if left <= 0 {
 			errs = append(errs, fmt.Errorf("plugin %s: operation interrupted: its alerts took longer than %s", p.ID(), pluginAlertBudget))
 			break
 		}
