@@ -79,10 +79,11 @@ without it: see [Bundled plugins](#bundled-plugins).)
    copy [`examples/plugins/cert-manager`](../examples/plugins/cert-manager),
    a short commented example (columns, a panel section, an alert, a shell
    action, nav and an icon). The full cert-manager plugin, which uses most
-   of the format, is bundled:
-   [`backend/internal/plugins/bundled/cert-manager`](../backend/internal/plugins/bundled/cert-manager).
-   The example keeps the id `cert-manager`, so loading it replaces the
-   bundled one while it is loaded (see [Bundled plugins](#bundled-plugins)).
+   of the format, is in the plugin directory:
+   [`k8sman-plugins/plugins/cert-manager`](https://github.com/matty234/k8sman-plugins/tree/main/plugins/cert-manager).
+   The example keeps the id `cert-manager`: turn off or uninstall the
+   cert-manager plugin from the Marketplace before loading it (two plugins
+   can't share an id).
 2. Turn developer mode on: **Settings ▸ Integrations ▸ Installed ▸
    Developer ▸ Developer mode** (or the palette's **Integrations…**). Or start the backend with
    `--plugin-dev <folder>` (repeatable), e.g.
@@ -472,19 +473,17 @@ before loading it.
 
 ## Bundled plugins
 
-Some of the app's own integrations are plugins: ordinary plugin folders
+One of the app's own integrations is a plugin: an ordinary plugin folder
 compiled into the backend with Go `embed`, in
 [`backend/internal/plugins/bundled/<id>/`](../backend/internal/plugins/bundled)
-(`plugin.yaml`, `README.md`, `fixtures/`; only the first two are embedded).
-Each replaced a built-in module, since removed:
-[External Secrets](../backend/internal/plugins/bundled/external-secrets)
-(`external_secrets`), [Dynamic Resource Allocation](../backend/internal/plugins/bundled/dra)
-(`dra`) and [Kyverno](../backend/internal/plugins/bundled/kyverno)
-(`kyverno`). [cert-manager](../backend/internal/plugins/bundled/cert-manager)
-(`cert-manager`) was written as a plugin from the start and replaced no
-module. It is the full version of
-[`examples/plugins/cert-manager`](../examples/plugins/cert-manager), the
-short teaching copy.
+(`plugin.yaml`, `README.md`, `fixtures/`; only the first two are embedded):
+[Dynamic Resource Allocation](../backend/internal/plugins/bundled/dra)
+(`dra`), which replaced the `dra` module, since removed.
+
+External Secrets, cert-manager and Kyverno were bundled up to 0.2.16 and
+now ship through the plugin directory
+([`k8sman-plugins/plugins`](https://github.com/matty234/k8sman-plugins/tree/main/plugins/), same ids); see
+[Bundled plugins moved to the directory](#bundled-plugins-moved-to-the-directory).
 
 - **Loaded by default.** They load at start (a parse each; a kind compiles
   on first use), with or without developer mode, and whether the Plugins
@@ -504,13 +503,12 @@ short teaching copy.
 - **Overridable.** A plugin folder with the same `id`, loaded in developer
   mode, overrides the bundled copy while it is loaded (badges *Unpacked ·
   overrides bundled* and *Bundled · overridden*): load
-  `backend/internal/plugins/bundled/external-secrets` to work on it with hot
-  reload. The cert-manager example folder has the id `cert-manager` too, so
-  loading it overrides the bundled cert-manager the same way. Two of your own folders with one id still refuse the second.
+  `backend/internal/plugins/bundled/dra` to work on it with hot
+  reload. Two of your own folders with one id still refuse the second.
 - **Tested in `go test`.** `TestPluginTestGolden` validates every bundled
   plugin and the cert-manager example, and runs their fixtures against their
   snapshots (a bundled plugin must have fixtures). By hand:
-  `k8sman-server plugin test backend/internal/plugins/bundled/external-secrets`.
+  `k8sman-server plugin test backend/internal/plugins/bundled/dra`.
 
 To add one: a folder under `bundled/` with fixtures and snapshots, and, if
 it replaces a module, an entry in `bundled.ReplacesModule`.
@@ -535,6 +533,58 @@ Or edit `~/.config/k8sman/settings.json` with the app closed, e.g.
 No bundled plugin replaces a module now: External Secrets, DRA and Kyverno
 were compared with their modules and the modules removed (§13). A saved
 `useModule` entry for a plugin without a module is ignored.
+
+### Bundled plugins moved to the directory
+
+In 0.2.17, `external-secrets`, `cert-manager` and `kyverno` left the
+bundled set for the plugin directory (versions 1.1.0, 1.2.0 and 1.1.0 there,
+`minAppVersion: "0.2.17"`, so 0.2.15 and 0.2.16, which refuse to install
+an id they have built in, never try). They keep their ids, so
+`plugins.disabled`, consent and table preferences carry over. A one-time
+move per install (`internal/plugins/migrate.go`), recorded per id in
+settings.json's `plugins.migrated` so it never runs again:
+
+- **Turned off** (`plugins.disabled` names it): nothing is installed
+  (`off`). The switch stays off should the user install it later.
+- **Already installed** from the directory: done (`installed`).
+- **In use**: it wasn't turned off (bundled plugins were on by default)
+  *and* it is relevant: settings show it was used (a consent recorded for
+  its id, or table preferences, `tables["group/Kind"]`, saved for one of
+  its kinds), or the current cluster serves one of its kinds (the cached
+  discovery, as suggestions use). These are the cheapest signals that need
+  no cluster round trip; plugin usage counters aren't persisted.
+  - The directory version asks for exactly the bundled permissions (the
+    same permissions hash): installed silently, its consent recorded for
+    that hash, as the bundled copy loaded without a prompt (`installed`).
+  - Other permissions: not installed (`consent`). It is listed as an
+    update that needs the user's OK (`state: update`,
+    `permissionsChanged`, `installedVersion` the bundled version) in
+    `GET /api/plugins/directory[/updates]` and among the suggestions where
+    the cluster serves its kinds, so the app's update notice and
+    Marketplace offer it with the consent prompt.
+- **Not in use** (a cluster is known, it serves none of its kinds, and
+  settings show nothing): nothing (`unused`). Marketplace suggests it on
+  clusters that serve its kinds.
+- **Undecided** (no cluster known yet, or the directory unreachable, not
+  configured or without a compatible version): tried again on the app's
+  next notice check (`GET /api/plugins/directory/updates`: start,
+  connecting to a context, daily) and hourly in the backend (`Directory.Run`,
+  which also tries once at start), for as long as this release runs.
+
+**Fallback for one release.** The 0.2.16 copies are embedded in
+[`backend/internal/plugins/legacy`](../backend/internal/plugins/legacy)
+(no fixtures: those are in the directory repo). One loads, like a bundled
+plugin (no consent; its switch in Settings ▸ Integrations), only while its
+move is undecided or `consent` and it isn't installed from the directory,
+marked *Built in · moving to Marketplace* (`moving` in `GET /api/plugins`).
+It doesn't count as built in for the directory, so it can be installed
+over; a directory copy with its id overrides it. TODO(0.2.18): delete
+`legacy/`, `migrate.go`, `Options.Legacy`, `plugins.migrated` and this
+section.
+
+**Release order.** Publish the directory first (the three plugins in the
+signed index), then the 0.2.17 app; until the index lists them, the move
+waits and the legacy copies keep running.
 
 ## 1. Goals and non-goals
 
@@ -748,9 +798,10 @@ when a `-c` script interpolates `$COL-…` directly.
 
 ### Example: cert-manager
 
-The full plugin is bundled with the app, in
-[`backend/internal/plugins/bundled/cert-manager`](../backend/internal/plugins/bundled/cert-manager);
-the listing below is its shape from the design. A short commented copy to
+The full plugin is in the plugin directory, in
+[`k8sman-plugins/plugins/cert-manager`](https://github.com/matty234/k8sman-plugins/tree/main/plugins/cert-manager)
+(bundled with the app up to 0.2.16); the listing below is its shape from
+the design. A short commented copy to
 start from is [`examples/plugins/cert-manager`](../examples/plugins/cert-manager).
 
 ```yaml
@@ -1514,7 +1565,8 @@ Homebrew and the Linux packages link it as `k8sman`.
 - **Suggestions.** Integrations ▸ Marketplace leads with "Suggested for this cluster": plugins
   the current cluster has kinds for ("This cluster has Cluster, Backup and
   Pooler (postgresql.cnpg.io)") that are compatible and not installed,
-  built in or unpacked. On connecting to a context with new suggestions the
+  built in or unpacked (External Secrets, cert-manager and Kyverno, bundled
+  up to 0.2.16, are directory plugins now and suggested like any other). On connecting to a context with new suggestions the
   app shows one quiet notice ("3 plugins match what's installed on this
   cluster"); nothing installs without the usual consent.
 - **Unsigned plugins** load only in dev mode, carry an "Unpacked" badge, and
@@ -2116,9 +2168,9 @@ the next module a plugin replaces).
 ### DRA and Kyverno ports: format changes
 
 The `dra` and `kyverno` modules are now the bundled plugins
-[`dra`](../backend/internal/plugins/bundled/dra) and
-[`kyverno`](../backend/internal/plugins/bundled/kyverno), and both
-modules are removed. Every change to the format is an addition (no v1
+[`dra`](../backend/internal/plugins/bundled/dra) and `kyverno` (in the
+plugin directory since 0.2.17: [`kyverno`](https://github.com/matty234/k8sman-plugins/tree/main/plugins/kyverno)), and
+both modules are removed. Every change to the format is an addition (no v1
 plugin breaks); each is generic, and the External Secrets plugin and the
 bundled cert-manager plugin use the ones that fit them.
 

@@ -13,21 +13,22 @@ shows, in under 100 lines of [`plugin.yaml`](plugin.yaml):
 - a sidebar section and an icon.
 
 The full plugin (related objects, Prometheus metrics, renew and patch
-actions with forms, Issuers and CertificateRequests) is bundled with the app:
-[`backend/internal/plugins/bundled/cert-manager`](../../../backend/internal/plugins/bundled/cert-manager).
+actions with forms, Issuers and CertificateRequests) is in the plugin
+directory (Settings ▸ Integrations ▸ Marketplace):
+[`k8sman-plugins/plugins/cert-manager`](https://github.com/matty234/k8sman-plugins/tree/main/plugins/cert-manager).
 
-## Replacing the bundled plugin
+## Loading it
 
-This folder keeps the id `cert-manager`. Loaded in developer mode, it
-replaces the bundled plugin while it is loaded (the documented override
-path):
+This folder keeps the id `cert-manager`, and two plugins can't share an
+id: if the cert-manager plugin is installed from the Marketplace, uninstall
+it first.
 
 1. Settings ▸ Integrations ▸ Plugins ▸ turn on **Developer mode**.
 2. **Load plugin folder…** and choose this folder (or start the backend with
    `--plugin-dev examples/plugins/cert-manager`).
 3. Open Certificates on a cluster with cert-manager. Edit `plugin.yaml` and
-   save to see changes live. Unload the folder to get the bundled plugin
-   back.
+   save to see changes live. Unload the folder when you're done, and
+   install the full plugin from the Marketplace again if you want it.
 
 ## Without a cluster
 

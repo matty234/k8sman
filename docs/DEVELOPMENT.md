@@ -161,8 +161,9 @@ shell and patch actions and overview alerts in YAML and CEL, evaluated by
 the backend over the shared watch cache. Turn on **Settings ▸
 Integrations ▸ Installed ▸ Developer ▸ Developer mode**, **Load plugin folder…** (try
 [`examples/plugins/cert-manager`](../examples/plugins/cert-manager), a short
-example that replaces the bundled cert-manager plugin while loaded; the
-full one is in `internal/plugins/bundled/cert-manager`), and
+example; the full one is in the plugin directory,
+`k8sman-plugins/plugins/cert-manager`, so turn that off or uninstall it
+first: two plugins can't share an id), and
 edit: it hot reloads and shows errors with their line. Or run
 `make backend BACKEND_ARGS="--plugin-dev examples/plugins/cert-manager"`.
 `k8sman-server plugin new <id>` starts one; `plugin validate <dir>` and

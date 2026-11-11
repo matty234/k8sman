@@ -155,8 +155,8 @@ namespace and sharing its run with the page):
   line with Add-ons… without the Trivy Operator.
 - **Security context**: the effective pod and per-container settings as a
   table, risky values in the severity colours.
-- **Policy results**, when policy reports mention the object: the bundled
-  Kyverno plugin's tab, which goes into this tab on these kinds (`into:
+- **Policy results**, when policy reports mention the object: the
+  Kyverno plugin's tab (from the Marketplace), which goes into this tab on these kinds (`into:
   security`, see [PLUGINS.md](PLUGINS.md#tabs-and-plugins-for-any-kind)).
 
 The tab's label counts the open findings plus critical and high CVEs (red

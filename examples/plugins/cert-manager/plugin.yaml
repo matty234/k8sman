@@ -3,13 +3,13 @@
 # A small teaching plugin for cert-manager: two columns, one panel section,
 # one alert, one shell action, a sidebar section and an icon. The full
 # plugin (related objects, metrics, patch actions with forms, Issuers, ...)
-# is bundled with the app: backend/internal/plugins/bundled/cert-manager.
+# is in the plugin directory: k8sman-plugins, plugins/cert-manager.
 # Format reference: docs/PLUGINS.md ("Writing a plugin").
 #
-# This folder keeps the id `cert-manager`, so loading it in developer mode
-# (Settings > Integrations > Plugins > Load plugin folder..., or
-# --plugin-dev examples/plugins/cert-manager) replaces the bundled copy
-# while it is loaded. Edit and save: tables and panels update in place.
+# This folder keeps the id `cert-manager`: uninstall the full plugin
+# before loading it in developer mode (Settings > Integrations > Plugins >
+# Load plugin folder..., or --plugin-dev examples/plugins/cert-manager).
+# Edit and save: tables and panels update in place.
 # Without a cluster: k8sman-server plugin test examples/plugins/cert-manager
 apiVersion: k8sman.dev/v1
 id: cert-manager

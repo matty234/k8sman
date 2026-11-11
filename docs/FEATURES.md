@@ -223,8 +223,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     (auth Secrets as links, never values), "Refresh now" (sets `force-sync`),
     "ExternalSecrets not synced" alerts on the Overview (critical after a
     day), a status line in Settings ▸ Integrations, and "Managed by
-    ExternalSecret" on the Secret it owns. A bundled plugin (see
-    [PLUGINS.md](PLUGINS.md#bundled-plugins)), which replaced the module.
+    ExternalSecret" on the Secret it owns (that line is core). A plugin
+    from the Marketplace, bundled up to 0.2.16 (see
+    [PLUGINS.md](PLUGINS.md#bundled-plugins-moved-to-the-directory)); it
+    replaced the module.
   - **Kyverno** (`kyverno.io` and `wgpolicyk8s.io`) ClusterPolicy and
     Policy (rules, status, and the results they produced), PolicyReport and
     ClusterPolicyReport (summary and results, failures first), exceptions,
@@ -232,9 +234,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     sidebar section (only where served), and a status line in Settings ▸
     Integrations. Any object that owns policy reports (Kyverno 1.10+ writes
     one per resource) gets a **Policy results** tab, failures first; on Pods
-    and workloads the results are a section of the Security tab. A bundled
-    plugin (see [PLUGINS.md](PLUGINS.md#bundled-plugins)), which replaced the
-    module.
+    and workloads the results are a section of the Security tab. A plugin
+    from the Marketplace, bundled up to 0.2.16 (see
+    [PLUGINS.md](PLUGINS.md#bundled-plugins-moved-to-the-directory)); it
+    replaced the module.
   - **cert-manager** (`cert-manager.io`) Certificate, CertificateRequest,
     Issuer and ClusterIssuer in a "cert-manager" sidebar section after Network
     (only where served): Ready, Issuer and Expires columns, a Certificate panel
@@ -243,9 +246,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     not ready" alerts, a status line in Settings ▸ Integrations, **Renew** and
     **cmctl status** (run `cmctl` in the dock; every run asks, hidden on
     read-only contexts) and **Set renewal time…** / **Private key
-    rotation…** (a dry run, then your confirmation). A bundled plugin (see
-    [PLUGINS.md](PLUGINS.md#bundled-plugins)); a short example is in
-    `examples/plugins/cert-manager`.
+    rotation…** (a dry run, then your confirmation). A plugin from the
+    Marketplace, bundled up to 0.2.16 (see
+    [PLUGINS.md](PLUGINS.md#bundled-plugins-moved-to-the-directory)); a short
+    example is in `examples/plugins/cert-manager`.
   - **Admission** (`admissionregistration.k8s.io`) Validating and Mutating
     admission policies and their bindings, and Validating/Mutating webhook
     configurations, in an "Admission" sidebar section (only where served):
