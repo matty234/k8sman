@@ -13,6 +13,10 @@ import (
 // output (`k8sman-server plugin schema`), and a test fails when it is stale.
 // The schema gives editors completion and hover docs; it can't check CEL,
 // permissions or references, which `plugin validate` does.
+//
+// v1 is frozen: schema/plugin.v1.frozen.json is the schema at the freeze,
+// and TestSchemaV1Frozen fails when this one drops or narrows anything in
+// it. Only additive changes belong in v1 (docs/PLUGINS.md, Compatibility).
 
 // SchemaURL is where the schema is published; plugin.yaml files name it
 // in their yaml-language-server comment.

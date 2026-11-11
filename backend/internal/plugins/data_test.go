@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -339,6 +340,105 @@ func TestSchemaMatchesLoader(t *testing.T) {
 			t.Errorf("want an error with %q, got:\n%s", w, strings.Join(errs, "\n"))
 		}
 	}
+}
+
+// TestSchemaV1Frozen keeps k8sman.dev/v1 compatible: compared with the
+// snapshot taken at the freeze (schema/plugin.v1.frozen.json), the schema
+// may grow (new optional fields, enum values, definitions) but not drop or
+// narrow anything a v1 plugin may use.
+func TestSchemaV1Frozen(t *testing.T) {
+	var frozen, now map[string]any
+	b, err := os.ReadFile("../../../schema/plugin.v1.frozen.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &frozen); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(JSONSchema(), &now); err != nil {
+		t.Fatal(err)
+	}
+	if errs := schemaBreaks(frozen, now, "#"); len(errs) > 0 {
+		slices.Sort(errs)
+		t.Fatalf("these schema changes would break v1 plugins:\n  %s\n\n"+
+			"k8sman.dev/v1 is frozen (docs/PLUGINS.md, Compatibility): make the change additive "+
+			"(a new optional field, enum value or block type) or leave it for k8sman.dev/v2. "+
+			"Refresh schema/plugin.v1.frozen.json from schema/plugin.v1.json only to record additive changes, never to silence this test.",
+			strings.Join(errs, "\n  "))
+	}
+}
+
+// schemaBreaks lists what schema now drops or narrows from old: removed
+// properties and definitions, newly required properties, removed enum
+// values, new enums, changed consts and types, and additionalProperties
+// closed. It walks the subschemas both have; list entries are matched by
+// their `if` (the block type rules) or else by position.
+func schemaBreaks(old, now map[string]any, at string) []string {
+	var errs []string
+	add := func(format string, args ...any) { errs = append(errs, at+": "+fmt.Sprintf(format, args...)) }
+	for _, r := range asList(now["required"]) {
+		if !containsValue(asList(old["required"]), r) {
+			add("%v is newly required", r)
+		}
+	}
+	for _, e := range asList(old["enum"]) {
+		if !containsValue(asList(now["enum"]), e) {
+			add("enum value %v removed", e)
+		}
+	}
+	if old["enum"] == nil && now["enum"] != nil {
+		add("is now an enum")
+	}
+	if c, ok := old["const"]; ok && !reflect.DeepEqual(c, now["const"]) {
+		add("const %v changed to %v", c, now["const"])
+	}
+	if nt, ok := now["type"]; ok && !reflect.DeepEqual(old["type"], nt) && !containsValue(asList(nt), old["type"]) {
+		add("type %v narrowed to %v", old["type"], nt)
+	}
+	if old["additionalProperties"] != false && now["additionalProperties"] == false {
+		add("additionalProperties is now false")
+	}
+	for k, ov := range old {
+		switch ov := ov.(type) {
+		case map[string]any:
+			nv, _ := now[k].(map[string]any)
+			if k != "properties" && k != "$defs" {
+				if nv != nil {
+					errs = append(errs, schemaBreaks(ov, nv, at+"/"+k)...)
+				}
+				continue
+			}
+			for name, s := range ov {
+				if ns, ok := nv[name].(map[string]any); ok {
+					errs = append(errs, schemaBreaks(s.(map[string]any), ns, at+"/"+k+"/"+name)...)
+				} else {
+					add("%s %s removed", k, name)
+				}
+			}
+		case []any:
+			key := func(i int, x any) string {
+				if m, ok := x.(map[string]any); ok && m["if"] != nil {
+					b, _ := json.Marshal(m["if"])
+					return string(b)
+				}
+				return itoa(i)
+			}
+			nl := map[string]map[string]any{}
+			for i, x := range asList(now[k]) {
+				if m, ok := x.(map[string]any); ok {
+					nl[key(i, x)] = m
+				}
+			}
+			for i, x := range ov {
+				if m, ok := x.(map[string]any); ok && nl[key(i, x)] != nil {
+					errs = append(errs, schemaBreaks(m, nl[key(i, x)], at+"/"+k+"/"+itoa(i))...)
+				} else if ok {
+					add("%s/%d removed", k, i)
+				}
+			}
+		}
+	}
+	return errs
 }
 
 // validateSchema checks v against the subset of JSON Schema the generated
