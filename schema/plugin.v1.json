@@ -236,6 +236,14 @@
             ]
           },
           "then": {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/$defs/BadgeItem"
+                },
+                "type": "array"
+              }
+            },
             "propertyNames": {
               "enum": [
                 "type",
@@ -281,6 +289,11 @@
             ]
           },
           "then": {
+            "properties": {
+              "items": {
+                "type": "string"
+              }
+            },
             "propertyNames": {
               "enum": [
                 "type",
@@ -346,6 +359,14 @@
             ]
           },
           "then": {
+            "properties": {
+              "items": {
+                "items": {
+                  "$ref": "#/$defs/FieldItem"
+                },
+                "type": "array"
+              }
+            },
             "propertyNames": {
               "enum": [
                 "type",
@@ -388,6 +409,11 @@
             ]
           },
           "then": {
+            "properties": {
+              "items": {
+                "type": "string"
+              }
+            },
             "propertyNames": {
               "enum": [
                 "type",
@@ -500,9 +526,6 @@
           "description": "fields and badges: a list of items; chips and links: a CEL expression.",
           "oneOf": [
             {
-              "items": {
-                "type": "object"
-              },
               "type": "array"
             },
             {
@@ -615,6 +638,65 @@
       },
       "required": [
         "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "FieldItem": {
+      "additionalProperties": false,
+      "properties": {
+        "copy": {
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "link": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "mono": {
+          "description": "Draw the value in the monospace font.",
+          "type": "boolean"
+        },
+        "severity": {
+          "description": "CEL expression. string: one of error, warning, ok, info, neutral ($defs/Severity), e.g. '\"error\"' or 'item.ready ? \"ok\" : \"error\"'. Without one the app colours a status value from its text.",
+          "examples": [
+            "\"error\"",
+            "\"warning\"",
+            "\"ok\"",
+            "\"info\"",
+            "\"neutral\""
+          ],
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "text",
+            "number",
+            "bool",
+            "status",
+            "age",
+            "until",
+            "timestamp",
+            "quantity",
+            "labels",
+            "url",
+            "code"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "description": "CEL expression.",
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
         "value"
       ],
       "type": "object"
@@ -860,11 +942,13 @@
       "additionalProperties": false,
       "properties": {
         "after": {
+          "deprecated": true,
+          "description": "Deprecated and ignored: plugin sections follow the core ones, and users reorder them in Settings.",
           "type": "string"
         },
         "kinds": {
           "items": {
-            "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
+            "pattern": "^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*$",
             "type": "string"
           },
           "type": "array"
@@ -943,7 +1027,7 @@
             "not": {
               "const": "/Secret"
             },
-            "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
+            "pattern": "^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*$",
             "type": "string"
           },
           "type": "array"
@@ -972,7 +1056,7 @@
         },
         "kind": {
           "description": "Kind key; must be in permissions.read.",
-          "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
+          "pattern": "^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*$",
           "type": "string"
         },
         "limit": {
@@ -1418,6 +1502,7 @@
       "type": "string"
     },
     "homepage": {
+      "format": "uri",
       "type": "string"
     },
     "id": {
@@ -1450,6 +1535,7 @@
     },
     "version": {
       "description": "Semantic version, e.g. 1.0.0.",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
       "type": "string"
     }
   },

@@ -58,6 +58,9 @@ var severitySchema = map[string]any{
 
 var kindKeyPattern = `^(\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$`
 
+// semverPattern is a strict semantic version (as semver.StrictNewVersion).
+var semverPattern = `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`
+
 // schemaField is extra schema for one field ("Type.field").
 func schemaField() map[string]map[string]any {
 	enum := func(l []string) map[string]any { return map[string]any{"enum": l} }
@@ -71,15 +74,17 @@ func schemaField() map[string]map[string]any {
 	return map[string]map[string]any{
 		"Manifest.apiVersion":    {"const": APIVersion},
 		"Manifest.id":            {"pattern": idRe.String(), "description": "Lower-case letters, digits and dashes; unique in the index."},
-		"Manifest.version":       {"description": "Semantic version, e.g. 1.0.0."},
+		"Manifest.version":       {"pattern": semverPattern, "description": "Semantic version, e.g. 1.0.0."},
+		"Manifest.homepage":      {"format": "uri"},
 		"Manifest.description":   {"maxLength": 200},
 		"Manifest.minAppVersion": {"description": "The oldest k8sman that can load this plugin; older apps say so instead of failing."},
 		"Manifest.kinds":         {"propertyNames": map[string]any{"pattern": kindKeyPattern}, "description": `Kind key (group/Kind, e.g. cert-manager.io/Certificate or /Pod; "*" for any kind: variables, related, metrics, panel sections and tabs, actions) → what the plugin adds to it.`},
 		"Permissions.read":       {"items": map[string]any{"type": "string", "pattern": kindKeyPattern}, "description": "Kinds the plugin reads: its own and related ones. Secrets: names and keys only."},
-		"Permissions.patch":      {"items": map[string]any{"type": "string", "pattern": kindKeyPattern, "not": map[string]any{"const": secretKind}}, "description": "Kinds patch actions may change (never Secrets)."},
+		"Permissions.patch":      {"items": map[string]any{"type": "string", "pattern": kindKeyRe.String(), "not": map[string]any{"const": secretKind}}, "description": "Kinds patch actions may change (never Secrets)."},
 		"Permissions.commands":   {"description": "Executables shell actions may run on this computer."},
 		"Permissions.prometheus": {"description": "PromQL queries through the Prometheus integration (metrics)."},
-		"Nav.kinds":              {"items": map[string]any{"type": "string", "pattern": kindKeyPattern}},
+		"Nav.kinds":              {"items": map[string]any{"type": "string", "pattern": kindKeyRe.String()}},
+		"Nav.after":              {"deprecated": true, "description": "Deprecated and ignored: plugin sections follow the core ones, and users reorder them in Settings."},
 		"Kind.version":           {"description": "Pin the API version the entry applies to (default: any)."},
 		"Kind.icon":              {"enum": append(slices.Clone(Icons), "icon.png")},
 		"Kind.variables":         {"propertyNames": map[string]any{"pattern": identRe.String()}, "description": "Named CEL values, read as variables.<name>."},
@@ -88,7 +93,7 @@ func schemaField() map[string]map[string]any {
 		"Kind.exceptKinds":       {"items": map[string]any{"type": "string", "pattern": kindKeyRe.String()}, "description": `Only for "*": kind keys (group/Kind) the entry doesn't apply to; the app doesn't fetch the plugin's panel for them.`},
 		"Kind.scope":             map[string]any{"enum": kindScopes, "description": `Only for "*": namespaced or cluster limits the entry to namespaced or cluster-scoped kinds (default any).`},
 		"Kind.hideColumns":       {"description": "Default columns to drop, by name (any case); \"*\" drops every default but Name, Namespace and Age."},
-		"Related.kind":           {"pattern": kindKeyPattern, "description": "Kind key; must be in permissions.read."},
+		"Related.kind":           {"pattern": kindKeyRe.String(), "description": "Kind key; must be in permissions.read."},
 		"Related.owner":          {"description": "Objects whose ownerReferences include this object (at most 200)."},
 		"Related.filter":         {"description": "bool, sees each candidate as item: keep those for which it is true, before the list is capped at 200. Alone, the candidates are every object of the kind in the namespace."},
 		"Related.limit":          {"minimum": 0, "maximum": relatedMaxLimit, "description": "How many objects a list relation keeps (default 200, at most 2000); the panel notes what it left out."},
@@ -173,7 +178,7 @@ func (g *schemaGen) typeSchema(t reflect.Type) map[string]any {
 		return map[string]any{
 			"description": "fields and badges: a list of items; chips and links: a CEL expression.",
 			"oneOf": []any{
-				map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+				map[string]any{"type": "array"}, // of FieldItem or BadgeItem: see the block type rules
 				map[string]any{"type": "string", "description": celDesc},
 			},
 		}
@@ -239,9 +244,19 @@ func (g *schemaGen) object(t reflect.Type) map[string]any {
 				}
 			}
 		}) {
+			then := map[string]any{"propertyNames": map[string]any{"enum": append([]string{"type", "when"}, blockFields[typ]...)}}
+			// items: a list of FieldItem or BadgeItem, or a CEL expression.
+			switch typ {
+			case "fields":
+				then["properties"] = map[string]any{"items": g.typeSchema(reflect.TypeFor[[]FieldItem]())}
+			case "badges":
+				then["properties"] = map[string]any{"items": g.typeSchema(reflect.TypeFor[[]BadgeItem]())}
+			case "chips", "links":
+				then["properties"] = map[string]any{"items": map[string]any{"type": "string"}}
+			}
 			rules = append(rules, map[string]any{
 				"if":   map[string]any{"properties": map[string]any{"type": map[string]any{"const": typ}}, "required": []string{"type"}},
-				"then": map[string]any{"propertyNames": map[string]any{"enum": append([]string{"type", "when"}, blockFields[typ]...)}},
+				"then": then,
 			})
 		}
 		out["allOf"] = rules

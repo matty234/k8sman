@@ -618,6 +618,9 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 		if m.Nav.Title == "" {
 			d.errAt(n, "nav.title is required")
 		}
+		if m.Nav.After != "" {
+			d.warnAt(resolve(field(n, "after")), "nav.after is deprecated and ignored: plugin sections follow the core ones (users reorder them in Settings ▸ Sidebar)")
+		}
 		if len(m.Nav.Kinds) == 0 {
 			for _, k := range m.KindOrder {
 				if k != "*" {
