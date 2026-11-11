@@ -2,16 +2,70 @@
 
 Status: **Milestone 2 implemented** (your own plugins load in dev mode
 only), plus [bundled plugins](#bundled-plugins) that load by default:
-External Secrets, Dynamic Resource Allocation, Kyverno and cert-manager. Sections 1–12
-are the design; [§13 As built](#13-as-built) says where the build differs
-from it, [Writing a plugin](#writing-a-plugin) is how to use it, and the
-[v1 freeze checklist](#v1-freeze-checklist) is what is left before third
-parties build on the format.
+External Secrets, Dynamic Resource Allocation, Kyverno and cert-manager.
+The format, `k8sman.dev/v1`, is **frozen**: see
+[Compatibility](#compatibility). Sections 1–12 are the design;
+[§13 As built](#13-as-built) says where the build differs from it,
+[Writing a plugin](#writing-a-plugin) is how to use it, and
+[the v1 freeze](#the-v1-freeze) lists what was settled before the freeze and
+what comes after it.
 
 Deep integrations (Argo CD, Helm, Gateway API, …) are compile-time modules
 (see [DEVELOPMENT.md](DEVELOPMENT.md#adding-an-integration)). Plugins cover
 the long tail of CRDs (cert-manager, Karpenter, Crossplane, …): a folder
 with a `plugin.yaml`, in YAML and [CEL](https://cel.dev), loaded at runtime.
+
+## Compatibility
+
+`k8sman.dev/v1` is stable. A plugin that loads in one release of k8sman
+loads, and means the same, in every later release. The format is what a
+plugin can depend on: the fields and values of `plugin.yaml`
+([§3](#3-pluginyaml-reference),
+[`schema/plugin.v1.json`](../schema/plugin.v1.json)), the panel vocabulary
+and core section ids ([§4](#4-panel-vocabulary-v1)), the CEL variables and
+functions ([§5](#5-cel-environment-v1)), the shell action variables and the
+fixtures format. How the app draws a block (layout, colours) is not part of
+it.
+
+**Additive changes** may come in any release:
+
+- new optional fields;
+- new enum values: column and value types, block types, icons, alert
+  sections, severities, host tabs for `into`, and so on;
+- new CEL functions, variables and libraries;
+- new core section ids;
+- new `plugin validate` warnings.
+
+The app rejects fields and values it doesn't know, so a plugin that uses an
+addition sets `minAppVersion` to the release that brought it; older apps
+then say "needs k8sman ≥ x" instead of failing to parse.
+
+**Breaking changes** never happen in v1: removing or renaming a field, an
+enum value, a block type, a CEL function or variable, or a core section id;
+making an optional field required; narrowing a field's type or values;
+turning a warning into a load error; changing what a valid manifest means
+(a default, a function's result). `TestSchemaV1Frozen` compares the schema
+with [`schema/plugin.v1.frozen.json`](../schema/plugin.v1.frozen.json), the
+schema at the freeze, and fails on such a change; the snapshot is refreshed
+only to record additive ones. The CEL environment and the vocabulary's
+meaning are kept by review.
+
+**Deprecations.** A deprecated field or value keeps loading and working for
+all of v1. `plugin validate` warns where it is written and says what to use
+instead, and the schema marks deprecated fields for editors. Deprecated in
+v1:
+
+- `nav.after`: ignored (plugin sections follow the core ones, and users
+  reorder them in Settings ▸ Sidebar);
+- `row` in table columns: use `item`;
+- the severities `critical`, `warn` and `success` in severity expressions:
+  use `error`, `warning` and `ok` (alerts and status counts still take
+  `critical`, `warning` and `info`).
+
+**v2.** A change that can't be made additively goes into a new format,
+`apiVersion: k8sman.dev/v2`, with its own schema. The app would load v1 and
+v2 plugins side by side, each by its `apiVersion`, so v1 plugins keep
+working unchanged. Nothing is planned for v2 yet.
 
 ## Writing a plugin
 
@@ -556,10 +610,12 @@ literals. A field is never both. Plain text never contains expressions.
 | `homepage` | URL | optional |
 | `minAppVersion` | semver | optional; older apps say "needs k8sman ≥ x" instead of failing to parse |
 | `permissions` | Permissions | see §6 |
+| `nav` | `{title, kinds}` | optional: a sidebar section for the plugin's kinds; `kinds` in display order (default: the plugin's kinds in file order). `after` is deprecated and ignored |
 | `kinds` | map of kind key → Kind | |
 
-Unknown fields are a load error (typos are caught), so new fields always come
-with a `minAppVersion`.
+Unknown fields are a load error (typos are caught), so a plugin that uses a
+field added after v1 was frozen sets `minAppVersion` (see
+[Compatibility](#compatibility)).
 
 A **kind key** is `group/Kind`, as in the UI: `/Pod`,
 `cert-manager.io/Certificate`. The key `"*"` (any kind) may hold
@@ -573,7 +629,8 @@ share a definition (or one field of it).
 
 | Field | Type | Notes |
 |---|---|---|
-| `version` | string | optional; pin the API version read (default: the preferred version) |
+| `version` | string | optional; the entry applies only to this API version, which is the one read (default: any version; the preferred one is read) |
+| `icon` | string | the kind's sidebar glyph: a name from the icon list (§4), or `icon.png` for the plugin's own |
 | `variables` | map of name → **CEL** | named values, `variables.<name>`; evaluated lazily, at most once per evaluation |
 | `related` | map of name → Related | §6 |
 | `metrics` | map of name → Metric | §6 |
@@ -583,6 +640,7 @@ share a definition (or one field of it).
 | `actions` | list of Action | |
 | `alerts` | list of Alert | |
 | `status` | Status | the kind's part of the plugin's status line (below) |
+| `exceptKinds`, `scope` | list of kind keys; enum | `"*"` only, see above |
 
 ### Column
 
@@ -590,7 +648,7 @@ share a definition (or one field of it).
 |---|---|---|
 | `name` | string | a plugin column with the same name as a default (built-in or CRD printer) column replaces it in place; new ones go before Age |
 | `value` | **CEL** | the cell; null or an empty optional renders empty |
-| `type` | enum | `string` (default), `number`, `age`, `until`, `status`, `percent`, `bool`, `labels`, `quantity` |
+| `type` | enum | `string` (default), `number`, `age`, `until`, `status`, `percent`, `bool`, `labels`, `quantity`, `bytes` (the app's table column types, so `string` rather than the panels' `text`) |
 | `description` | string | header tooltip |
 
 `until` is new for plugins (and available to jq columns): a future
@@ -605,8 +663,8 @@ timestamp shown as time remaining ("29d"), red once it has passed. It keeps
 | `icon` | string | from the icon list (§4) |
 | `when` | **CEL** | whether the action is offered for this object |
 | `shortcut` | string | e.g. `shift+R`; ignored with a warning if it clashes with a built-in |
-| `dangerous` | bool | default `true`; dangerous actions are hidden and refused on read-only contexts |
-| `confirm` | bool | shell actions only; default `true`; forced `true` when `dangerous` |
+| `dangerous` | bool | default `true`; styles the action as dangerous. Every plugin action is hidden, and refused, on read-only contexts |
+| `confirm` | bool | k9s compatibility: every plugin action is confirmed in v1, so `false` is ignored (with a warning) |
 | `message` | string | extra text in the confirmation |
 | `shell` | Shell | exactly one of `shell` and `patch` |
 | `patch` | Patch | |
@@ -1034,7 +1092,7 @@ only host tab in v1; more may be added later).
 | Block | Widget | Fields |
 |---|---|---|
 | `fields` | `KeyValueTable` | `items`: list of `{label, value` **CEL**`, type, link` **CEL** `Ref, copy: bool, mono: bool, severity` **CEL**`, when}`. A row whose value is null or empty is hidden; `mono` draws it in the monospace font; `severity` colours it |
-| `badges` | `StatusBadge` row | `items`: list of `{text` **CEL**`, severity` **CEL** optional`, when}`; without severity the badge colours itself from the text as today |
+| `badges` | `StatusBadge` row | `items`: list of `{text` **CEL**`, severity` **CEL** optional`, when}`; without severity the badge colours itself from the text |
 | `chips` | `Chipish` / `LabelChips` | `items` **CEL**: a list of strings, or a map (shown as `key=value`) |
 | `conditions` | `ConditionsTable` | `from` **CEL**, default `object.status.conditions` |
 | `links` | `ResourceLink` list | `items` **CEL**: a list of Refs; `empty` (text) |
@@ -1156,8 +1214,9 @@ The frontend wraps each section in a `CoreSection(id, …)`
 (`coreSections`, `internal/plugins/sections.go`) for `plugin validate`.
 Change all three together.
 
-The vocabulary grows by adding blocks or fields; an older app shows "this
-section needs k8sman ≥ x" for a block it doesn't know.
+The vocabulary grows by adding blocks or fields (see
+[Compatibility](#compatibility)); a plugin that uses one sets
+`minAppVersion`, and an older app says it needs a newer k8sman.
 
 ## 5. CEL environment v1
 
@@ -1232,10 +1291,10 @@ replaced with `""`.
 CEL durations have no day unit: write `duration("336h")`, not `"14d"`.
 
 **Contract.** The vocabulary and this environment are the public API of
-`k8sman.dev/v1`. Adding blocks, fields, variables, functions or libraries is
-compatible; removing or changing them is not, and would need `v2` (the app
-would keep loading `v1`). Library versions are pinned in the app, not taken
-from the cluster.
+`k8sman.dev/v1` ([Compatibility](#compatibility)). Adding blocks, fields,
+variables, functions or libraries is compatible; removing or changing them
+is not, and would need `v2` (the app would keep loading `v1`). Library
+versions are pinned in the app, not taken from the cluster.
 
 **A future `logic:` field.** A later optional `logic:` (some richer
 evaluator) would be a new kind-level field gated by `minAppVersion` and its
@@ -1253,7 +1312,7 @@ v1 plugins don't change. Nothing in v1 reserves more than the field name.
 | `name` | **CEL** string | one object by name |
 | `owner` | bool | objects whose `ownerReferences` include this object's uid |
 | `selector` | **CEL** | a `matchLabels` map or a `LabelSelector` object |
-| `namespace` | **CEL** string | default `namespace`; `""` = every namespace; ignored for cluster-scoped kinds |
+| `namespace` | **CEL** string | default `ns` (the object's namespace); `""` = every namespace; ignored for cluster-scoped kinds |
 | `when` | **CEL** bool | skip the lookup |
 | `filter` | **CEL** bool, sees `item` | keep the candidates for which it is true, before the cap; alone: every object of the kind in the namespace |
 | `limit` | int | list relations: how many objects to keep (default 200, at most 2,000) |
@@ -1278,7 +1337,7 @@ note in the section).
 ```yaml
     metrics:
       expiry:
-        query: '"certmanager_certificate_expiration_timestamp_seconds{namespace=" + promQuote(namespace) + ", name=" + promQuote(object.metadata.name) + "}"'
+        query: '"certmanager_certificate_expiration_timestamp_seconds{namespace=" + promQuote(ns) + ", name=" + promQuote(object.metadata.name) + "}"'
 ```
 
 **Permissions** in `plugin.yaml`:
@@ -1298,9 +1357,9 @@ RBAC is enforced by the API server with the user's credentials as usual. A
 forbidden list shows "not allowed to list Secrets in `cert-manager`" in the
 section that needed it; the rest of the panel renders. Plugin actions go through `POST /api/actions/{action}` (so
 `handleAction`'s read-only check, availability check and dry-run apply) and
-the UI's `runResourceAction`/`confirmAction`. Dangerous shell actions are
-refused by the backend on read-only contexts; non-dangerous ones print the
-same notice as local shells.
+the UI's `runResourceAction`/`confirmAction`. On read-only contexts every
+plugin action, shell or patch, dangerous or not, is hidden and refused by
+the backend (question 3, §12).
 
 ## 7. Lifecycle
 
@@ -1685,7 +1744,7 @@ Frontend: `lib/plugins/` (`plugin_api.dart`, `plugin_host.dart`,
 (a sidebar section; `kinds` defaults to the plugin's kinds in file order).
 Integration sections list after the core ones, alphabetically by title; the
 user can reorder them in Settings ▸ Sidebar. `after` is deprecated and
-ignored (still accepted)
+ignored (still accepted; validate warns)
 and per-kind `icon` (a name from the icon list, or `icon.png`). The icon
 list is 62 Material names, in `internal/plugins/icons.go` and
 `lib/plugins/plugin_icons.dart`.
@@ -2125,7 +2184,7 @@ module:
 1. Placement: plugin sections follow a compiled-in panel's own, so
    Resource claims is the Pod's last section (the module put it after
    Configuration) and DRA devices the Node's last (it was second). There
-   is no placement field (freeze checklist).
+   is no placement field (added for the freeze: see *v1 freeze* below).
 2. A node's slices come from the warm cluster-wide ResourceSlice stream,
    filtered (about 1.3 ms per 1,000 slices), not a LIST with a field
    selector on every open.
@@ -2221,7 +2280,7 @@ Pod and Node sections in `dra_sections.dart`), `lib/modules/kyverno_module.dart`
 
 ### v1 freeze: placement, header badges, severities
 
-Checklist items 1–3, all additions (no v1 plugin breaks).
+Items 1–3 of [Resolved before the freeze](#resolved-before-the-freeze), all additions (no v1 plugin breaks).
 
 1. **Placement.** Every compiled-in panel's top-level sections are wrapped
    in `CoreSection(id, …)` (core and module panels, ~50 kinds; the ids are
@@ -2280,41 +2339,80 @@ compiled-in panel, `plugins/plugin_panel.dart` (slots,
 `pluginSectionSlot`), `plugins/blocks.dart` (header badge, `pluginValue`'s
 severity).
 
-## v1 freeze checklist
+### v1 freeze: audit
 
-What should still change, or be decided, before third parties build on
-`k8sman.dev/v1`:
+A last pass over the whole format before the freeze. Fixed:
 
-1. ~~**Section placement on compiled-in panels.**~~ Done: core sections
-   have stable ids (§4), and a section takes `placement: top|bottom` or
-   `after: <id>`; an id the panel doesn't show goes to the bottom, and
-   validate warns about unknown ones (§13, *v1 freeze*).
-2. ~~**Header badges.**~~ Done: a section's `badge` (`text`, `severity`,
-   `when`) is drawn in the header before the summary; the ESO Ready badge
-   and the DRA claim state use it.
-3. ~~**Severity of table and field values.**~~ Done: `severity` (CEL) on
-   fields and table columns; the names are `error`, `warning`, `ok`,
-   `info`, `neutral` (`$defs/Severity`); `critical`, `warn` and `success`
-   still load, and validate warns.
-4. ~~**Host tab slots.**~~ Resolved: `into` is a schema enum holding
-   only `security`; an unknown value is a load error. New slots may be
-   added later (additive, non-breaking).
-5. ~~**Tab identity.**~~ Resolved: tabs take an optional `id`
-   (`^[a-z][a-z0-9-]*$`, unique per entry, default a slug of the title);
-   the UI remembers and selects plugin tabs by it.
-6. ~~**The `"*"` cost model.**~~ Resolved: a `"*"` entry takes `exceptKinds`
-   and `scope`, which the plugin list exposes so the UI skips the panel
-   fetch; each plugin's `"*"` entry has a per-inspection budget (4 related
-   lookups, 300 ms), noted in the panel and counted in the stats.
-7. ~~**Naming.**~~ Resolved: `ns` stays (`namespace` is a CEL reserved
-   word; §5 said otherwise), table columns see `item` (`row` is a
-   deprecated alias with a lint warning), and `input` is final.
-8. **Interactive tables.** No filter chips or per-column sorting in the
-   UI; a `filterBy: <column>` on tables would cover the Kyverno report
-   panel.
-9. **Aggregated policy reports.** If matching results by resource across a
-   namespace's reports is wanted on every object, it needs an indexed
-   lookup in the host (by uid), not a CEL filter.
-10. **Distribution** (Milestone 3: index, signing, install, consent
-    upgrades) is still unbuilt; `minAppVersion` is the only versioning a
-    plugin has.
+- `nav.after` warns as deprecated (it was ignored silently); the example
+  plugin no longer sets it, and the schema marks it `deprecated`.
+- The schema checks the items of `fields` and `badges` blocks
+  (`$defs/FieldItem`, `$defs/BadgeItem`, with `additionalProperties:
+  false`) and that `chips` and `links` items are a CEL string; before, any
+  object passed.
+- The schema no longer offers `"*"` where the loader refuses it
+  (`related.kind`, `permissions.patch`, `nav.kinds`), and checks `version`
+  (strict semver) and `homepage` (a URI).
+- §3 documents `nav`, `icon`, `exceptKinds`/`scope` and the `bytes` column
+  type, and what `dangerous` and `confirm` do (every action is confirmed,
+  and hidden on read-only contexts); §6 uses `ns`, not `namespace`.
+
+Kept as they are, frozen (each could be eased later by an additive alias):
+
+- Table columns take `type: string` where panel values take `text`
+  (columns share the app's own column types).
+- Alerts and status counts take `critical`, `warning`, `info` (the
+  overview's issue levels), while severity expressions take `error`,
+  `warning`, `ok`, `info`, `neutral` and warn on `critical`.
+- The `message` block's `severity` is a fixed name, not CEL like every
+  other `severity`.
+- `permissions.read` accepts `"*"`, which grants nothing: a `"*"` kind
+  entry needs no permission, so a plugin's consent screen doesn't say it
+  reads every object you inspect.
+
+The guard: `schema/plugin.v1.frozen.json` is the schema at the freeze, and
+`TestSchemaV1Frozen` (`internal/plugins/data_test.go`) walks it beside the
+generated schema, failing on a removed property or definition, a newly
+required property, a removed enum value, a new enum on an open field, a
+changed `const`, a narrowed `type` or `additionalProperties` closed.
+
+## The v1 freeze
+
+### Resolved before the freeze
+
+1. **Section placement on compiled-in panels.** Core sections have stable
+   ids (§4), and a section takes `placement: top|bottom` or `after: <id>`;
+   an id the panel doesn't show goes to the bottom, and validate warns
+   about unknown ones (§13, *v1 freeze*).
+2. **Header badges.** A section's `badge` (`text`, `severity`, `when`) is
+   drawn in the header before the summary; the ESO Ready badge and the DRA
+   claim state use it.
+3. **Severity of table and field values.** `severity` (CEL) on fields and
+   table columns; the names are `error`, `warning`, `ok`, `info`, `neutral`
+   (`$defs/Severity`); `critical`, `warn` and `success` still load, and
+   validate warns.
+4. **Host tab slots.** `into` is a schema enum holding only `security`; an
+   unknown value is a load error. New slots are additive.
+5. **Tab identity.** Tabs take an optional `id` (`^[a-z][a-z0-9-]*$`,
+   unique per entry, default a slug of the title); the UI remembers and
+   selects plugin tabs by it.
+6. **The `"*"` cost model.** A `"*"` entry takes `exceptKinds` and `scope`,
+   which the plugin list exposes so the UI skips the panel fetch; each
+   plugin's `"*"` entry has a per-inspection budget (4 related lookups,
+   300 ms), noted in the panel and counted in the stats.
+7. **Naming.** `ns` stays (`namespace` is a CEL reserved word; §5 said
+   otherwise), table columns see `item` (`row` is a deprecated alias with a
+   lint warning), and `input` is final.
+8. **Audit and guard.** The format as a whole, and a test that keeps v1
+   from breaking (*v1 freeze: audit*, above; [Compatibility](#compatibility)).
+
+### After v1
+
+All additive, so none needs v2:
+
+- **Interactive tables.** No filter chips or per-column sorting in the UI;
+  a `filterBy: <column>` on tables would cover the Kyverno report panel.
+- **Aggregated policy reports.** Matching results by resource across a
+  namespace's reports, on every object, needs an indexed lookup in the host
+  (by uid), not a CEL filter.
+- **Distribution** (Milestone 3: index, signing, install, consent
+  upgrades). `minAppVersion` is the only versioning a plugin has.
