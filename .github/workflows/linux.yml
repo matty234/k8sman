@@ -62,6 +62,8 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned: 3.50 deprecates package:flutter/material.dart (material_ui), and analyze fails on the infos.
+          flutter-version: 3.47.9
           cache: true
 
       # The full test suite runs on macOS in release.yml (its widget
