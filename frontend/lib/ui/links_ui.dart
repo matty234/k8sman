@@ -5,8 +5,11 @@ import 'package:provider/provider.dart';
 import '../api/models.dart';
 import '../app/links.dart';
 import '../modules/modules.dart';
+import '../plugins/plugin_host.dart' show pluginsModuleId;
+import '../plugins/plugins_settings.dart' show pluginInstallRequest;
 import '../state/app_state.dart';
 import 'context_badge.dart';
+import 'settings/settings_page.dart' show showSettings;
 import 'widgets/common.dart' show copyToClipboard;
 
 /// What [followLink] did.
@@ -195,6 +198,19 @@ Future<void> openIncomingLink(BuildContext context, AppState app, String url) as
     await Future<void>.delayed(const Duration(milliseconds: 200));
   }
   if (!context.mounted) return;
+  // k8sman://plugins/install?id=<id> (the plugin directory's Install
+  // buttons): Settings ▸ Plugins, which asks for consent.
+  final u = Uri.tryParse(url);
+  if (u != null && u.scheme == 'k8sman' && u.host == 'plugins' && u.path == '/install') {
+    final id = u.queryParameters['id'] ?? '';
+    if (!RegExp(r'^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$').hasMatch(id)) {
+      await _notice(context, 'This plugin link doesn\'t name a plugin.');
+      return;
+    }
+    pluginInstallRequest.value = id;
+    showSettings(app, module: pluginsModuleId);
+    return;
+  }
   final link = AppLink.parse(url);
   if (link == null) {
     await _notice(context, 'This isn\'t a k8sman link k8sman can open.');

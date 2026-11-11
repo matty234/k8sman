@@ -463,6 +463,21 @@ class ApiClient {
       Map<String, dynamic>.from(await _send('POST', 'plugins/run',
           {...r.toQuery(), 'namespace': namespace, 'name': name, 'plugin': plugin, 'action': action}, const {}) as Map);
 
+  /// The plugin directory (Browse) and the updates available; [refresh]
+  /// fetches its index again.
+  Future<Json> pluginDirectory({bool refresh = false}) async =>
+      Map<String, dynamic>.from(await _get('plugins/directory', {'refresh': refresh ? '1' : null}) as Map);
+
+  /// Installs (or updates) plugin [id] from the directory: answers
+  /// {consent: …} to ask the user, or, with the [permissionsHash] agreed
+  /// to, the plugin list (as [plugins]).
+  Future<Json> installPlugin(String id, {String? permissionsHash}) async =>
+      Map<String, dynamic>.from(await _send('POST', 'plugins/directory/install', const {}, {'id': id, 'permissionsHash': ?permissionsHash}) as Map);
+
+  /// Removes plugin [id] installed from the directory.
+  Future<Json> uninstallPlugin(String id) async =>
+      Map<String, dynamic>.from(await _send('POST', 'plugins/directory/uninstall', const {}, {'id': id}) as Map);
+
   /// Plugin [id]'s icon.png.
   Future<Uint8List> pluginIcon(String id) async => (await _api.get('plugins/${Uri.encodeComponent(id)}/icon')).bodyBytes;
 

@@ -370,7 +370,8 @@ String _quote(String s) => s.isEmpty || RegExp(r'''[\s'"$`\\|&;<>()*?#~]''').has
 
 /// Asks to agree to [p]'s permissions, browser-extension style. Asked on a
 /// plugin's first action, and again when its permissions change.
-Future<bool?> showPluginConsent(BuildContext context, PluginInfo p) {
+/// [install]: before installing [p] from the plugin directory.
+Future<bool?> showPluginConsent(BuildContext context, PluginInfo p, {bool install = false}) {
   final theme = Theme.of(context);
   final perms = p.permissions;
   Widget line(IconData icon, String head, String body) => Padding(
@@ -390,11 +391,12 @@ Future<bool?> showPluginConsent(BuildContext context, PluginInfo p) {
   return showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text('Allow ${p.name}?'),
+      title: Text(install ? 'Install ${p.name}?' : 'Allow ${p.name}?'),
       content: SizedBox(
         width: 460,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${p.name} ${p.version} is an unpacked plugin from ${p.dir}. It asks to:', style: theme.textTheme.bodySmall),
+          Text(install ? '${p.name} ${p.version}, from the k8sman plugin directory, asks to:' : '${p.name} ${p.version} is an unpacked plugin from ${p.dir}. It asks to:',
+              style: theme.textTheme.bodySmall),
           const SizedBox(height: 10),
           line(Icons.visibility_outlined, 'Read', reads.isEmpty ? 'nothing' : reads.join(', ')),
           if (perms.prometheus) line(Icons.insights_outlined, 'Query', 'Prometheus (through the Prometheus integration)'),
@@ -413,7 +415,7 @@ Future<bool?> showPluginConsent(BuildContext context, PluginInfo p) {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, true), child: const Text('Allow')),
+        FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, true), child: Text(install ? 'Install' : 'Allow')),
       ],
     ),
   );

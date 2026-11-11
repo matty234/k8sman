@@ -1,6 +1,7 @@
 /// Settings ▸ Integrations ▸ Plugins: developer mode, the plugin folders,
-/// and every plugin with its errors (file:line, inline) and evaluation
-/// timings.
+/// every plugin with its errors (file:line, inline) and evaluation
+/// timings, and Browse: the plugin directory, to install, update and
+/// uninstall plugins (docs/PLUGINS.md §10).
 library;
 
 import 'package:flutter/material.dart';
@@ -12,10 +13,14 @@ import '../state/app_state.dart';
 import '../ui/settings/settings_widgets.dart';
 import '../ui/theme.dart';
 import '../ui/widgets/common.dart';
-import '../util/k8s.dart' show Severity;
+import '../util/k8s.dart' show Severity, asMap;
 import 'plugin_api.dart';
 import 'plugin_host.dart';
 import 'plugin_actions.dart' show showPluginConsent;
+
+/// A plugin id to install, from a `k8sman://plugins/install?id=<id>`
+/// link: the Plugins settings take it (and ask for consent) when shown.
+final pluginInstallRequest = ValueNotifier<String?>(null);
 
 class PluginsSettings extends StatefulWidget {
   const PluginsSettings({super.key});
@@ -28,6 +33,12 @@ class _PluginsSettingsState extends State<PluginsSettings> {
   bool _busy = false;
   String? _error;
 
+  /// The plugin directory (null until fetched), the Browse search, and
+  /// the plugin being installed.
+  DirectoryState? _dir;
+  final _search = TextEditingController();
+  String? _installing;
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +47,80 @@ class _PluginsSettingsState extends State<PluginsSettings> {
       pluginHost.attach(api);
       pluginHost.refresh();
     }
+    // Opening the page checks the directory (and so for updates).
+    _loadDirectory(refresh: true);
+    pluginInstallRequest.addListener(_takeInstallRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _takeInstallRequest());
+  }
+
+  @override
+  void dispose() {
+    pluginInstallRequest.removeListener(_takeInstallRequest);
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadDirectory({bool refresh = false}) async {
+    final api = context.read<ApiClient?>();
+    if (api == null) return;
+    DirectoryState d;
+    try {
+      d = DirectoryState.fromJson(await api.pluginDirectory(refresh: refresh));
+    } on ApiException catch (e) {
+      d = DirectoryState(status: 'offline', error: e.message);
+    } catch (e) {
+      d = DirectoryState(status: 'offline', error: '$e');
+    }
+    if (mounted) setState(() => _dir = d);
+  }
+
+  void _takeInstallRequest() {
+    final id = pluginInstallRequest.value;
+    if (id == null || !mounted) return;
+    pluginInstallRequest.value = null;
+    _install(id);
+  }
+
+  /// Installs or updates plugin [id]. With [hash] (permissions already
+  /// agreed to: an update that asks for nothing new) it installs at once;
+  /// otherwise the backend answers with what to ask, and it installs on
+  /// consent.
+  Future<void> _install(String id, {String? hash}) async {
+    final api = context.read<ApiClient?>();
+    if (api == null || _installing != null) return;
+    setState(() {
+      _installing = id;
+      _error = null;
+    });
+    try {
+      var r = await api.installPlugin(id, permissionsHash: hash);
+      if (r['consent'] != null) {
+        final c = asMap(r['consent']);
+        final p = PluginInfo(
+          id: id,
+          name: '${c['name'] ?? id}',
+          version: '${c['version'] ?? ''}',
+          permissions: PluginPermissions.fromJson(asMap(c['permissions'])),
+          permissionsHash: '${c['permissionsHash'] ?? ''}',
+        );
+        if (!mounted) return;
+        if (await showPluginConsent(context, p, install: true) != true) return;
+        r = await api.installPlugin(id, permissionsHash: p.permissionsHash);
+      }
+      if (r['consent'] == null) pluginHost.applyJson(r);
+    } on ApiException catch (e) {
+      _error = e.message;
+    } catch (e) {
+      _error = '$e';
+    } finally {
+      if (mounted) setState(() => _installing = null);
+    }
+    await _loadDirectory();
+  }
+
+  Future<void> _uninstall(PluginInfo p) async {
+    await _call((api) => api.uninstallPlugin(p.id));
+    await _loadDirectory();
   }
 
   Future<void> _call(Future<Map<String, dynamic>> Function(ApiClient api) f) async {
@@ -74,7 +159,7 @@ class _PluginsSettingsState extends State<PluginsSettings> {
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SettingRow(
             label: 'Developer mode',
-            description: 'Load plugins from folders on this computer and reload them as you edit. In this version plugins load only in developer mode.',
+            description: 'Load unpacked plugins from folders on this computer and reload them as you edit. Plugins from the directory (Browse) load without it.',
             trailing: SettingSwitch(
               key: const ValueKey('plugins-dev-mode'),
               value: s.devModeSaved || s.flagFolders.isNotEmpty,
@@ -127,9 +212,141 @@ class _PluginsSettingsState extends State<PluginsSettings> {
           // Bundled plugins have their own rows under Integrations; here
           // only in dev mode, with their timings and the module comparison.
           for (final p in s.plugins)
-            if (s.devMode || !p.bundled) _PluginCard(key: ValueKey('plugin-${p.dir}'), plugin: p, state: s, busy: _busy, call: _call),
+            if (s.devMode || !p.bundled)
+              _PluginCard(
+                key: ValueKey('plugin-${p.dir}'),
+                plugin: p,
+                state: s,
+                busy: _busy || _installing != null,
+                call: _call,
+                update: p.fromDirectory ? _dir?.byId(p.id) : null,
+                onUpdate: (d) => _install(d.id, hash: d.permissionsChanged ? null : d.permissionsHash),
+                onUninstall: () => _uninstall(p),
+              ),
+          const SizedBox(height: 12),
+          _browse(context),
         ]);
       },
+    );
+  }
+}
+
+extension on _PluginsSettingsState {
+  /// Browse: the plugin directory, searchable. Its problems (not set up
+  /// in this build, offline, an expired list) show as one quiet line.
+  Widget _browse(BuildContext context) {
+    final theme = Theme.of(context);
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, height: 1.35);
+    final d = _dir;
+    final quiet = switch (d?.status) {
+      null => 'Loading the plugin directory…',
+      'not-configured' => 'The plugin directory isn’t set up in this build.',
+      'offline' => d!.plugins.isEmpty ? 'Can’t reach the plugin directory right now.' : 'Can’t reach the plugin directory: showing the last list.',
+      'expired' => 'The plugin directory’s list has expired. Try again later.',
+      'invalid' => 'The plugin directory’s list couldn’t be verified, so it isn’t shown.',
+      _ => d!.plugins.isEmpty ? 'The plugin directory is empty.' : null,
+    };
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SettingsGroupTitle(
+        'Browse',
+        trailing: IconButton(
+          tooltip: 'Check the plugin directory again',
+          iconSize: 15,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.refresh),
+          onPressed: () => _loadDirectory(refresh: true),
+        ),
+      ),
+      if (d != null && d.plugins.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: TextField(
+            key: const ValueKey('plugins-browse-search'),
+            controller: _search,
+            decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 15), hintText: 'Search plugins', isDense: true),
+          ),
+        ),
+      if (quiet != null) Tooltip(message: d?.error ?? '', child: Text(quiet, style: hint)),
+      ListenableBuilder(
+        listenable: _search,
+        builder: (context, _) {
+          final q = _search.text.trim().toLowerCase();
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (final p in d?.plugins ?? const <DirectoryPlugin>[])
+              if (q.isEmpty || [p.id, p.name, p.description, ...p.kinds, ...p.authors].any((s) => s.toLowerCase().contains(q)))
+                _DirectoryCard(
+                  key: ValueKey('plugin-dir-${p.id}'),
+                  plugin: p,
+                  installing: _installing == p.id,
+                  busy: _busy || _installing != null,
+                  onInstall: () => _install(p.id, hash: p.state == 'update' && !p.permissionsChanged ? p.permissionsHash : null),
+                ),
+          ]);
+        },
+      ),
+    ]);
+  }
+}
+
+/// One plugin in Browse: icon, name, version, description, kinds and
+/// authors, and its state (Built in, Installed, Update, Install).
+class _DirectoryCard extends StatelessWidget {
+  final DirectoryPlugin plugin;
+  final bool installing;
+  final bool busy;
+  final VoidCallback onInstall;
+  const _DirectoryCard({super.key, required this.plugin, required this.installing, required this.busy, required this.onInstall});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = AppColors.of(context);
+    final p = plugin;
+    final hint = theme.textTheme.bodySmall?.copyWith(color: theme.hintColor, height: 1.35);
+    final fallback = Icon(Icons.extension_outlined, size: 18, color: theme.hintColor);
+    final Widget state = installing
+        ? Row(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+            const SizedBox(width: 8),
+            Text(p.state == 'update' ? 'Updating…' : 'Installing…', style: hint),
+          ])
+        : switch (p.state) {
+            'builtin' => const Chipish(text: 'Built in'),
+            'installed' => const Chipish(text: 'Installed'),
+            'update' => FilledButton.tonal(onPressed: busy ? null : onInstall, child: Text('Update to ${p.version}')),
+            'incompatible' => Text(p.reason, style: hint),
+            _ => FilledButton(key: ValueKey('plugin-install-${p.id}'), onPressed: busy ? null : onInstall, child: const Text('Install')),
+          };
+    final about = [
+      if (p.kinds.isNotEmpty) p.kinds.map((k) => k.split('/').last).join(', '),
+      if (p.authors.isNotEmpty) 'by ${p.authors.join(', ')}',
+    ].join(' · ');
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(border: Border.all(color: colors.separator), borderRadius: BorderRadius.circular(8)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: p.icon.isEmpty ? fallback : Image.network(p.icon, width: 18, height: 18, errorBuilder: (_, _, _) => fallback),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(child: Text(p.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+              const SizedBox(width: 6),
+              Text(p.state == 'update' ? '${p.installedVersion} → ${p.version}' : p.version, style: hint),
+            ]),
+            if (p.description.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(p.description, style: theme.textTheme.bodySmall)),
+            if (about.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(about, style: hint)),
+            if (p.state == 'update' && p.permissionsChanged)
+              Padding(padding: const EdgeInsets.only(top: 2), child: Text('This version asks for new permissions.', style: hint)),
+          ]),
+        ),
+        const SizedBox(width: 10),
+        state,
+      ]),
     );
   }
 }
@@ -162,7 +379,22 @@ class _PluginCard extends StatelessWidget {
   final PluginsState state;
   final bool busy;
   final Future<void> Function(Future<Map<String, dynamic>> Function(ApiClient api) f) call;
-  const _PluginCard({super.key, required this.plugin, required this.state, required this.busy, required this.call});
+
+  /// A directory plugin's entry in the directory (for Update), and its
+  /// Update and Uninstall.
+  final DirectoryPlugin? update;
+  final void Function(DirectoryPlugin d) onUpdate;
+  final VoidCallback onUninstall;
+  const _PluginCard({
+    super.key,
+    required this.plugin,
+    required this.state,
+    required this.busy,
+    required this.call,
+    this.update,
+    required this.onUpdate,
+    required this.onUninstall,
+  });
 
   /// Switches a bundled plugin and the module it replaces (one or the
   /// other, never both), then reloads the app's module switches.
@@ -194,7 +426,10 @@ class _PluginCard extends StatelessWidget {
           const SizedBox(width: 6),
           if (p.version.isNotEmpty) Text(p.version, style: hint),
           const SizedBox(width: 8),
-          Chipish(text: p.bundled ? (p.overridden ? 'Bundled · overridden' : 'Bundled') : (p.overrides ? 'Unpacked · overrides bundled' : 'Unpacked')),
+          Chipish(
+              text: p.bundled
+                  ? (p.overridden ? 'Built in · overridden' : 'Built in')
+                  : '${p.fromDirectory ? 'Directory' : 'Unpacked'}${p.overrides ? ' · overrides built in' : ''}'),
           const SizedBox(width: 8),
           StatusBadge(switch (p.status) { 'error' => p.loaded ? 'Reload failed' : 'Error', 'warning' => 'Warnings', _ => 'Loaded' }, severity: sev),
           const Spacer(),
@@ -207,6 +442,16 @@ class _PluginCard extends StatelessWidget {
         ]),
         if (p.description.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(p.description, style: theme.textTheme.bodySmall)),
         Padding(padding: const EdgeInsets.only(top: 4), child: Text(p.dir, style: monoStyle(context, size: 11, color: colors.faint))),
+        if (p.revoked != null) Padding(padding: const EdgeInsets.only(top: 6), child: InlineMessage('Off: ${p.revoked}', icon: Icons.block)),
+        if (p.fromDirectory)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Wrap(spacing: 8, children: [
+              if (update case final d? when d.state == 'update')
+                FilledButton.tonal(onPressed: busy ? null : () => onUpdate(d), child: Text('Update to ${d.version}${d.permissionsChanged ? '…' : ''}')),
+              TextButton(key: ValueKey('plugin-uninstall-${p.id}'), onPressed: busy ? null : onUninstall, child: const Text('Uninstall')),
+            ]),
+          ),
         if (p.loaded && p.status == 'error')
           Padding(padding: const EdgeInsets.only(top: 6), child: Text('The previous version keeps running until this loads.', style: hint)),
         if (p.bundled && p.replacesModule != null)

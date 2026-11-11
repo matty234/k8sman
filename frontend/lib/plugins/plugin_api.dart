@@ -173,10 +173,17 @@ class PluginInfo {
   final String homepage;
   final String dir;
 
-  /// dev (added in the app), flag (--plugin-dev), installed or bundled
-  /// (compiled into the backend; shown in Settings ▸ Integrations like a
-  /// module).
+  /// dev (added in the app), flag (--plugin-dev), installed (a folder in
+  /// the installed folder), directory (installed from the plugin
+  /// directory) or bundled (compiled into the backend; shown in Settings ▸
+  /// Integrations like a module).
   final String source;
+
+  /// Not signed (dev, flag, installed): loads only in developer mode.
+  final bool unpacked;
+
+  /// Why a directory plugin's version is off (withdrawn), or null.
+  final String? revoked;
 
   /// Whether its contributions apply now (decided by the backend: loaded,
   /// on, not overridden or replaced by its module, and for the user's own
@@ -220,6 +227,8 @@ class PluginInfo {
     this.homepage = '',
     this.dir = '',
     this.source = 'dev',
+    this.unpacked = false,
+    this.revoked,
     this.active = true,
     this.overridden = false,
     this.overrides = false,
@@ -252,6 +261,8 @@ class PluginInfo {
       homepage: '${j['homepage'] ?? ''}',
       dir: '${j['dir'] ?? ''}',
       source: '${j['source'] ?? 'dev'}',
+      unpacked: j['unpacked'] == true,
+      revoked: (j['revoked'] as String?)?.isEmpty == true ? null : j['revoked'] as String?,
       active: j['active'] == true,
       overridden: j['overridden'] == true,
       overrides: j['overrides'] == true,
@@ -280,6 +291,9 @@ class PluginInfo {
 
   /// Compiled into the backend.
   bool get bundled => source == 'bundled';
+
+  /// Installed from the plugin directory.
+  bool get fromDirectory => source == 'directory';
 
   List<PluginDiag> get errors => [for (final d in diags) if (!d.warning) d];
 }
@@ -317,6 +331,80 @@ class PluginsState {
       );
 
   static const empty = PluginsState();
+}
+
+/// One plugin in the plugin directory (`GET /api/plugins/directory`):
+/// its newest version this app can install.
+class DirectoryPlugin {
+  final String id;
+  final String name;
+  final String version;
+  final String description;
+  final List<String> authors;
+  final List<String> kinds;
+  final PluginPermissions permissions;
+  final String permissionsHash;
+
+  /// An absolute URL, or empty.
+  final String icon;
+
+  /// builtin, installed, update, install or incompatible ([reason]).
+  final String state;
+  final String reason;
+  final String installedVersion;
+
+  /// An update asks for other permissions (consent again).
+  final bool permissionsChanged;
+
+  const DirectoryPlugin({
+    required this.id,
+    required this.name,
+    this.version = '',
+    this.description = '',
+    this.authors = const [],
+    this.kinds = const [],
+    this.permissions = const PluginPermissions(),
+    this.permissionsHash = '',
+    this.icon = '',
+    this.state = 'install',
+    this.reason = '',
+    this.installedVersion = '',
+    this.permissionsChanged = false,
+  });
+
+  factory DirectoryPlugin.fromJson(Json j) => DirectoryPlugin(
+        id: '${j['id'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        version: '${j['version'] ?? ''}',
+        description: '${j['description'] ?? ''}',
+        authors: [for (final a in (j['authors'] as List? ?? const [])) '$a'],
+        kinds: [for (final k in (j['kinds'] as List? ?? const [])) '$k'],
+        permissions: PluginPermissions.fromJson(asMap(j['permissions'])),
+        permissionsHash: '${j['permissionsHash'] ?? ''}',
+        icon: '${j['icon'] ?? ''}',
+        state: '${j['state'] ?? 'install'}',
+        reason: '${j['reason'] ?? ''}',
+        installedVersion: '${j['installedVersion'] ?? ''}',
+        permissionsChanged: j['permissionsChanged'] == true,
+      );
+}
+
+/// `GET /api/plugins/directory`.
+class DirectoryState {
+  /// ok, not-configured, offline (the last fetch failed; [plugins] may be
+  /// the cached index), expired or invalid.
+  final String status;
+  final String error;
+  final List<DirectoryPlugin> plugins;
+  const DirectoryState({this.status = 'ok', this.error = '', this.plugins = const []});
+
+  factory DirectoryState.fromJson(Json j) => DirectoryState(
+        status: '${j['status'] ?? 'ok'}',
+        error: '${j['error'] ?? ''}',
+        plugins: [for (final p in asMapList(j['plugins'])) DirectoryPlugin.fromJson(p)],
+      );
+
+  DirectoryPlugin? byId(String id) => plugins.where((p) => p.id == id).firstOrNull;
 }
 
 /// A form field of a plugin patch action. The backend checks the value

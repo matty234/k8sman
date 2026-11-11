@@ -2396,6 +2396,37 @@ generated schema, failing on a removed property or definition, a newly
 required property, a removed enum value, a new enum on an open field, a
 changed `const`, a narrowed `type` or `additionalProperties` closed.
 
+### Installing from the directory
+
+`internal/plugins/directory.go` implements §10's install path. The index
+is fetched from `https://matty234.github.io/k8sman-plugins/index.json`
+(+ `.sig`; 30 s timeout, 4 MiB cap), its signature checked with the
+built-in `IndexPublicKey` before it is parsed; an expired index is shown
+as such, and a failed fetch falls back to the last good one held in
+memory. `K8SMAN_PLUGIN_INDEX_URL` and `K8SMAN_PLUGIN_INDEX_KEY` point a
+build at another directory. Install picks the newest version that isn't
+revoked and whose `minAppVersion` fits (the app passes its version in
+`K8SMAN_APP_VERSION`), downloads it (≤ `size` ≤ 1 MiB), checks the sha256,
+unpacks into `<plugins dir>/.staging-*` (regular `.yaml`/`.md`/`.png`/`.svg`
+files and folders only; no absolute paths, `..` or links), validates it
+and checks its id, version and permissions against the index. The UI shows
+the consent; on consent the folder is renamed to `<plugins dir>/<id>` and
+`plugins.installed[id]` in settings.json records version, sha256 and
+permissions hash (consent is stored as for any plugin).
+
+A folder in the plugins dir with an `installed` record loads always
+(source `directory`); one without is unpacked and loads only in dev mode,
+like dev folders. Updates: same permissions hash, one click; a new hash,
+consent again. Each successful index check turns off installed versions
+the index revokes (`revoked` on the record and in `GET /api/plugins`); the
+backend checks daily while any directory plugin is installed, and the
+Plugins page on open. Endpoints: `GET /api/plugins/directory[?refresh]`,
+`GET /api/plugins/directory/updates`, `POST
+/api/plugins/directory/install {id, permissionsHash?}` (answers `{consent}`
+until the hash agreed to is sent), `POST /api/plugins/directory/uninstall
+{id}`. `k8sman://plugins/install?id=<id>` opens Settings ▸ Plugins at
+that plugin's consent.
+
 ## The v1 freeze
 
 ### Resolved before the freeze

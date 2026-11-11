@@ -38,9 +38,10 @@ import (
 // its signature is at the same URL + ".sig".
 const DefaultIndexURL = "https://matty234.github.io/k8sman-plugins/" + IndexFile
 
-// IndexPublicKey is the index signing key (base64 ed25519). Empty: the
+// IndexPublicKey is the index signing key (base64 ed25519; the private
+// half is the k8sman-plugins CI secret). Empty: the
 // directory isn't configured in this build.
-var IndexPublicKey = ""
+var IndexPublicKey = "TcsP0f/fXzh3ZjUnqVHoyyfYtzbjp358OIjp2DD1kms="
 
 // Limits on what the directory downloads and unpacks.
 const (
