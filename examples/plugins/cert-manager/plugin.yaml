@@ -84,3 +84,24 @@ kinds:
           variables.notAfter.hasValue() &&
           until(variables.notAfter.value()) < duration("336h")
         message: '"Expires in " + humanDuration(until(variables.notAfter.value()))'
+
+    # Starting points in the resource editor's New Resource screen (create
+    # mode), under the plugin's name. ${namespace} becomes the editor's
+    # namespace; ${name} and ${name:default} are placeholders the user fills
+    # (Tab goes to the next one). The first document must be this kind.
+    templates:
+      - name: Certificate
+        description: A TLS certificate for one DNS name, from a ClusterIssuer
+        yaml: |
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: ${name:example-tls}
+            namespace: ${namespace}
+          spec:
+            secretName: ${secretName:example-tls}
+            dnsNames:
+              - ${dnsName:app.example.com}
+            issuerRef:
+              kind: ClusterIssuer
+              name: ${issuer:letsencrypt}

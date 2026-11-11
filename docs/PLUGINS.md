@@ -419,6 +419,81 @@ the inspection is counted under `budget` in the plugin's stats
 (Settings ▸ Integrations ▸ Installed ▸ Developer ▸ Timings). Entries for a kind of their own have
 no such budget.
 
+### Templates
+
+A kind's `templates` are starting points for **New Resource** (the
+full-window editor's create mode). They are listed in its Templates pane
+under the plugin's name and icon, beside the app's own: first when the
+editor was opened for that kind (from its table), after the built-in ones
+otherwise. Picking one puts its YAML in the editor; Validate (a dry run)
+and Create work as for any manifest.
+
+```yaml
+kinds:
+  cert-manager.io/ClusterIssuer:
+    templates:
+      - name: Let's Encrypt (HTTP-01)
+        description: ACME issuer using an ingress solver
+        yaml: |
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: ${name:letsencrypt}
+          spec:
+            acme:
+              server: https://acme-v02.api.letsencrypt.org/directory
+              email: ${email}
+              privateKeySecretRef:
+                name: ${name:letsencrypt}-account-key
+              solvers:
+                - http01:
+                    ingress:
+                      ingressClassName: ${ingressClass:nginx}
+```
+
+**Placeholders.** `${name}` or `${name:default}`, where the name is a letter
+or `_` followed by letters, digits, `_` and `-`, and the default is any text
+without `}` or a line break:
+
+- `${namespace}` (with or without a default) is replaced with the
+  namespace chosen in the editor's title bar, and again when it changes
+  before you edit;
+- every other placeholder stays in the text for you to fill. The first one
+  is selected when the template is picked, so typing replaces it; **Tab**
+  selects the next one (wrapping around), and copies what you typed into the
+  other placeholders of the same name first. Without placeholders left, Tab
+  indents as usual. Placeholders are highlighted in plain values (not
+  inside quoted or block strings), and "2 placeholders left" shows beside
+  Validate, with **Use defaults** to replace each `${name:default}` with
+  its default.
+
+A placeholder left in the text is sent as it is, so the dry run (or the
+API server) rejects what isn't valid there. Any other `${…}` (`${1}`,
+`${ x }`) is plain text, and `plugin validate` warns about it in case it is
+a typo; there is no escape for a literal `${name}`.
+
+**Rules** (checked by `plugin validate` and at load, with `file:line`
+positions inside the block):
+
+- `name` (required) is unique within the kind; `description` is optional;
+  `yaml` is required, at most 16 KiB, and parses as YAML with the
+  placeholders in it (`name: ${name}` is a plain string);
+- every document has `apiVersion` and `kind`; the first one creates the
+  kind the template sits under (its group and Kind match the key). The
+  others may be any kind (an issuer and the Secret it reads, a GitRepository
+  and the Kustomization that applies it);
+- at most 20 templates per kind; the `"*"` kind has none.
+
+Templates are text you review and create yourself, through your own
+credentials, so they need no permissions: they don't change the plugin's
+permissions, its permissions hash or the consent it asks for. Only enabled,
+loaded plugins contribute them.
+
+Kinds that share an anchor (`cert-manager.io/ClusterIssuer: *issuer`) share
+their templates too, which then fail the kind check for one of them; anchor
+the shared fields (`panel: &issuerPanel`) instead and give each kind its own
+`templates`.
+
 ### Fixtures and tests
 
 ```
@@ -675,7 +750,7 @@ A **kind key** is `group/Kind`, as in the UI: `/Pod`,
 `variables`, `related`, `metrics`, `panel` (sections and tabs, not
 `generic`) and `actions`, and only it takes `exceptKinds` (kind keys it
 skips) and `scope` (`any` (default), `namespaced` or `cluster`); columns,
-`hideColumns`, alerts, `status`, `icon` and `version` are per kind. YAML anchors work, so two kinds can
+`hideColumns`, alerts, `status`, `icon`, `version` and `templates` are per kind. YAML anchors work, so two kinds can
 share a definition (or one field of it).
 
 ### Kind
@@ -693,6 +768,7 @@ share a definition (or one field of it).
 | `actions` | list of Action | |
 | `alerts` | list of Alert | |
 | `status` | Status | the kind's part of the plugin's status line (below) |
+| `templates` | list of Template | starting points for the create editor ([Template](#template)); not on `"*"` |
 | `exceptKinds`, `scope` | list of kind keys; enum | `"*"` only, see above |
 
 ### Column
@@ -776,6 +852,23 @@ Counted over every namespace from the watch cache, with the alerts'
 limits (100,000 per expression, 500 ms per plugin); `when` sees what an
 alert's does (the object, `variables`, `now`; not `related` or `metrics`).
 Served by `GET /api/plugins/status`.
+
+### Template
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | required; unique within the kind; the row's title in the editor |
+| `description` | string | optional; the row's second line |
+| `yaml` | string | required, ≤ 16 KiB: one or more YAML documents, each with `apiVersion` and `kind`; the first creates this kind, the others may be any kind |
+
+At most 20 per kind. Placeholders: `${namespace}` is the editor's
+namespace; `${name}` and `${name:default}` are filled by the user (name:
+`[A-Za-z_][A-Za-z0-9_-]*`; default: no `}` or line break). Templates need
+no permissions and don't change the permissions hash. Served by
+`GET /api/plugins/templates?kind=group/Kind` (enabled, loaded plugins only).
+See [Templates](#templates) in the guide. Added after the v1 freeze (an
+optional field): a plugin with templates sets `minAppVersion: 0.2.17` so
+older apps say what they need instead of rejecting the field.
 
 ### k9s compatibility
 
