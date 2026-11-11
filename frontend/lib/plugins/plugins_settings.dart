@@ -292,7 +292,11 @@ class PluginRow extends StatelessWidget {
     final entry = p.fromDirectory ? c.dir?.byId(p.id) ?? pluginNotices.updates.where((u) => u.id == p.id).firstOrNull : null;
     final update = entry != null && entry.state == 'update' ? entry : null;
     final source = p.bundled
-        ? (p.overridden ? 'built in · overridden' : 'built in')
+        ? (p.overridden
+            ? 'built in · overridden'
+            : p.moving
+                ? 'built in · moving to Marketplace'
+                : 'built in')
         : '${p.fromDirectory ? 'directory' : 'unpacked'}${p.overrides ? ' · overrides built in' : ''}';
     final status = p.revoked != null
         ? null

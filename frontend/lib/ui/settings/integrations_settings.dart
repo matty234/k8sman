@@ -350,8 +350,14 @@ class _BundledPluginTileState extends State<BundledPluginTile> {
       description: p.description,
       icon: pluginIcon(p),
       on: !p.disabled,
-      tag: p.overridden ? 'plugin · overridden by a loaded folder' : 'plugin',
-      tagTooltip: 'Built in as a plugin (plugin.yaml): its columns, sections and actions come from the same format your own plugins use.',
+      tag: p.overridden
+          ? 'plugin · overridden by a loaded folder'
+          : p.moving
+              ? 'Built in · moving to Marketplace'
+              : 'plugin',
+      tagTooltip: p.moving
+          ? 'This plugin now ships through the plugin Marketplace. k8sman installs it from there for you, with the same permissions; until then the built-in copy keeps running.'
+          : 'Built in as a plugin (plugin.yaml): its columns, sections and actions come from the same format your own plugins use.',
       status: status,
       onChanged: _busy ? null : _set,
     );

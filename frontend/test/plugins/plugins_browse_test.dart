@@ -37,7 +37,7 @@ class _DirectoryApi extends FakeApiClient {
       'status': 'ok',
       'plugins': [
         certManager,
-        {'id': 'external-secrets', 'name': 'External Secrets', 'version': '1.0.0', 'state': 'builtin'},
+        {'id': 'dra', 'name': 'Dynamic Resource Allocation', 'version': '1.0.0', 'state': 'builtin'},
       ],
       // The cluster serves its kinds: suggested, once, at the top.
       'suggested': [certManager],

@@ -195,6 +195,11 @@ class PluginInfo {
   final bool overridden;
   final bool overrides;
 
+  /// A formerly bundled plugin (External Secrets, cert-manager, Kyverno)
+  /// still running from the app's copy until its move to the plugin
+  /// directory is done: "Built in · moving to Marketplace".
+  final bool moving;
+
   /// The built-in module a bundled plugin replaces, and whether the app
   /// uses that module instead (to compare the two; settings.json's
   /// plugins.useModule).
@@ -232,6 +237,7 @@ class PluginInfo {
     this.active = true,
     this.overridden = false,
     this.overrides = false,
+    this.moving = false,
     this.replacesModule,
     this.usingModule = false,
     this.status = 'ok',
@@ -266,6 +272,7 @@ class PluginInfo {
       active: j['active'] == true,
       overridden: j['overridden'] == true,
       overrides: j['overrides'] == true,
+      moving: j['moving'] == true,
       replacesModule: (j['replacesModule'] as String?)?.isEmpty == true ? null : j['replacesModule'] as String?,
       usingModule: j['usingModule'] == true,
       status: '${j['status'] ?? 'ok'}',
