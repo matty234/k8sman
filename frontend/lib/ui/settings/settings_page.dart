@@ -9,11 +9,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../api/client.dart';
 import '../../app/updates/update_controller.dart';
 import '../../app/updates/update_ui.dart';
 import '../../modules/modules.dart';
 import '../../plugins/plugin_host.dart';
 import '../../plugins/plugin_notices.dart';
+import '../../plugins/plugins_settings.dart' show PluginsController;
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../addons/addons_view.dart';
@@ -35,7 +37,7 @@ enum SettingsSection {
   sidebar('Sidebar', Icons.view_sidebar_outlined, 'What the top of the sidebar shows, and in what order.'),
   views('Views', Icons.bookmark_outline, 'Saved views: order, names, contexts, import and export.'),
   integrations('Integrations', Icons.extension_outlined,
-      'Turn off what you don\'t use: its pages, panels and checks go away on every cluster. Status is for the current cluster.'),
+      'Turn off what you don\'t use, and add plugins from the Marketplace. Status is for the current cluster.'),
   addons('Add-ons', Icons.inventory_2_outlined, 'Cluster tools k8sman builds on (metrics-server, Prometheus, Trivy, …), installed with Helm on the current cluster.'),
   tables('Tables', Icons.table_rows_outlined, 'Each kind\'s table remembers its sort, column widths and filter.'),
   keyboard('Keyboard', Icons.keyboard_outlined, 'Shortcuts. Press ? outside a text field for this list anywhere.'),
@@ -51,7 +53,7 @@ enum SettingsSection {
   static SettingsSection? parse(String arg) {
     final a = arg.trim().toLowerCase();
     if (a.isEmpty) return null;
-    const aliases = {'add-ons': addons, 'add-on': addons, 'helm': addons, 'modules': integrations, 'plugins': integrations, 'shortcuts': keyboard, 'keys': keyboard, 'updates': about, 'kubeconfig': clusters, 'contexts': clusters};
+    const aliases = {'add-ons': addons, 'add-on': addons, 'helm': addons, 'modules': integrations, 'plugins': integrations, 'marketplace': integrations, 'shortcuts': keyboard, 'keys': keyboard, 'updates': about, 'kubeconfig': clusters, 'contexts': clusters};
     return aliases[a] ?? values.where((s) => s.name.startsWith(a)).firstOrNull;
   }
 }
@@ -63,13 +65,16 @@ List<SettingsSection> settingsSections(AppState app) => [
     ];
 
 /// Shows the Settings page, at [section] if given (else where it was
-/// left), with module [module]'s settings open under Integrations.
-void openSettings(BuildContext context, {SettingsSection? section, String? module}) =>
-    showSettings(context.read<AppState>(), section: section, module: module);
+/// left), with module [module]'s settings open under Integrations ▸
+/// Installed, or at Integrations' sub-page [integrations].
+void openSettings(BuildContext context, {SettingsSection? section, String? module, IntegrationsPage? integrations}) =>
+    showSettings(context.read<AppState>(), section: section, module: module, integrations: integrations);
 
 /// [openSettings] without a BuildContext (palette commands).
-void showSettings(AppState app, {SettingsSection? section, String? module}) {
-  final s = module != null ? SettingsSection.integrations : section;
+void showSettings(AppState app, {SettingsSection? section, String? module, IntegrationsPage? integrations}) {
+  final page = module != null ? IntegrationsPage.installed : integrations;
+  if (page != null) integrationsPage.value = page;
+  final s = page != null ? SettingsSection.integrations : section;
   app.showView(MainView.settings, focus: s == null ? null : '$_focusPrefix${s.name}${module == null ? '' : '/$module'}');
 }
 
@@ -95,10 +100,12 @@ class _SettingsPageState extends State<SettingsPage> {
   final _focus = FocusNode(debugLabel: 'settings');
   final _scroll = ScrollController();
   final _modules = ModuleExpansion();
+  late final PluginsController _plugins;
 
   @override
   void initState() {
     super.initState();
+    _plugins = PluginsController(context.read<ApiClient?>());
     // Esc and ⌘F reach the page; `:` and `?` still bubble up to the shell.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !textEntryFocused) _focus.requestFocus();
@@ -122,6 +129,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _scroll.dispose();
     pluginHost.removeListener(_onPlugins);
     _modules.dispose();
+    _plugins.dispose();
     super.dispose();
   }
 
@@ -186,7 +194,7 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsSection.clusters => clusterSettings(),
         SettingsSection.sidebar => sidebarSettings(),
         SettingsSection.views => viewSettings(),
-        SettingsSection.integrations => integrationSettings(_modules, context.read<AppState>()),
+        SettingsSection.integrations => integrationSettings(_modules, context.read<AppState>(), _plugins),
         SettingsSection.addons => _addonsSettings(),
         SettingsSection.tables => tableSettings(),
         SettingsSection.keyboard => _keyboardSettings(),
@@ -284,12 +292,22 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _sectionBody(SettingsSection s) {
     final theme = Theme.of(context);
+    final title = Text(s.title, style: theme.textTheme.headlineSmall?.copyWith(fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -0.3));
+    final introStyle = theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor);
+    final integrations = s == SettingsSection.integrations;
     return Column(key: ValueKey('settings-section-${s.name}'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(s.title, style: theme.textTheme.headlineSmall?.copyWith(fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -0.3)),
+      // Integrations: Installed | Marketplace beside the title.
+      if (integrations)
+        Wrap(spacing: 16, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [title, const IntegrationsPageSwitch()])
+      else
+        title,
       const SizedBox(height: 4),
-      Text(s.intro, style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor)),
+      if (integrations)
+        ValueListenableBuilder(valueListenable: integrationsPage, builder: (context, page, _) => Text(page.intro, style: introStyle))
+      else
+        Text(s.intro, style: introStyle),
       const SizedBox(height: 28),
-      SettingCards(_items(s)),
+      if (integrations) IntegrationsBody(items: _items(s), plugins: _plugins) else SettingCards(_items(s)),
     ]);
   }
 

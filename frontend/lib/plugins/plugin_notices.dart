@@ -3,7 +3,9 @@
 /// directory plugins (docs/PLUGINS.md §10). Checked on connecting to a
 /// context, daily, and after a plugin change; the backend reuses its
 /// cached index, so a context switch doesn't fetch it again. Nothing
-/// installs from here: Review opens Settings ▸ Plugins.
+/// installs from here: Review opens Settings ▸ Integrations, at
+/// Marketplace for suggestions and at Installed (the Plugins group) for
+/// updates.
 library;
 
 import 'dart:async';
@@ -13,14 +15,12 @@ import 'package:provider/provider.dart';
 
 import '../api/models.dart' show Json;
 import '../state/app_state.dart';
+import '../ui/settings/integrations_settings.dart' show IntegrationsPage;
 import '../ui/settings/settings_page.dart' show showSettings;
 import '../ui/theme.dart';
 import '../util/k8s.dart' show asMapList;
 import 'plugin_api.dart';
 import 'plugin_host.dart';
-
-/// Set to scroll Settings ▸ Plugins to Browse when it shows.
-final pluginBrowseRequest = ValueNotifier<bool>(false);
 
 class PluginNotices extends ChangeNotifier {
   AppState? _app;
@@ -171,8 +171,7 @@ class PluginNoticeBanners extends StatelessWidget {
               text: n == 1 ? '1 plugin matches what’s installed on this cluster' : '$n plugins match what’s installed on this cluster',
               onReview: () {
                 notices.dismissSuggestions();
-                pluginBrowseRequest.value = true;
-                showSettings(app, module: pluginsModuleId);
+                showSettings(app, integrations: IntegrationsPage.marketplace);
               },
               onDismiss: notices.dismissSuggestions,
             ),

@@ -159,7 +159,7 @@ don't need to fork: write a plugin, a folder with a `plugin.yaml` that adds
 table columns, inspector sections (with related objects and metrics),
 shell and patch actions and overview alerts in YAML and CEL, evaluated by
 the backend over the shared watch cache. Turn on **Settings ▸
-Integrations ▸ Plugins ▸ Developer mode**, **Load plugin folder…** (try
+Integrations ▸ Installed ▸ Developer ▸ Developer mode**, **Load plugin folder…** (try
 [`examples/plugins/cert-manager`](../examples/plugins/cert-manager), a short
 example that replaces the bundled cert-manager plugin while loaded; the
 full one is in `internal/plugins/bundled/cert-manager`), and

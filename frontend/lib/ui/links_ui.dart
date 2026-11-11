@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../api/models.dart';
 import '../app/links.dart';
 import '../modules/modules.dart';
-import '../plugins/plugin_host.dart' show pluginsModuleId;
+import 'settings/integrations_settings.dart' show IntegrationsPage;
 import '../plugins/plugins_settings.dart' show pluginInstallRequest;
 import '../state/app_state.dart';
 import 'context_badge.dart';
@@ -199,7 +199,7 @@ Future<void> openIncomingLink(BuildContext context, AppState app, String url) as
   }
   if (!context.mounted) return;
   // k8sman://plugins/install?id=<id> (the plugin directory's Install
-  // buttons): Settings ▸ Plugins, which asks for consent.
+  // buttons): Settings ▸ Integrations ▸ Marketplace, which asks for consent.
   final u = Uri.tryParse(url);
   if (u != null && u.scheme == 'k8sman' && u.host == 'plugins' && u.path == '/install') {
     final id = u.queryParameters['id'] ?? '';
@@ -208,7 +208,7 @@ Future<void> openIncomingLink(BuildContext context, AppState app, String url) as
       return;
     }
     pluginInstallRequest.value = id;
-    showSettings(app, module: pluginsModuleId);
+    showSettings(app, integrations: IntegrationsPage.marketplace);
     return;
   }
   final link = AppLink.parse(url);

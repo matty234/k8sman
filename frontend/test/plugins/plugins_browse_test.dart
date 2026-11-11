@@ -66,18 +66,20 @@ class _DirectoryApi extends FakeApiClient {
 }
 
 void main() {
-  testWidgets('Browse suggests plugins for the cluster and Install asks for consent first', (tester) async {
+  testWidgets('Marketplace suggests plugins for the cluster and Install asks for consent first', (tester) async {
     final api = _DirectoryApi();
+    final plugins = PluginsController(api)..loadDirectory();
+    addTearDown(plugins.dispose);
     tester.view.physicalSize = const Size(900, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MultiProvider(
       providers: [Provider<ApiClient?>.value(value: api), ChangeNotifierProvider<AppState>.value(value: AppState(api))],
-      child: MaterialApp(theme: buildTheme(Brightness.dark), home: const Scaffold(body: SingleChildScrollView(child: PluginsSettings()))),
+      child: MaterialApp(theme: buildTheme(Brightness.dark), home: Scaffold(body: SingleChildScrollView(child: PluginMarketplace(controller: plugins)))),
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('Browse'), findsOneWidget);
+    expect(find.text('All plugins'), findsOneWidget);
     expect(find.text('Certificates at a glance'), findsOneWidget);
     expect(find.text('Built in'), findsOneWidget);
     expect(find.text('Suggested for this cluster'), findsOneWidget);

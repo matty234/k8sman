@@ -83,8 +83,8 @@ without it: see [Bundled plugins](#bundled-plugins).)
    [`backend/internal/plugins/bundled/cert-manager`](../backend/internal/plugins/bundled/cert-manager).
    The example keeps the id `cert-manager`, so loading it replaces the
    bundled one while it is loaded (see [Bundled plugins](#bundled-plugins)).
-2. Turn developer mode on: **Settings ▸ Integrations ▸ Plugins ▸ Developer
-   mode** (or the palette's **Integrations…**). Or start the backend with
+2. Turn developer mode on: **Settings ▸ Integrations ▸ Installed ▸
+   Developer ▸ Developer mode** (or the palette's **Integrations…**). Or start the backend with
    `--plugin-dev <folder>` (repeatable), e.g.
    `make backend BACKEND_ARGS="--plugin-dev examples/plugins/cert-manager"`
    with `make app-dev`, or for the packaged macOS app
@@ -97,7 +97,7 @@ without it: see [Bundled plugins](#bundled-plugins).)
    and the command palette. Its alerts show on the Overview and in the
    dock's Issues tab.
 5. Edit `plugin.yaml` and save. Tables and open panels update within a
-   moment. A mistake shows inline in Settings ▸ Integrations ▸ Plugins as
+   moment. A mistake shows inline in Settings ▸ Integrations ▸ Installed as
    `plugin.yaml:42:21: undeclared reference to 'objet'` with the line and a
    caret, and the previous version keeps running until the file loads again.
    A failing expression shows its error (with its line) in its cell, field or
@@ -415,7 +415,7 @@ Each plugin's `"*"` entry has a **budget per inspection**: at most 4 related
 lookups (`starMaxLookups`) within 300 ms (`starDeadline`). Lookups past it
 are skipped, the panel notes `related.<name>: skipped: over budget`, and
 the inspection is counted under `budget` in the plugin's stats
-(Settings ▸ Integrations ▸ timings). Entries for a kind of their own have
+(Settings ▸ Integrations ▸ Installed ▸ Developer ▸ Timings). Entries for a kind of their own have
 no such budget.
 
 ### Fixtures and tests
@@ -499,8 +499,8 @@ short teaching copy.
   or else whether the cluster serves its kinds), marked "plugin", in the
   place of the module it replaces, if any. Off is saved in
   settings.json's `plugins.disabled`, as for any plugin. In developer mode
-  they also appear under Integrations ▸ Plugins (badge **Bundled**) with
-  their kinds, permissions and timings.
+  they also appear under Integrations ▸ Installed ▸ Developer (marked
+  *built in*) with their kinds and permissions (the row's chevron).
 - **Overridable.** A plugin folder with the same `id`, loaded in developer
   mode, overrides the bundled copy while it is loaded (badges *Unpacked ·
   overrides bundled* and *Bundled · overridden*): load
@@ -525,8 +525,8 @@ sidebar section, panels, icons and Integrations row), unless settings.json's
 `plugins.useModule` names the plugin; then the plugin is off and the module
 on. Default: the plugin.
 
-To flip: turn on developer mode (Settings ▸ Integrations ▸ Plugins), find
-the plugin's card and switch **Use the built-in module instead**; switch it
+To flip: turn on developer mode (Settings ▸ Integrations ▸ Installed ▸
+Developer), open the plugin's row there and switch **Use the built-in module instead**; switch it
 off to go back. It applies at once (tables, sidebar and inspector follow).
 Or edit `~/.config/k8sman/settings.json` with the app closed, e.g.
 `{"plugins": {"useModule": ["<plugin id>"]}}` (or `PUT /api/plugins/settings
@@ -1505,13 +1505,13 @@ Homebrew and the Linux packages link it as `k8sman`.
   CertificateRequests, Issuers, ClusterIssuers and Secrets (names and keys
   only). Runs on this computer: `cmctl`. Changes: nothing." The Karpenter one
   adds "Changes: NodePools (with your confirmation)".
-- **Updates** are checked when the Plugins page opens and daily while any
+- **Updates** are checked when Settings ▸ Integrations opens and daily while any
   plugin is installed. Same permissions: install on click (or
   automatically, if turned on). New permissions: ask again. Revoked
   versions are disabled on the next check. The app shows the count on
-  Settings ▸ Integrations ▸ Plugins and a dismissible "Updates for 2
+  Settings ▸ Integrations (and its Installed tab) and a dismissible "Updates for 2
   plugins" notice.
-- **Suggestions.** Browse leads with "Suggested for this cluster": plugins
+- **Suggestions.** Integrations ▸ Marketplace leads with "Suggested for this cluster": plugins
   the current cluster has kinds for ("This cluster has Cluster, Backup and
   Pooler (postgresql.cnpg.io)") that are compatible and not installed,
   built in or unpacked. On connecting to a context with new suggestions the
@@ -1655,8 +1655,8 @@ Frontend: `lib/plugins/` (`plugin_api.dart`, `plugin_host.dart`,
 
 **Loading and settings.**
 
-- Plugins load only in developer mode: Settings ▸ Integrations ▸ Plugins ▸
-  Developer mode, or `--plugin-dev <dir>` (repeatable; turns dev mode on).
+- Plugins load only in developer mode: Settings ▸ Integrations ▸ Installed
+  ▸ Developer ▸ Developer mode, or `--plugin-dev <dir>` (repeatable; turns dev mode on).
   A dev folder is a plugin folder or a folder of them. In dev mode the
   installed folder (`~/.config/k8sman/plugins/*`) loads too. There is no
   install, index or signing yet; every plugin is "Unpacked".
@@ -2432,8 +2432,8 @@ Plugins page on open. Endpoints: `GET /api/plugins/directory[?refresh]`,
 `GET /api/plugins/directory/updates`, `POST
 /api/plugins/directory/install {id, permissionsHash?}` (answers `{consent}`
 until the hash agreed to is sent), `POST /api/plugins/directory/uninstall
-{id}`. `k8sman://plugins/install?id=<id>` opens Settings ▸ Plugins at
-that plugin's consent.
+{id}`. `k8sman://plugins/install?id=<id>` opens Settings ▸ Integrations ▸
+Marketplace at that plugin's consent.
 
 Suggestions match each plugin's index `kinds` (group/Kind, core `/Kind`)
 against the current context's cached discovery, in the backend:
@@ -2448,7 +2448,7 @@ unseenSuggestions, unseenUpdates}`; the notices show only with status
 {context, suggestions, updates}`, kept in settings.json as
 `plugins.seenSuggestions[context]` (plugin ids) and `plugins.seenUpdates`
 (id@version): a notice comes back only for a plugin or version not seen.
-`plugins.autoUpdate` (Settings ▸ Plugins, off by default; `PUT
+`plugins.autoUpdate` (Settings ▸ Integrations ▸ Installed, off by default; `PUT
 /api/plugins/settings {autoUpdate}`) makes the daily check, and turning
 it on, install the updates whose permissions hash equals the installed
 one, then reload; updates with new permissions wait for consent.

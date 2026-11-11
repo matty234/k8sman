@@ -17,6 +17,7 @@ import '../editor/resource_editor_screen.dart';
 import '../logs/stream_logs_dialog.dart' show showStreamLogsDialog;
 import '../resource_nav.dart';
 import '../resource_table.dart';
+import '../settings/integrations_settings.dart' show IntegrationsPage;
 import '../settings/settings_page.dart';
 import '../terminal/open_terminal.dart';
 import 'palette_items.dart';
@@ -253,7 +254,7 @@ List<PaletteItem> paletteItems(BuildContext context) {
       typeLabel: 'Action',
       icon: _icon(Icons.extension_outlined),
       aliases: const ['modules', 'plugins', 'settings'],
-      run: () => openSettings(context, section: SettingsSection.integrations),
+      run: () => openSettings(context, integrations: IntegrationsPage.installed),
     ),
     if (settingsSections(app).contains(SettingsSection.addons))
       PaletteItem(
