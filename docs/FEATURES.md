@@ -314,6 +314,9 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   (`main` container), following new steps live.
 - Terminals into any container, with automatic shell detection
   (zsh → bash → ash → sh). Font size is adjustable (⌘+ / ⌘− / ⌘0) and ⌘K clears.
+- KubeVirt serial console: **Serial console** on a running VirtualMachine or
+  VirtualMachineInstance opens its console in a terminal tab (no `virtctl`;
+  `WS /api/vm-console`). Refused on read-only contexts.
 - An ephemeral debug container for distroless images that have no shell.
 - Local shells (macOS and Linux): **+** opens your login shell on this
   machine. Its `KUBECONFIG` puts a context-only file in front of your
