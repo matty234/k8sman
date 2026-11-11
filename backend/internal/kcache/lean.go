@@ -31,7 +31,8 @@ import (
 //     metadata, marked pending (Pending), whose body-derived cells the UI
 //     shows as pending;
 //  2. a fill pages through the full objects (fillPage at a time, at most
-//     maxFills streams at once, on the context's own rate limits),
+//     maxFills streams at once, on the context's own rate limits; in
+//     protobuf for Secrets and ConfigMaps, see proto.go),
 //     summarises each page and pushes the rows as MODIFIED events, one
 //     batch per page. Objects that went away meanwhile are DELETED at the
 //     end. The fill is one consistent read, so the watch then starts from
@@ -149,18 +150,18 @@ func (c *Cache) ListOnce(ctx context.Context, key Key) (*unstructured.Unstructur
 		return c.source(key).List(ctx, opts)
 	}
 	out := &unstructured.UnstructuredList{}
-	rv, err := listPaged(ctx, c.source(key), opts, func(page []*unstructured.Unstructured) {
+	rv, err := listPaged(ctx, c.pager(key, sum), opts, func(page []*unstructured.Unstructured) {
 		for _, u := range page {
 			out.Items = append(out.Items, *u)
 		}
-	}, sum)
+	})
 	out.SetResourceVersion(rv)
 	return out, err
 }
 
 // listPaged reads every object fillPage at a time (one consistent read),
 // handing each page on summarised. It returns the list's resourceVersion.
-func listPaged(ctx context.Context, ri source, opts metav1.ListOptions, page func([]*unstructured.Unstructured), sum func(map[string]any) map[string]any) (string, error) {
+func listPaged(ctx context.Context, read pageFunc, opts metav1.ListOptions, page func([]*unstructured.Unstructured)) (string, error) {
 	select {
 	case fillSlots <- struct{}{}:
 		defer func() { <-fillSlots }()
@@ -170,7 +171,7 @@ func listPaged(ctx context.Context, ri source, opts metav1.ListOptions, page fun
 	opts.Limit, opts.ResourceVersion = fillPage, ""
 	restarts := 0
 	for {
-		list, err := ri.List(ctx, opts)
+		items, rv, cont, err := read(ctx, opts)
 		if err != nil {
 			if opts.Continue != "" && isExpired(err) && restarts < 3 {
 				// The continue token outlived compaction: read again from
@@ -181,18 +182,11 @@ func listPaged(ctx context.Context, ri source, opts metav1.ListOptions, page fun
 			}
 			return "", err
 		}
-		items := make([]*unstructured.Unstructured, len(list.Items))
-		for i := range list.Items {
-			u := &list.Items[i]
-			u.Object = sum(u.Object)
-			items[i] = u
-		}
-		list.Items = nil // the payloads go with the page
 		page(items)
-		if list.GetContinue() == "" {
-			return list.GetResourceVersion(), nil
+		if cont == "" {
+			return rv, nil
 		}
-		opts.Continue = list.GetContinue()
+		opts.Continue = cont
 	}
 }
 
@@ -224,7 +218,7 @@ func standIn(p *metav1.PartialObjectMetadata, apiVersion, kind string) *unstruct
 // summaries, then drop what wasn't seen and mark the stream complete.
 func (s *stream) fill() error {
 	seen := map[string]bool{}
-	rv, err := listPaged(s.ctx, s.ri, s.listOptions(), func(page []*unstructured.Unstructured) {
+	rv, err := listPaged(s.ctx, s.c.pager(s.key, s.summarise), s.listOptions(), func(page []*unstructured.Unstructured) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		for _, u := range page {
@@ -240,7 +234,7 @@ func (s *stream) fill() error {
 				sub.push(t, u)
 			}
 		}
-	}, s.summarise)
+	})
 	if err != nil {
 		return err
 	}

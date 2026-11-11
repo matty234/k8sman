@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"slices"
 	"sort"
 	"strings"
@@ -82,6 +83,8 @@ type Clients struct {
 	Discovery  discovery.CachedDiscoveryInterface
 	// Metadata lists objects as metadata only (PartialObjectMetadata). Optional.
 	Metadata metadata.Interface
+	// HTTP is the HTTP client every client above shares. Optional.
+	HTTP *http.Client
 
 	// refreshDiscovery, when set, re-fetches discovery into the on-disk
 	// cache in the background (see buildClients). Started at most once,

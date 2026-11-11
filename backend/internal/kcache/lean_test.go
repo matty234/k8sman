@@ -2,22 +2,32 @@ package kcache
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer/protobuf"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/watch"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/kubernetes/scheme"
 	metadatafake "k8s.io/client-go/metadata/fake"
+	"k8s.io/client-go/rest"
 	clienttesting "k8s.io/client-go/testing"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
@@ -204,12 +214,15 @@ func TestLeanMetadataFirst(t *testing.T) {
 }
 
 // BenchmarkLeanList is what a table of a heavy kind costs the backend: 400
-// Secrets (100 of them Helm releases with 100 KB-1 MB payloads) and 400
-// ConfigMaps (a quarter of them 50-500 KB). "full" decodes the upstream
-// LIST and renders the default columns; "first-snapshot" is the
-// metadata-first table's first SNAPSHOT (decode the metadata LIST, build
-// stand-ins); "fill" is the rest (decode pages of fillPage, summarise,
-// render). upstream-B is the bytes the API server sends.
+// Secrets (100 of them Helm releases with 100 KB-1 MB payloads, random
+// bytes as Helm's are gzipped) and 400 ConfigMaps (a quarter of them
+// 50-500 KB). "full" decodes the upstream LIST and renders the default
+// columns; "first-snapshot" is the metadata-first table's first SNAPSHOT
+// (decode the metadata LIST, build stand-ins); "fill" is the rest (decode
+// pages of fillPage, summarise, render), "fill-protobuf" the same from
+// protobuf pages (proto.go; it checks the summaries are the JSON ones).
+// upstream-B is the bytes the API server sends, gzip-B the same gzipped
+// (as the API server compresses LISTs).
 func BenchmarkLeanList(b *testing.B) {
 	type kind struct {
 		name       string
@@ -221,7 +234,9 @@ func BenchmarkLeanList(b *testing.B) {
 		{"secrets", SecretsGVR, "Secret", "SecretList", func(i int, obj map[string]any) {
 			if i%4 == 0 {
 				obj["type"] = "helm.sh/release.v1"
-				obj["data"] = map[string]any{"release": base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{byte(i)}, 100_000+(i*7919)%900_000))}
+				payload := make([]byte, 100_000+(i*7919)%900_000)
+				rand.NewChaCha8([32]byte{byte(i), byte(i >> 8)}).Read(payload)
+				obj["data"] = map[string]any{"release": base64.StdEncoding.EncodeToString(payload)}
 			} else {
 				obj["type"] = "Opaque"
 				obj["data"] = map[string]any{"user": "YWRtaW4=", "pass": base64.StdEncoding.EncodeToString(make([]byte, 64))}
@@ -249,9 +264,11 @@ func BenchmarkLeanList(b *testing.B) {
 			return out
 		}
 		full, metaList := enc(k.list, all), enc("PartialObjectMetadataList", meta)
-		var pages [][]byte
+		var pages, protoPages [][]byte
 		for i := 0; i < len(all); i += fillPage {
-			pages = append(pages, enc(k.list, all[i:min(i+fillPage, len(all))]))
+			p := enc(k.list, all[i:min(i+fillPage, len(all))])
+			pages = append(pages, p)
+			protoPages = append(protoPages, toProtobuf(b, p, newProtoList(k.gvr.GroupResource())))
 		}
 		sum, _, _ := heavy(k.gvr)
 		cols := columns.NewEvaluator(columns.Defaults(cluster.ResourceType{Version: "v1", Resource: k.name, Kind: k.kind, Namespaced: true}, nil))
@@ -283,24 +300,195 @@ func BenchmarkLeanList(b *testing.B) {
 			}
 			b.ReportMetric(float64(len(metaList)), "upstream-B")
 		})
-		b.Run(k.name+"/fill", func(b *testing.B) {
-			n := 0
-			for _, p := range pages {
-				n += len(p)
+		jsonFill := func(p []byte) []unstructured.Unstructured {
+			l := &unstructured.UnstructuredList{}
+			if err := l.UnmarshalJSON(p); err != nil {
+				b.Fatal(err)
 			}
-			for b.Loop() {
-				for _, p := range pages {
-					l := &unstructured.UnstructuredList{}
-					if err := l.UnmarshalJSON(p); err != nil {
-						b.Fatal(err)
+			for i := range l.Items {
+				l.Items[i].Object = sum(l.Items[i].Object)
+			}
+			return l.Items
+		}
+		protoFill := func(p []byte) []unstructured.Unstructured {
+			l := newProtoList(k.gvr.GroupResource())
+			if _, _, err := scheme.Codecs.UniversalDeserializer().Decode(p, nil, l); err != nil {
+				b.Fatal(err)
+			}
+			objs := protoSummarisers[k.gvr.GroupResource()](l)
+			items := make([]unstructured.Unstructured, len(objs))
+			for i, o := range objs {
+				o["apiVersion"], o["kind"] = "v1", k.kind
+				items[i].Object = o
+			}
+			return items
+		}
+		for i := range pages {
+			if j, p := jsonFill(pages[i]), protoFill(protoPages[i]); !reflect.DeepEqual(j, p) {
+				b.Fatalf("protobuf summaries differ: %v\nvs %v", p[0].Object, j[0].Object)
+			}
+		}
+		for _, f := range []struct {
+			name  string
+			pages [][]byte
+			read  func([]byte) []unstructured.Unstructured
+		}{{"fill", pages, jsonFill}, {"fill-protobuf", protoPages, protoFill}} {
+			b.Run(k.name+"/"+f.name, func(b *testing.B) {
+				for b.Loop() {
+					for _, p := range f.pages {
+						rows(f.read(p))
 					}
-					for i := range l.Items {
-						l.Items[i].Object = sum(l.Items[i].Object)
-					}
-					rows(l.Items)
 				}
+				reportBytes(b, f.pages...)
+			})
+		}
+	}
+}
+
+// BenchmarkPodsList weighs protobuf for a full kind: 2,000 Pods from a
+// LIST into the cache's unstructured objects, JSON against protobuf
+// (typed decode, then DefaultUnstructuredConverter). Not adopted: see
+// docs/PERFORMANCE.md.
+func BenchmarkPodsList(b *testing.B) {
+	pods := &corev1.PodList{TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "PodList"}}
+	for i := range 2000 {
+		pods.Items = append(pods.Items, benchPod(i))
+	}
+	js, err := json.Marshal(pods)
+	if err != nil {
+		b.Fatal(err)
+	}
+	pb := toProtobuf(b, js, &corev1.PodList{})
+	b.Run("json", func(b *testing.B) {
+		for b.Loop() {
+			l := &unstructured.UnstructuredList{}
+			if err := l.UnmarshalJSON(js); err != nil {
+				b.Fatal(err)
 			}
-			b.ReportMetric(float64(n), "upstream-B")
-		})
+			for i := range l.Items {
+				trim(&l.Items[i])
+			}
+		}
+		reportBytes(b, js)
+	})
+	b.Run("protobuf", func(b *testing.B) {
+		for b.Loop() {
+			l := &corev1.PodList{}
+			if _, _, err := scheme.Codecs.UniversalDeserializer().Decode(pb, nil, l); err != nil {
+				b.Fatal(err)
+			}
+			items := make([]unstructured.Unstructured, len(l.Items))
+			for i := range l.Items {
+				l.Items[i].ManagedFields = nil
+				items[i].Object = typedMap(&l.Items[i])
+				items[i].SetAPIVersion("v1")
+				items[i].SetKind("Pod")
+			}
+		}
+		reportBytes(b, pb)
+	})
+}
+
+// benchPod is a Deployment's pod with two containers, as a cluster has.
+func benchPod(i int) corev1.Pod {
+	ts := metav1.NewTime(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC))
+	ctr := func(name string) corev1.Container {
+		var env []corev1.EnvVar
+		for j := range 8 {
+			env = append(env, corev1.EnvVar{Name: fmt.Sprintf("SETTING_%d", j), Value: fmt.Sprintf("value-%d-%d", i, j)})
+		}
+		return corev1.Container{Name: name, Image: "registry.example.com/team/" + name + ":v1.2.3", Args: []string{"--port=8080", "--log-level=info"},
+			Env: env, Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: 8080, Protocol: corev1.ProtocolTCP}},
+			Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi")},
+				Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("256Mi")}},
+			VolumeMounts:           []corev1.VolumeMount{{Name: "config", MountPath: "/etc/app"}, {Name: "kube-api-access", MountPath: "/var/run/secrets/kubernetes.io/serviceaccount", ReadOnly: true}},
+			ReadinessProbe:         &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromString("http")}}, PeriodSeconds: 10},
+			TerminationMessagePath: "/dev/termination-log", TerminationMessagePolicy: corev1.TerminationMessageReadFile, ImagePullPolicy: corev1.PullIfNotPresent}
+	}
+	cond := func(t corev1.PodConditionType) corev1.PodCondition {
+		return corev1.PodCondition{Type: t, Status: corev1.ConditionTrue, LastTransitionTime: ts}
+	}
+	cs := func(name string) corev1.ContainerStatus {
+		return corev1.ContainerStatus{Name: name, Ready: true, Image: "registry.example.com/team/" + name + ":v1.2.3", ImageID: "registry.example.com/team/" + name + "@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			ContainerID: fmt.Sprintf("containerd://%064d", i), State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{StartedAt: ts}}}
+	}
+	return corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("web-7d9c8b6f5-%05d", i), Namespace: fmt.Sprintf("team-%d", i%20), UID: types.UID(fmt.Sprintf("uid-%d", i)),
+			ResourceVersion: "12345", CreationTimestamp: ts, GenerateName: "web-7d9c8b6f5-",
+			Labels:          map[string]string{"app": "web", "pod-template-hash": "7d9c8b6f5", "app.kubernetes.io/part-of": "shop"},
+			Annotations:     map[string]string{"prometheus.io/scrape": "true", "kubectl.kubernetes.io/restartedAt": "2026-11-01T00:00:00Z"},
+			OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "ReplicaSet", Name: "web-7d9c8b6f5", UID: "rs-uid"}},
+			ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "kube-controller-manager", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "v1", Time: &ts, FieldsType: "FieldsV1",
+				FieldsV1: &metav1.FieldsV1{Raw: []byte(`{"f:metadata":{"f:generateName":{},"f:labels":{".":{},"f:app":{},"f:pod-template-hash":{}},"f:ownerReferences":{".":{},"k:{\"uid\":\"rs-uid\"}":{}}},"f:spec":{"f:containers":{"k:{\"name\":\"app\"}":{".":{},"f:args":{},"f:env":{},"f:image":{},"f:name":{},"f:ports":{},"f:resources":{}}}}}`)}}},
+		},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{ctr("app"), ctr("sidecar")}, NodeName: fmt.Sprintf("node-%d", i%30), ServiceAccountName: "web",
+			Volumes: []corev1.Volume{{Name: "config", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "web-config"}}}},
+				{Name: "kube-api-access", VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{Sources: []corev1.VolumeProjection{
+					{ServiceAccountToken: &corev1.ServiceAccountTokenProjection{Path: "token"}},
+					{ConfigMap: &corev1.ConfigMapProjection{LocalObjectReference: corev1.LocalObjectReference{Name: "kube-root-ca.crt"}, Items: []corev1.KeyToPath{{Key: "ca.crt", Path: "ca.crt"}}}}}}}}},
+			Tolerations:   []corev1.Toleration{{Key: "node.kubernetes.io/not-ready", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoExecute}},
+			RestartPolicy: corev1.RestartPolicyAlways, DNSPolicy: corev1.DNSClusterFirst, SchedulerName: "default-scheduler"},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning, PodIP: fmt.Sprintf("10.1.%d.%d", i/250, i%250), HostIP: "10.0.0.1", StartTime: &ts, QOSClass: corev1.PodQOSBurstable,
+			Conditions:        []corev1.PodCondition{cond(corev1.PodInitialized), cond(corev1.PodReady), cond(corev1.ContainersReady), cond(corev1.PodScheduled)},
+			ContainerStatuses: []corev1.ContainerStatus{cs("app"), cs("sidecar")}},
+	}
+}
+
+// toProtobuf re-encodes a JSON list as protobuf, by way of its typed list.
+func toProtobuf(b *testing.B, js []byte, into runtime.Object) []byte {
+	if err := json.Unmarshal(js, into); err != nil {
+		b.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := protobuf.NewSerializer(scheme.Scheme, scheme.Scheme).Encode(into, &buf); err != nil {
+		b.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// reportBytes reports what the API server sends, raw and gzipped.
+func reportBytes(b *testing.B, bodies ...[]byte) {
+	raw, gz := 0, 0
+	for _, body := range bodies {
+		raw += len(body)
+		var buf bytes.Buffer
+		w := gzip.NewWriter(&buf)
+		w.Write(body)
+		w.Close()
+		gz += buf.Len()
+	}
+	b.ReportMetric(float64(raw), "upstream-B")
+	b.ReportMetric(float64(gz), "gzip-B")
+}
+
+// A protobuf fill against a server that answers JSON (as it does for a
+// kind without protobuf) reads the JSON: same pages, same summaries.
+func TestProtoFillFallsBackToJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.Header.Get("Accept"), runtime.ContentTypeProtobuf) {
+			t.Errorf("Accept = %q", r.Header.Get("Accept"))
+		}
+		name, cont := "a", "next"
+		if r.URL.Query().Get("continue") == "next" {
+			name, cont = "b", ""
+		}
+		w.Header().Set("Content-Type", runtime.ContentTypeJSON)
+		fmt.Fprintf(w, `{"kind":"SecretList","apiVersion":"v1","metadata":{"resourceVersion":"7","continue":%q},
+			"items":[{"metadata":{"name":%q,"namespace":"ns"},"type":"Opaque","data":{"pass":"c2VjcmV0"}}]}`, cont, name)
+	}))
+	defer srv.Close()
+	c := New(nil)
+	var err error
+	if c.proto, err = NewProtoClient(&rest.Config{Host: srv.URL}, srv.Client()); err != nil {
+		t.Fatal(err)
+	}
+	l, err := c.ListOnce(t.Context(), Key{GVR: SecretsGVR, Lean: true})
+	if err != nil || len(l.Items) != 2 || l.GetResourceVersion() != "7" {
+		t.Fatalf("list = %v, %v", l, err)
+	}
+	want := map[string]any{"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
+		"metadata": map[string]any{"name": "b", "namespace": "ns", "creationTimestamp": nil}, "data": map[string]any{"pass": int64(6)}}
+	if !reflect.DeepEqual(l.Items[1].Object, want) {
+		t.Fatalf("summary = %v", l.Items[1].Object)
 	}
 }

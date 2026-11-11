@@ -282,6 +282,7 @@ func buildClients(rules *clientcmd.ClientConfigLoadingRules, name string) (*Clie
 		Dynamic:    dyn,
 		Typed:      typed,
 		Metadata:   meta,
+		HTTP:       hc,
 	}
 	if dir := discoveryCacheDir(cfg.Host); dir != "" {
 		httpDir := filepath.Join(CacheDir, "http")

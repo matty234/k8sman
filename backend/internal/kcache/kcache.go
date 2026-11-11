@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/metadata"
+	"k8s.io/client-go/rest"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 )
@@ -62,7 +63,10 @@ const (
 type Cache struct {
 	dyn  dynamic.Interface
 	meta metadata.Interface // for lean streams; nil = they list in full, then summarise
-	idle time.Duration
+	// proto reads the fills of Secrets and ConfigMaps in protobuf (see
+	// proto.go); nil = in JSON.
+	proto rest.Interface
+	idle  time.Duration
 	// tunables, per instance so tests can shorten them
 	maxPending             int
 	minBackoff, maxBackoff time.Duration
@@ -91,6 +95,9 @@ func For(c *cluster.Clients) *Cache {
 	}
 	k := New(c.Dynamic)
 	k.meta = c.Metadata
+	if c.HTTP != nil && c.RESTConfig != nil {
+		k.proto, _ = NewProtoClient(c.RESTConfig, c.HTTP)
+	}
 	registry[c] = k
 	return k
 }
