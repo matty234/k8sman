@@ -172,6 +172,7 @@
         "severity": {
           "enum": [
             "critical",
+            "error",
             "warning",
             "info"
           ],
@@ -1291,6 +1292,7 @@
           "description": "Colours the status line when the count isn't zero (default warning).",
           "enum": [
             "critical",
+            "error",
             "warning",
             "info"
           ],

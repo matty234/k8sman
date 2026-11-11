@@ -59,8 +59,8 @@ v1:
   reorder them in Settings ▸ Sidebar);
 - `row` in table columns: use `item`;
 - the severities `critical`, `warn` and `success` in severity expressions:
-  use `error`, `warning` and `ok` (alerts and status counts still take
-  `critical`, `warning` and `info`).
+  use `error`, `warning` and `ok` (alerts and status counts take `error`
+  too, as a synonym of `critical`, which stays valid).
 
 **v2.** A change that can't be made additively goes into a new format,
 `apiVersion: k8sman.dev/v2`, with its own schema. The app would load v1 and
@@ -238,7 +238,7 @@ shortcut it can't bind.
     alerts:
       - id: expiring
         label: Certificates expiring within 14 days   # the Overview's row
-        severity: warning                              # critical, warning or info
+        severity: warning                              # error (or critical), warning or info
         section: custom                                # or pods, workloads, jobs, nodes, storage, network
         when: >-
           variables.notAfter.hasValue() && timestamp(variables.notAfter.value()) >= now &&
@@ -367,7 +367,10 @@ later, which is additive and never changes an existing plugin. A tab's `id`
 (default: a slug of its title) is what the app remembers the open tab by, so
 a title can change without losing it.
 
-The `"*"` kind key is any kind. It may hold `variables`, `related`,
+The `"*"` kind key is any kind. A plugin with a `"*"` entry must declare
+`permissions: {read: ["*"]}`, or it fails to load (the error points at the
+`"*"` entry): the entry reads every object you inspect, and the consent
+screen says "Reads every object you inspect". It may hold `variables`, `related`,
 `metrics`, `panel` sections and tabs, and `actions`, but not columns,
 alerts or a status line (those run over whole tables and every object of a
 kind, so they stay per kind). Together they let a policy engine show its
@@ -702,7 +705,7 @@ subresource, so plugins don't redeclare it.
 |---|---|---|
 | `id` | string | category id `plugin.<pluginId>.<id>` |
 | `label` | string | tile label, e.g. "Certificates expiring" |
-| `severity` | enum | `critical`, `warning`, `info` |
+| `severity` | enum | `error` (same as `critical`), `critical`, `warning`, `info` |
 | `section` | enum | an existing overview section (`pods`, `workloads`, `jobs`, `nodes`, `storage`, `network`) or `custom` (default) |
 | `when` | **CEL** | bool: whether this object has the problem |
 | `message` | **CEL** | string |
@@ -712,12 +715,12 @@ subresource, so plugins don't redeclare it.
 
 A plugin's status line is its kinds' `status` parts in file order, joined
 with ` · `: "ExternalSecrets: 12 · not synced: 2". It is coloured by the
-most severe count that isn't zero (critical red, warning amber).
+most severe count that isn't zero (error/critical red, warning amber).
 
 | Field | Type | Notes |
 |---|---|---|
 | `label` | string | what the objects are called: "ExternalSecrets: 12" |
-| `counts` | list of `{label, when` **CEL** bool`, severity}` | objects for which `when` is true: " · not synced: 2"; `severity` `critical`, `warning` (default) or `info` |
+| `counts` | list of `{label, when` **CEL** bool`, severity}` | objects for which `when` is true: " · not synced: 2"; `severity` `error` (same as `critical`), `critical`, `warning` (default) or `info` |
 
 Counted over every namespace from the watch cache, with the alerts'
 limits (100,000 per expression, 500 ms per plugin); `when` sees what an
@@ -1308,7 +1311,7 @@ v1 plugins don't change. Nothing in v1 reserves more than the field name.
 
 | Field | Type | Notes |
 |---|---|---|
-| `kind` | kind key | must be in `permissions.read` |
+| `kind` | kind key | must be in `permissions.read` (a `"*"` kind entry needs `"*"` there: it reads every object you inspect) |
 | `name` | **CEL** string | one object by name |
 | `owner` | bool | objects whose `ownerReferences` include this object's uid |
 | `selector` | **CEL** | a `matchLabels` map or a `LabelSelector` object |
@@ -2361,13 +2364,16 @@ Kept as they are, frozen (each could be eased later by an additive alias):
 - Table columns take `type: string` where panel values take `text`
   (columns share the app's own column types).
 - Alerts and status counts take `critical`, `warning`, `info` (the
-  overview's issue levels), while severity expressions take `error`,
-  `warning`, `ok`, `info`, `neutral` and warn on `critical`.
+  overview's issue levels) and, since the freeze, `error` as a synonym of
+  `critical` (resolved; `critical` stays valid, not deprecated), while
+  severity expressions take `error`, `warning`, `ok`, `info`, `neutral` and
+  warn on `critical`.
 - The `message` block's `severity` is a fixed name, not CEL like every
   other `severity`.
-- `permissions.read` accepts `"*"`, which grants nothing: a `"*"` kind
-  entry needs no permission, so a plugin's consent screen doesn't say it
-  reads every object you inspect.
+- **Resolved:** a `"*"` kind entry now requires `"*"` in
+  `permissions.read` (a deliberate tightening before v1 went public; the
+  schema can't express it, so `plugin validate` and the loader check it),
+  and the consent screen says "Reads every object you inspect".
 
 The guard: `schema/plugin.v1.frozen.json` is the schema at the freeze, and
 `TestSchemaV1Frozen` (`internal/plugins/data_test.go`) walks it beside the

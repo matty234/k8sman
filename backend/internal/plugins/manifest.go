@@ -404,7 +404,8 @@ var valueTypes = []string{"text", "number", "bool", "status", "age", "until", "t
 // Enumerations of other fields (the JSON Schema is built from the same
 // lists, see schema.go).
 var (
-	alertSeverities = []string{"critical", "warning", "info"}
+	// error is a synonym of critical (see normSeverity).
+	alertSeverities = []string{"critical", "error", "warning", "info"}
 	alertSections   = []string{"pods", "workloads", "jobs", "nodes", "storage", "network", "custom"}
 	inputTypes      = []string{"string", "int", "bool", "enum"}
 	patchTypes      = []string{"merge", "json"}
@@ -575,6 +576,9 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 			if len(k.Columns) > 0 || len(k.HideColumns) > 0 || len(k.Alerts) > 0 || k.Status != nil || k.Icon != "" || k.Version != "" ||
 				(k.Panel != nil && k.Panel.Generic != "") {
 				d.errAt(kn, `the "*" kind may hold variables, related, metrics, panel sections and tabs, and actions (not columns, hideColumns, alerts, status, icon, version or panel.generic)`)
+			}
+			if !slices.Contains(m.Permissions.Read, "*") {
+				d.errAt(kn, `the "*" kind reads every object the user inspects: add "*" to permissions.read (permissions: {read: ["*"]})`)
 			}
 		} else {
 			if len(k.ExceptKinds) > 0 || k.Scope != "" {
@@ -1070,3 +1074,12 @@ func orNode(a, b *yaml.Node) *yaml.Node {
 }
 
 var identRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// normSeverity maps the alert and status-count synonym error to critical,
+// the name the app consumes.
+func normSeverity(s string) string {
+	if s == "error" {
+		return "critical"
+	}
+	return s
+}

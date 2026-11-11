@@ -26,6 +26,7 @@ homepage: https://kyverno.io
 
 permissions:
   read:
+    - "*"
     - kyverno.io/ClusterPolicy
     - kyverno.io/Policy
     - policies.kyverno.io/ValidatingPolicy

@@ -180,7 +180,7 @@ func (kp *kindProgs) evalAlerts(ctx context.Context, pluginID string, objs []map
 			}
 			a := ap.a
 			hit := AlertHit{Plugin: pluginID, ID: a.ID, Category: AlertCategory(pluginID, a.ID), Label: a.Label,
-				Severity: orDefault(a.Severity, "warning"), Section: orDefault(a.Section, "custom"),
+				Severity: normSeverity(orDefault(a.Severity, "warning")), Section: orDefault(a.Section, "custom"),
 				Group: group, Kind: kind, Namespace: ns, Name: name, Message: a.Label}
 			if v, err := r.eval(ap.message); err == nil && v != nil {
 				hit.Message = fmt.Sprint(v)

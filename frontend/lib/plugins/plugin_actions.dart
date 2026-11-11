@@ -386,7 +386,7 @@ Future<bool?> showPluginConsent(BuildContext context, PluginInfo p) {
           ),
         ]),
       );
-  final reads = [for (final k in perms.read) k == '/Secret' ? 'Secrets (names and keys only)' : _kindName(k)];
+  final reads = [for (final k in perms.read) k == '*' ? 'every object you inspect' : k == '/Secret' ? 'Secrets (names and keys only)' : _kindName(k)];
   return showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(

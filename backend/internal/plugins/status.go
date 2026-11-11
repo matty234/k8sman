@@ -125,7 +125,7 @@ func (kp *kindProgs) evalStatus(ctx context.Context, objs []map[string]any, env 
 	st := kp.kind.Status
 	out := StatusKind{Key: kp.key, Label: st.Label, Total: len(objs), Counts: make([]StatusCountOut, len(kp.status))}
 	for i, sp := range kp.status {
-		out.Counts[i] = StatusCountOut{Label: sp.c.Label, Severity: orDefault(sp.c.Severity, "warning")}
+		out.Counts[i] = StatusCountOut{Label: sp.c.Label, Severity: normSeverity(orDefault(sp.c.Severity, "warning"))}
 	}
 	var errs []error
 	now := env.now()

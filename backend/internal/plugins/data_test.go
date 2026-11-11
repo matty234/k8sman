@@ -158,7 +158,7 @@ id: reports
 name: Reports
 version: 1.0.0
 permissions:
-  read: [example.com/Report]
+  read: [example.com/Report, "*"]
 kinds:
   "*":
     related:
@@ -758,25 +758,36 @@ func TestAnyKindScopeIDAndBudget(t *testing.T) {
 		fmt.Fprintf(&rel, "      r%d: {kind: /Pod, name: '\"p\"'}\n", i)
 		reads = append(reads, fmt.Sprintf("string(has(related.r%d))", i))
 	}
-	h := demoHost(t, `apiVersion: k8sman.dev/v1
+	starSrc := `apiVersion: k8sman.dev/v1
 id: star
 name: Star
 version: 1.0.0
 permissions:
-  read: [/Pod]
+  read: [/Pod, "*"]
 kinds:
   "*":
     scope: namespaced
     exceptKinds: [/Secret]
     related:
-`+rel.String()+`    panel:
+` + rel.String() + `    panel:
       tabs:
         - title: Policy Results
           sections:
             - title: S
               blocks:
-                - {type: message, text: '`+strings.Join(reads, " + ")+`'}
-`)
+                - {type: message, text: '` + strings.Join(reads, " + ") + `'}
+`
+	h := demoHost(t, starSrc)
+	// A "*" entry needs "*" in permissions.read, and the error says so.
+	noStar := t.TempDir()
+	os.WriteFile(filepath.Join(noStar, ManifestFile), []byte(strings.Replace(starSrc, `read: [/Pod, "*"]`, "read: [/Pod]", 1)), 0o644)
+	var starMsgs []string
+	for _, d := range Validate(noStar) {
+		starMsgs = append(starMsgs, d.Message)
+	}
+	if !strings.Contains(strings.Join(starMsgs, "\n"), `add "*" to permissions.read`) {
+		t.Errorf(`no "*" in permissions.read: got %v`, starMsgs)
+	}
 	lookup := &countingLookup{}
 	env := Env{Context: "demo", Lookup: lookup}
 	secretType := cluster.ResourceType{Version: "v1", Resource: "secrets", Kind: "Secret", Namespaced: true}

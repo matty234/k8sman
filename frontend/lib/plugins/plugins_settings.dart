@@ -273,7 +273,7 @@ class _PluginCard extends StatelessWidget {
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Expanded(
         child: Text(
-          'Reads ${perms.read.isEmpty ? 'nothing' : perms.read.join(', ')}. Runs ${perms.commands.isEmpty ? 'nothing' : perms.commands.join(', ')} on this computer.',
+          'Reads ${perms.read.isEmpty ? 'nothing' : perms.read.map((k) => k == '*' ? 'every object you inspect' : k).join(', ')}. Runs ${perms.commands.isEmpty ? 'nothing' : perms.commands.join(', ')} on this computer.',
           style: hint,
         ),
       ),
