@@ -34,6 +34,7 @@ class _PluginApi extends FakeApiClient {
                   'type': 'fields',
                   'items': [
                     {'label': 'Owner', 'value': 'team-a', 'type': 'text'},
+                    {'label': 'Image', 'value': 'img:1', 'type': 'text', 'copy': true},
                     {'label': 'Service', 'value': 'web', 'type': 'text', 'link': {'group': '', 'kind': 'Service', 'namespace': 'demo', 'name': 'web'}},
                     {'label': 'Broken', 'error': 'plugin.yaml:20:16: no such key: owner'},
                   ],
@@ -379,6 +380,9 @@ void main() {
 
     expect(find.text('Widget details'), findsOneWidget);
     expect(find.text('team-a'), findsOneWidget);
+    expect(tester.getSize(find.ancestor(of: find.text('img:1'), matching: find.byType(Row)).first).height,
+        tester.getSize(find.ancestor(of: find.text('team-a'), matching: find.byType(Row)).first).height,
+        reason: 'a copy button adds no row height');
     expect(find.text('web'), findsOneWidget, reason: 'a linked field shows its value');
     expect(find.textContaining('plugin.yaml:20:16'), findsOneWidget, reason: 'an evaluation error shows in its field, with its place');
     expect(find.text('Ready'), findsOneWidget);

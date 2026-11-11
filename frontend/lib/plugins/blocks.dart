@@ -13,7 +13,7 @@ import '../metrics/quantity_cell.dart' show UsageBar;
 import '../ui/inspector/callout.dart' show Callout;
 import '../ui/inspector/section.dart' show InspectorSection, SectionSummary;
 import '../ui/theme.dart';
-import '../ui/widgets/atoms.dart' show HintText;
+import '../ui/widgets/atoms.dart' show CopyIcon, HintText;
 import '../ui/widgets/common.dart';
 import '../util/k8s.dart';
 import 'plugin_icons.dart';
@@ -200,13 +200,7 @@ Widget pluginValue(BuildContext context, Object? v, {String? type, Object? link,
   if (copy) {
     w = Row(mainAxisSize: MainAxisSize.min, children: [
       Flexible(child: w),
-      IconButton(
-        iconSize: 13,
-        visualDensity: VisualDensity.compact,
-        tooltip: 'Copy',
-        icon: const Icon(Icons.copy_rounded),
-        onPressed: () => copyToClipboard(context, text),
-      ),
+      CopyIcon(text),
     ]);
   }
   return w;
