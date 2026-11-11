@@ -1060,7 +1060,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Bumped each time an open inspector is closed; the table watches it to
+  /// take focus back (and reveal the row the object was opened from).
+  int detailClosings = 0;
+
   void closeDetail() {
+    if (_detailStack.isNotEmpty) detailClosings++;
     _detailStack.clear();
     _requestedTab = null;
     inspectorCollapsed = false;

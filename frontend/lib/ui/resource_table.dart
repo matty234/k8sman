@@ -79,6 +79,12 @@ class _TableBodyState extends State<_TableBody> {
   FocusNode get _focus => context.read<TableController>().bodyFocus;
   Timer? _ageTicker;
 
+  /// The row the inspected object was found at (uid, index), kept so closing
+  /// the inspector can return to it, or to its neighbour if it was deleted.
+  String? _openedUid;
+  int _openedIdx = 0;
+  int _seenClosings = 0;
+
   static const _rowHeight = 28.0;
 
   @override
@@ -106,6 +112,7 @@ class _TableBodyState extends State<_TableBody> {
     final rows = tc.rows;
     final selectedRows = tc.selectedRows;
     final multi = selectedRows.length >= 2;
+    _trackInspected(tc, app, rows);
     // No rows because the list failed: explain why instead of "No pods".
     final failedEmpty = tc.failure != null && tc.totalCount == 0;
     // "Filter by this label" from the inspector.
@@ -177,14 +184,15 @@ class _TableBodyState extends State<_TableBody> {
                                             itemCount: rows.length,
                                             itemBuilder: (_, i) {
                                               final row = rows[i];
-                                              final sel = multi && tc.isSelected(row.uid);
+                                              final inspected = _isInspected(app, tc.type, row);
+                                              final sel = tc.isSelected(row.uid) && (multi || !inspected);
                                               return _rowWidget(
                                                 tc,
                                                 app,
                                                 row,
                                                 widths,
                                                 striped: i.isOdd,
-                                                inspected: _isInspected(app, tc.type, row),
+                                                inspected: inspected,
                                                 selected: sel,
                                                 joinAbove: sel && i > 0 && tc.isSelected(rows[i - 1].uid),
                                                 joinBelow: sel && i + 1 < rows.length && tc.isSelected(rows[i + 1].uid),
@@ -515,6 +523,45 @@ class _TableBodyState extends State<_TableBody> {
     if (chosen != null && context.mounted) chosen();
   }
 
+  /// Remembers which row is inspected, and when the inspector has just been
+  /// closed, focuses the table and reveals the row it was opened from.
+  void _trackInspected(TableController tc, AppState app, List<TableRowData> rows) {
+    final at = rows.indexWhere((r) => _isInspected(app, tc.type, r));
+    if (at >= 0) {
+      _openedUid = rows[at].uid;
+      _openedIdx = at;
+    } else if (app.detail != null && rows.any((r) => r.uid == _openedUid)) {
+      _openedUid = null; // inspecting something that isn't this table's row
+    }
+    if (app.detailClosings == _seenClosings) return;
+    _seenClosings = app.detailClosings;
+    final uid = _openedUid;
+    _openedUid = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final rows = tc.rows;
+      var idx = uid == null ? -1 : rows.indexWhere((r) => r.uid == uid);
+      if (idx < 0 && uid != null && rows.isNotEmpty) {
+        // Deleted while inspected: the nearest row takes its place.
+        idx = _openedIdx.clamp(0, rows.length - 1);
+        tc.selectOnly(rows[idx].uid);
+      }
+      if (idx >= 0) _reveal(idx);
+      _focus.requestFocus();
+    });
+  }
+
+  /// Scroll just enough to bring row [idx] into view (like ensureVisible).
+  void _reveal(int idx) {
+    if (!_vScroll.hasClients) return;
+    final top = idx * _rowHeight, view = _vScroll.position.viewportDimension;
+    if (top < _vScroll.offset) {
+      _vScroll.jumpTo(top.clamp(0, _vScroll.position.maxScrollExtent));
+    } else if (top + _rowHeight > _vScroll.offset + view) {
+      _vScroll.jumpTo((top + _rowHeight - view).clamp(0, _vScroll.position.maxScrollExtent));
+    }
+  }
+
   void _scrollTo(int idx) {
     if (!_vScroll.hasClients) return;
     final y = idx * _rowHeight;
@@ -611,7 +658,7 @@ class _TableBodyState extends State<_TableBody> {
 
   /// ↑/↓ (or j/k) move the selection (and the inspector); ⇧↑/⇧↓ extend it;
   /// ⌘A selects every visible row; Esc clears a multi-selection, else closes
-  /// the inspector; ⌘⌫ / ⌃D delete the selection; plus [_letterKey]s.
+  /// the inspector (keeping the row selected), else clears the selection; ⌘⌫ / ⌃D delete the selection; plus [_letterKey]s.
   KeyEventResult _onKey(KeyEvent e, List<TableRowData> rows, AppState app) {
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
     final tc = context.read<TableController>();
@@ -630,9 +677,10 @@ class _TableBodyState extends State<_TableBody> {
     if (key == LogicalKeyboardKey.escape) {
       if (tc.selectedRows.length >= 2) {
         tc.clearSelection();
+      } else if (app.detail != null) {
+        app.closeDetail(); // the row stays selected
       } else {
         tc.clearSelection();
-        app.closeDetail();
       }
       return KeyEventResult.handled;
     }
