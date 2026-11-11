@@ -19,6 +19,17 @@ k8sman is maintained by one person, so this is best effort. I'll aim to:
 
 Please give me a reasonable chance to ship a fix before disclosing publicly.
 
+## Diagnostics and privacy
+
+k8sman sends no telemetry or crash reports. Errors in the app are kept in a
+local file, `~/.config/k8sman/diagnostics.json`, and listed in Settings ▸
+Diagnostics. Before anything is stored, the sample messages and stacks are
+redacted. IP addresses, hostnames, e-mail addresses, tokens, home folders,
+recognisable object names and namespaces, and your context, cluster and
+namespace names become placeholders. A report leaves your machine only if you
+copy it or open a GitHub issue from that page, and you can read it before
+you send it. Clear empties the log.
+
 ## Supported versions
 
 Only the latest release gets security fixes. The app updates itself (Sparkle on macOS, the built-in updater elsewhere), so fixes reach users through a normal release.

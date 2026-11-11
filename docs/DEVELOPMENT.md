@@ -89,6 +89,32 @@ the port from its `K8SMAN_LISTENING <addr>` stdout line. To pass extra flags
 to it, run for example
 `defaults write dev.k8sman.app BackendArgs -array --read-only`.
 
+### Diagnostics
+
+`main.dart` hooks `FlutterError.onError` and `PlatformDispatcher.onError`
+(`lib/app/diagnostics/`). Errors are still printed to the console. Each one
+also goes to a local log, grouped by kind (overflow, duplicate key,
+build/layout/paint exception, uncaught async error), the first
+`package:k8sman` frame (or, in debug, the widget's creation location) and the
+widget type. Each group keeps a count, first and last seen, the app version,
+where in the app it happened, and one redacted sample message and stack. The
+place comes from `DiagnosticsContext` labels (the inspector, its tab and
+section) or else the current page.
+
+The log is `~/.config/k8sman/diagnostics.json`, capped at 200 groups. It
+stays on the machine. Before a sample is stored, IP addresses, hostnames,
+e-mail addresses, tokens, home folders, recognisable object names and
+namespaces, and the app's context, cluster and namespace names are replaced
+with placeholders. Settings ▸ Diagnostics (`:diagnostics`) lists the groups.
+From there you can copy a markdown report or open a prefilled GitHub issue.
+Nothing is sent unless the user does one of those. Debug builds show a red
+count of new groups next to the sidebar's Settings gear.
+
+`ErrorWidget.builder` keeps Flutter's red box in debug builds. Release and
+profile builds show a quiet "Couldn't show this section · Report" line
+instead of the grey box. Because that line sizes itself, one failing
+inspector section doesn't push the rest out of view.
+
 ### Release build
 
 ```sh
