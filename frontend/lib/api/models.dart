@@ -132,6 +132,11 @@ class TableRowData {
   /// makes the controller recreate it.
   final bool controlled;
 
+  /// Column indexes whose cells are still loading: the backend listed the
+  /// object's metadata first (Secrets, ConfigMaps, CRDs) and fills the
+  /// rest with a MODIFIED row. Their cells are null, so they sort last.
+  final Set<int> pending;
+
   const TableRowData({
     required this.uid,
     required this.name,
@@ -140,6 +145,7 @@ class TableRowData {
     required this.cells,
     this.object,
     this.controlled = false,
+    this.pending = const {},
   });
 
   factory TableRowData.fromJson(Json j) => TableRowData(
@@ -150,6 +156,7 @@ class TableRowData {
         cells: List<dynamic>.from(j['cells'] ?? const []),
         object: j['object'],
         controlled: j['controlled'] == true,
+        pending: {for (final i in (j['pending'] as List? ?? const [])) i as int},
       );
 }
 

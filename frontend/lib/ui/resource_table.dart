@@ -1335,6 +1335,7 @@ class _Row extends StatelessWidget {
                       column: columns[i],
                       emphasise: i == 0,
                       notReady: columns[i].type == 'status' ? _notReady(columns, row) : null,
+                      pending: row.pending.contains(i),
                     ),
                   ),
                 ),
@@ -1496,13 +1497,23 @@ class TableCellView extends StatelessWidget {
   /// For a status cell: (ready, total) when not everything in the row is
   /// ready. A Running status then shows amber with a tooltip.
   final (int, int)? notReady;
-  const TableCellView({super.key, required this.value, required this.column, this.emphasise = false, this.notReady});
+
+  /// The value is still loading (see [TableRowData.pending]): a subtle "…".
+  final bool pending;
+  const TableCellView({super.key, required this.value, required this.column, this.emphasise = false, this.notReady, this.pending = false});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final base = theme.textTheme.bodyMedium?.copyWith(fontSize: 12.5, fontWeight: emphasise ? FontWeight.w500 : null);
     final v = value;
+    if (pending) {
+      final right = const {'number', 'quantity', 'bytes', 'usage', 'ratio', 'percent'}.contains(column.type);
+      return Tooltip(
+        message: 'Loading',
+        child: Text('…', textAlign: right ? TextAlign.right : TextAlign.left, style: base?.copyWith(color: theme.hintColor)),
+      );
+    }
     if (column.type == 'quantity') return quantityCell(context, v, base);
     if (column.type == 'percent') return percentCell(context, v, base);
     if (column.type == 'usage') return UsageCell(value: v, style: base);

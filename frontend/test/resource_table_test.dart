@@ -44,8 +44,15 @@ void main() {
 
   testWidgets('no overflow with 3 rows selected (bulk bar)', (tester) async {
     final api = TableFakeApi()
-      ..onWatch = () => [WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [for (final n in ['api', 'cache', 'db', 'web']) fakeRow(n)]))];
+      ..onWatch = () => [
+            WatchMessage(type: 'SNAPSHOT', table: fakeTable(deployType, [
+              for (final n in ['api', 'cache', 'db']) fakeRow(n),
+              // A metadata-first row whose Namespace cell is still loading.
+              const TableRowData(uid: 'uid-web', name: 'web', namespace: 'demo', resourceVersion: '1', cells: ['web', null], pending: {1}),
+            ]))
+          ];
     await pumpTable(tester, api, deployType, size: const Size(1200, 600));
+    expect(find.text('…'), findsOneWidget, reason: 'a pending cell shows as …');
     await tester.tap(find.text('api'));
     await tester.pump();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
