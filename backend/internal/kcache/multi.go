@@ -83,9 +83,9 @@ func setFilter(broad, key Key, namespaces []string) (*filter, bool) {
 
 // warmSetLocked finds a synced all-namespaces stream that can answer key in
 // a namespace set.
-func (c *Cache) warmSetLocked(key Key, namespaces []string) (*stream, *filter) {
+func (c *Cache) warmSetLocked(key Key, namespaces []string, complete bool) (*stream, *filter) {
 	for _, bk := range []Key{{GVR: key.GVR, LabelSelector: key.LabelSelector, FieldSelector: key.FieldSelector, Lean: key.Lean}, {GVR: key.GVR}, {GVR: key.GVR, Lean: true}} {
-		if s := c.streams[bk]; s != nil && s.isWarm() {
+		if s := c.streams[bk]; s != nil && s.isWarm(complete) {
 			if f, ok := setFilter(bk, key, namespaces); ok {
 				return s, f
 			}
@@ -98,7 +98,7 @@ func (c *Cache) warmSetLocked(key Key, namespaces []string) (*stream, *filter) {
 func (c *Cache) acquireWarmSet(key Key, namespaces []string) (*stream, *filter) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	s, f := c.warmSetLocked(key, namespaces)
+	s, f := c.warmSetLocked(key, namespaces, false)
 	if s == nil {
 		return nil, nil
 	}
@@ -115,7 +115,7 @@ func (c *Cache) acquireWarmSet(key Key, namespaces []string) (*stream, *filter) 
 func (c *Cache) CachedSet(key Key, namespaces []string) (Snapshot, bool) {
 	key = key.norm()
 	c.mu.Lock()
-	s, f := c.warmSetLocked(key, namespaces)
+	s, f := c.warmSetLocked(key, namespaces, true)
 	if s != nil && s.refs == 0 && s.idleTimer != nil {
 		s.idleTimer.Reset(c.idle)
 	}

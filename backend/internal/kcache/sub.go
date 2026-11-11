@@ -205,6 +205,10 @@ const maxMemoTags = 8
 func (s *stream) memoGet(u *unstructured.Unstructured, tag any, extra string, compute func() any) any {
 	uid := u.GetUID()
 	version := u.GetResourceVersion() + "\x00" + extra
+	if Pending(u) {
+		// A stand-in and its summary share a resourceVersion.
+		version += "\x00pending"
+	}
 	s.mu.Lock()
 	if mv, ok := s.memo[uid][tag]; ok && mv.version == version {
 		s.mu.Unlock()

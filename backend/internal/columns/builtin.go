@@ -87,16 +87,16 @@ var builtin = map[string][]Column{
 	},
 	"configmaps": {
 		{Name: "Keys", Type: "number", Query: `((.data // {}) | length) + ((.binaryData // {}) | length)`},
-		{Name: "Size", Type: "bytes", Query: `[(.data // {})[] | utf8bytelength] + [(.binaryData // {})[] | base64size] | add // 0`},
+		// textsize and base64size also take a summary's known sizes (see
+		// kcache: tables of heavy kinds keep sizes, not values).
+		{Name: "Size", Type: "bytes", Query: `[(.data // {})[] | textsize] + [(.binaryData // {})[] | base64size] | add // 0`},
 		ageCol,
 	},
 	"secrets": {
 		{Name: "Type", Query: `.type`},
 		{Name: "Keys", Type: "number", Query: `(.data // {}) | length`},
 		// Only value lengths are computed; the values never reach a cell.
-		// A null value is one the table's watch left out (a Helm release,
-		// see kcache.Key.Lean): its size is unknown, so blank.
-		{Name: "Size", Type: "bytes", Query: `(.data // {}) | if any(.[]; . == null) then null else [.[] | base64size] | add // 0 end`},
+		{Name: "Size", Type: "bytes", Query: `[(.data // {})[] | base64size] | add // 0`},
 		ageCol,
 	},
 	"serviceaccounts": {

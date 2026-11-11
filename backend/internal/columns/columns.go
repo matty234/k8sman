@@ -124,6 +124,18 @@ func ageFirst(head, body []Column, always bool) []Column {
 	return append(out, rest...)
 }
 
+// metadataPath is a plain path into metadata (.metadata.labels,
+// .metadata.annotations["a/b"]).
+var metadataPath = regexp.MustCompile(`^\.metadata(\.[A-Za-z_][A-Za-z0-9_]*|\["[^"\\]*"\]|\[\d+\])*$`)
+
+// MetadataOnly reports whether c reads nothing but the object's metadata,
+// so it can be shown before the rest of the object is loaded (see
+// kcache.Pending). Only plain paths count; anything else is assumed to
+// read the body.
+func MetadataOnly(c Column) bool {
+	return c.Plugin == "" && metadataPath.MatchString(strings.TrimSpace(c.Query))
+}
+
 var simplePath = regexp.MustCompile(`^(\.[A-Za-z0-9_\-]+|\[\d+\])+$`)
 
 // jsonPathToJQ converts simple kubectl JSONPath (.a.b[0].c) to jq. Filters and
@@ -389,8 +401,25 @@ var queryFunctions = append(append(append([]gojq.CompilerOption{}, jqFunctions..
 //
 //	base64size: a base64 string's decoded length in bytes, from its length
 //	alone (nothing is decoded), e.g. a Secret's `[.data[] | base64size] | add`.
+//	textsize: a string's length in bytes (utf8bytelength).
+//
+// Both take a number as the size itself: in the summaries tables of heavy
+// kinds keep (see kcache), data values are their sizes.
 var jqFunctions = []gojq.CompilerOption{
+	gojq.WithFunction("textsize", 0, 0, func(v any, _ []any) any {
+		switch v := v.(type) {
+		case string:
+			return len(v)
+		case int, float64:
+			return v
+		}
+		return fmt.Errorf("textsize: not a string: %T", v)
+	}),
 	gojq.WithFunction("base64size", 0, 0, func(v any, _ []any) any {
+		switch v.(type) {
+		case int, float64:
+			return v
+		}
 		s, ok := v.(string)
 		if !ok {
 			return fmt.Errorf("base64size: not a string: %T", v)

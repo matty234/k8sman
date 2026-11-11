@@ -108,6 +108,13 @@ var (
 	APIServices               = apiregistration.api("apiservices", "APIService")
 )
 
+// MetadataFirst are the kinds whose objects are large next to their
+// metadata (Secret and ConfigMap payloads, Helm releases among them, which
+// Helm stores as Secrets or ConfigMaps; CRDs' openAPI schemas). Their
+// tables load metadata first and fill the body-derived cells in the
+// background, keeping only a summary of each object (see kcache).
+var MetadataFirst = []API{Secrets, ConfigMaps, CustomResourceDefinitions}
+
 // prometheus-operator kinds.
 var (
 	Prometheuses        = monitoring.api("prometheuses", "Prometheus")

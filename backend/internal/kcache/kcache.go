@@ -42,9 +42,11 @@ type Key struct {
 	Namespace     string // "" = all namespaces (or cluster-scoped)
 	LabelSelector string
 	FieldSelector string
-	// Lean lets the stream leave out Secret values no reader of it shows
-	// (see lean.go); ignored for other kinds. A lean stream never answers a
-	// key that isn't lean; a full one answers both.
+	// Lean: the readers need only a summary of each object (a table
+	// without objects, plugin lookups of Secrets), so for a heavy kind
+	// (kapi.MetadataFirst) the stream loads metadata first and keeps
+	// summaries (see lean.go); ignored for other kinds. A lean stream
+	// never answers a key that isn't lean; a full one answers both.
 	Lean bool
 }
 
@@ -59,7 +61,7 @@ const (
 // Cache holds the streams of one cluster connection.
 type Cache struct {
 	dyn  dynamic.Interface
-	meta metadata.Interface // for lean streams; nil = they list in full
+	meta metadata.Interface // for lean streams; nil = they list in full, then summarise
 	idle time.Duration
 	// tunables, per instance so tests can shorten them
 	maxPending             int
@@ -199,9 +201,11 @@ func narrowing(broad, want Key) (*filter, bool) {
 }
 
 // warmLocked finds a synced stream that can answer key: the exact one, else
-// a broader one (all namespaces, no selectors) with a local filter.
-func (c *Cache) warmLocked(key Key) (*stream, *filter) {
-	if s := c.streams[key]; s != nil && s.isWarm() {
+// a broader one (all namespaces, no selectors) with a local filter. With
+// complete, a metadata-first stream counts only once filled (snapshot
+// readers must not see stand-ins; subscribers may).
+func (c *Cache) warmLocked(key Key, complete bool) (*stream, *filter) {
+	if s := c.streams[key]; s != nil && s.isWarm(complete) {
 		return s, nil
 	}
 	for _, bk := range []Key{{GVR: key.GVR, Namespace: key.Namespace}, {GVR: key.GVR},
@@ -209,7 +213,7 @@ func (c *Cache) warmLocked(key Key) (*stream, *filter) {
 		if bk == key {
 			continue
 		}
-		if s := c.streams[bk]; s != nil && s.isWarm() {
+		if s := c.streams[bk]; s != nil && s.isWarm(complete) {
 			if f, ok := narrowing(bk, key); ok {
 				return s, f
 			}
@@ -224,7 +228,7 @@ func (c *Cache) acquire(key Key) (*stream, *filter) {
 	key = key.norm()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	s, f := c.warmLocked(key)
+	s, f := c.warmLocked(key, false)
 	if s == nil {
 		s = c.streams[key]
 		if s == nil {
@@ -244,6 +248,13 @@ func (c *Cache) release(s *stream) {
 	defer c.mu.Unlock()
 	s.refs--
 	if s.refs > 0 || c.streams[s.key] != s {
+		return
+	}
+	if !s.isWarm(true) && s.meta != nil {
+		// Nobody waits for a fill in progress (the table closed): stop it
+		// now instead of finishing it for the idle period.
+		delete(c.streams, s.key)
+		s.cancel()
 		return
 	}
 	s.idleTimer = time.AfterFunc(c.idle, func() {
@@ -282,7 +293,7 @@ type Snapshot struct {
 func (c *Cache) Cached(key Key) (Snapshot, bool) {
 	key = key.norm()
 	c.mu.Lock()
-	s, f := c.warmLocked(key)
+	s, f := c.warmLocked(key, true)
 	if s != nil && s.refs == 0 && s.idleTimer != nil {
 		s.idleTimer.Reset(c.idle)
 	}
@@ -306,10 +317,13 @@ func (c *Cache) List(ctx context.Context, key Key) (Snapshot, error) {
 	}
 	s, f := c.acquire(key)
 	defer c.release(s)
+	s.mu.Lock()
+	done := s.done
+	s.mu.Unlock()
 	select {
 	case <-ctx.Done():
 		return Snapshot{}, ctx.Err()
-	case <-s.ready:
+	case <-done:
 	}
 	return s.snapshot(f)
 }
@@ -327,11 +341,18 @@ type stream struct {
 	refs      int
 	idleTimer *time.Timer
 
-	// ready is closed once the first LIST has succeeded or failed.
-	ready     chan struct{}
-	readyOnce sync.Once
+	// metadata-first (lean, heavy kind): meta lists stand-ins, summarise
+	// turns full objects into summaries; both nil for a full stream.
+	meta      metadata.ResourceInterface
+	summarise func(map[string]any) map[string]any
+	kind      string
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// done is closed once the items are complete (listed, or for a
+	// metadata-first stream filled) or the LIST failed; a metadata-first
+	// re-list replaces it.
+	done     chan struct{}
+	filled   bool                                  // synced and no stand-ins left
 	items    map[string]*unstructured.Unstructured // by namespace/name
 	rv       string
 	synced   bool  // the last LIST succeeded and the data is current
@@ -343,8 +364,15 @@ type stream struct {
 
 func (c *Cache) start(key Key) *stream {
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &stream{c: c, key: key, ri: c.source(key), ctx: ctx, cancel: cancel, ready: make(chan struct{}),
+	s := &stream{c: c, key: key, ri: c.source(key), ctx: ctx, cancel: cancel, done: make(chan struct{}),
 		items: map[string]*unstructured.Unstructured{}, subs: map[*Sub]struct{}{}}
+	if sum := summariserFor(key); sum != nil {
+		s.summarise = sum
+		_, s.kind, _ = heavy(key.GVR)
+		if m := c.metaSource(key); m != nil {
+			s.meta = m
+		}
+	}
 	c.streams[key] = s
 	go s.run()
 	return s
@@ -361,10 +389,30 @@ func trim(u *unstructured.Unstructured) {
 	}
 }
 
-func (s *stream) isWarm() bool {
+// prepare trims an object entering the cache and, on a lean stream,
+// replaces it with its summary.
+func (s *stream) prepare(u *unstructured.Unstructured) {
+	if s.summarise != nil && !Pending(u) {
+		u.Object = s.summarise(u.Object)
+	}
+	trim(u)
+}
+
+// isWarm reports whether the stream has a snapshot; with complete, one
+// without stand-ins.
+func (s *stream) isWarm(complete bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.synced
+	return s.synced && (s.filled || !complete)
+}
+
+// markDoneLocked closes done (once).
+func (s *stream) markDoneLocked() {
+	select {
+	case <-s.done:
+	default:
+		close(s.done)
+	}
 }
 
 func (s *stream) listOptions() metav1.ListOptions {
@@ -378,7 +426,7 @@ func IsTerminal(err error) bool {
 }
 
 func (s *stream) run() {
-	defer s.readyOnce.Do(func() { close(s.ready) })
+	defer func() { s.mu.Lock(); s.markDoneLocked(); s.mu.Unlock() }()
 	backoff := s.c.minBackoff
 	first := true
 	for s.ctx.Err() == nil {
@@ -389,7 +437,17 @@ func (s *stream) run() {
 		if first {
 			opts.ResourceVersion = "0"
 		}
-		list, err := s.ri.List(s.ctx, opts)
+		var list *unstructured.UnstructuredList
+		var err error
+		if s.meta != nil {
+			// Metadata first: stand-ins now, the bodies filled after.
+			if list, err = s.listMetadata(opts); err == nil {
+				s.replace(list, false)
+				err = s.fill()
+			}
+		} else if list, err = s.ri.List(s.ctx, opts); err == nil {
+			s.replace(list, true)
+		}
 		if err != nil {
 			if s.ctx.Err() != nil {
 				return
@@ -405,7 +463,6 @@ func (s *stream) run() {
 			backoff = min(backoff*2, s.c.maxBackoff)
 			continue
 		}
-		s.replace(list)
 		first = false
 		backoff = s.c.minBackoff
 		// Watch from the listed version; resume after a plain close, re-list
@@ -467,16 +524,18 @@ func (s *stream) pump(wi watch.Interface) bool {
 	}
 }
 
-func (s *stream) replace(list *unstructured.UnstructuredList) {
+// replace swaps in a fresh list; complete is false for stand-ins (the
+// fill follows).
+func (s *stream) replace(list *unstructured.UnstructuredList, complete bool) {
 	s.mu.Lock()
 	clear(s.items)
 	for i := range list.Items {
 		u := &list.Items[i]
-		trim(u)
+		s.prepare(u)
 		s.items[objKey(u)] = u
 	}
 	s.rv = list.GetResourceVersion()
-	s.synced, s.err = true, nil
+	s.synced, s.err, s.filled = true, nil, complete
 	for sub := range s.subs {
 		sub.resync = true
 		sub.pending = nil
@@ -484,12 +543,25 @@ func (s *stream) replace(list *unstructured.UnstructuredList) {
 		sub.wake()
 	}
 	s.pruneMemoLocked()
+	if complete {
+		s.markDoneLocked()
+	} else if isClosed(s.done) {
+		s.done = make(chan struct{}) // List readers wait for the fill
+	}
 	s.mu.Unlock()
-	s.readyOnce.Do(func() { close(s.ready) })
+}
+
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *stream) apply(t watch.EventType, u *unstructured.Unstructured) {
-	trim(u)
+	s.prepare(u)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k := objKey(u)
@@ -511,13 +583,13 @@ func (s *stream) apply(t watch.EventType, u *unstructured.Unstructured) {
 
 func (s *stream) fail(err error, terminal bool) {
 	s.mu.Lock()
-	s.synced, s.err, s.terminal = false, err, terminal
+	s.synced, s.filled, s.err, s.terminal = false, false, err, terminal
 	for sub := range s.subs {
 		sub.err, sub.terminal = err, terminal
 		sub.wake()
 	}
+	s.markDoneLocked()
 	s.mu.Unlock()
-	s.readyOnce.Do(func() { close(s.ready) })
 }
 
 // snapshot copies the current items (pointers) in namespace/name order.
@@ -529,6 +601,9 @@ func (s *stream) snapshot(f *filter) (Snapshot, error) {
 			return Snapshot{}, s.err
 		}
 		return Snapshot{}, errors.New("kcache: not synced")
+	}
+	if !s.filled {
+		return Snapshot{}, errors.New("kcache: still loading")
 	}
 	return s.snapshotLocked(f), nil
 }
