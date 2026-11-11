@@ -1481,6 +1481,21 @@ Homebrew and the Linux packages link it as `k8sman`.
   bytes are signed with ed25519 (`index.json.sig`), with a key separate from
   the Sparkle key. `expires` is 30 days ahead and CI re-signs weekly, so an
   old index can't be replayed forever.
+- **Tooling** (`k8sman-server plugin …`, used by that repo's CI):
+  `keygen <file>` writes a new ed25519 private key (mode 0600, never
+  overwrites) and prints the public key; `pack <dir> -o <out>` validates and
+  writes a deterministic `<id>-<version>.tar.gz` (sorted, zero times,
+  fixtures left out; symlinks and other files are errors); `index <root> -o
+  <out> [--base-url URL] [--revoked FILE] [--previous index.json]` packs
+  every `<root>/*/plugin.yaml` into `<out>/packages/`, copies `icon.png` and
+  `README.md` to `icons/` and `readme/`, and writes `index.json` (URLs
+  relative to it unless `--base-url`), signed into `index.json.sig` when
+  `K8SMAN_PLUGIN_INDEX_KEY` (the base64 private key) is set. The index lists
+  each plugin's current version; with `--previous`, older versions stay only
+  while their package file is still in `<out>/packages/`. `verify-index
+  <dir> --key <base64 public key>` checks the signature, expiry and every
+  package's sha256 and size. The index is published at
+  `https://matty234.github.io/k8sman-plugins/index.json`.
 - **Install.** The backend fetches and verifies the index (public key built
   in), downloads the tarball, checks its sha256 against the signed index,
   extracts to a staging folder (rejecting absolute paths, `..` and links),

@@ -17,6 +17,11 @@ const pluginUsage = `usage: k8sman-server plugin <command> …
   new <id> [<parent folder>]    start a plugin (with one fixture and its snapshot)
   import-k9s [--id <id>] <plugins.yaml>  convert k9s plugins to shell actions (to stdout)
   schema                        print plugin.yaml's JSON Schema
+  keygen <private-key-file>     new ed25519 index key; prints the public key
+  pack <folder> -o <out-dir>    validate, then write <id>-<version>.tar.gz
+  index <plugins-root> -o <out-dir> [--base-url URL] [--revoked FILE] [--previous index.json]
+                                pack every plugin and write index.json (signed with $K8SMAN_PLUGIN_INDEX_KEY)
+  verify-index <dir> --key <base64 public key>  check index.json.sig and the packages
 `
 
 // pluginCommand runs `k8sman-server plugin <subcommand>`: plugin tooling
@@ -92,6 +97,22 @@ func pluginCommand(args []string) int {
 	case "schema":
 		os.Stdout.Write(plugins.JSONSchema())
 		return 0
+	case "keygen":
+		if rc := pluginKeygen(rest); rc != 2 {
+			return rc
+		}
+	case "pack":
+		if rc := pluginPack(rest); rc != 2 {
+			return rc
+		}
+	case "index":
+		if rc := pluginIndex(rest); rc != 2 {
+			return rc
+		}
+	case "verify-index":
+		if rc := pluginVerifyIndex(rest); rc != 2 {
+			return rc
+		}
 	}
 	fmt.Fprint(os.Stderr, pluginUsage)
 	return 2
