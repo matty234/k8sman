@@ -7,6 +7,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'common.dart';
+import 'selected_by.dart';
 import '../../ui/widgets/atoms.dart';
 
 /// ServiceMonitor / PodMonitor: what it selects (linked), its endpoints,
@@ -26,6 +27,11 @@ class MonitorPanel extends ResourcePanel {
         title: 'Selects',
         icon: Icons.filter_alt_outlined,
         child: _Selects(key: ValueKey('sel-${ctx.uid}'), ctx: ctx, isPod: isPod),
+      )),
+      CoreSection('selected-by', DetailSection(
+        title: 'Picked up by',
+        icon: Icons.manage_search,
+        child: SelectedByView(key: ValueKey('selby-${ctx.uid}'), ctx: ctx),
       )),
       CoreSection('targets', _LiveTargets(key: ValueKey('live-${ctx.uid}'), ctx: ctx, endpoints: endpoints, isPod: isPod)),
     ];

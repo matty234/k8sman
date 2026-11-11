@@ -256,8 +256,17 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
     match rules, CEL (matchConditions, variables, validations, mutations) with
     copy, type-check warnings, the bindings using a policy, and each webhook's
     target and failure policy.
-  - **Prometheus Operator** Prometheus, Alertmanager, PrometheusRule (live rule
-    state), ServiceMonitor and PodMonitor (live target health).
+  - **Prometheus Operator** Prometheus (what it selects, target health by
+    pool), Alertmanager (running routing tree, receivers, inhibit rules,
+    alerts by receiver, silences; secrets redacted), AlertmanagerConfig (route
+    tree, receivers by kind, which Alertmanagers load it and for which
+    alerts), PrometheusRule (live rule state), ServiceMonitor, PodMonitor,
+    Probe and ScrapeConfig (live target health, which Prometheus picks them up).
+  - A **Monitoring tab** on Pods, Services and workloads: whether it's
+    scraped, by which monitor or scrape config (target health, last scrape,
+    errors), and if not, why: the monitors that come close and the check that
+    fails (namespace, selector, port name, the Prometheus selectors). Also the
+    alerts about it and, as a labelled guess, the rules that apply.
   - A Prometheus or Alertmanager that discovery can't find (Mimir, Thanos
     query-frontend, VictoriaMetrics under a path such as `/prometheus`) can be
     set by hand per context in Settings > Integrations > Prometheus

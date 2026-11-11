@@ -68,11 +68,14 @@ var coreSections = func() map[string][]string {
 		"argoproj.io/WorkflowTemplate":             {"template", "parameters", "templates", "workflows"},
 		"argoproj.io/ClusterWorkflowTemplate":      {"template", "parameters", "templates", "workflows"},
 		"argoproj.io/Workflow":                     {"summary", "parameters", "steps", "conditions", "spec"},
-		"monitoring.coreos.com/ServiceMonitor":     {"selects", "targets"},
-		"monitoring.coreos.com/PodMonitor":         {"selects", "targets"},
-		"monitoring.coreos.com/Prometheus":         {"overview", "selects", "alerting", "conditions"},
-		"monitoring.coreos.com/Alertmanager":       {"overview", "configuration", "conditions"},
-		"monitoring.coreos.com/PrometheusRule":     {"rules"},
+		"monitoring.coreos.com/ServiceMonitor":     {"selects", "selected-by", "targets"},
+		"monitoring.coreos.com/PodMonitor":         {"selects", "selected-by", "targets"},
+		"monitoring.coreos.com/Probe":              {"overview", "selected-by", "targets"},
+		"monitoring.coreos.com/ScrapeConfig":       {"overview", "selected-by", "targets"},
+		"monitoring.coreos.com/Prometheus":         {"overview", "selects", "targets", "alerting", "conditions"},
+		"monitoring.coreos.com/Alertmanager":       {"overview", "configuration", "routing", "alerts", "silences", "conditions"},
+		"monitoring.coreos.com/AlertmanagerConfig": {"applies", "route", "receivers", "inhibit", "time-intervals"},
+		"monitoring.coreos.com/PrometheusRule":     {"rules", "selected-by"},
 	}
 	for _, r := range []string{"HTTPRoute", "GRPCRoute", "TLSRoute", "TCPRoute", "UDPRoute"} {
 		m["gateway.networking.k8s.io/"+r] = []string{"overview"}

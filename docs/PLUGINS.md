@@ -1258,10 +1258,12 @@ Panels of the integration modules (while the module is on):
 | `argoproj.io/Workflow` | `summary`, `parameters`, `steps`, `conditions` (c), `spec` |
 | `argoproj.io/CronWorkflow` | `schedule`, `status`, `conditions` (c), `workflows`, `workflow-spec` |
 | `argoproj.io/WorkflowTemplate`, `…/ClusterWorkflowTemplate` | `template`, `parameters`, `templates`, `workflows` |
-| `monitoring.coreos.com/ServiceMonitor`, `…/PodMonitor` | `selects`, `targets` |
-| `monitoring.coreos.com/Prometheus` | `overview`, `selects`, `alerting` (c), `conditions` (c) |
-| `monitoring.coreos.com/Alertmanager` | `overview`, `configuration`, `conditions` (c) |
-| `monitoring.coreos.com/PrometheusRule` | `rules` |
+| `monitoring.coreos.com/ServiceMonitor`, `…/PodMonitor` | `selects`, `selected-by`, `targets` |
+| `monitoring.coreos.com/Probe`, `…/ScrapeConfig` | `overview`, `selected-by`, `targets` |
+| `monitoring.coreos.com/Prometheus` | `overview`, `selects`, `targets` (c), `alerting` (c), `conditions` (c) |
+| `monitoring.coreos.com/Alertmanager` | `overview`, `configuration`, `routing`, `alerts`, `silences`, `conditions` (c) |
+| `monitoring.coreos.com/AlertmanagerConfig` | `applies`, `route`, `receivers`, `inhibit` (c), `time-intervals` (c) |
+| `monitoring.coreos.com/PrometheusRule` | `rules`, `selected-by` |
 
 The frontend wraps each section in a `CoreSection(id, …)`
 (`lib/panels/panel.dart`); the backend keeps the same list

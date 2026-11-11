@@ -7,6 +7,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'common.dart';
+import 'selected_by.dart';
 import '../../ui/widgets/atoms.dart';
 
 /// PrometheusRule: groups and rules from the spec, with live state
@@ -20,6 +21,11 @@ class PrometheusRulePanel extends ResourcePanel {
   @override
   List<Widget> buildSections(BuildContext context, PanelContext ctx) => [
         CoreSection('rules', _RuleGroups(key: ValueKey(ctx.uid), ctx: ctx, resourceVersion: '${ctx.metadata['resourceVersion']}')),
+        CoreSection('selected-by', DetailSection(
+          title: 'Loaded by',
+          icon: Icons.filter_alt_outlined,
+          child: SelectedByView(key: ValueKey('sel-${ctx.uid}'), ctx: ctx),
+        )),
       ];
 }
 

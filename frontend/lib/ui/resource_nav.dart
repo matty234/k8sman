@@ -163,6 +163,9 @@ const _navRowIcons = <String, IconData>{
   'monitoring.coreos.com/PodMonitor': Icons.troubleshoot,
   'monitoring.coreos.com/Prometheus': Icons.local_fire_department_outlined,
   'monitoring.coreos.com/Alertmanager': Icons.notifications_none,
+  'monitoring.coreos.com/AlertmanagerConfig': Icons.alt_route,
+  'monitoring.coreos.com/Probe': Icons.radar,
+  'monitoring.coreos.com/ScrapeConfig': Icons.manage_search,
 };
 
 /// The sidebar row's glyph: always monochrome (custom resources without a

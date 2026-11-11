@@ -7,6 +7,7 @@ import '../../ui/widgets/common.dart';
 import '../../util/k8s.dart';
 import '../panel.dart';
 import 'common.dart';
+import 'instance_live.dart';
 import '../../ui/widgets/atoms.dart';
 
 /// Prometheus and Alertmanager custom resources: version, replicas,
@@ -50,24 +51,39 @@ class PromInstancePanel extends ResourcePanel {
         CoreSection('selects', DetailSection(
           title: 'Selects',
           icon: Icons.filter_alt_outlined,
-          child: KeyValueTable([
-            ('Rules', _sel(spec, 'ruleSelector', 'ruleNamespaceSelector')),
-            ('ServiceMonitors', _sel(spec, 'serviceMonitorSelector', 'serviceMonitorNamespaceSelector')),
-            ('PodMonitors', _sel(spec, 'podMonitorSelector', 'podMonitorNamespaceSelector')),
-            ('Probes', _sel(spec, 'probeSelector', 'probeNamespaceSelector')),
-            if (spec.containsKey('scrapeConfigSelector')) ('ScrapeConfigs', _sel(spec, 'scrapeConfigSelector', 'scrapeConfigNamespaceSelector')),
-          ], keyWidth: 120),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            KeyValueTable([
+              ('Rules', _sel(spec, 'ruleSelector', 'ruleNamespaceSelector')),
+              ('ServiceMonitors', _sel(spec, 'serviceMonitorSelector', 'serviceMonitorNamespaceSelector')),
+              ('PodMonitors', _sel(spec, 'podMonitorSelector', 'podMonitorNamespaceSelector')),
+              ('Probes', _sel(spec, 'probeSelector', 'probeNamespaceSelector')),
+              if (spec.containsKey('scrapeConfigSelector')) ('ScrapeConfigs', _sel(spec, 'scrapeConfigSelector', 'scrapeConfigNamespaceSelector')),
+            ], keyWidth: 120),
+            const SizedBox(height: 6),
+            SelectionCounts(key: ValueKey('selection-${ctx.uid}'), ctx: ctx),
+          ]),
         ))
       else
         CoreSection('configuration', DetailSection(
           title: 'Configuration',
           icon: Icons.tune,
-          child: KeyValueTable([
-            ('AlertmanagerConfigs', _sel(spec, 'alertmanagerConfigSelector', 'alertmanagerConfigNamespaceSelector')),
-            if (spec['configSecret'] != null)
-              ('Config secret', ResourceLink(ObjectRef(kind: 'Secret', name: '${spec['configSecret']}', namespace: ctx.namespace), label: '${spec['configSecret']}')),
-          ], keyWidth: 140),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            KeyValueTable([
+              ('AlertmanagerConfigs', _sel(spec, 'alertmanagerConfigSelector', 'alertmanagerConfigNamespaceSelector')),
+              ('Matcher strategy', '${dig(spec, ['alertmanagerConfigMatcherStrategy', 'type']) ?? 'OnNamespace'}'),
+              if (spec['configSecret'] != null)
+                ('Config secret', ResourceLink(ObjectRef(kind: 'Secret', name: '${spec['configSecret']}', namespace: ctx.namespace), label: '${spec['configSecret']}')),
+            ], keyWidth: 140),
+            const SizedBox(height: 6),
+            SelectionCounts(key: ValueKey('selection-${ctx.uid}'), ctx: ctx),
+          ]),
         )),
+      if (isProm) CoreSection('targets', PromTargetHealth(key: ValueKey('targets-${ctx.uid}'), ctx: ctx)),
+      if (!isProm) ...[
+        CoreSection('routing', AMRouting(key: ValueKey('routing-${ctx.uid}'), ctx: ctx)),
+        CoreSection('alerts', AMAlertsByReceiver(key: ValueKey('am-alerts-${ctx.uid}'), ctx: ctx)),
+        CoreSection('silences', AMSilences(key: ValueKey('silences-${ctx.uid}'), ctx: ctx)),
+      ],
       if (isProm && asMapList(dig(spec, ['alerting', 'alertmanagers'])).isNotEmpty)
         CoreSection('alerting', DetailSection(
           title: 'Sends alerts to',
