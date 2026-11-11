@@ -230,7 +230,7 @@ type Options struct {
 	// through the plugin directory, one folder each (internal/plugins/legacy).
 	// One loads, like a bundled plugin, only while its migration hasn't
 	// finished (see legacyWanted and migrate.go).
-	// TODO(0.2.18): remove with the legacy package.
+	// TODO(0.2.19): remove with the legacy package.
 	Legacy fs.FS
 	// Replaces maps a bundled plugin id to the compiled-in module it
 	// replaces: the module is off unless settings' plugins.useModule

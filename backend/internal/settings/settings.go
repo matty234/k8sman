@@ -144,7 +144,7 @@ type PluginSettings struct {
 	// plugin (external-secrets, cert-manager, kyverno) to the plugin
 	// directory ended: MigratedInstalled, MigratedOff, MigratedUnused, or
 	// MigratedConsent (still waiting: the directory version asks for other
-	// permissions). Absent: not decided yet. TODO(0.2.18): remove.
+	// permissions). Absent: not decided yet. TODO(0.2.19): remove.
 	Migrated map[string]string `json:"migrated,omitempty"`
 }
 

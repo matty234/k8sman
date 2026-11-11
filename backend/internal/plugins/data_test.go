@@ -553,7 +553,7 @@ func containsValue(l []any, v any) bool {
 // pass, change a fixture (fail with a diff), --update, pass.
 func TestPluginTestGolden(t *testing.T) {
 	// The legacy copies (formerly bundled; their fixtures are in the
-	// k8sman-plugins repo) only validate. TODO(0.2.18): drop with them.
+	// k8sman-plugins repo) only validate. TODO(0.2.19): drop with them.
 	legacyDirs, _ := filepath.Glob("legacy/*/" + ManifestFile)
 	for _, m := range legacyDirs {
 		if diags := Validate(filepath.Dir(m)); len(diags) > 0 {

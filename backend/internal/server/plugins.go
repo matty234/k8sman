@@ -102,7 +102,7 @@ func (s *Server) handlePluginDirectory(w http.ResponseWriter, r *http.Request) {
 		// The app's notices (on start, daily and after a context switch):
 		// the cached index, unless it's a day old. First, the move of the
 		// formerly bundled plugins, now that the cluster's kinds are known.
-		// TODO(0.2.18): remove with plugins/migrate.go.
+		// TODO(0.2.19): remove with plugins/migrate.go.
 		s.pluginDirectory().Migrate(r.Context(), served)
 		st := s.pluginDirectory().State(r.Context(), plugins.NoticeFresh, served)
 		ps := settings.PluginSettings{}

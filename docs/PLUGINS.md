@@ -653,7 +653,7 @@ plugin (no consent; its switch in Settings ▸ Integrations), only while its
 move is undecided or `consent` and it isn't installed from the directory,
 marked *Built in · moving to Marketplace* (`moving` in `GET /api/plugins`).
 It doesn't count as built in for the directory, so it can be installed
-over; a directory copy with its id overrides it. TODO(0.2.18): delete
+over; a directory copy with its id overrides it. TODO(0.2.19): delete
 `legacy/`, `migrate.go`, `Options.Legacy`, `plugins.migrated` and this
 section.
 

@@ -31,7 +31,7 @@ import (
 // not configured), the legacy copy loads and the move is tried again on
 // the next notice check (start, connecting, daily) or the hourly tick.
 //
-// TODO(0.2.18): remove this file, with the legacy package.
+// TODO(0.2.19): remove this file, with the legacy package.
 
 // legacyWanted reports whether the legacy copy of plugin id loads: its
 // move isn't done and it isn't installed from the directory.

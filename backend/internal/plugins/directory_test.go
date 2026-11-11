@@ -144,7 +144,7 @@ func TestDirectoryInstall(t *testing.T) {
 // permissions; nothing when turned off; the legacy copy keeps loading
 // while the directory is offline, and when the directory version asks
 // for other permissions (offered as an update that needs consent).
-// TODO(0.2.18): remove with migrate.go.
+// TODO(0.2.19): remove with migrate.go.
 func TestMigrateBundled(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(nil)
 	pkg := func(manifest string) []byte {

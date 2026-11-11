@@ -7,7 +7,7 @@
 // "Built in · moving to Marketplace". Their fixtures and the maintained
 // copies are in the directory repo.
 //
-// TODO(0.2.18): delete this package, Options.Legacy and the migration
+// TODO(0.2.19): delete this package, Options.Legacy and the migration
 // (plugins/migrate.go); 0.2.17 is the only release that carries them.
 package legacy
 
