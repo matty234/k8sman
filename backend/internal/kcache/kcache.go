@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/metadata"
 
 	"github.com/matty234/k8sman/backend/internal/cluster"
 )
@@ -41,6 +42,10 @@ type Key struct {
 	Namespace     string // "" = all namespaces (or cluster-scoped)
 	LabelSelector string
 	FieldSelector string
+	// Lean lets the stream leave out Secret values no reader of it shows
+	// (see lean.go); ignored for other kinds. A lean stream never answers a
+	// key that isn't lean; a full one answers both.
+	Lean bool
 }
 
 const (
@@ -54,6 +59,7 @@ const (
 // Cache holds the streams of one cluster connection.
 type Cache struct {
 	dyn  dynamic.Interface
+	meta metadata.Interface // for lean streams; nil = they list in full
 	idle time.Duration
 	// tunables, per instance so tests can shorten them
 	maxPending             int
@@ -82,6 +88,7 @@ func For(c *cluster.Clients) *Cache {
 		return k
 	}
 	k := New(c.Dynamic)
+	k.meta = c.Metadata
 	registry[c] = k
 	return k
 }
@@ -149,6 +156,9 @@ func narrowing(broad, want Key) (*filter, bool) {
 	if broad.Namespace != "" && broad.Namespace != want.Namespace {
 		return nil, false
 	}
+	if broad.Lean && !want.Lean {
+		return nil, false
+	}
 	f := &filter{}
 	if want.Namespace != broad.Namespace {
 		f.ns = want.Namespace
@@ -194,7 +204,8 @@ func (c *Cache) warmLocked(key Key) (*stream, *filter) {
 	if s := c.streams[key]; s != nil && s.isWarm() {
 		return s, nil
 	}
-	for _, bk := range []Key{{GVR: key.GVR, Namespace: key.Namespace}, {GVR: key.GVR}} {
+	for _, bk := range []Key{{GVR: key.GVR, Namespace: key.Namespace}, {GVR: key.GVR},
+		{GVR: key.GVR, Namespace: key.Namespace, Lean: true}, {GVR: key.GVR, Lean: true}} {
 		if bk == key {
 			continue
 		}
@@ -210,6 +221,7 @@ func (c *Cache) warmLocked(key Key) (*stream, *filter) {
 // acquire returns a stream for key (warm broader one, else the exact one,
 // started if needed) with one reference held.
 func (c *Cache) acquire(key Key) (*stream, *filter) {
+	key = key.norm()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	s, f := c.warmLocked(key)
@@ -268,6 +280,7 @@ type Snapshot struct {
 // Cached answers from a warm stream, or returns ok=false when there is none
 // (the caller should LIST directly). Reading keeps the stream warm.
 func (c *Cache) Cached(key Key) (Snapshot, bool) {
+	key = key.norm()
 	c.mu.Lock()
 	s, f := c.warmLocked(key)
 	if s != nil && s.refs == 0 && s.idleTimer != nil {
@@ -306,7 +319,7 @@ func (c *Cache) List(ctx context.Context, key Key) (Snapshot, error) {
 type stream struct {
 	c      *Cache
 	key    Key
-	ri     dynamic.ResourceInterface
+	ri     source
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -330,12 +343,7 @@ type stream struct {
 
 func (c *Cache) start(key Key) *stream {
 	ctx, cancel := context.WithCancel(context.Background())
-	ri := c.dyn.Resource(key.GVR)
-	var r dynamic.ResourceInterface = ri
-	if key.Namespace != "" {
-		r = ri.Namespace(key.Namespace)
-	}
-	s := &stream{c: c, key: key, ri: r, ctx: ctx, cancel: cancel, ready: make(chan struct{}),
+	s := &stream{c: c, key: key, ri: c.source(key), ctx: ctx, cancel: cancel, ready: make(chan struct{}),
 		items: map[string]*unstructured.Unstructured{}, subs: map[*Sub]struct{}{}}
 	c.streams[key] = s
 	go s.run()

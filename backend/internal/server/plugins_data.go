@@ -75,7 +75,8 @@ func (l *pluginLookup) List(ctx context.Context, kindKey, ns, labelSelector, nam
 	if !rt.Namespaced {
 		ns = ""
 	}
-	key := kcache.Key{GVR: rt.GVR(), Namespace: ns, LabelSelector: labelSelector}
+	// Lean: plugins see a Secret's key names, never its values.
+	key := kcache.Key{GVR: rt.GVR(), Namespace: ns, LabelSelector: labelSelector, Lean: true}
 	if name != "" {
 		key.FieldSelector = "metadata.name=" + name
 	}

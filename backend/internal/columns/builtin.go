@@ -94,7 +94,9 @@ var builtin = map[string][]Column{
 		{Name: "Type", Query: `.type`},
 		{Name: "Keys", Type: "number", Query: `(.data // {}) | length`},
 		// Only value lengths are computed; the values never reach a cell.
-		{Name: "Size", Type: "bytes", Query: `[(.data // {})[] | base64size] | add // 0`},
+		// A null value is one the table's watch left out (a Helm release,
+		// see kcache.Key.Lean): its size is unknown, so blank.
+		{Name: "Size", Type: "bytes", Query: `(.data // {}) | if any(.[]; . == null) then null else [.[] | base64size] | add // 0 end`},
 		ageCol,
 	},
 	"serviceaccounts": {

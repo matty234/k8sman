@@ -211,6 +211,9 @@ type resourceQuery struct {
 	Columns       []columns.Column
 	LabelSelector string
 	FieldSelector string
+	// Lean: the reader shows no Secret values (a table without objects),
+	// so the shared watch may leave them out (see kcache.Key.Lean).
+	Lean bool
 }
 
 func (s *Server) parseResource(ctx context.Context, r *http.Request) (*cluster.Clients, resourceQuery, error) {
@@ -284,7 +287,7 @@ func (rq resourceQuery) client(c *cluster.Clients) dynamic.ResourceInterface {
 
 // cacheKey is the shared-watch key for the query.
 func (rq resourceQuery) cacheKey() kcache.Key {
-	return kcache.Key{GVR: rq.Type.GVR(), Namespace: namespaceFor(rq), LabelSelector: rq.LabelSelector, FieldSelector: rq.FieldSelector}
+	return kcache.Key{GVR: rq.Type.GVR(), Namespace: namespaceFor(rq), LabelSelector: rq.LabelSelector, FieldSelector: rq.FieldSelector, Lean: rq.Lean}
 }
 
 // listing is a point-in-time list, from the shared watch cache or a LIST.
@@ -325,7 +328,13 @@ func (s *Server) snapshot(ctx context.Context, c *cluster.Clients, rq resourceQu
 	if snap, ok := kcache.For(c).Cached(rq.cacheKey()); ok {
 		return listing{items: snap.Items, rv: snap.ResourceVersion, memo: snap.Memo}, nil
 	}
-	list, err := rq.client(c).List(ctx, rq.listOptions())
+	var list *unstructured.UnstructuredList
+	var err error
+	if rq.Lean {
+		list, err = kcache.For(c).ListOnce(ctx, rq.cacheKey())
+	} else {
+		list, err = rq.client(c).List(ctx, rq.listOptions())
+	}
 	if err != nil {
 		return listing{}, err
 	}
@@ -681,6 +690,8 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	includeObject := r.URL.Query().Get("includeObject") == "true"
+	rq.Lean = !includeObject
 	// Served from a warm shared watch when one exists (e.g. the table is
 	// open), else listed directly.
 	snap, err := s.snapshot(r.Context(), c, rq)
@@ -689,7 +700,7 @@ func (s *Server) handleTable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cols, isDefault := s.tableColumns(r.Context(), c, rq)
-	b := newTableBuilder(cols, r.URL.Query().Get("includeObject") == "true")
+	b := newTableBuilder(cols, includeObject)
 	b.decorate = s.decoratorFor(r.Context(), c, rq, b.eval)
 	b.memo = snap.memo
 	t, _ := b.tableOf(rq.Type, isDefault, snap.items, snap.rv)

@@ -167,6 +167,7 @@ func (s *Server) handleWatch(w http.ResponseWriter, r *http.Request) {
 	colsKey := pluginColumnsKey(cols)
 	pluginsChanged := s.plugins.Changed()
 	includeObject := r.URL.Query().Get("includeObject") == "true"
+	rq.Lean = !includeObject
 	sub := s.subscribe(c, rq) // one stream, or a namespace set merged
 
 	defer func() { sub.Close() }()

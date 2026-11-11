@@ -114,7 +114,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
 
 ## Tables
 
-- Live tables over watches for every kind.
+- Live tables over watches for every kind. The Secrets table lists Helm
+  release Secrets (`helm.sh/release.v1`, often most of a cluster's Secret
+  bytes) as metadata only, so it opens quickly; their Size is blank. The
+  inspector and YAML view still read the whole Secret.
 - jq-defined columns with a column editor (live preview, field picker, column
   types), saved per resource type. Besides jq's own functions, queries can
   call `podstatus`, `deploymentstatus`, `statefulsetstatus`,

@@ -19,6 +19,7 @@ import (
 // what lets a user with only namespaced RoleBindings watch several
 // namespaces at once.
 func (c *Cache) SubscribeSet(key Key, namespaces []string) Subscription {
+	key = key.norm()
 	switch len(namespaces) {
 	case 0:
 		key.Namespace = ""
@@ -83,7 +84,7 @@ func setFilter(broad, key Key, namespaces []string) (*filter, bool) {
 // warmSetLocked finds a synced all-namespaces stream that can answer key in
 // a namespace set.
 func (c *Cache) warmSetLocked(key Key, namespaces []string) (*stream, *filter) {
-	for _, bk := range []Key{{GVR: key.GVR, LabelSelector: key.LabelSelector, FieldSelector: key.FieldSelector}, {GVR: key.GVR}} {
+	for _, bk := range []Key{{GVR: key.GVR, LabelSelector: key.LabelSelector, FieldSelector: key.FieldSelector, Lean: key.Lean}, {GVR: key.GVR}, {GVR: key.GVR, Lean: true}} {
 		if s := c.streams[bk]; s != nil && s.isWarm() {
 			if f, ok := setFilter(bk, key, namespaces); ok {
 				return s, f
@@ -112,6 +113,7 @@ func (c *Cache) acquireWarmSet(key Key, namespaces []string) (*stream, *filter) 
 // CachedSet answers a namespace set from a warm all-namespaces stream, or
 // returns ok=false (the caller then reads each namespace).
 func (c *Cache) CachedSet(key Key, namespaces []string) (Snapshot, bool) {
+	key = key.norm()
 	c.mu.Lock()
 	s, f := c.warmSetLocked(key, namespaces)
 	if s != nil && s.refs == 0 && s.idleTimer != nil {
