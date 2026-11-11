@@ -92,6 +92,8 @@ type Directory struct {
 
 	// installMu serialises installs and uninstalls.
 	installMu sync.Mutex
+	// migrateMu: one Migrate at a time (migrate.go).
+	migrateMu sync.Mutex
 }
 
 // staged is a validated package waiting for consent.
@@ -144,7 +146,9 @@ func DirectoryFromEnv(h *Host) *Directory {
 type DirectoryPlugin struct {
 	IndexEntry
 	// State: builtin (bundled with the app), installed, update (a newer
-	// version is available), install, or incompatible (needs a newer app;
+	// version is available, or a formerly bundled plugin still running
+	// from the app's legacy copy needs the user's OK for the directory
+	// version's permissions), install, or incompatible (needs a newer app;
 	// Reason says so).
 	State            string `json:"state"`
 	Reason           string `json:"reason,omitempty"`
@@ -384,6 +388,8 @@ func (d *Directory) State(ctx context.Context, maxAge time.Duration, served func
 		dp.PermissionsHash = permissionsHash(id, dp.Permissions)
 		rec, installed := st.Installed[id]
 		bundled, unpacked := d.loaded(id)
+		legacyVersion := d.host.legacyLoaded(id)
+		moving := !installed && st.Migrated[id] == settings.MigratedConsent && legacyVersion != ""
 		if served != nil {
 			for _, k := range dp.Kinds {
 				if served(k) {
@@ -403,13 +409,17 @@ func (d *Directory) State(ctx context.Context, maxAge time.Duration, served func
 			}
 		case e == nil:
 			dp.State, dp.Reason = "incompatible", reason
+		case moving:
+			// Migrate didn't install it: other permissions than the
+			// bundled copy's. Offered as an update that asks first.
+			dp.State, dp.InstalledVersion, dp.PermissionsChanged = "update", legacyVersion, true
 		}
 		out.Plugins = append(out.Plugins, dp)
 		if dp.State == "update" {
 			out.Updates = append(out.Updates, dp)
 		}
 		// "install" is neither installed, built in nor incompatible.
-		if dp.State == "install" && !unpacked && len(dp.Matched) > 0 {
+		if (dp.State == "install" || moving) && !unpacked && len(dp.Matched) > 0 {
 			out.Suggested = append(out.Suggested, dp)
 		}
 	}
@@ -435,7 +445,8 @@ func (d *Directory) isBundled(id string) bool {
 	return bundled
 }
 
-// loaded reports whether plugin id is built into the app, and whether
+// loaded reports whether plugin id is built into the app (a legacy copy
+// doesn't count: it is to be installed from the directory), and whether
 // one is loaded unpacked (a dev or --plugin-dev folder, or a folder in
 // the installed folder without a directory record).
 func (d *Directory) loaded(id string) (bundled, unpacked bool) {
@@ -447,7 +458,7 @@ func (d *Directory) loaded(id string) (bundled, unpacked bool) {
 		}
 		switch p.source {
 		case SourceBundled:
-			bundled = true
+			bundled = bundled || !p.legacy
 		case SourceDev, SourceFlag, SourceInstalled:
 			unpacked = true
 		}
@@ -725,11 +736,14 @@ func (d *Directory) AutoUpdate(ctx context.Context) []string {
 
 // Run checks the index daily while any directory plugin is installed
 // (revoked versions are turned off, and with the AutoUpdate setting
-// same-permission updates install), until ctx ends.
+// same-permission updates install), until ctx ends. At start and hourly
+// it also retries moving formerly bundled plugins to the directory
+// (Migrate) while any is undecided.
 func (d *Directory) Run(ctx context.Context) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
+		d.Migrate(ctx, nil)
 		select {
 		case <-ctx.Done():
 			return

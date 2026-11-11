@@ -1,6 +1,8 @@
 // Package bundled holds the plugins compiled into the backend: one folder
 // per plugin (plugin.yaml, README.md and fixtures), the same format as any
-// plugin (docs/PLUGINS.md, "Bundled plugins"). They load without developer
+// plugin (docs/PLUGINS.md, "Bundled plugins"). Only dra now: external-secrets,
+// cert-manager and kyverno ship through the plugin directory (their
+// one-release fallback copies are in ../legacy). They load without developer
 // mode, need no consent, and each has its own switch in Settings ▸
 // Integrations. Only plugin.yaml and README.md are embedded; the fixtures
 // run in go test (internal/plugins TestPluginTestGolden) and with
@@ -18,6 +20,5 @@ var FS embed.FS
 // replaces, while that module is still in the app (off), so the two can
 // be compared: settings.json's plugins.useModule (a list of plugin ids)
 // turns the module back on and the plugin off. Never both at once. Empty
-// now: external-secrets replaced the external_secrets module, which has
-// since been removed.
+// now: the modules the bundled plugins replaced have been removed.
 var ReplacesModule = map[string]string{}

@@ -290,8 +290,8 @@ var builtin = map[string][]Column{
 	"udproutes.gateway.networking.k8s.io":  {gwRouteParents, gwRouteAccepted, gwRouteBackends, ageCol},
 	// External Secrets Operator, Dynamic Resource Allocation (resource.k8s.io), Kyverno and
 	// policy report (wgpolicyk8s.io) kinds have no built-in columns: the
-	// bundled external-secrets, dra and kyverno plugins supply them
-	// (plugins/bundled).
+	// bundled dra plugin (plugins/bundled) and the external-secrets and
+	// kyverno plugins from the plugin directory supply them.
 	// Admission policies and webhook configurations (admissionregistration.k8s.io).
 	"validatingadmissionpolicies.admissionregistration.k8s.io": {
 		{Name: "Failure Policy", Query: `.spec.failurePolicy // "Fail"`},

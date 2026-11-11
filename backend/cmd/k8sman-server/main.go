@@ -22,6 +22,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/icons"
 	"github.com/matty234/k8sman/backend/internal/plugins"
 	"github.com/matty234/k8sman/backend/internal/plugins/bundled"
+	"github.com/matty234/k8sman/backend/internal/plugins/legacy"
 	"github.com/matty234/k8sman/backend/internal/portforward"
 	"github.com/matty234/k8sman/backend/internal/server"
 	"github.com/matty234/k8sman/backend/internal/settings"
@@ -95,11 +96,12 @@ func main() {
 	// Bundled plugins load now; the user's own (dev mode only in this
 	// version) in the background.
 	ph := plugins.NewHost(plugins.Options{InstalledDir: filepath.Join(filepath.Dir(*settingsPath), "plugins"), FlagDirs: pluginDev, Settings: st,
-		Bundled: bundled.FS, Replaces: bundled.ReplacesModule})
+		Bundled: bundled.FS, Legacy: legacy.FS, Replaces: bundled.ReplacesModule})
 	ph.Start()
 	defer ph.Close()
 	// The plugin directory checks for updates and revocations daily while
-	// any plugin from it is installed.
+	// any plugin from it is installed, and moves the formerly bundled
+	// plugins to it (plugins.Migrate).
 	pdir := plugins.DirectoryFromEnv(ph)
 	go pdir.Run(context.Background())
 

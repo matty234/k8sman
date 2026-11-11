@@ -30,7 +30,7 @@ const (
 	SourceFlag      = "flag"      // --plugin-dev
 	SourceInstalled = "installed" // <settings dir>/plugins/<id>, unpacked (no directory record)
 	SourceDirectory = "directory" // <settings dir>/plugins/<id>, installed from the plugin directory
-	SourceBundled   = "bundled"   // compiled into the backend (internal/plugins/bundled)
+	SourceBundled   = "bundled"   // compiled into the backend (internal/plugins/bundled, or legacy)
 )
 
 // HostModule is the id of the plugin host's module: turning it off turns
@@ -49,6 +49,9 @@ const maxIcon = 64 << 10
 type Plugin struct {
 	dir    string
 	source string
+	// legacy: a formerly bundled plugin loaded from Options.Legacy while
+	// its move to the directory isn't done (source bundled).
+	legacy bool
 	// fsys holds the plugin's files (its folder, or the embedded copy).
 	fsys fs.FS
 	m    *Manifest
@@ -223,6 +226,12 @@ type Options struct {
 	// Bundled holds the plugins compiled into the backend, one folder
 	// each (internal/plugins/bundled). They load without dev mode.
 	Bundled fs.FS
+	// Legacy holds plugins that were bundled up to 0.2.16 and now ship
+	// through the plugin directory, one folder each (internal/plugins/legacy).
+	// One loads, like a bundled plugin, only while its migration hasn't
+	// finished (see legacyWanted and migrate.go).
+	// TODO(0.2.18): remove with the legacy package.
+	Legacy fs.FS
 	// Replaces maps a bundled plugin id to the compiled-in module it
 	// replaces: the module is off unless settings' plugins.useModule
 	// names the plugin (then the plugin is off).
@@ -417,30 +426,43 @@ func (h *Host) Reload() {
 	h.watch(fs)
 }
 
-// loadBundled loads every bundled plugin (each folder of opts.Bundled).
-// They compile a kind on first use, as installed plugins do; their
-// fixtures run in go test (TestPluginTestGolden).
+// loadBundled loads every bundled plugin (each folder of opts.Bundled),
+// and the legacy ones still wanted (legacyWanted). They compile a kind on
+// first use, as installed plugins do; their fixtures run in go test
+// (TestPluginTestGolden).
 func (h *Host) loadBundled() []*Plugin {
-	if h.opts.Bundled == nil {
+	out := loadEmbedded(h.opts.Bundled, "bundled", nil)
+	st := h.settings()
+	for _, p := range loadEmbedded(h.opts.Legacy, "legacy", func(id string) bool { return legacyWanted(st, id) }) {
+		p.legacy = true
+		out = append(out, p)
+	}
+	return out
+}
+
+// loadEmbedded loads each folder of fsys (those want accepts by name,
+// or all) as a bundled plugin.
+func loadEmbedded(fsys fs.FS, label string, want func(id string) bool) []*Plugin {
+	if fsys == nil {
 		return nil
 	}
-	entries, err := fs.ReadDir(h.opts.Bundled, ".")
+	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
-		log.Printf("plugins: bundled: %v", err)
+		log.Printf("plugins: %s: %v", label, err)
 		return nil
 	}
 	var out []*Plugin
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() || want != nil && !want(e.Name()) {
 			continue
 		}
-		sub, err := fs.Sub(h.opts.Bundled, e.Name())
+		sub, err := fs.Sub(fsys, e.Name())
 		if err != nil {
 			continue
 		}
-		p := loadPluginFS(sub, "bundled/"+e.Name(), SourceBundled, false)
+		p := loadPluginFS(sub, label+"/"+e.Name(), SourceBundled, false)
 		if p.failed {
-			log.Printf("plugins: bundled plugin %s doesn't load: %v", e.Name(), p.diags)
+			log.Printf("plugins: %s plugin %s doesn't load: %v", label, e.Name(), p.diags)
 		}
 		out = append(out, p)
 	}
@@ -491,7 +513,7 @@ func (h *Host) mergeLocked(loaded []*Plugin, old *Plugin) []*Plugin {
 	for _, np := range loaded {
 		if np.failed {
 			if pp := prev[np.dir]; pp != nil && pp.m != nil {
-				kept := &Plugin{dir: pp.dir, source: pp.source, fsys: pp.fsys, m: pp.m, d: pp.d, diags: np.diags, failed: true, stats: pp.stats,
+				kept := &Plugin{dir: pp.dir, source: pp.source, legacy: pp.legacy, fsys: pp.fsys, m: pp.m, d: pp.d, diags: np.diags, failed: true, stats: pp.stats,
 					eager: pp.eager, kinds: pp.kinds, kindErrs: pp.kindErrs, loadDur: np.loadDur, compileDur: pp.compileDur, loadedAt: pp.loadedAt, gen: pp.gen}
 				np = kept
 			}
@@ -983,6 +1005,10 @@ type Info struct {
 	// Active: its contributions apply now (loaded, on, not overridden or
 	// set aside for its module, and user plugins on for non-bundled ones).
 	Active bool `json:"active"`
+	// Moving: a formerly bundled plugin loaded from the app's legacy copy
+	// until its move to the plugin directory is done ("Built in · moving
+	// to Marketplace").
+	Moving bool `json:"moving,omitempty"`
 	// Overridden: a bundled plugin that a user plugin with its id
 	// replaces; Overrides: that user plugin.
 	Overridden bool `json:"overridden,omitempty"`
@@ -1068,6 +1094,7 @@ func (h *Host) List(served func(key string) bool) []Info {
 			LoadMillis: ms(p.loadDur), LoadedAt: p.loadedAt, Stats: p.stats.snapshot()}
 		if p.source == SourceBundled {
 			in.Overridden = user[in.ID]
+			in.Moving = p.legacy
 			in.ReplacesModule = h.opts.Replaces[in.ID]
 			in.UsingModule = h.usesModule(st, in.ID)
 		} else {

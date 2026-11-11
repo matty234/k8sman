@@ -134,7 +134,22 @@ type PluginSettings struct {
 	// SeenUpdates are the updates (id@version) whose notice was reviewed
 	// or dismissed.
 	SeenUpdates []string `json:"seenUpdates,omitempty"`
+	// Migrated records, by plugin id, how the move of a formerly bundled
+	// plugin (external-secrets, cert-manager, kyverno) to the plugin
+	// directory ended: MigratedInstalled, MigratedOff, MigratedUnused, or
+	// MigratedConsent (still waiting: the directory version asks for other
+	// permissions). Absent: not decided yet. TODO(0.2.18): remove.
+	Migrated map[string]string `json:"migrated,omitempty"`
 }
+
+// How a formerly bundled plugin's move to the directory ended
+// (PluginSettings.Migrated).
+const (
+	MigratedInstalled = "installed" // installed from the directory (by the move, or already)
+	MigratedOff       = "off"       // the user had turned it off: nothing installed
+	MigratedUnused    = "unused"    // not in use: nothing installed (a suggestion where it fits)
+	MigratedConsent   = "consent"   // the directory version needs the user's OK; the legacy copy stays
+)
 
 // InstalledPlugin is one plugin installed from the plugin directory.
 type InstalledPlugin struct {
@@ -151,7 +166,8 @@ func (p *PluginSettings) clone() *PluginSettings {
 		return nil
 	}
 	return &PluginSettings{DevMode: p.DevMode, DevFolders: slices.Clone(p.DevFolders), Disabled: slices.Clone(p.Disabled), Consent: maps.Clone(p.Consent), UseModule: slices.Clone(p.UseModule),
-		Installed: maps.Clone(p.Installed), AutoUpdate: p.AutoUpdate, SeenSuggestions: maps.Clone(p.SeenSuggestions), SeenUpdates: slices.Clone(p.SeenUpdates)}
+		Installed: maps.Clone(p.Installed), AutoUpdate: p.AutoUpdate, SeenSuggestions: maps.Clone(p.SeenSuggestions), SeenUpdates: slices.Clone(p.SeenUpdates),
+		Migrated: maps.Clone(p.Migrated)}
 }
 
 // UpdatePlugins applies fn to the plugin settings and saves them.
@@ -163,7 +179,7 @@ func (st *Store) UpdatePlugins(fn func(p *PluginSettings)) error {
 		}
 		fn(p)
 		if !p.DevMode && len(p.DevFolders) == 0 && len(p.Disabled) == 0 && len(p.Consent) == 0 && len(p.UseModule) == 0 && len(p.Installed) == 0 &&
-			!p.AutoUpdate && len(p.SeenSuggestions) == 0 && len(p.SeenUpdates) == 0 {
+			!p.AutoUpdate && len(p.SeenSuggestions) == 0 && len(p.SeenUpdates) == 0 && len(p.Migrated) == 0 {
 			p = nil
 		}
 		s.Plugins = p

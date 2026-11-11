@@ -1,9 +1,0 @@
-# An object no report mentions: no Policy results tab.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: web-config
-  namespace: demo
-  uid: 7d1e0b3f-0000-4000-8000-0000000000e1
-data:
-  mode: production

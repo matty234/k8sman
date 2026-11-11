@@ -1,5 +1,0 @@
-# Written by `k8sman-server plugin test --update`: review changes before committing.
-object: /ConfigMap demo/web-config
-panel:
-  refresh: 30
-  sections: []

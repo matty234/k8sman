@@ -13,7 +13,7 @@ import (
 // verifies with the key that signed it, and not once a package changes.
 func TestPluginPackAndIndexRoundtrip(t *testing.T) {
 	root := t.TempDir()
-	src := filepath.Join("..", "..", "internal", "plugins", "bundled", "cert-manager")
+	src := filepath.Join("..", "..", "..", "examples", "plugins", "cert-manager")
 	dst := filepath.Join(root, "plugins", "cert-manager")
 	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
 		t.Fatal(err)
@@ -23,8 +23,8 @@ func TestPluginPackAndIndexRoundtrip(t *testing.T) {
 			t.Fatalf("pack %d: exit %d", i, rc)
 		}
 	}
-	pkgA, _ := os.ReadFile(filepath.Join(root, "a", "cert-manager-1.1.0.tar.gz"))
-	pkgB, _ := os.ReadFile(filepath.Join(root, "b", "cert-manager-1.1.0.tar.gz"))
+	pkgA, _ := os.ReadFile(filepath.Join(root, "a", "cert-manager-1.0.0.tar.gz"))
+	pkgB, _ := os.ReadFile(filepath.Join(root, "b", "cert-manager-1.0.0.tar.gz"))
 	if len(pkgA) == 0 || !bytes.Equal(pkgA, pkgB) {
 		t.Fatal("packing twice gave different bytes")
 	}
@@ -43,7 +43,7 @@ func TestPluginPackAndIndexRoundtrip(t *testing.T) {
 	if rc := pluginVerifyIndex([]string{site, "--key", pub}); rc != 0 {
 		t.Fatalf("verify-index: exit %d", rc)
 	}
-	pkg := filepath.Join(site, "packages", "cert-manager-1.1.0.tar.gz")
+	pkg := filepath.Join(site, "packages", "cert-manager-1.0.0.tar.gz")
 	if err := os.WriteFile(pkg, append(pkgA, 0), 0o644); err != nil {
 		t.Fatal(err)
 	}

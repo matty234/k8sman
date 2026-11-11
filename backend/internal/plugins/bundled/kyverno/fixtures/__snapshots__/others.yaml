@@ -1,8 +1,0 @@
-# Written by `k8sman-server plugin test --update`: review changes before committing.
-object: kyverno.io/PolicyException demo/allow-debug
-columns:
-  - name: Policies
-    value: require-labels,disallow-latest
-panel:
-  refresh: 30
-  sections: []

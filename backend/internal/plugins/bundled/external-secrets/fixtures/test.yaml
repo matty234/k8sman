@@ -1,5 +1,0 @@
-# Settings for `k8sman-server plugin test`: the time every fixture sees and
-# the context's name. No metrics: the plugin reads none.
-now: 2026-01-01T00:00:00Z
-context: demo
-readOnly: false

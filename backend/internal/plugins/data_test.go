@@ -552,6 +552,14 @@ func containsValue(l []any, v any) bool {
 // snapshots, then the flow on a new plugin: scaffold (snapshots written),
 // pass, change a fixture (fail with a diff), --update, pass.
 func TestPluginTestGolden(t *testing.T) {
+	// The legacy copies (formerly bundled; their fixtures are in the
+	// k8sman-plugins repo) only validate. TODO(0.2.18): drop with them.
+	legacyDirs, _ := filepath.Glob("legacy/*/" + ManifestFile)
+	for _, m := range legacyDirs {
+		if diags := Validate(filepath.Dir(m)); len(diags) > 0 {
+			t.Errorf("%s: %v", filepath.Dir(m), diags)
+		}
+	}
 	// The cert-manager example and every bundled plugin (each must have fixtures).
 	dirs := []string{"../../../examples/plugins/cert-manager"}
 	bundledDirs, _ := filepath.Glob("bundled/*/" + ManifestFile)
@@ -604,18 +612,56 @@ func TestPluginTestGolden(t *testing.T) {
 	}
 }
 
-// BenchmarkPluginData measures the bundled cert-manager plugin against the
+// BenchmarkPluginData measures the cert-manager plugin against the
 // budgets of docs/PLUGINS.md §8: its alerts over 1,000 Certificates (one
 // overview poll; budget +5 ms p50 for five typical plugins) and its
 // Certificate panel with related objects and metrics warm (5 ms p95).
+// cert-manager and kyverno live in the k8sman-plugins repo: set
+// K8SMAN_PLUGINS_DIR to its plugins/ folder to include them.
 func BenchmarkPluginData(b *testing.B) {
-	const dir = "bundled/cert-manager"
+	if repo := os.Getenv("K8SMAN_PLUGINS_DIR"); repo != "" {
+		benchmarkDirectoryPlugins(b, repo)
+	}
+
+	// The dra plugin's Node section: a filter relation over 1,000
+	// ResourceSlices (cluster-wide), two of them the node's.
+	dra, cfg, err := loadForFixtures("bundled/dra")
+	if err != nil {
+		b.Fatal(err)
+	}
+	nodeObjs, err := readFixture("bundled/dra/fixtures/node.yaml")
+	if err != nil {
+		b.Fatal(err)
+	}
+	slices := make([]map[string]any, 1000)
+	for i := range slices {
+		s := plain(nodeObjs[3]).(map[string]any)
+		s["metadata"].(map[string]any)["name"] = "slice-" + itoa(i)
+		s["spec"].(map[string]any)["nodeName"] = "node-" + itoa(i)
+		slices[i] = s
+	}
+	slices[10], slices[500] = nodeObjs[1], nodeObjs[2]
+	b.Run("filter-1000/node-slices", func(b *testing.B) {
+		env := Env{Context: "demo", Now: cfg.Now, Lookup: sliceLookup{"resource.k8s.io/ResourceSlice": slices}}
+		for b.Loop() {
+			po, ok := dra.panel(env, fixtureType(nodeObjs[0]), nodeObjs[0])
+			if !ok || len(po.Sections) != 1 {
+				b.Fatalf("panel = %+v", po)
+			}
+		}
+	})
+}
+
+// benchmarkDirectoryPlugins is BenchmarkPluginData's part for the
+// cert-manager and kyverno plugins in repo (k8sman-plugins/plugins).
+func benchmarkDirectoryPlugins(b *testing.B, repo string) {
+	dir := filepath.Join(repo, "cert-manager")
 	p, cfg, err := loadForFixtures(dir)
 	if err != nil {
 		b.Fatal(err)
 	}
 	h := &Host{plugins: []*Plugin{p}, opts: Options{FlagDirs: []string{dir}}}
-	objs, err := readFixture(dir + "/fixtures/certificate-ready.yaml")
+	objs, err := readFixture(filepath.Join(dir, "fixtures", "certificate-ready.yaml"))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -666,11 +712,11 @@ func BenchmarkPluginData(b *testing.B) {
 	// PolicyReports in the namespace, served as a warm watch cache serves
 	// them (the namespace's list, shared), for an object that owns one
 	// report and for one that owns none.
-	kp2, _, err := loadForFixtures("bundled/kyverno")
+	kp2, _, err := loadForFixtures(filepath.Join(repo, "kyverno"))
 	if err != nil {
 		b.Fatal(err)
 	}
-	reports, err := readFixture("bundled/kyverno/fixtures/pod-results.yaml")
+	reports, err := readFixture(filepath.Join(repo, "kyverno", "fixtures", "pod-results.yaml"))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -704,34 +750,6 @@ func BenchmarkPluginData(b *testing.B) {
 			}
 		})
 	}
-
-	// The dra plugin's Node section: a filter relation over 1,000
-	// ResourceSlices (cluster-wide), two of them the node's.
-	dra, _, err := loadForFixtures("bundled/dra")
-	if err != nil {
-		b.Fatal(err)
-	}
-	nodeObjs, err := readFixture("bundled/dra/fixtures/node.yaml")
-	if err != nil {
-		b.Fatal(err)
-	}
-	slices := make([]map[string]any, 1000)
-	for i := range slices {
-		s := plain(nodeObjs[3]).(map[string]any)
-		s["metadata"].(map[string]any)["name"] = "slice-" + itoa(i)
-		s["spec"].(map[string]any)["nodeName"] = "node-" + itoa(i)
-		slices[i] = s
-	}
-	slices[10], slices[500] = nodeObjs[1], nodeObjs[2]
-	b.Run("filter-1000/node-slices", func(b *testing.B) {
-		env := Env{Context: "demo", Now: cfg.Now, Lookup: sliceLookup{"resource.k8s.io/ResourceSlice": slices}}
-		for b.Loop() {
-			po, ok := dra.panel(env, fixtureType(nodeObjs[0]), nodeObjs[0])
-			if !ok || len(po.Sections) != 1 {
-				b.Fatalf("panel = %+v", po)
-			}
-		}
-	})
 }
 
 // sliceLookup serves each kind's objects from a list, unfiltered by
