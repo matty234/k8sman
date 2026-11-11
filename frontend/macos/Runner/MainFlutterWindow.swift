@@ -162,6 +162,14 @@ class MainFlutterWindow: NSWindow {
     DispatchQueue.main.async { [weak self] in self?.layoutTrafficLights() }
   }
 
+  /// AppKit routes an Esc nobody handled (Flutter returns it unhandled, e.g.
+  /// a focused widget with no Esc meaning) here, and the default leaves full
+  /// screen. Swallow it there: only ⌃⌘F or the green button exit.
+  override func cancelOperation(_ sender: Any?) {
+    if styleMask.contains(.fullScreen) { return }
+    super.cancelOperation(sender)
+  }
+
   override func layoutIfNeeded() {
     super.layoutIfNeeded()
     layoutTrafficLights()

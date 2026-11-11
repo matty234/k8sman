@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/ui/detail/detail_sidebar.dart';
 import 'package:k8sman/ui/logs/log_dock_view.dart';
@@ -22,6 +23,15 @@ Future<void> _openWebPod(WidgetTester tester) async {
 bool _inspectorVisible(WidgetTester tester) => find.byType(DetailSidebar).hitTestable().evaluate().isNotEmpty;
 
 void main() {
+  testWidgets('Esc closes the inspector', (tester) async {
+    await pumpShell(tester, FixtureApi());
+    await _openWebPod(tester);
+    expect(_inspectorVisible(tester), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await _settle(tester);
+    expect(_inspectorVisible(tester), isFalse);
+  });
+
   group('log dock', () {
     testWidgets('opens from the pod Logs action and container cards; reopening focuses', (tester) async {
       final api = FixtureApi();

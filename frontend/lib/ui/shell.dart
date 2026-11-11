@@ -72,6 +72,12 @@ class _ShellState extends State<Shell> {
       leaveSettings(_app);
       return KeyEventResult.handled;
     }
+    // Esc closes the inspector when nothing above handled it. Handled here
+    // so AppKit never sees an unhandled Esc (it would leave full screen).
+    if (e.logicalKey == LogicalKeyboardKey.escape && _app.detail != null && !_app.inspectorCollapsed) {
+      _app.closeDetail();
+      return KeyEventResult.handled;
+    }
     switch (e.character) {
       case ':':
         showCommandPalette(context, command: true);
