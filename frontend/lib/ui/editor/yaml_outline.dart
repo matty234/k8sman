@@ -69,6 +69,36 @@ class YamlOutline {
     return out.reversed.toList();
   }
 
+  /// The sticky header at a scroll position, as in VS Code. Row `d` shows
+  /// the block `d` levels deep among those enclosing (or opened by) the
+  /// line under that row, once the block's first line has scrolled above
+  /// the row. While a block's last line passes under its row, the row
+  /// slides up behind the one above ([shift] goes from 0 to `-lineHeight`),
+  /// and then it goes.
+  ///
+  /// Each row depends only on the scroll offset, never on how many rows
+  /// there are, so scrolling can't make the header flip between states.
+  /// Lines are visible lines (a fold is one), all [lineHeight] tall; line 0
+  /// starts at [line0] and the header at [top] (viewport y at scroll 0).
+  List<({int line, double shift})> stickyRows({required double scrollY, required double lineHeight, required double line0, required double top, int max = 5}) {
+    final h = lineHeight;
+    final rows = <({int line, double shift})>[];
+    if (h <= 0) return rows;
+    double topOf(int i) => line0 + i * h - scrollY;
+    for (var d = 0; d < max; d++) {
+      final y = top + d * h;
+      final under = ((y + scrollY - line0) / h).floor();
+      if (under < 0 || under >= length) break;
+      final chain = [...ancestors(under), if (canFold(under)) under];
+      if (chain.length <= d || (d > 0 && chain[d - 1] != rows[d - 1].line)) break;
+      final block = chain[d];
+      if (topOf(block) >= y) break;
+      final bottom = topOf(end[block] - 1) + h;
+      rows.add((line: block, shift: bottom - (y + h) < 0 ? bottom - (y + h) : 0.0));
+    }
+    return rows;
+  }
+
   /// The key path of [line], e.g. `spec.template.spec.containers[0].image`.
   String path(List<String> lines, int line) {
     final sb = StringBuffer();

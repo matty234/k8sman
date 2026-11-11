@@ -76,25 +76,22 @@ class YamlCodeEditorState extends State<YamlCodeEditor> {
   final _gutterHover = ValueNotifier(false);
 
   /// The editor's line layout. It reports during layout, too late to
-  /// rebuild widgets in the same frame, so the sticky header works from the
-  /// scroll offset and this geometry (line height, where line 0 starts),
-  /// which only changes with the font or the find bar.
+  /// rebuild widgets in that frame, so the sticky header takes only the line
+  /// height from it (once) and otherwise works from the scroll offset in
+  /// the same frame as the editor: line 0 starts at the editor's top padding
+  /// (plus the find bar while it is open).
   CodeIndicatorValueNotifier? _layout;
   double? _lineHeight;
-  double _line0 = 0;
   final _geometry = ValueNotifier(0);
 
   void _onLayout() {
     final ps = _layout?.value?.paragraphs;
-    if (ps == null || ps.isEmpty) return;
-    final v = _scroll.verticalScroller;
-    final p = ps.first;
-    final top0 = p.top + (v.hasClients ? v.offset : 0) - p.index * p.height;
-    if (p.height == _lineHeight && (top0 - _line0).abs() < 0.5) return;
-    _lineHeight = p.height;
-    _line0 = top0;
+    if (ps == null || ps.isEmpty || ps.first.height == _lineHeight) return;
+    _lineHeight = ps.first.height;
     SchedulerBinding.instance.addPostFrameCallback((_) => mounted ? _geometry.value++ : null);
   }
+
+  double get _line0 => _editorPadding + _findBarHeight;
 
   CodeLines? _outlineOf;
   YamlOutline? _outlineCache;
@@ -293,31 +290,15 @@ class YamlCodeEditorState extends State<YamlCodeEditor> {
   double get _findBarHeight => _find.value == null ? 0 : YamlFindBar.barHeight;
 
   /// The enclosing keys of the top line, pinned over the editor's first
-  /// rows: one row per level, outermost first. The deepest row slides up
-  /// as its block scrolls out, as in VS Code.
+  /// rows: one row per level, outermost first (see [YamlOutline.stickyRows]).
   Widget _stickyHeader(BuildContext context) {
     const none = Positioned(left: 0, top: 0, child: SizedBox.shrink());
     final h = _lineHeight;
-    final o = _outline;
-    if (h == null || h <= 0 || o.length == 0) return none;
+    if (h == null) return none;
     final v = _scroll.verticalScroller;
-    final scrollY = v.hasClients ? v.offset : 0.0;
     final top0 = _findBarHeight;
-    double topOf(int i) => _line0 + i * h - scrollY;
-    int lineAt(double y) => ((y + scrollY - _line0) / h).floor().clamp(0, o.length - 1);
-
-    final rows = <int>[];
-    for (var d = 0; d < _maxSticky; d++) {
-      final y = top0 + d * h;
-      final line = lineAt(y + 1);
-      final chain = o.ancestors(line);
-      if (chain.length <= d || (d > 0 && chain[d - 1] != rows[d - 1]) || topOf(chain[d]) >= y) break;
-      rows.add(chain[d]);
-    }
+    final rows = _outline.stickyRows(scrollY: v.hasClients ? v.offset : 0, lineHeight: h, line0: _line0, top: top0, max: _maxSticky);
     if (rows.isEmpty) return none;
-    // Slide the deepest row up once its block's last line passes under it.
-    final lastBottom = topOf(o.end[rows.last] - 1) + h;
-    final slide = (lastBottom - (top0 + rows.length * h)).clamp(-h, 0.0);
 
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
@@ -337,12 +318,14 @@ class YamlCodeEditorState extends State<YamlCodeEditor> {
       final rest = trimmed.substring(dash.length);
       final keyEnd = YamlOutline.yamlKey(rest) == null ? 0 : rest.indexOf(':') + 1;
       return GestureDetector(
+        key: ValueKey('sticky-$line'),
         behavior: HitTestBehavior.opaque,
         onTap: () => _reveal(line, depth),
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          child: SizedBox(
+          child: Container(
             height: h,
+            color: theme.colorScheme.surfaceContainerLowest,
             child: Row(children: [
               SizedBox(width: numbers, child: Text('${c.index2lineIndex(line) + 1}', textAlign: TextAlign.right, style: numStyle, textScaler: TextScaler.noScaling)),
               const SizedBox(width: _foldGutterWidth),
@@ -375,26 +358,27 @@ class YamlCodeEditorState extends State<YamlCodeEditor> {
       );
     }
 
+    // Each row sits in its slot, less its slide; deeper rows are painted
+    // first so a sliding row passes behind the one above it.
     return Positioned(
       top: 1 + top0,
       left: 1,
       right: 1 + _scrollbarWidth,
-      height: rows.length * h + slide,
-      child: DecoratedBox(
+      height: rows.length * h + rows.last.shift,
+      // A visual copy of lines the editor already exposes.
+      child: ExcludeSemantics(child: DecoratedBox(
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerLowest,
           border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6))),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.35 : 0.08), blurRadius: 4, offset: const Offset(0, 1))],
         ),
         child: ClipRect(
-          child: OverflowBox(
-            alignment: Alignment.bottomLeft,
-            minHeight: rows.length * h,
-            maxHeight: rows.length * h,
-            child: Column(children: [for (var d = 0; d < rows.length; d++) row(d, rows[d])]),
-          ),
+          child: Stack(children: [
+            for (var d = rows.length - 1; d >= 0; d--)
+              Positioned(left: 0, right: 0, top: d * h + rows[d].shift, height: h, child: row(d, rows[d].line)),
+          ]),
         ),
-      ),
+      )),
     );
   }
 
