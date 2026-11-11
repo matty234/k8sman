@@ -51,6 +51,7 @@ type TargetsResult struct {
 }
 
 type promTarget struct {
+	DiscoveredLabels   map[string]string `json:"discoveredLabels"`
 	Labels             map[string]string `json:"labels"`
 	ScrapePool         string            `json:"scrapePool"`
 	ScrapeURL          string            `json:"scrapeUrl"`

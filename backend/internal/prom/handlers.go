@@ -56,6 +56,11 @@ func (h *Handler) register(mux httpx.Router) {
 	mux.HandleFunc("GET /api/prom/targets", h.handleTargets)
 	mux.HandleFunc("GET /api/prom/query", h.handleQuery)
 	mux.HandleFunc("GET /api/prom/query_range", h.handleQueryRange)
+	mux.HandleFunc("GET /api/prom/scrape", h.handleScrape)
+	mux.HandleFunc("GET /api/prom/applies", h.handleApplies)
+	mux.HandleFunc("GET /api/prom/alertmanager", h.handleAMStatus)
+	mux.HandleFunc("GET /api/prom/selection", h.handleSelection)
+	mux.HandleFunc("GET /api/prom/selectedby", h.handleSelectedBy)
 }
 
 // ---- helpers -----------------------------------------------------------------
@@ -299,7 +304,7 @@ func (h *Handler) handleTargets(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), readTimeout)
 	defer cancel()
-	raw, err := fetchTargets(ctx, e.req, p)
+	raw, err := cachedTargets(ctx, e, p)
 	if err != nil {
 		writeErr(w, err)
 		return

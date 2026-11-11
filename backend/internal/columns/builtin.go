@@ -207,6 +207,27 @@ var builtin = map[string][]Column{
 		{Name: "Status", Type: "status", Query: `condition("Available") | if . == null then "" elif .status == "True" then "Available" else .reason // "Unavailable" end`},
 		ageCol,
 	},
+	"alertmanagerconfigs.monitoring.coreos.com": {
+		{Name: "Receiver", Query: `.spec.route.receiver // ""`},
+		{Name: "Routes", Type: "number", Query: `.spec.route.routes // [] | length`},
+		{Name: "Receivers", Query: `[.spec.receivers[]? | .name] | join(", ")`},
+		{Name: "Notifiers", Query: `[.spec.receivers[]? | to_entries[] | select(.key | endswith("Configs")) | .key | rtrimstr("Configs")] | unique | join(", ")`},
+		{Name: "Inhibit", Type: "number", Query: `.spec.inhibitRules // [] | length`},
+		ageCol,
+	},
+	"probes.monitoring.coreos.com": {
+		{Name: "Module", Query: `.spec.module // ""`},
+		{Name: "Prober", Query: `.spec.prober.url // ""`},
+		{Name: "Targets", Type: "number", Query: `(.spec.targets.staticConfig.static // []) | length`},
+		{Name: "Interval", Query: `.spec.interval // ""`},
+		ageCol,
+	},
+	"scrapeconfigs.monitoring.coreos.com": {
+		{Name: "Discovery", Query: `[.spec | to_entries[] | select(.key | endswith("SDConfigs")) | .key | rtrimstr("SDConfigs")] | join(", ")`},
+		{Name: "Path", Query: `.spec.metricsPath // ""`},
+		{Name: "Interval", Query: `.spec.scrapeInterval // ""`},
+		ageCol,
+	},
 	"horizontalpodautoscalers.autoscaling": {
 		{Name: "Reference", Query: `"\(.spec.scaleTargetRef.kind)/\(.spec.scaleTargetRef.name)"`},
 		{Name: "Min", Type: "number", Query: `.spec.minReplicas // 1`},
