@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:re_editor/re_editor.dart';
-import 'package:re_highlight/languages/yaml.dart';
-import 'package:re_highlight/styles/atom-one-dark.dart';
-import 'package:re_highlight/styles/atom-one-light.dart';
 
 import '../../actions/actions.dart';
 import '../../api/client.dart';
@@ -56,6 +53,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
   DetailTarget get _t => widget.target;
 
   final _editorFocus = FocusNode();
+  final _editorKey = GlobalKey<YamlCodeEditorState>();
 
   bool get _canEdit => !context.read<AppState>().readOnly && _t.type.can('update');
 
@@ -103,7 +101,13 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
       setState(() {
         _original = y;
         _baseRv = RegExp(r'^\s*resourceVersion:\s*"?(\d+)"?', multiLine: true).firstMatch(y)?.group(1) ?? widget.resourceVersion;
-        _controller.text = y;
+        // A live refresh keeps the user's folds.
+        final state = _editorKey.currentState;
+        if (state == null) {
+          _controller.text = y;
+        } else {
+          state.preservingFolds(() => _controller.text = y);
+        }
         _loading = false;
         _serverChanged = false;
       });
@@ -249,18 +253,25 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
         final narrow = box.maxWidth < 380;
         if (!_editing) {
           return Row(children: [
-            Flexible(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: () => _setManagedFields(!_managedFields),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  SizedBox(width: 32, height: 20, child: FittedBox(child: Switch(value: _managedFields, onChanged: _setManagedFields))),
-                  const SizedBox(width: 6),
-                  Flexible(child: Text('Managed fields', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
-                ]),
+            // Expanded, not Flexible + Spacer: two flex children split the
+            // free space, and the half the toggle didn't use was left
+            // after the Edit button instead of reaching the right edge.
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => _setManagedFields(!_managedFields),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    SizedBox(width: 32, height: 20, child: FittedBox(child: Switch(value: _managedFields, onChanged: _setManagedFields))),
+                    const SizedBox(width: 6),
+                    Flexible(child: Text('Managed fields', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))),
+                  ]),
+                ),
               ),
             ),
-            const Spacer(),
+            IconButton(style: icon, tooltip: 'Fold all', icon: const Icon(Icons.unfold_less, size: 16), onPressed: () => _editorKey.currentState?.foldAll()),
+            IconButton(style: icon, tooltip: 'Unfold all', icon: const Icon(Icons.unfold_more, size: 16), onPressed: () => _editorKey.currentState?.unfoldAll()),
             IconButton(style: icon, tooltip: 'Copy YAML', icon: const Icon(Icons.copy, size: 16), onPressed: () => copyToClipboard(context, _original, label: 'YAML')),
             IconButton(style: icon, tooltip: 'Open in Editor', icon: const Icon(Icons.open_in_full, size: 16), onPressed: () => openResourceEditor(context, _t)),
             if (canEdit) ...[
@@ -301,7 +312,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
     );
   }
 
-  Widget _serverChangedBanner(BuildContext context) => _Banner(
+  Widget _serverChangedBanner(BuildContext context) => EditorBanner(
         severityColor(context, Severity.warn),
         Icons.sync_problem,
         'This object changed on the server (now rv ${widget.resourceVersion}, you started from $_baseRv). Applying will be rejected.',
@@ -316,7 +327,7 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
   Widget _resultBanner(BuildContext context) {
     final r = _result!;
     final c = severityColor(context, r.ok ? Severity.ok : Severity.error);
-    return _Banner(
+    return EditorBanner(
       c,
       r.ok ? Icons.check_circle_outline : Icons.error_outline,
       r.message,
@@ -325,104 +336,14 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
     );
   }
 
-  Widget _editor(BuildContext context) {
-    final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
-    return CodeEditor(
-      controller: _controller,
-      scrollController: _scroll,
-      focusNode: _editorFocus,
-      readOnly: !_editing,
-      wordWrap: false,
-      shortcutsActivatorsBuilder: const IndentShortcuts(),
-      style: CodeEditorStyle(
-        fontFamily: monoFamily,
-        fontFamilyFallback: monoFallback,
-        fontSize: 12,
-        fontHeight: 1.45,
-        backgroundColor: theme.colorScheme.surfaceContainerLowest,
-        selectionColor: theme.colorScheme.primary.withValues(alpha: 0.3),
-        cursorColor: theme.colorScheme.primary,
-        cursorLineColor: _editing ? theme.colorScheme.onSurface.withValues(alpha: 0.04) : Colors.transparent,
-        codeTheme: CodeHighlightTheme(languages: {'yaml': CodeHighlightThemeMode(mode: langYaml)}, theme: dark ? atomOneDarkTheme : atomOneLightTheme),
-      ),
-      borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: _editing ? theme.colorScheme.primary.withValues(alpha: 0.6) : theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      indicatorBuilder: (context, editingController, chunkController, notifier) => Row(children: [
-        DefaultCodeLineNumber(controller: editingController, notifier: notifier, textStyle: monoStyle(context, size: 11, color: theme.hintColor)),
-        DefaultCodeChunkIndicator(width: 16, controller: chunkController, notifier: notifier),
-      ]),
-      findBuilder: (context, controller, readOnly) => _FindBar(controller: controller),
-    );
-  }
-}
-
-class _Banner extends StatelessWidget {
-  final Color color;
-  final IconData icon;
-  final String message;
-  final List<String> details;
-  final Widget? action;
-  final VoidCallback? onClose;
-  const _Banner(this.color, this.icon, this.message, {this.details = const [], this.action, this.onClose});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-      padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: color.withValues(alpha: 0.4))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(padding: const EdgeInsets.only(top: 2), child: Icon(icon, size: 16, color: color)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SelectableText(message, style: theme.textTheme.bodySmall),
-            for (final d in details) Padding(padding: const EdgeInsets.only(top: 2), child: SelectableText('• $d', style: monoStyle(context, size: 11))),
-          ]),
-        ),
-        ?action,
-        if (onClose != null) IconButton(visualDensity: VisualDensity.compact, iconSize: 14, icon: const Icon(Icons.close), onPressed: onClose),
-      ]),
-    );
-  }
-}
-
-/// Minimal ⌘F find bar for the editor.
-class _FindBar extends StatelessWidget implements PreferredSizeWidget {
-  final CodeFindController controller;
-  const _FindBar({required this.controller});
-
-  @override
-  Size get preferredSize => Size.fromHeight(controller.value == null ? 0 : 40);
-
-  @override
-  Widget build(BuildContext context) {
-    if (controller.value == null) return const SizedBox.shrink();
-    final theme = Theme.of(context);
-    final result = controller.value?.result;
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      color: theme.colorScheme.surfaceContainerHigh,
-      child: Row(children: [
-        Expanded(
-          child: TextField(
-            controller: controller.findInputController,
-            focusNode: controller.findInputFocusNode,
-            style: monoStyle(context),
-            decoration: const InputDecoration(hintText: 'Find', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6)),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(result == null || result.matches.isEmpty ? 'No results' : '${result.index + 1}/${result.matches.length}', style: theme.textTheme.bodySmall),
-        IconButton(visualDensity: VisualDensity.compact, iconSize: 16, icon: const Icon(Icons.keyboard_arrow_up), onPressed: controller.previousMatch),
-        IconButton(visualDensity: VisualDensity.compact, iconSize: 16, icon: const Icon(Icons.keyboard_arrow_down), onPressed: controller.nextMatch),
-        IconButton(visualDensity: VisualDensity.compact, iconSize: 16, icon: const Icon(Icons.close), onPressed: controller.close),
-      ]),
-    );
-  }
+  Widget _editor(BuildContext context) => YamlCodeEditor(
+        key: _editorKey,
+        controller: _controller,
+        scrollController: _scroll,
+        focusNode: _editorFocus,
+        readOnly: !_editing,
+        editing: _editing,
+      );
 }
 
 /// Unified diff with collapsed unchanged runs.

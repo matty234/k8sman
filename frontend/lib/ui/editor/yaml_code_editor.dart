@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:re_highlight/languages/yaml.dart';
@@ -8,14 +10,25 @@ import 'package:re_highlight/styles/atom-one-light.dart';
 import '../../util/k8s.dart';
 import '../keys.dart';
 import '../theme.dart';
+import '../widgets/common.dart';
+import 'yaml_outline.dart';
 
-/// The YAML code editor shared by the inspector's YAML tab and the
-/// full-window resource editor: highlighting, line numbers, folding, a ⌘F
-/// find bar and optional problem markers in the gutter.
+/// The YAML code editor shared by the inspector's YAML tab, the
+/// full-window resource editor and chart values: highlighting, line
+/// numbers, a ⌘F find bar, ⌘/ to toggle comments and optional problem
+/// markers in the gutter. Also, as in VS Code:
+///
+/// * Folding by indentation. Chevrons show in the gutter on hover (always
+///   on folded lines); ⌥-click folds or unfolds a block and everything in
+///   it. ⌥⌘[ / ⌥⌘] fold and unfold at the cursor. Folds are view state
+///   only: the text, copy and find always see every line.
+/// * A sticky header of the keys enclosing the top line (up to five);
+///   click one to scroll to it.
+/// * ⌥⌘C copies the key path at the cursor (`spec.containers[0].image`).
 ///
 /// ⌘S and ⌘↩ aren't handled by the editor itself, so they reach the
 /// caller's shortcuts even while the editor has focus.
-class YamlCodeEditor extends StatelessWidget {
+class YamlCodeEditor extends StatefulWidget {
   final CodeLineEditingController controller;
   final CodeScrollController? scrollController;
   final CodeFindController? findController;
@@ -41,17 +54,187 @@ class YamlCodeEditor extends StatelessWidget {
   });
 
   @override
+  State<YamlCodeEditor> createState() => YamlCodeEditorState();
+}
+
+class YamlCodeEditorState extends State<YamlCodeEditor> {
+  static const _maxSticky = 5;
+  static const _foldGutterWidth = 16.0;
+  static const _problemGutterWidth = 10.0;
+  static const _minNumberCount = 3;
+
+  /// re_editor's default padding inside the border, and its scrollbar.
+  static const _editorPadding = 5.0;
+  static const _scrollbarWidth = 8.0;
+  static final _comments = DefaultCodeCommentFormatter(singleLinePrefix: '#');
+
+  CodeFindController? _ownFind;
+  CodeScrollController? _ownScroll;
+  CodeFindController get _find => widget.findController ?? (_ownFind ??= CodeFindController(widget.controller));
+  CodeScrollController get _scroll => widget.scrollController ?? (_ownScroll ??= CodeScrollController());
+
+  final _gutterHover = ValueNotifier(false);
+
+  /// The editor's line layout. It reports during layout, too late to
+  /// rebuild widgets in the same frame, so the sticky header works from the
+  /// scroll offset and this geometry (line height, where line 0 starts),
+  /// which only changes with the font or the find bar.
+  CodeIndicatorValueNotifier? _layout;
+  double? _lineHeight;
+  double _line0 = 0;
+  final _geometry = ValueNotifier(0);
+
+  void _onLayout() {
+    final ps = _layout?.value?.paragraphs;
+    if (ps == null || ps.isEmpty) return;
+    final v = _scroll.verticalScroller;
+    final p = ps.first;
+    final top0 = p.top + (v.hasClients ? v.offset : 0) - p.index * p.height;
+    if (p.height == _lineHeight && (top0 - _line0).abs() < 0.5) return;
+    _lineHeight = p.height;
+    _line0 = top0;
+    SchedulerBinding.instance.addPostFrameCallback((_) => mounted ? _geometry.value++ : null);
+  }
+
+  CodeLines? _outlineOf;
+  YamlOutline? _outlineCache;
+
+  /// The outline of the visible lines (a folded block is one line),
+  /// rebuilt lazily when the text or the folds change.
+  YamlOutline get _outline {
+    final lines = widget.controller.codeLines;
+    if (!identical(lines, _outlineOf) || _outlineCache == null) {
+      _outlineOf = lines;
+      _outlineCache = YamlOutline.of([for (final l in lines.toList()) l.text]);
+    }
+    return _outlineCache!;
+  }
+
+  @override
+  void didUpdateWidget(covariant YamlCodeEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      _ownFind?.dispose();
+      _ownFind = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ownFind?.dispose();
+    final s = _ownScroll;
+    if (s != null) {
+      s.dispose();
+      // CodeScrollController.dispose() leaves its own two undisposed.
+      s.verticalScroller.dispose();
+      s.horizontalScroller.dispose();
+    }
+    _gutterHover.dispose();
+    _layout?.removeListener(_onLayout);
+    _geometry.dispose();
+    super.dispose();
+  }
+
+  // ---- Folding ----
+
+  void foldAll() => _refold((o, texts, folded) => folded.addAll([for (var k = 0; k < o.length; k++) if (o.canFold(k)) k]));
+
+  void unfoldAll() => _refold((o, texts, folded) => folded.clear());
+
+  /// Runs [replaceText] (a reload that replaces the whole text) and folds
+  /// the same keys again where they still exist.
+  void preservingFolds(VoidCallback replaceText) {
+    final before = flattenFolds(widget.controller.codeLines);
+    if (before.folded.isEmpty) return replaceText();
+    final texts = [for (final l in before.lines) l.text];
+    final o = YamlOutline.of(texts);
+    final paths = {for (final r in before.folded) o.path(texts, r)};
+    replaceText();
+    _refold((o, texts, folded) {
+      for (var k = 0; k < o.length; k++) {
+        if (o.canFold(k) && paths.contains(o.path(texts, k))) folded.add(k);
+      }
+    });
+  }
+
+  /// Rewrites the folds in one change: [update] edits the set of folded
+  /// real line indexes, given the unfolded text and its outline.
+  void _refold(void Function(YamlOutline o, List<String> texts, Set<int> folded) update) {
+    final c = widget.controller;
+    final flat = flattenFolds(c.codeLines);
+    final texts = [for (final l in flat.lines) l.text];
+    final o = YamlOutline.of(texts);
+    final folded = {...flat.folded};
+    update(o, texts, folded);
+    if (setEquals(folded, flat.folded)) return;
+    applyFolds(c, flat.lines, o, folded);
+  }
+
+  /// Folds or unfolds the block [index] (a visible line) opens; with
+  /// [recursive], every block inside it too.
+  void toggleFold(int index, {bool recursive = false}) {
+    final c = widget.controller;
+    if (index < 0 || index >= c.codeLines.length) return;
+    final folded = c.codeLines[index].chunkParent;
+    if (recursive) {
+      final r = c.index2lineIndex(index);
+      _refold((o, texts, set) {
+        for (var k = r; k < o.end[r]; k++) {
+          if (folded) {
+            set.remove(k);
+          } else if (o.canFold(k)) {
+            set.add(k);
+          }
+        }
+      });
+    } else if (folded) {
+      c.expandChunk(index);
+    } else if (_outline.canFold(index)) {
+      c.collapseChunk(index, _outline.end[index]);
+    }
+  }
+
+  /// ⌥⌘[: folds the block at the cursor (the line's own, else the one it
+  /// sits in).
+  void _foldAtCursor() {
+    final line = widget.controller.selection.extentIndex;
+    final o = _outline;
+    if (line < 0 || line >= o.length) return;
+    if (o.canFold(line)) return toggleFold(line);
+    final up = o.ancestors(line);
+    if (up.isNotEmpty) toggleFold(up.last);
+  }
+
+  void _unfoldAtCursor() {
+    final c = widget.controller;
+    final line = c.selection.extentIndex;
+    if (line >= 0 && line < c.codeLines.length && c.codeLines[line].chunkParent) c.expandChunk(line);
+  }
+
+  void _copyPathAtCursor() {
+    final c = widget.controller;
+    final line = c.selection.extentIndex;
+    final o = _outline;
+    if (line < 0 || line >= o.length) return;
+    final path = o.path([for (final l in c.codeLines.toList()) l.text], line);
+    if (path.isNotEmpty) copyToClipboard(context, path);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
-    return CodeEditor(
-      controller: controller,
-      scrollController: scrollController,
-      findController: findController,
-      focusNode: focusNode,
-      autofocus: autofocus,
-      readOnly: readOnly,
+    SingleActivator alt(LogicalKeyboardKey k) => SingleActivator(k, alt: true, meta: !useCtrlShortcuts, control: useCtrlShortcuts);
+    final editor = CodeEditor(
+      controller: widget.controller,
+      scrollController: _scroll,
+      findController: _find,
+      focusNode: widget.focusNode,
+      autofocus: widget.autofocus,
+      readOnly: widget.readOnly,
       wordWrap: false,
+      chunkAnalyzer: const YamlChunkAnalyzer(),
+      commentFormatter: _comments,
       shortcutsActivatorsBuilder: const _EditorShortcuts(),
       style: CodeEditorStyle(
         fontFamily: monoFamily,
@@ -61,19 +244,246 @@ class YamlCodeEditor extends StatelessWidget {
         backgroundColor: theme.colorScheme.surfaceContainerLowest,
         selectionColor: theme.colorScheme.primary.withValues(alpha: 0.3),
         cursorColor: theme.colorScheme.primary,
-        cursorLineColor: editing ? theme.colorScheme.onSurface.withValues(alpha: 0.04) : Colors.transparent,
+        cursorLineColor: widget.editing ? theme.colorScheme.onSurface.withValues(alpha: 0.04) : Colors.transparent,
         codeTheme: CodeHighlightTheme(languages: {'yaml': CodeHighlightThemeMode(mode: langYaml)}, theme: dark ? atomOneDarkTheme : atomOneLightTheme),
       ),
       borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: editing ? theme.colorScheme.primary.withValues(alpha: 0.6) : theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      indicatorBuilder: (context, editingController, chunkController, notifier) => Row(children: [
-        if (problemLines.isNotEmpty) _ProblemGutter(notifier: notifier, lines: problemLines),
-        DefaultCodeLineNumber(controller: editingController, notifier: notifier, textStyle: monoStyle(context, size: 11, color: theme.hintColor)),
-        DefaultCodeChunkIndicator(width: 16, controller: chunkController, notifier: notifier),
-      ]),
+      border: Border.all(color: widget.editing ? theme.colorScheme.primary.withValues(alpha: 0.6) : theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      indicatorBuilder: (context, editingController, chunkController, notifier) {
+        if (!identical(_layout, notifier)) {
+          _layout?.removeListener(_onLayout);
+          _layout = notifier..addListener(_onLayout);
+        }
+        return MouseRegion(
+          onEnter: (_) => _gutterHover.value = true,
+          onExit: (_) => _gutterHover.value = false,
+          child: Row(children: [
+            if (widget.problemLines.isNotEmpty) _ProblemGutter(controller: editingController, notifier: notifier, lines: widget.problemLines),
+            DefaultCodeLineNumber(controller: editingController, notifier: notifier, minNumberCount: _minNumberCount, textStyle: _numberStyle(context)),
+            _FoldGutter(
+              width: _foldGutterWidth,
+              notifier: notifier,
+              hover: _gutterHover,
+              outline: () => _outline,
+              onToggle: (i) => toggleFold(i, recursive: HardwareKeyboard.instance.isAltPressed),
+            ),
+          ]),
+        );
+      },
       findBuilder: (context, controller, readOnly) => YamlFindBar(controller: controller),
     );
+    return CallbackShortcuts(
+      bindings: {
+        alt(LogicalKeyboardKey.bracketLeft): _foldAtCursor,
+        alt(LogicalKeyboardKey.bracketRight): _unfoldAtCursor,
+        alt(LogicalKeyboardKey.keyC): _copyPathAtCursor,
+      },
+      child: Stack(fit: StackFit.passthrough, children: [
+        editor,
+        ListenableBuilder(
+          listenable: Listenable.merge([_scroll.verticalScroller, _scroll.horizontalScroller, widget.controller, _find, _geometry]),
+          builder: (context, _) => _stickyHeader(context),
+        ),
+      ]),
+    );
   }
+
+  TextStyle _numberStyle(BuildContext context) => monoStyle(context, size: 11, color: Theme.of(context).hintColor);
+
+  double get _findBarHeight => _find.value == null ? 0 : YamlFindBar.barHeight;
+
+  /// The enclosing keys of the top line, pinned over the editor's first
+  /// rows: one row per level, outermost first. The deepest row slides up
+  /// as its block scrolls out, as in VS Code.
+  Widget _stickyHeader(BuildContext context) {
+    const none = Positioned(left: 0, top: 0, child: SizedBox.shrink());
+    final h = _lineHeight;
+    final o = _outline;
+    if (h == null || h <= 0 || o.length == 0) return none;
+    final v = _scroll.verticalScroller;
+    final scrollY = v.hasClients ? v.offset : 0.0;
+    final top0 = _findBarHeight;
+    double topOf(int i) => _line0 + i * h - scrollY;
+    int lineAt(double y) => ((y + scrollY - _line0) / h).floor().clamp(0, o.length - 1);
+
+    final rows = <int>[];
+    for (var d = 0; d < _maxSticky; d++) {
+      final y = top0 + d * h;
+      final line = lineAt(y + 1);
+      final chain = o.ancestors(line);
+      if (chain.length <= d || (d > 0 && chain[d - 1] != rows[d - 1]) || topOf(chain[d]) >= y) break;
+      rows.add(chain[d]);
+    }
+    if (rows.isEmpty) return none;
+    // Slide the deepest row up once its block's last line passes under it.
+    final lastBottom = topOf(o.end[rows.last] - 1) + h;
+    final slide = (lastBottom - (top0 + rows.length * h)).clamp(-h, 0.0);
+
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final c = widget.controller;
+    final numStyle = _numberStyle(context);
+    final digits = c.lineCount.toString().length;
+    final numWidth = (TextPainter(text: TextSpan(text: '0' * (digits < _minNumberCount ? _minNumberCount : digits), style: numStyle), textDirection: TextDirection.ltr)..layout()).width;
+    final numbers = (widget.problemLines.isNotEmpty ? _problemGutterWidth : 0) + numWidth;
+    final scrollX = _scroll.horizontalScroller.hasClients ? _scroll.horizontalScroller.offset : 0.0;
+    final code = dark ? atomOneDarkTheme : atomOneLightTheme;
+    final textStyle = TextStyle(fontFamily: monoFamily, fontFamilyFallback: monoFallback, fontSize: 12, height: 1.45, color: theme.textTheme.bodyLarge?.color);
+    Widget row(int depth, int line) {
+      final text = c.codeLines[line].text;
+      final trimmed = text.trimLeft();
+      final indent = text.substring(0, text.length - trimmed.length);
+      final dash = trimmed.startsWith('- ') ? '- ' : '';
+      final rest = trimmed.substring(dash.length);
+      final keyEnd = YamlOutline.yamlKey(rest) == null ? 0 : rest.indexOf(':') + 1;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _reveal(line, depth),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: SizedBox(
+            height: h,
+            child: Row(children: [
+              SizedBox(width: numbers, child: Text('${c.index2lineIndex(line) + 1}', textAlign: TextAlign.right, style: numStyle, textScaler: TextScaler.noScaling)),
+              const SizedBox(width: _foldGutterWidth),
+              Expanded(
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.centerLeft,
+                    maxWidth: double.infinity,
+                    child: Transform.translate(
+                      offset: Offset(_editorPadding - scrollX, 0),
+                      child: Text.rich(
+                        TextSpan(children: [
+                          TextSpan(text: indent),
+                          if (dash.isNotEmpty) TextSpan(text: dash, style: code['bullet']),
+                          TextSpan(text: rest.substring(0, keyEnd), style: code['attr']),
+                          TextSpan(text: rest.substring(keyEnd)),
+                        ]),
+                        style: textStyle,
+                        maxLines: 1,
+                        softWrap: false,
+                        textScaler: TextScaler.noScaling,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Positioned(
+      top: 1 + top0,
+      left: 1,
+      right: 1 + _scrollbarWidth,
+      height: rows.length * h + slide,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLowest,
+          border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6))),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: dark ? 0.35 : 0.08), blurRadius: 4, offset: const Offset(0, 1))],
+        ),
+        child: ClipRect(
+          child: OverflowBox(
+            alignment: Alignment.bottomLeft,
+            minHeight: rows.length * h,
+            maxHeight: rows.length * h,
+            child: Column(children: [for (var d = 0; d < rows.length; d++) row(d, rows[d])]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Scrolls [line] to just under its [depth] sticky ancestors and puts the
+  /// cursor on it.
+  void _reveal(int line, int depth) {
+    final v = _scroll.verticalScroller;
+    final h = _lineHeight;
+    if (!v.hasClients || h == null) return;
+    v.jumpTo((_line0 + (line - depth) * h - _findBarHeight).clamp(0.0, v.position.maxScrollExtent));
+    final text = widget.controller.codeLines[line].text;
+    widget.controller.selection = CodeLineSelection.collapsed(index: line, offset: text.length - text.trimLeft().length);
+  }
+}
+
+/// Fold chevrons: on every foldable line while the pointer is over the
+/// gutter, and always on folded lines. Painted, not built: the line layout
+/// arrives mid-frame. A click anywhere on a foldable line's row toggles it.
+class _FoldGutter extends StatelessWidget {
+  final double width;
+  final CodeIndicatorValueNotifier notifier;
+  final ValueListenable<bool> hover;
+  final YamlOutline Function() outline;
+  final ValueChanged<int> onToggle;
+  const _FoldGutter({required this.width, required this.notifier, required this.hover, required this.outline, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapUp: (d) {
+        final y = d.localPosition.dy;
+        for (final p in notifier.value?.paragraphs ?? const <CodeLineRenderParagraph>[]) {
+          if (y >= p.top && y < p.bottom) {
+            final o = outline();
+            if (p.chunkParent || (p.index < o.length && o.canFold(p.index))) onToggle(p.index);
+            return;
+          }
+        }
+      },
+      child: CustomPaint(
+        size: Size(width, double.infinity),
+        painter: _FoldPainter(notifier: notifier, hover: hover, outline: outline, color: Theme.of(context).hintColor),
+      ),
+    );
+  }
+}
+
+class _FoldPainter extends CustomPainter {
+  final CodeIndicatorValueNotifier notifier;
+  final ValueListenable<bool> hover;
+  final YamlOutline Function() outline;
+  final Color color;
+  _FoldPainter({required this.notifier, required this.hover, required this.outline, required this.color}) : super(repaint: Listenable.merge([notifier, hover]));
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final ps = notifier.value?.paragraphs;
+    if (ps == null) return;
+    final o = outline();
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    for (final p in ps) {
+      final folded = p.chunkParent;
+      if (!folded && !(hover.value && p.index < o.length && o.canFold(p.index))) continue;
+      final c = Offset(size.width / 2, p.top + p.height / 2);
+      const r = 3.0;
+      final path = folded
+          ? (Path()
+            ..moveTo(c.dx - r / 2, c.dy - r)
+            ..lineTo(c.dx + r / 2, c.dy)
+            ..lineTo(c.dx - r / 2, c.dy + r))
+          : (Path()
+            ..moveTo(c.dx - r, c.dy - r / 2)
+            ..lineTo(c.dx, c.dy + r / 2)
+            ..lineTo(c.dx + r, c.dy - r / 2));
+      canvas.drawPath(path, paint);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _FoldPainter old) => old.color != color || old.notifier != notifier || old.hover != hover;
 }
 
 /// re_editor's default shortcuts plus ⌘] / ⌘[ to indent and outdent (Ctrl
@@ -110,29 +520,47 @@ class _EditorShortcuts extends CodeShortcutsActivatorsBuilder {
 
 /// A red dot beside each line in [lines], tracking the editor's scroll.
 class _ProblemGutter extends StatelessWidget {
+  final CodeLineEditingController controller;
   final CodeIndicatorValueNotifier notifier;
   final Set<int> lines;
-  const _ProblemGutter({required this.notifier, required this.lines});
+  const _ProblemGutter({required this.controller, required this.notifier, required this.lines});
 
   @override
-  Widget build(BuildContext context) {
-    final color = severityColor(context, Severity.error);
-    return SizedBox(
-      width: 10,
-      child: ValueListenableBuilder<CodeIndicatorValue?>(
-        valueListenable: notifier,
-        builder: (context, value, _) => Stack(clipBehavior: Clip.hardEdge, children: [
-          for (final p in value?.paragraphs ?? const <CodeLineRenderParagraph>[])
-            if (lines.contains(p.index))
-              Positioned(
-                left: 3,
-                top: p.top + (p.preferredLineHeight - 6) / 2,
-                child: Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-              ),
-        ]),
-      ),
-    );
+  Widget build(BuildContext context) => CustomPaint(
+        size: const Size(YamlCodeEditorState._problemGutterWidth, double.infinity),
+        painter: _ProblemPainter(controller: controller, notifier: notifier, lines: lines, color: severityColor(context, Severity.error)),
+      );
+}
+
+/// Painted, as the line layout arrives mid-frame. A folded line gets the
+/// dot when any line inside it has a problem.
+class _ProblemPainter extends CustomPainter {
+  final CodeLineEditingController controller;
+  final CodeIndicatorValueNotifier notifier;
+  final Set<int> lines;
+  final Color color;
+  _ProblemPainter({required this.controller, required this.notifier, required this.lines, required this.color}) : super(repaint: notifier);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final ps = notifier.value?.paragraphs;
+    if (ps == null || ps.isEmpty) return;
+    final paint = Paint()..color = color;
+    var real = controller.index2lineIndex(ps.first.index);
+    final codeLines = controller.codeLines;
+    final n = codeLines.length;
+    for (final p in ps) {
+      if (p.index >= n) break;
+      final count = codeLines[p.index].lineCount;
+      if (lines.any((l) => l >= real && l < real + count)) {
+        canvas.drawCircle(Offset(6, p.top + p.preferredLineHeight / 2), 3, paint);
+      }
+      real += count;
+    }
   }
+
+  @override
+  bool shouldRepaint(covariant _ProblemPainter old) => old.lines != lines || old.color != color || old.notifier != notifier || old.controller != controller;
 }
 
 /// Minimal ⌘F find bar for the editor.
@@ -140,8 +568,10 @@ class YamlFindBar extends StatelessWidget implements PreferredSizeWidget {
   final CodeFindController controller;
   const YamlFindBar({super.key, required this.controller});
 
+  static const barHeight = 40.0;
+
   @override
-  Size get preferredSize => Size.fromHeight(controller.value == null ? 0 : 40);
+  Size get preferredSize => Size.fromHeight(controller.value == null ? 0 : barHeight);
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +579,7 @@ class YamlFindBar extends StatelessWidget implements PreferredSizeWidget {
     final theme = Theme.of(context);
     final result = controller.value?.result;
     return Container(
-      height: 40,
+      height: barHeight,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       color: theme.colorScheme.surfaceContainerHigh,
       child: Row(children: [
