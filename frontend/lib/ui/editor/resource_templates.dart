@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../plugins/plugin_icons.dart';
 
 /// A starter manifest for the create editor.
 class ResourceTemplate {
@@ -13,7 +14,63 @@ class ResourceTemplate {
   final String kind;
   final String description;
   final String Function(String namespace) build;
-  const ResourceTemplate({required this.label, required this.icon, required this.group, required this.kind, required this.description, required this.build});
+
+  /// A plugin's template: the plugin it comes from (null for built-ins).
+  final TemplatePlugin? plugin;
+  const ResourceTemplate({required this.label, required this.icon, required this.group, required this.kind, required this.description, required this.build, this.plugin});
+
+  /// One of `GET /api/plugins/templates`: ${namespace} becomes the
+  /// namespace it's rendered for; other placeholders stay for the user.
+  factory ResourceTemplate.fromPlugin(Json j) {
+    final key = '${j['kind'] ?? ''}';
+    final slash = key.indexOf('/');
+    final yaml = '${j['yaml'] ?? ''}';
+    return ResourceTemplate(
+      label: '${j['name'] ?? ''}',
+      icon: pluginIcons['${j['icon']}'] ?? Icons.extension_outlined,
+      group: slash < 0 ? '' : key.substring(0, slash),
+      kind: slash < 0 ? key : key.substring(slash + 1),
+      description: '${j['description'] ?? ''}',
+      build: (ns) => fillNamespace(yaml, ns),
+      plugin: TemplatePlugin(id: '${j['plugin'] ?? ''}', name: '${j['pluginName'] ?? ''}', icon: '${j['icon'] ?? ''}', hasIcon: j['hasIcon'] == true),
+    );
+  }
+}
+
+/// The plugin a template comes from, for grouping the template list.
+class TemplatePlugin {
+  final String id;
+  final String name;
+
+  /// Its kind icon's name; [hasIcon]: it has an icon.png.
+  final String icon;
+  final bool hasIcon;
+  const TemplatePlugin({required this.id, required this.name, this.icon = '', this.hasIcon = false});
+}
+
+/// A template placeholder: `${name}` or `${name:default}` (group 1 the
+/// name, group 2 the default). Anything else with `${` is plain text. Same
+/// syntax as the backend (backend/internal/plugins/templates.go).
+final placeholderRe = RegExp(r'\$\{([A-Za-z_][A-Za-z0-9_-]*)(?::([^}\n]*))?\}');
+
+/// [yaml] with each `${namespace}` (or `${namespace:…}`) replaced by [ns].
+String fillNamespace(String yaml, String ns) => yaml.replaceAllMapped(placeholderRe, (m) => m[1] == 'namespace' ? ns : m[0]!);
+
+/// [yaml] with each `${name:default}` replaced by its default.
+String fillDefaults(String yaml) => yaml.replaceAllMapped(placeholderRe, (m) => m[2] ?? m[0]!);
+
+/// The first placeholder in [lines] at or after line [index], offset
+/// [offset], wrapping around to the top: its line and columns.
+({int line, int start, int end, String name})? nextPlaceholder(List<String> lines, int index, int offset) {
+  // One more than the lines: the start of line [index] after wrapping.
+  for (var k = 0; k <= lines.length && lines.isNotEmpty; k++) {
+    final i = (index + k) % lines.length;
+    final from = k == 0 ? offset : 0;
+    for (final m in placeholderRe.allMatches(lines[i])) {
+      if (m.start >= from) return (line: i, start: m.start, end: m.end, name: m[1]!);
+    }
+  }
+  return null;
 }
 
 /// The built-in templates, Blank last. Namespaced ones use the namespace

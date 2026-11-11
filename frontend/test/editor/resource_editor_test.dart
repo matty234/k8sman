@@ -22,6 +22,27 @@ class _CreateApi extends FakeApiClient {
   }
 }
 
+class _TemplatesApi extends FakeApiClient {
+  String? kind;
+
+  @override
+  Future<List<Json>> pluginTemplates({String? kind}) async {
+    this.kind = kind;
+    return [
+      {
+        'plugin': 'cert-manager',
+        'pluginName': 'cert-manager',
+        'icon': 'verified',
+        'kind': 'cert-manager.io/ClusterIssuer',
+        'name': 'ACME issuer',
+        'description': 'HTTP-01',
+        'yaml': 'apiVersion: cert-manager.io/v1\nkind: ClusterIssuer\nmetadata:\n  name: \${name:letsencrypt}\nspec:\n  acme:\n    email: \${email}\n'
+            '---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: key\n  namespace: \${namespace}\n',
+      },
+    ];
+  }
+}
+
 class _StatusApi extends FakeApiClient {
   final calls = <String>[];
   static const yaml = 'apiVersion: example.dev/v1\nkind: Widget\nmetadata:\n  name: w\n  resourceVersion: "7"\nspec:\n  size: 1\nstatus:\n  phase: Stuck\n';
@@ -101,5 +122,32 @@ void main() {
     expect(api.calls.last.yaml, contains('name: my-config'));
     expect(api.calls.last.namespace, 'demo');
     expect(find.text('Open my-config'), findsOneWidget);
+  });
+
+  testWidgets('create: a plugin template fills the namespace and selects the first placeholder', (tester) async {
+    final api = _TemplatesApi();
+    const type = ResourceType(group: 'cert-manager.io', version: 'v1', resource: 'clusterissuers', kind: 'ClusterIssuer', namespaced: false, verbs: ['create']);
+    final app = AppState(api)
+      ..currentContext = 'kind-dev'
+      ..types = const [type]
+      ..namespaces = const ['default', 'demo'];
+    tester.view.physicalSize = const Size(1300, 850);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [Provider<ApiClient>.value(value: api), ChangeNotifierProvider<AppState>.value(value: app)],
+      child: MaterialApp(theme: buildTheme(Brightness.dark), home: const ResourceEditorScreen(kind: type, namespace: 'demo')),
+    ));
+    await tester.pumpAndSettle();
+    expect(api.kind, 'cert-manager.io/ClusterIssuer');
+    expect(find.text('cert-manager'), findsOneWidget); // the plugin's group
+
+    await tester.tap(find.text('ACME issuer'));
+    await tester.pumpAndSettle();
+    final c = tester.widget<CodeEditor>(find.byType(CodeEditor)).controller!;
+    expect(c.text, contains('namespace: demo'));
+    expect(c.text, contains(r'email: ${email}'));
+    expect(c.selection, const CodeLineSelection(baseIndex: 3, baseOffset: 8, extentIndex: 3, extentOffset: 27)); // ${name:letsencrypt}
+    expect(find.text('2 placeholders left'), findsOneWidget);
   });
 }

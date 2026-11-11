@@ -460,6 +460,14 @@ class ApiClient {
   /// namespace: {plugins: {id: {text, severity, kinds, errors}}}.
   Future<Json> pluginStatus() async => Map<String, dynamic>.from(await _get('plugins/status') as Map);
 
+  /// The active plugins' templates for the create editor, for kind key
+  /// [kind] (`group/Kind`; every kind when null): [{plugin, pluginName,
+  /// icon, hasIcon, kind, name, description, yaml}].
+  Future<List<Json>> pluginTemplates({String? kind}) async {
+    final j = await _get('plugins/templates', {'kind': kind}) as Map;
+    return [for (final t in j['templates'] as List? ?? const []) Map<String, dynamic>.from(t as Map)];
+  }
+
   /// Runs a plugin's background shell action on one object: the backend
   /// builds the command. Returns {argv, exitCode, output, timedOut}.
   Future<Json> runPluginBackground(ResourceRef r, {String? namespace, required String name, required String plugin, required String action}) async =>

@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:re_highlight/languages/yaml.dart';
+import 'package:re_highlight/re_highlight.dart' show Mode;
 import 'package:re_highlight/styles/atom-one-dark.dart';
 import 'package:re_highlight/styles/atom-one-light.dart';
 
@@ -41,6 +42,9 @@ class YamlCodeEditor extends StatefulWidget {
   final Set<int> problemLines;
   final FocusNode? focusNode;
   final bool autofocus;
+
+  /// Highlight template placeholders (`${name}`, `${name:default}`).
+  final bool placeholders;
   const YamlCodeEditor({
     super.key,
     required this.controller,
@@ -51,6 +55,7 @@ class YamlCodeEditor extends StatefulWidget {
     this.problemLines = const {},
     this.focusNode,
     this.autofocus = false,
+    this.placeholders = false,
   });
 
   @override
@@ -242,7 +247,13 @@ class YamlCodeEditorState extends State<YamlCodeEditor> {
         selectionColor: theme.colorScheme.primary.withValues(alpha: 0.3),
         cursorColor: theme.colorScheme.primary,
         cursorLineColor: widget.editing ? theme.colorScheme.onSurface.withValues(alpha: 0.04) : Colors.transparent,
-        codeTheme: CodeHighlightTheme(languages: {'yaml': CodeHighlightThemeMode(mode: langYaml)}, theme: dark ? atomOneDarkTheme : atomOneLightTheme),
+        codeTheme: widget.placeholders
+            ? CodeHighlightTheme(languages: {'yaml': CodeHighlightThemeMode(mode: _yamlWithPlaceholders)}, theme: {
+                ...(dark ? atomOneDarkTheme : atomOneLightTheme),
+                'template-variable': TextStyle(
+                    color: theme.colorScheme.tertiary, backgroundColor: theme.colorScheme.tertiary.withValues(alpha: 0.16), fontWeight: FontWeight.w600),
+              })
+            : CodeHighlightTheme(languages: {'yaml': CodeHighlightThemeMode(mode: langYaml)}, theme: dark ? atomOneDarkTheme : atomOneLightTheme),
       ),
       borderRadius: BorderRadius.circular(6),
       border: Border.all(color: widget.editing ? theme.colorScheme.primary.withValues(alpha: 0.6) : theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
@@ -484,6 +495,21 @@ class IndentShortcuts extends CodeShortcutsActivatorsBuilder {
     return [...?base, SingleActivator(key, meta: !useCtrlShortcuts, control: useCtrlShortcuts)];
   }
 }
+
+/// YAML with template placeholders (`${name}`, `${name:default}`, see
+/// resource_templates.dart) as template variables. Listed first, the rule
+/// wins over a plain value starting at the same `$`; placeholders inside a
+/// quoted or block string aren't marked.
+final _yamlWithPlaceholders = Mode(
+  refs: langYaml.refs,
+  name: 'YAML',
+  caseInsensitive: true,
+  aliases: const ['yml'],
+  contains: <Mode>[
+    Mode(className: 'template-variable', begin: r'\$\{[A-Za-z_][A-Za-z0-9_-]*(?::[^}\n]*)?\}'),
+    ...(langYaml.contains as List).cast<Mode>(),
+  ],
+);
 
 /// [IndentShortcuts] minus Save (⌘S) and ⌘↩ (a newline by default), so both
 /// bubble up to the full-window editor's own shortcuts.

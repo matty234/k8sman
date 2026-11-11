@@ -9,6 +9,8 @@ import '../../actions/actions.dart';
 import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../app/window_chrome.dart';
+import '../../plugins/plugin_host.dart' show pluginHost;
+import '../../plugins/plugin_icons.dart';
 import '../../state/app_state.dart';
 import '../../util/diff.dart';
 import '../../util/k8s.dart';
@@ -92,6 +94,14 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
   ResourceTemplate? _template;
   String _pristine = '';
 
+  /// Create mode: the plugins' templates (for the kind, when one is given),
+  /// how many placeholders are left in the text, and the one Tab last
+  /// selected (to copy what replaced it into its namesakes).
+  List<ResourceTemplate> _pluginTemplates = const [];
+  int _placeholders = 0;
+  ({String name, int line, int start})? _filling;
+  late final _editorFocus = FocusNode(debugLabel: 'ResourceEditor', onKeyEvent: _onEditorKey);
+
   bool _busy = false;
   bool _sideOpen = true;
   double _sideWidth = 460;
@@ -115,6 +125,7 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
     _namespace = widget.namespace ?? app.namespace ?? app.namespaceScope.namespaces.firstOrNull ?? (app.namespaces.contains('default') || app.namespaces.isEmpty ? 'default' : app.namespaces.first);
     if (_creating) {
       _setTemplate(templateFor(widget.kind));
+      _loadPluginTemplates();
     } else {
       _load();
       _startWatch();
@@ -128,6 +139,7 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
     _watch?.cancel();
     _controller.removeListener(_onEdit);
     _find.dispose();
+    _editorFocus.dispose();
     _controller.dispose();
     _scroll.dispose();
     _tabs.dispose();
@@ -145,10 +157,13 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
         if (mounted) setState(() => _diff = _diffOf(_original, _controller.text));
       });
     }
-    // Rebuild on dirty flips and to mark results out of date, not per key.
+    // Rebuild on dirty flips, placeholder count changes and to mark results
+    // out of date, not per key.
     final dirty = _dirty, stale = _checkedText != null && _checkedText != _controller.text;
-    if (dirty != _wasDirty || (stale && _problems.isNotEmpty)) {
+    final placeholders = _creating ? placeholderRe.allMatches(_controller.text).length : 0;
+    if (dirty != _wasDirty || placeholders != _placeholders || (stale && _problems.isNotEmpty)) {
       _wasDirty = dirty;
+      _placeholders = placeholders;
       setState(() {});
     }
   }
@@ -219,12 +234,75 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
     _template = t;
     _pristine = t.build(_namespace);
     _controller.text = _pristine;
+    _placeholders = placeholderRe.allMatches(_pristine).length;
+    _filling = null;
     _clearCheck();
+    _selectPlaceholder(0, 0);
   }
+
+  /// The active plugins' templates: for the kind being created, or all.
+  Future<void> _loadPluginTemplates() async {
+    try {
+      final list = await _api.pluginTemplates(kind: widget.kind?.gk);
+      if (mounted) setState(() => _pluginTemplates = [for (final j in list) ResourceTemplate.fromPlugin(j)]);
+    } catch (_) {
+      // No plugins (or an older backend): the built-in templates only.
+    }
+  }
+
+  /// Selects the first placeholder at or after [line]:[offset] (wrapping),
+  /// so typing replaces it. False when there is none.
+  bool _selectPlaceholder(int line, int offset) {
+    final lines = [for (final l in _controller.codeLines.toList()) l.text];
+    final p = nextPlaceholder(lines, line, offset);
+    if (p == null) return false;
+    _filling = (name: p.name, line: p.line, start: p.start);
+    _controller.selection = CodeLineSelection(baseIndex: p.line, baseOffset: p.start, extentIndex: p.line, extentOffset: p.end);
+    _controller.makePositionCenterIfInvisible(CodeLinePosition(index: p.line, offset: p.start));
+    return true;
+  }
+
+  /// Tab in create mode, while placeholders are left: copies what replaced
+  /// the last one Tab selected into the others of its name, then selects
+  /// the next. Otherwise Tab indents as usual.
+  KeyEventResult _onEditorKey(FocusNode node, KeyEvent event) {
+    final kb = HardwareKeyboard.instance;
+    if (!_creating || event is KeyUpEvent || event.logicalKey != LogicalKeyboardKey.tab || kb.isShiftPressed || kb.isMetaPressed || kb.isControlPressed || kb.isAltPressed) {
+      return KeyEventResult.ignored;
+    }
+    if (_placeholders == 0 || _readOnly(context.read<AppState>())) return KeyEventResult.ignored;
+    final sel = _controller.selection;
+    var line = sel.endIndex, offset = sel.endOffset;
+    final f = _filling;
+    if (f != null && sel.isCollapsed && sel.extentIndex == f.line && sel.extentOffset >= f.start && f.line < _controller.codeLines.length) {
+      final text = _controller.codeLines[f.line].text;
+      final still = placeholderRe.matchAsPrefix(text, f.start);
+      final value = text.substring(f.start, sel.extentOffset);
+      if ((still == null || still[1] != f.name) && value.isNotEmpty) {
+        _controller.replaceAll(RegExp(r'\$\{' + RegExp.escape(f.name) + r'(?::[^}\n]*)?\}'), value);
+        (line, offset) = (f.line, f.start + value.length);
+      }
+    }
+    if (!_selectPlaceholder(line, offset)) _filling = null;
+    return KeyEventResult.handled;
+  }
+
+  /// Replaces every `${name:default}` with its default.
+  void _useDefaults() {
+    final defaults = {for (final m in placeholderRe.allMatches(_controller.text)) if (m[2] != null) m[0]!: m[2]!};
+    for (final e in defaults.entries) {
+      _controller.replaceAll(e.key, e.value);
+    }
+    _filling = null;
+    _editorFocus.requestFocus();
+  }
+
+  bool get _hasDefaults => placeholderRe.allMatches(_controller.text).any((m) => m[2] != null);
 
   Future<void> _pickTemplate(ResourceTemplate t) async {
     if (_dirty && !await _confirmDiscard('Replace your edits with the ${t.label} template?', 'Replace')) return;
     setState(() => _setTemplate(t));
+    _editorFocus.requestFocus(); // so typing fills the selected placeholder
   }
 
   void _setNamespace(String ns) {
@@ -550,6 +628,20 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
             const Spacer(),
             // Read-only: no write buttons at all; the banner says why.
             if (!readOnly) ...[
+              if (_creating && _placeholders > 0) ...[
+                Tooltip(
+                  message: 'Tab selects the next \${…} placeholder; what you type there fills the others of the same name',
+                  child: Text('$_placeholders placeholder${_placeholders == 1 ? '' : 's'} left',
+                      style: theme.textTheme.bodySmall?.copyWith(color: severityColor(context, Severity.warn))),
+                ),
+                if (_hasDefaults)
+                  TextButton(
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                    onPressed: _useDefaults,
+                    child: const Text('Use defaults'),
+                  ),
+                const SizedBox(width: 8),
+              ],
               OutlinedButton(
                 style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
                 onPressed: _busy || _loading || _controller.text.trim().isEmpty ? null : _validate,
@@ -609,9 +701,11 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
         controller: _controller,
         scrollController: _scroll,
         findController: _find,
+        focusNode: _editorFocus,
         readOnly: readOnly,
         editing: !readOnly,
         autofocus: true,
+        placeholders: _creating,
         problemLines: stale ? const {} : {for (final p in _problems) if (p.line != null) p.line! - 1},
       ),
     );
@@ -690,20 +784,31 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
     final app = context.read<AppState>();
     final kindType = widget.kind;
     final extra = kindType != null && !resourceTemplates.any((t) => t.group == kindType.group && t.kind == kindType.kind) ? templateFor(kindType) : null;
-    final list = [?extra, ...resourceTemplates];
+    Widget row(ResourceTemplate t) => _TemplateRow(
+          template: t,
+          selected: identical(t, _template) || (t.plugin == null && _template?.plugin == null && t.label == _template?.label && t.kind == _template?.kind),
+          available: t.kind.isEmpty || app.types.isEmpty || app.typeFor(t.group, t.kind) != null,
+          onTap: () => _pickTemplate(t),
+        );
+    // The plugins' templates, under each plugin's name and icon: first when
+    // they're for the kind being created, else after the built-in ones.
+    final plugins = [
+      for (final (i, t) in _pluginTemplates.indexed) ...[
+        if (i == 0 || _pluginTemplates[i - 1].plugin?.id != t.plugin?.id) _PluginHeader(plugin: t.plugin!),
+        row(t),
+      ],
+    ];
     return ListView(padding: const EdgeInsets.fromLTRB(8, 8, 8, 12), children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
         child: Text('Start from a template. Namespaced templates use $_namespace; paste any manifest, several separated by ---.',
             style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
       ),
-      for (final t in list)
-        _TemplateRow(
-          template: t,
-          selected: identical(t, _template) || (t.label == _template?.label && t.kind == _template?.kind),
-          available: t.kind.isEmpty || app.types.isEmpty || app.typeFor(t.group, t.kind) != null,
-          onTap: () => _pickTemplate(t),
-        ),
+      if (extra != null) row(extra),
+      if (kindType != null) ...plugins,
+      if (plugins.isNotEmpty) const _PluginHeader(plugin: null),
+      for (final t in resourceTemplates) row(t),
+      if (kindType == null) ...plugins,
     ]);
   }
 
@@ -888,6 +993,38 @@ class _CountBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5),
       decoration: BoxDecoration(color: c.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
       child: Text('$count', style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+/// The heading of a plugin's templates: its icon.png (or kind icon) and
+/// name; with no plugin, of the built-in ones.
+class _PluginHeader extends StatelessWidget {
+  final TemplatePlugin? plugin;
+  const _PluginHeader({required this.plugin});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final p = plugin;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+      child: Row(children: [
+        if (p == null)
+          Icon(Icons.inventory_2_outlined, size: 14, color: theme.hintColor)
+        else
+          ListenableBuilder(
+            listenable: pluginHost,
+            builder: (context, _) {
+              final png = p.hasIcon ? pluginHost.iconBytes(p.id) : null;
+              return png != null
+                  ? Image.memory(png, width: 14, height: 14)
+                  : Icon(pluginIcons[p.icon] ?? Icons.extension_outlined, size: 14, color: theme.hintColor);
+            },
+          ),
+        const SizedBox(width: 6),
+        Expanded(child: Text(p?.name ?? 'Built in', style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor))),
+      ]),
     );
   }
 }
