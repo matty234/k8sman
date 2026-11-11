@@ -45,6 +45,7 @@ var schemaRequired = map[string][]string{
 	"Input":       {"name"},
 	"Status":      {"label"},
 	"StatusCount": {"label", "when"},
+	"Template":    {"name", "yaml"},
 }
 
 // severitySchema is a severity expression's: CEL returning a name of
@@ -132,6 +133,9 @@ func schemaField() map[string]map[string]any {
 		"TableColumn.type":       enum(valueTypes),
 		"TableColumn.mono":       {"description": "Draw the cells in the monospace font."},
 		"Panel.generic":          map[string]any{"enum": genericModes, "description": "For a kind without a compiled-in panel: keep the generic panel's sections after the plugin's (default), collapse them, or replace them with the plugin's."},
+		"Kind.templates":         {"maxItems": templateMaxPerKind, "description": `Starting points for the resource editor's create mode (not for "*"). Need no permissions.`},
+		"Template.name":          {"description": "Shown in the editor's template list; unique within the kind."},
+		"Template.yaml":          {"maxLength": templateMaxBytes, "description": "One or more YAML documents; the first creates this kind, the others may be any kind. ${namespace} is the editor's namespace; ${name} and ${name:default} are placeholders the user fills."},
 		"Kind.status":            {"description": "The kind's part of the plugin's status line in Settings ▸ Integrations: its object count and counts of objects matching CEL predicates."},
 		"StatusCount.severity":   map[string]any{"enum": alertSeverities, "description": "Colours the status line when the count isn't zero (default warning)."},
 		"Action.id":              {"pattern": actionIDRe.String()},

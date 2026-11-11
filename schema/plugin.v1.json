@@ -905,6 +905,14 @@
           ],
           "description": "The kind's part of the plugin's status line in Settings ▸ Integrations: its object count and counts of objects matching CEL predicates."
         },
+        "templates": {
+          "description": "Starting points for the resource editor's create mode (not for \"*\"). Need no permissions.",
+          "items": {
+            "$ref": "#/$defs/Template"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
         "variables": {
           "additionalProperties": {
             "description": "CEL expression.",
@@ -1480,6 +1488,28 @@
       "required": [
         "name",
         "value"
+      ],
+      "type": "object"
+    },
+    "Template": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "description": "Shown in the editor's template list; unique within the kind.",
+          "type": "string"
+        },
+        "yaml": {
+          "description": "One or more YAML documents; the first creates this kind, the others may be any kind. ${namespace} is the editor's namespace; ${name} and ${name:default} are placeholders the user fills.",
+          "maxLength": 16384,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "yaml"
       ],
       "type": "object"
     }

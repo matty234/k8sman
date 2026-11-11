@@ -35,6 +35,7 @@ import (
 //	GET    /api/plugins/{id}/icon       the plugin's icon.png
 //	GET    /api/plugins/panel           ?group&version&resource&namespace&name: sections and actions for an object
 //	GET    /api/plugins/status          {plugins: {id: {text, severity, kinds, errors}}}: status lines (plugins_data.go)
+//	GET    /api/plugins/templates       ?kind=group/Kind: the active plugins' templates for the create editor (every kind without kind)
 //	GET    /api/plugins/events          WebSocket: {"generation": n} on every change
 //	POST   /api/plugins/run             ?plugin&action&group&version&resource&namespace&name: a background shell action
 //	GET    /api/plugins/directory       ?refresh: the plugin directory (Browse), with the updates available
@@ -69,6 +70,7 @@ func (m *pluginsModule) Routes(r httpx.Router, d Deps) {
 	r.HandleFunc("GET /api/plugins/{id}/icon", s.handlePluginIcon)
 	r.HandleFunc("GET /api/plugins/panel", s.handlePluginPanel)
 	r.HandleFunc("GET /api/plugins/status", s.handlePluginStatus)
+	r.HandleFunc("GET /api/plugins/templates", s.handlePluginTemplates)
 	r.HandleFunc("GET /api/plugins/events", s.handlePluginEvents)
 	r.HandleFunc("POST /api/plugins/run", s.handlePluginRun)
 	r.HandleFunc("GET /api/plugins/directory", s.handlePluginDirectory)

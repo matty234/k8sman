@@ -276,6 +276,17 @@ func (s *Server) handlePluginStatus(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"plugins": out})
 }
 
+// handlePluginTemplates is GET /api/plugins/templates?kind=group/Kind: the
+// active plugins' templates for the create editor (every kind without
+// kind). Text only, so it needs no cluster.
+func (s *Server) handlePluginTemplates(w http.ResponseWriter, r *http.Request) {
+	out := []plugins.TemplateOut{}
+	if s.pluginsOn() {
+		out = s.plugins.Templates(r.URL.Query().Get("kind"))
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"templates": out})
+}
+
 // OverviewInputs implements OverviewSource: the active plugins' alerts
 // over their kinds' objects in the overview's scope, from the watch cache.
 func (m *pluginsModule) OverviewInputs(l *OverviewLists) {

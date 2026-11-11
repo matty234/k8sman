@@ -84,7 +84,10 @@ type Kind struct {
 	// fetch the plugin's panel for objects it can't apply to.
 	ExceptKinds []string `yaml:"exceptKinds"`
 	Scope       string   `yaml:"scope"`
-	pos         Pos
+	// Templates are starting points for the resource editor's create mode
+	// (templates.go). They need no permissions.
+	Templates []Template `yaml:"templates"`
+	pos       Pos
 }
 
 // Status counts a kind's objects across the cluster for the plugin's
@@ -574,8 +577,8 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 			// overview polls and the status line stay per kind, so they
 			// never evaluate a plugin for every object of every kind.
 			if len(k.Columns) > 0 || len(k.HideColumns) > 0 || len(k.Alerts) > 0 || k.Status != nil || k.Icon != "" || k.Version != "" ||
-				(k.Panel != nil && k.Panel.Generic != "") {
-				d.errAt(kn, `the "*" kind may hold variables, related, metrics, panel sections and tabs, and actions (not columns, hideColumns, alerts, status, icon, version or panel.generic)`)
+				(k.Panel != nil && k.Panel.Generic != "") || len(k.Templates) > 0 {
+				d.errAt(kn, `the "*" kind may hold variables, related, metrics, panel sections and tabs, and actions (not columns, hideColumns, alerts, status, icon, version, panel.generic or templates)`)
 			}
 			if !slices.Contains(m.Permissions.Read, "*") {
 				d.errAt(kn, `the "*" kind reads every object the user inspects: add "*" to permissions.read (permissions: {read: ["*"]})`)
@@ -598,6 +601,9 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 		}
 		used.read[key] = true
 		k.validate(d, m, key, resolve(field(kindsNode, key)), used)
+		if key != "*" {
+			validateTemplates(d, key, k, resolve(field(kindsNode, key)))
+		}
 	}
 	for _, k := range m.Permissions.Read {
 		if !used.read[k] {
