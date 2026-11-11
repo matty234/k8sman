@@ -126,6 +126,10 @@ void main() {
       expect(find.text('guestbook-ui'), findsWidgets);
       expect(find.text('#0'), findsOneWidget);
       expect(find.text('Sync'), findsOneWidget);
+      final sync = tester.getRect(find.widgetWithText(FilledButton, 'Sync'));
+      final refresh = tester.getRect(find.widgetWithText(OutlinedButton, 'Refresh'));
+      expect(sync.height, refresh.height);
+      expect(sync.center.dy, refresh.center.dy);
     });
 
     testWidgets('sync dialog runs argocd-sync with options', (tester) async {

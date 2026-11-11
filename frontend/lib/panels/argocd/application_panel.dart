@@ -115,7 +115,7 @@ class AppStatusSummary extends StatelessWidget {
     ]);
     final buttons = readOnly
         ? null
-        : Wrap(spacing: 6, runSpacing: 6, children: [
+        : Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
             _SmallButton(icon: Icons.sync, label: 'Sync', filled: true, onPressed: () => showArgoSyncDialog(context, ctx)),
             _RefreshButton(ctx: ctx),
           ]);
@@ -248,13 +248,14 @@ class _RefreshButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
+    return Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
       _SmallButton(icon: Icons.refresh, label: 'Refresh', onPressed: () => argoRefresh(context, ctx)),
       PopupMenuButton<bool>(
             popUpAnimationStyle: AnimationStyle.noAnimation,
         tooltip: 'More refresh options',
         padding: EdgeInsets.zero,
         iconSize: 18,
+        style: IconButton.styleFrom(minimumSize: const Size(28, 28), tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact),
         icon: const Icon(Icons.arrow_drop_down),
         onSelected: (hard) => argoRefresh(context, ctx, hard: hard),
         itemBuilder: (_) => const [
