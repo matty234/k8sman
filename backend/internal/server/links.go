@@ -106,3 +106,40 @@ func (s *Server) logSettingsRoutes() {
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
+
+// The widths the window's side panels were dragged to (the left nav and the
+// right inspector), restored at launch. 0 = the default.
+func (s *Server) panelSettingsRoutes() {
+	s.mux.HandleFunc("GET /api/settings/panels", func(w http.ResponseWriter, r *http.Request) {
+		st := s.settings.Get()
+		httpx.WriteJSON(w, 200, map[string]any{"navWidth": st.NavWidth, "inspectorWidth": st.InspectorWidth})
+	})
+	s.mux.HandleFunc("PUT /api/settings/panels", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NavWidth       *float64 `json:"navWidth"`
+			InspectorWidth *float64 `json:"inspectorWidth"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, httpx.BadRequest("body must be {\"navWidth\"?: number, \"inspectorWidth\"?: number}: %v", err))
+			return
+		}
+		for _, v := range []*float64{body.NavWidth, body.InspectorWidth} {
+			if v != nil && (*v < 0 || *v > 10000) {
+				writeErr(w, httpx.BadRequest("widths must be between 0 and 10000"))
+				return
+			}
+		}
+		if err := s.settings.Update(func(st *settings.Settings) {
+			if body.NavWidth != nil {
+				st.NavWidth = *body.NavWidth
+			}
+			if body.InspectorWidth != nil {
+				st.InspectorWidth = *body.InspectorWidth
+			}
+		}); err != nil {
+			writeErr(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+}

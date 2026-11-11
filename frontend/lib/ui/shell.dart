@@ -27,7 +27,10 @@ import 'views/saved_views_ui.dart' show showSaveViewDialog;
 import 'keys.dart';
 import 'links_ui.dart';
 
-const _navWidth = 232.0;
+const _navDefault = 232.0;
+const _navMin = 200.0;
+const _navMax = 420.0;
+const _inspectorDefault = 560.0;
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -37,8 +40,6 @@ class Shell extends StatefulWidget {
 }
 
 class _ShellState extends State<Shell> {
-  double _sidebarWidth = 560;
-
   void _palette() => showCommandPalette(context);
 
   void _settings() => openSettings(context);
@@ -191,15 +192,35 @@ class _ShellState extends State<Shell> {
           // On macOS the nav shows the window's sidebar vibrancy through.
           backgroundColor: nativeMacChrome ? Colors.transparent : null,
           body: LayoutBuilder(builder: (context, box) {
-            final maxSidebar = (box.maxWidth - _navWidth - 360).clamp(320.0, 1400.0);
-            final sidebar = _sidebarWidth.clamp(320.0, maxSidebar);
+            final nav = (app.navWidth ?? _navDefault).clamp(_navMin, _navMax);
+            final maxSidebar = (box.maxWidth - nav - 360).clamp(320.0, 1400.0);
+            final sidebar = (app.inspectorWidth ?? _inspectorDefault).clamp(320.0, maxSidebar);
             // The dock spans the main column only: the inspector stays a
             // full-height column, like Xcode's inspector beside its debug area.
             // Keep the titlebar band plus a few table rows above it.
             final dockMax = box.maxHeight - titlebarHeight - 140;
             return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const SizedBox(width: _navWidth, child: ResourceNav()),
-              Container(width: 1, color: colors.separator),
+              SizedBox(width: nav, child: const ResourceNav()),
+              // Hairline splitter with a wider grab area; double-click resets.
+              MouseRegion(
+                cursor: SystemMouseCursors.resizeColumn,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragUpdate: (d) => setState(() => app.navWidth = (nav + d.delta.dx).clamp(_navMin, _navMax)),
+                  onHorizontalDragEnd: (_) => app.savePanelWidths(),
+                  onDoubleTap: () {
+                    setState(() => app.navWidth = null);
+                    app.savePanelWidths();
+                  },
+                  child: SizedBox(
+                    width: 5,
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Container(width: 1, color: colors.separator),
+                      Expanded(child: ColoredBox(color: theme.colorScheme.surface)),
+                    ]),
+                  ),
+                ),
+              ),
               Expanded(
                 child: ColoredBox(
                   color: theme.colorScheme.surface,
@@ -227,7 +248,12 @@ class _ShellState extends State<Shell> {
                     cursor: SystemMouseCursors.resizeColumn,
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onHorizontalDragUpdate: (d) => setState(() => _sidebarWidth = (sidebar - d.delta.dx).clamp(320.0, maxSidebar)),
+                      onHorizontalDragUpdate: (d) => setState(() => app.inspectorWidth = (sidebar - d.delta.dx).clamp(320.0, maxSidebar)),
+                      onHorizontalDragEnd: (_) => app.savePanelWidths(),
+                      onDoubleTap: () {
+                        setState(() => app.inspectorWidth = null);
+                        app.savePanelWidths();
+                      },
                       child: SizedBox(
                         width: 5,
                         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

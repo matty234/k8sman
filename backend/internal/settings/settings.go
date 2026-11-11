@@ -96,6 +96,11 @@ type Settings struct {
 	// zero value keeps it on).
 	LogsPlainSyntax bool `json:"logsPlainSyntax,omitempty"`
 
+	// NavWidth and InspectorWidth are the widths (logical pixels) the user
+	// dragged the left nav and the right inspector to. 0 = the default.
+	NavWidth       float64 `json:"navWidth,omitempty"`
+	InspectorWidth float64 `json:"inspectorWidth,omitempty"`
+
 	// DefaultNamespace maps kube context → the namespace scope the app
 	// opens in. Absent = all namespaces.
 	DefaultNamespace map[string]DefaultNamespace `json:"defaultNamespace,omitempty"`

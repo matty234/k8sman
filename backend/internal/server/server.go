@@ -96,6 +96,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.linkRoutes()
 	s.securityIgnoreRoutes()
 	s.logSettingsRoutes()
+	s.panelSettingsRoutes()
 	s.viewRoutes()
 	s.readOnlyRoutes()
 	s.tablePrefsRoutes()

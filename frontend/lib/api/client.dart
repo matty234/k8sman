@@ -391,6 +391,17 @@ class ApiClient {
 
   Future<void> putLogNewestFirst(bool v) => _send('PUT', 'settings/logs', const {}, {'newestFirst': v});
 
+  /// The widths the left nav and the inspector were dragged to (null = default).
+  Future<({double? nav, double? inspector})> getPanelWidths() async {
+    final j = await _get('settings/panels') as Json;
+    double? w(Object? v) => v is num && v > 0 ? v.toDouble() : null;
+    return (nav: w(j['navWidth']), inspector: w(j['inspectorWidth']));
+  }
+
+  /// Saves the given widths; 0 restores the default.
+  Future<void> putPanelWidths({double? nav, double? inspector}) =>
+      _send('PUT', 'settings/panels', const {}, {'navWidth': ?nav, 'inspectorWidth': ?inspector});
+
   /// Whether Copy link copies the `k8sman://` form (else the https one).
   Future<bool> getAppLinks() async => (await _get('settings/links') as Json)['appLinks'] == true;
 

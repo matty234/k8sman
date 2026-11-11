@@ -866,6 +866,28 @@ class AppState extends ChangeNotifier {
     _sidebarSaves = _sidebarSaves.then((_) => api.putSidebar(json)).catchError((Object e) => debugPrint('save sidebar layout: $e'));
   }
 
+  // ---- panel widths ----
+
+  /// The widths the left nav and the inspector were dragged to (null = the
+  /// default), saved across launches. The shell clamps them to the window.
+  double? navWidth;
+  double? inspectorWidth;
+
+  Future<void> loadPanelWidths() async {
+    try {
+      final w = await api.getPanelWidths();
+      navWidth = w.nav;
+      inspectorWidth = w.inspector;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('panel widths: $e');
+    }
+  }
+
+  /// Saves the current widths (call at the end of a drag).
+  void savePanelWidths() =>
+      api.putPanelWidths(nav: navWidth ?? 0, inspector: inspectorWidth ?? 0).catchError((Object e) => debugPrint('save panel widths: $e'));
+
   // ---- integrations ----
 
   /// Ids of the integration modules the user turned off (lib/modules):
@@ -1380,6 +1402,7 @@ class AppState extends ChangeNotifier {
     // Views load without a connection (the error screen lists them).
     await loadViews();
     await loadLinkPrefs();
+    await loadPanelWidths();
     final launch = again ? null : savedViews.where((v) => v.id == launchViewId).firstOrNull;
     if (launch?.context != null) await _preselectContext(launch!.context!);
     await init();
