@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../api/known_apis.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
@@ -144,7 +145,7 @@ class _GrantDialogState extends State<GrantDialog> {
     if (role.kind == 'ClusterRole' && !_clusterWide && ns == null) return null;
     final existing = _addTo;
     // List items carry no apiVersion/kind.
-    if (existing != null) return bindingWith({...existing, 'apiVersion': '$rbacApiGroup/v1', 'kind': ns == null ? 'ClusterRoleBinding' : 'RoleBinding'}, s);
+    if (existing != null) return bindingWith({...existing, 'apiVersion': rbacApiVersion, 'kind': ns == null ? 'ClusterRoleBinding' : 'RoleBinding'}, s);
     final name = _nameEdited ? _bindingName.text.trim() : _suggestedName;
     if (name.isEmpty) return null;
     return buildBinding(name: name, namespace: ns, roleKind: role.kind, roleName: role.name, subjects: [s.toSubjectJson()]);

@@ -2,6 +2,7 @@
 /// editable rule models, role templates and binding construction.
 library;
 
+import '../../api/known_apis.dart';
 import '../../api/models.dart';
 import '../../util/k8s.dart';
 import 'access_api.dart';
@@ -225,7 +226,7 @@ Json buildRole({required bool cluster, required String name, String? namespace, 
   }
   final ordered = <String, dynamic>{'name': meta.remove('name'), if (meta.containsKey('namespace')) 'namespace': meta.remove('namespace'), ...meta};
   return {
-    'apiVersion': '$rbacApiGroup/v1',
+    'apiVersion': rbacApiVersion,
     'kind': cluster ? 'ClusterRole' : 'Role',
     'metadata': ordered,
     if (base?['aggregationRule'] != null) 'aggregationRule': base!['aggregationRule'],
@@ -236,7 +237,7 @@ Json buildRole({required bool cluster, required String name, String? namespace, 
 /// A RoleBinding (namespace set) or ClusterRoleBinding granting [roleKind]
 /// [roleName] to [subjects].
 Json buildBinding({required String name, String? namespace, required String roleKind, required String roleName, required List<Json> subjects}) => {
-      'apiVersion': '$rbacApiGroup/v1',
+      'apiVersion': rbacApiVersion,
       'kind': namespace == null ? 'ClusterRoleBinding' : 'RoleBinding',
       'metadata': {'name': name, 'namespace': ?namespace},
       'roleRef': {'apiGroup': rbacApiGroup, 'kind': roleKind, 'name': roleName},

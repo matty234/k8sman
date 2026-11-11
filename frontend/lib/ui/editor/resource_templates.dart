@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../api/known_apis.dart';
 import '../../api/models.dart';
 import '../../plugins/plugin_icons.dart';
 
@@ -82,7 +83,7 @@ final resourceTemplates = <ResourceTemplate>[
     group: 'apps',
     kind: 'Deployment',
     description: 'Replicated pods from a container image',
-    build: (ns) => '''apiVersion: apps/v1
+    build: (ns) => '''apiVersion: $appsApiVersion
 kind: Deployment
 metadata:
   name: my-app
@@ -118,7 +119,7 @@ spec:
     group: '',
     kind: 'Service',
     description: 'A stable address for pods matching a selector',
-    build: (ns) => '''apiVersion: v1
+    build: (ns) => '''apiVersion: $coreApiVersion
 kind: Service
 metadata:
   name: my-app
@@ -139,7 +140,7 @@ spec:
     group: '',
     kind: 'ConfigMap',
     description: 'Non-secret configuration as key/value pairs',
-    build: (ns) => '''apiVersion: v1
+    build: (ns) => '''apiVersion: $coreApiVersion
 kind: ConfigMap
 metadata:
   name: my-config
@@ -156,7 +157,7 @@ data:
     group: '',
     kind: 'Secret',
     description: 'Opaque values; stringData is encoded for you',
-    build: (ns) => '''apiVersion: v1
+    build: (ns) => '''apiVersion: $coreApiVersion
 kind: Secret
 metadata:
   name: my-secret
@@ -173,7 +174,7 @@ stringData:
     group: 'batch',
     kind: 'Job',
     description: 'Run pods to completion once',
-    build: (ns) => '''apiVersion: batch/v1
+    build: (ns) => '''apiVersion: $batchApiVersion
 kind: Job
 metadata:
   name: my-job
@@ -196,7 +197,7 @@ spec:
     group: 'batch',
     kind: 'CronJob',
     description: 'Run a Job on a schedule',
-    build: (ns) => '''apiVersion: batch/v1
+    build: (ns) => '''apiVersion: $batchApiVersion
 kind: CronJob
 metadata:
   name: my-cronjob
@@ -221,7 +222,7 @@ spec:
     group: 'networking.k8s.io',
     kind: 'Ingress',
     description: 'HTTP routing from outside the cluster to a Service',
-    build: (ns) => '''apiVersion: networking.k8s.io/v1
+    build: (ns) => '''apiVersion: $networkingApiVersion
 kind: Ingress
 metadata:
   name: my-app
@@ -247,7 +248,7 @@ spec:
     group: '',
     kind: 'PersistentVolumeClaim',
     description: 'Request storage from the default StorageClass',
-    build: (ns) => '''apiVersion: v1
+    build: (ns) => '''apiVersion: $coreApiVersion
 kind: PersistentVolumeClaim
 metadata:
   name: my-data
@@ -267,7 +268,7 @@ spec:
     group: '',
     kind: 'Namespace',
     description: 'A new namespace (cluster-scoped)',
-    build: (ns) => '''apiVersion: v1
+    build: (ns) => '''apiVersion: $coreApiVersion
 kind: Namespace
 metadata:
   name: my-namespace
@@ -279,7 +280,7 @@ metadata:
     group: '',
     kind: 'ServiceAccount',
     description: 'An identity for pods',
-    build: (ns) => '''apiVersion: v1
+    build: (ns) => '''apiVersion: $coreApiVersion
 kind: ServiceAccount
 metadata:
   name: my-app
@@ -292,7 +293,7 @@ metadata:
     group: 'rbac.authorization.k8s.io',
     kind: 'Role',
     description: 'Read-only access to pods, bound to a ServiceAccount',
-    build: (ns) => '''apiVersion: rbac.authorization.k8s.io/v1
+    build: (ns) => '''apiVersion: $rbacApiVersion
 kind: Role
 metadata:
   name: pod-reader
@@ -302,7 +303,7 @@ rules:
     resources: ["pods", "pods/log"]
     verbs: ["get", "list", "watch"]
 ---
-apiVersion: rbac.authorization.k8s.io/v1
+apiVersion: $rbacApiVersion
 kind: RoleBinding
 metadata:
   name: pod-reader

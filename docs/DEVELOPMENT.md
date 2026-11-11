@@ -148,6 +148,15 @@ packaging/ Homebrew cask template
 - **Integrations** (Argo CD, Argo Workflows, Helm, GPUs, Prometheus,
   Gateway API, Cilium Hubble, Metrics, Add-ons) are compile-time modules; see
   [Adding an integration](#adding-an-integration).
+- **Kubernetes API versions** live in two registries. To bump an API
+  version, edit `backend/internal/kapi/kapi.go` (the backend's groups and
+  resources) or `frontend/lib/api/known_apis.dart` (apiVersions the UI
+  writes); a version list's order is the preference, newest first, and
+  groups resolved per cluster (metrics APIs, Gateway API, Trivy) use the
+  first version the cluster serves. Deprecated and removed versions (the
+  upgrade check and the security "deprecated API" finding) are the table in
+  `backend/internal/kapi/removed.go`. Kinds looked up by group and resource
+  alone already follow the server's preferred version.
 - **CRD icons** come from Helm chart metadata, icons bundled with the app, or
   the group's website favicon (fetched directly, never through a third-party
   favicon service). See [API.md](../API.md#crd-group-icons).
