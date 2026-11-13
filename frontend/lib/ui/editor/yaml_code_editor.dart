@@ -630,8 +630,10 @@ class EditorBanner extends StatelessWidget {
       margin: margin,
       padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: color.withValues(alpha: 0.4))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(padding: const EdgeInsets.only(top: 2), child: Icon(icon, size: 16, color: color)),
+      // A bare message centres on the close/action buttons; with details,
+      // the icon stays beside the first line.
+      child: Row(crossAxisAlignment: details.isEmpty ? CrossAxisAlignment.center : CrossAxisAlignment.start, children: [
+        Padding(padding: EdgeInsets.only(top: details.isEmpty ? 0 : 2), child: Icon(icon, size: 16, color: color)),
         const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

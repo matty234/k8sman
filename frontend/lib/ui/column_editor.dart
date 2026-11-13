@@ -68,6 +68,7 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
   Timer? _debounce;
   Json? _sample;
   bool _saving = false;
+  final _listScroll = ScrollController();
 
   ApiClient get _api => context.read<ApiClient>();
 
@@ -101,6 +102,7 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _listScroll.dispose();
     for (final c in _cols) {
       c.dispose();
     }
@@ -125,6 +127,11 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
   void _add(ColumnDef c) {
     setState(() => _cols.add(_EditableColumn(c)));
     _schedulePreview();
+    // Reveal the new row: scroll the column list to the bottom once it's laid out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_listScroll.hasClients) return;
+      _listScroll.animateTo(_listScroll.position.maxScrollExtent, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+    });
   }
 
   Future<void> _save() async {
@@ -231,6 +238,7 @@ class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
       ),
       Expanded(
         child: ReorderableListView.builder(
+          scrollController: _listScroll,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           buildDefaultDragHandles: false,
           itemCount: _cols.length,
@@ -408,8 +416,9 @@ class _FieldPickerState extends State<_FieldPicker> {
       if (v.isEmpty) {
         out.add((prefix, '[]'));
       } else {
-        // Offer both the "all items" form and leaves of the first item.
-        out.addAll(_flatten(v.first, '$prefix[]'));
+        // Leaves of the first item. `[]?` (not `[]`): other objects may lack
+        // the list, and `null[]` fails with "cannot iterate over null".
+        out.addAll(_flatten(v.first, '$prefix[]?'));
       }
     } else {
       out.add((prefix.isEmpty ? '.' : prefix, '$v'));
