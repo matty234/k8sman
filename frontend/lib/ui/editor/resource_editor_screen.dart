@@ -23,6 +23,7 @@ import '../widgets/editorial.dart';
 import 'resource_templates.dart';
 import 'yaml_code_editor.dart';
 import '../widgets/dialogs.dart';
+import '../../panels/argocd/argo_managed.dart';
 
 /// Opens [target] in the full-window YAML editor.
 Future<void> openResourceEditor(BuildContext context, DetailTarget target, {bool statusMode = false}) =>
@@ -459,7 +460,13 @@ class _ResourceEditorScreenState extends State<ResourceEditorScreen> with Single
       destructive: true,
       confirmLabel: 'Apply',
       width: 720,
-      extra: Padding(padding: const EdgeInsets.only(bottom: 12), child: SizedBox(height: 360, child: DiffView(lines: lines))),
+      extra: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ArgoManagedNotice(target: t),
+          SizedBox(height: 360, child: DiffView(lines: lines)),
+        ]),
+      ),
     );
     if (ok != true || !mounted) return;
     if (await _submitEdit(dryRun: false) && mounted) {

@@ -14,6 +14,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../keys.dart';
 import '../widgets/dialogs.dart';
+import '../../panels/argocd/argo_managed.dart';
 
 /// YAML tab: syntax-highlighted view, and (unless read-only) an inline editor
 /// with server-side dry-run validation, diff review and conflict-safe apply.
@@ -192,7 +193,13 @@ class _YamlEditorTabState extends State<YamlEditorTab> {
       destructive: true,
       confirmLabel: 'Apply',
       width: 720,
-      extra: Padding(padding: const EdgeInsets.only(bottom: 12), child: SizedBox(height: 360, child: DiffView(lines: lines))),
+      extra: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ArgoManagedNotice(target: _t),
+          SizedBox(height: 360, child: DiffView(lines: lines)),
+        ]),
+      ),
     );
     if (ok != true || !mounted) return;
     if (await _submit(dryRun: false) && mounted) {
