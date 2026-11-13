@@ -151,6 +151,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	start := time.Now()
+	if s.mgr.Clients() == nil {
+		s.mgr.Reconnect()
+	}
 	if s.mgr.Clients() == nil && !worksDisconnected(r.URL.Path) {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "NoKubeconfig", fmt.Sprintf("no cluster connection: %v", s.mgr.Err()))
 		return

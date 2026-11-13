@@ -124,3 +124,17 @@ func TestSwitchKubeconfig(t *testing.T) {
 		t.Fatal("failed switch must keep the previous kubeconfig")
 	}
 }
+
+func TestReconnectWhenKubeconfigAppears(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".kube", "config")
+	m := NewDisconnected(path, fmt.Errorf("stat %s: no such file or directory", path))
+	m.Reconnect()
+	if m.Clients() != nil {
+		t.Fatal("connected without a file")
+	}
+	writeKubeconfig(t, path, "first")
+	m.Reconnect()
+	if c := m.Clients(); c == nil || c.Context != "first" || m.Err() != nil {
+		t.Fatalf("after file appeared: %v %v", c, m.Err())
+	}
+}

@@ -36,6 +36,23 @@ type Manager struct {
 	byName map[string]*Clients
 	// connectErr is why there is no current context (see NewDisconnected).
 	connectErr error
+	// tried is the kubeconfig file's state at the last failed connect, so
+	// Reconnect only retries once the file appears or changes.
+	tried fileStamp
+}
+
+type fileStamp struct {
+	ok    bool
+	size  int64
+	mtime time.Time
+}
+
+func stampOf(path string) fileStamp {
+	st, err := os.Stat(path)
+	if err != nil {
+		return fileStamp{}
+	}
+	return fileStamp{true, st.Size(), st.ModTime()}
 }
 
 // rulesFor returns loading rules for an explicit path ("" = default rules).
@@ -69,7 +86,30 @@ func NewStatic(c *Clients) *Manager {
 // usable kubeconfig exists yet. Clients returns nil until SwitchKubeconfig or
 // SwitchContext succeeds; Err reports why.
 func NewDisconnected(kubeconfig string, err error) *Manager {
-	return &Manager{kubeconfig: kubeconfig, rules: rulesFor(kubeconfig), connectErr: err}
+	return &Manager{kubeconfig: kubeconfig, rules: rulesFor(kubeconfig), connectErr: err, tried: stampOf(kubeconfig)}
+}
+
+// Reconnect retries a disconnected manager's kubeconfig once the file has
+// appeared or changed since the last attempt (e.g. the user created
+// ~/.kube/config while the app was running). It is a no-op when connected.
+func (m *Manager) Reconnect() {
+	m.mu.RLock()
+	kc, connected, tried := m.kubeconfig, m.current != nil, m.tried
+	m.mu.RUnlock()
+	if connected || kc == "" {
+		return
+	}
+	stamp := stampOf(kc)
+	if !stamp.ok || stamp == tried {
+		return
+	}
+	if err := m.SwitchKubeconfig(kc, ""); err != nil {
+		m.mu.Lock()
+		if m.current == nil {
+			m.connectErr, m.tried = err, stamp
+		}
+		m.mu.Unlock()
+	}
 }
 
 // Clients returns the current client snapshot, or nil when disconnected.
