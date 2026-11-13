@@ -107,6 +107,12 @@ void main() {
     await tester.pump();
     expect(find.text('HTTP :http/ · 5s · fails after 3'), findsOneWidget); // readiness, one line
     expect(find.text('Burstable'), findsOneWidget);
+    // Requests and limits per container (also with Prometheus), and the pod's totals.
+    String res(String c, String k) => tester.widget<Text>(find.byKey(ValueKey('container-resource-$c-$k'))).textSpan!.toPlainText();
+    expect(res('nginx', 'cpu'), '50m request  ·  200m limit');
+    expect(res('log-sidecar', 'memory'), '8Mi request  ·  no limit');
+    expect(find.textContaining('55m CPU'), findsNWidgets(2)); // the summary and the Requests row
+    expect(find.text('unbounded'), findsOneWidget); // the sidecar sets no limits
     expect(find.text('metadata.name'), findsOneWidget); // POD_NAME, resolved
     expect(find.textContaining('heartbeat'), findsNothing); // the long command is collapsed to three lines
     await tester.tap(find.textContaining('Show all'));

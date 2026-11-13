@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
+import '../../metrics/metrics_api.dart' show Usage;
 import '../../metrics/pod_usage.dart';
 import '../../metrics/quantity.dart' show formatPercent;
 import '../../ui/theme.dart';
@@ -74,10 +75,6 @@ class ContainerRow extends StatelessWidget {
 
   /// The pod, so env vars from fields resolve and mounts name their claims.
   final Json? pod;
-
-  /// Shows requests and limits in the details (false while the pod's
-  /// history charts draw them).
-  final bool showResources;
   const ContainerRow(
     this.c, {
     super.key,
@@ -92,7 +89,6 @@ class ContainerRow extends StatelessWidget {
     this.template = false,
     this.showRestarts = true,
     this.pod,
-    this.showResources = true,
   });
 
   bool get _canTerminal => onOpenTerminal != null && c.isRunning && c.kind != ContainerKind.init;
@@ -170,7 +166,7 @@ class ContainerRow extends StatelessWidget {
       ],
       actions: actions,
       details: (_) => ContainerDetails(c,
-          namespace: namespace, volumes: volumes, portAction: live ? portAction : null, template: template, pod: pod, showResources: showResources, memoryId: 'container:$podUid/${c.name}'),
+          namespace: namespace, volumes: volumes, portAction: live ? portAction : null, template: template, pod: pod, memoryId: 'container:$podUid/${c.name}'),
     );
   }
 
@@ -198,13 +194,12 @@ class InlineContainer extends StatelessWidget {
   final List<Json> volumes;
   final Widget Function(Json port)? portAction;
   final Json pod;
-  final bool showResources;
-  const InlineContainer(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, required this.pod, this.showResources = true});
+  const InlineContainer(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, required this.pod});
 
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(left: 4, right: 6),
-        child: ContainerDetails(c, namespace: namespace, volumes: volumes, portAction: portAction, pod: pod, showResources: showResources),
+        child: ContainerDetails(c, namespace: namespace, volumes: volumes, portAction: portAction, pod: pod),
       );
 }
 
@@ -364,13 +359,9 @@ class ContainerDetails extends StatelessWidget {
   /// ephemeral volumes name their claims.
   final Json? pod;
 
-  /// False while the pod's history charts show CPU and memory requests
-  /// and limits: then only other resources (storage, GPUs) show here.
-  final bool showResources;
-
   /// Remembers which long commands are expanded (with the container).
   final String? memoryId;
-  const ContainerDetails(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, this.template = false, this.pod, this.showResources = true, this.memoryId});
+  const ContainerDetails(this.c, {super.key, this.namespace, this.volumes = const [], this.portAction, this.template = false, this.pod, this.memoryId});
 
   @override
   Widget build(BuildContext context) {
@@ -399,7 +390,6 @@ class ContainerDetails extends StatelessWidget {
           if (envFrom.isNotEmpty) _envFromWidget(context, envFrom),
         ]),
       if (mounts.isNotEmpty) _mountsWidget(context, mounts),
-      if (_resourceKeys.isNotEmpty) _resourcesWidget(context),
     ];
 
     final groups = <Widget>[
@@ -414,6 +404,7 @@ class ContainerDetails extends StatelessWidget {
         if (cmd.isNotEmpty) _Field('Command', _CommandBlock(cmd, memoryId: memoryId == null ? null : '$memoryId/command')),
         if (spec['workingDir'] != null) _Field('Workdir', _Copyable('${spec['workingDir']}')),
       ]),
+      QuietGroup(key: const ValueKey('container-group-resources'), 'Resources', [_resourcesWidget(context)]),
       if (ports.isNotEmpty) QuietGroup(key: const ValueKey('container-group-network'), 'Network', [_portsWidget(context, ports)]),
       if (probes.isNotEmpty || hooks.isNotEmpty)
         QuietGroup(key: const ValueKey('container-group-health'), 'Health', [
@@ -551,33 +542,70 @@ class ContainerDetails extends StatelessWidget {
         for (final p in ports) _Port(p, key: ValueKey('container-port-${c.name}-${p['containerPort']}-${p['protocol'] ?? 'TCP'}'), action: portAction),
       ]);
 
-  /// The resources to list: all of them, or (while the charts draw CPU and
-  /// memory) the rest.
+  /// CPU and memory always, then any other resource the container sets.
   List<String> get _resourceKeys {
     final r = asMap(c.spec['resources']);
-    return {...asMap(r['requests']).keys, ...asMap(r['limits']).keys}.where((k) => showResources || (k != 'cpu' && k != 'memory')).toList()..sort();
+    final rest = {...asMap(r['requests']).keys, ...asMap(r['limits']).keys}..removeAll(const {'cpu', 'memory'});
+    return ['cpu', 'memory', ...rest.toList()..sort()];
   }
 
-  /// One line per resource: "50m request · 200m limit".
+  /// One line per resource: "50m request · 200m limit · using 12m (6%)".
+  /// While the container runs, CPU and memory add live usage.
   Widget _resourcesWidget(BuildContext context) {
+    final ns = dig<String>(pod, ['metadata', 'namespace']);
+    final name = dig<String>(pod, ['metadata', 'name']);
+    if (template || pod == null || ns == null || name == null || !c.isRunning) return _resourceLines(context, null);
+    return PodUsageLoader(namespace: ns, name: name, builder: (context, usage, _, _) => _resourceLines(context, usage?.containers[c.name]));
+  }
+
+  Widget _resourceLines(BuildContext context, Usage? u) {
     final theme = Theme.of(context);
     final small = theme.textTheme.bodySmall;
     final hint = small?.copyWith(color: theme.hintColor);
+    final warn = small?.copyWith(color: severityColor(context, Severity.warn));
     final r = asMap(c.spec['resources']);
     final req = asMap(r['requests']);
     final lim = asMap(r['limits']);
-    final keys = _resourceKeys;
+    final parsed = containerResources(c.spec);
     String label(String k) => switch (k) { 'cpu' => 'CPU', 'memory' => 'Memory', 'ephemeral-storage' => 'Storage', _ => k };
+    // Usage against the limit (else the request), coloured near the limit
+    // as the row's mini bars are.
+    List<InlineSpan> usage(String k) {
+      final (used, l, q, f) = switch (k) {
+        'cpu' => (u?.cpuMillis, parsed.cpuLim, parsed.cpuReq, formatCpuUsage),
+        'memory' => (u?.memoryBytes, parsed.memLim, parsed.memReq, formatBytes),
+        _ => (null, null, null, formatBytes),
+      };
+      if (used == null) return const [];
+      final base = l ?? q;
+      final frac = base == null || base <= 0 ? null : used / base;
+      final style = l != null && frac != null && frac >= 0.95
+          ? small?.copyWith(color: severityColor(context, Severity.error))
+          : l != null && frac != null && frac >= 0.8
+              ? warn
+              : small;
+      return [
+        TextSpan(text: '  ·  ', style: hint),
+        TextSpan(text: 'using ', style: hint),
+        TextSpan(text: f(used), style: style),
+        if (frac != null) TextSpan(text: ' (${formatPercent(frac)} of ${l != null ? 'limit' : 'request'})', style: style == small ? hint : style),
+      ];
+    }
+
+    final sep = TextSpan(text: '  ·  ', style: hint);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (final k in keys)
+      for (final k in _resourceKeys)
         _Field(
           label(k),
           Text.rich(
+            key: ValueKey('container-resource-${c.name}-$k'),
             TextSpan(style: small, children: [
-              if (req[k] != null) ...[TextSpan(text: '${req[k]}'), TextSpan(text: ' request', style: hint)],
-              if (req[k] != null && lim[k] != null) TextSpan(text: '  ·  ', style: hint),
-              if (lim[k] != null) ...[TextSpan(text: '${lim[k]}'), TextSpan(text: ' limit', style: hint)],
-              if (lim[k] == null && k == 'memory') TextSpan(text: '  ·  no limit', style: hint),
+              if (req[k] != null) ...[TextSpan(text: '${req[k]}'), TextSpan(text: ' request', style: hint)] else TextSpan(text: 'no request', style: hint),
+              sep,
+              // A missing memory limit lets the container take the node's
+              // memory; a missing CPU limit only lets it burst (often wanted).
+              if (lim[k] != null) ...[TextSpan(text: '${lim[k]}'), TextSpan(text: ' limit', style: hint)] else TextSpan(text: 'no limit', style: k == 'memory' ? warn : hint),
+              ...usage(k),
             ]),
           ),
           tooltip: k,

@@ -7,7 +7,6 @@ import '../../actions/actions.dart';
 import '../../api/models.dart';
 import '../../gpu/gpu_sections.dart';
 import '../../prometheus/metric_history_chart.dart';
-import '../../prometheus/prom_api.dart';
 import '../../metrics/network_usage.dart';
 import '../../ui/logs/open_logs.dart';
 import '../../ui/terminal/open_terminal.dart';
@@ -49,9 +48,6 @@ class PodPanel extends ResourcePanel {
     final healthyMain = [for (final c in containers) if (!c.hasProblem && (c.kind == ContainerKind.regular || c.kind == ContainerKind.sidecar)) c];
     final healthyInit = [for (final c in containers) if (!c.hasProblem && c.kind == ContainerKind.init) c];
     final healthyEph = [for (final c in containers) if (!c.hasProblem && c.kind == ContainerKind.ephemeral) c];
-    // While the history charts draw requests and limits, the container
-    // details leave CPU and memory out (known once Prometheus was asked).
-    final charted = PromApi.of(ctx.api).knownHasPrometheus == true;
     // One forward per port (only while the container runs).
     Widget Function(Json)? forward(PodContainer c) => c.isRunning
         ? (p) => QuickForwardButton(
@@ -77,7 +73,6 @@ class PodPanel extends ResourcePanel {
       portAction: forward(c),
       showRestarts: containers.length > 1,
       pod: pod,
-      showResources: !charted,
     );
 
     // One long-running container: shown inline, its init and ephemeral
@@ -96,7 +91,7 @@ class PodPanel extends ResourcePanel {
         ]),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           InlineContainer(single,
-              key: ValueKey('inline-container-${ctx.uid}'), namespace: ctx.namespace, volumes: volumes, portAction: forward(single), pod: pod, showResources: !charted),
+              key: ValueKey('inline-container-${ctx.uid}'), namespace: ctx.namespace, volumes: volumes, portAction: forward(single), pod: pod),
           if (initRows.isNotEmpty) ...[const _GroupLabel('Init'), ...initRows],
           if (ephRows.isNotEmpty) ...[const _GroupLabel('Ephemeral'), ...ephRows],
         ]),
@@ -205,7 +200,18 @@ class PodPanel extends ResourcePanel {
   static String _configSummary(PanelContext ctx) {
     final qos = ctx.status['qosClass'] as String?;
     final pc = ctx.spec['priorityClassName'] as String?;
-    return [?qos, ?pc, '${ctx.spec['restartPolicy'] ?? 'Always'}'].join(' · ');
+    final requested = _podTotals(ctx.spec, 'request');
+    return [?qos, if (requested != null) '$requested requested', ?pc, '${ctx.spec['restartPolicy'] ?? 'Always'}'].join(' · ');
+  }
+
+  /// The pod's CPU and memory requests (or limits) summed over its running
+  /// containers: "150m CPU, 384Mi", or null when none are set.
+  static String? _podTotals(Json spec, String which) {
+    final res = podChartResources(spec);
+    final cpu = which == 'request' ? res.cpu.request : res.cpu.limit;
+    final mem = which == 'request' ? res.memory.request : res.memory.limit;
+    if (cpu == null && mem == null) return null;
+    return [if (cpu != null) '${formatCpu(cpu * 1000)} CPU', if (mem != null) formatBytes(mem)].join(', ');
   }
 
   /// Logs open in the bottom dock (not a sidebar tab) so they keep
@@ -342,6 +348,8 @@ class _Configuration extends StatelessWidget {
     final started = parseTime(status['startTime']);
     return KeyValueTable(keyWidth: 110, [
       if (qos != null) ('QoS class', InlineWrap([Text(qos, style: small), HintText(_qosHint(qos))])),
+      ('Requests', switch (PodPanel._podTotals(spec, 'request')) { final t? => Text(t, style: small), null => const HintText('none set') }),
+      ('Limits', switch (PodPanel._podTotals(spec, 'limit')) { final t? => Text(t, style: small), null => const HintText('unbounded') }),
       (
         'Priority',
         InlineWrap([
