@@ -38,6 +38,20 @@ class ApiException implements Exception {
 
 /// Thin client for the k8sman Go backend. All calls are read-only against
 /// the cluster (column config writes go to the local config file).
+/// `/api/settings/mcp`: whether the MCP server is on, and how to add it to Claude Code.
+class McpSettings {
+  final bool enabled;
+  final List<String> command;
+  final String addCommand;
+  const McpSettings({required this.enabled, this.command = const [], this.addCommand = ''});
+
+  factory McpSettings.fromJson(Json j) => McpSettings(
+        enabled: j['enabled'] == true,
+        command: [for (final c in (j['command'] as List? ?? const [])) '$c'],
+        addCommand: (j['addCommand'] ?? '') as String,
+      );
+}
+
 class ApiClient {
   /// Backend URL. In the macOS app the embedded backend listens on a random
   /// port, so `BackendController` (lib/app/backend.dart) updates this once
@@ -406,6 +420,12 @@ class ApiClient {
   Future<bool> getAppLinks() async => (await _get('settings/links') as Json)['appLinks'] == true;
 
   Future<void> putAppLinks(bool v) => _send('PUT', 'settings/links', const {}, {'appLinks': v});
+
+  /// The Claude Code MCP opt-in and the command that registers it.
+  Future<McpSettings> getMcpSettings() async => McpSettings.fromJson(await _get('settings/mcp') as Json);
+
+  Future<McpSettings> putMcpSettings(bool enabled) async =>
+      McpSettings.fromJson(await _send('PUT', 'settings/mcp', const {}, {'enabled': enabled}) as Json);
 
   /// Remembered link mappings: cluster fingerprint → local context.
   Future<Map<String, String>> getLinkClusterMap() async {

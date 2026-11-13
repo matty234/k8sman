@@ -23,6 +23,7 @@ import '../keyboard_help.dart';
 import '../keys.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'claude_code_setting.dart';
 import 'cluster_settings.dart';
 import 'diagnostics_settings.dart';
 import 'integrations_settings.dart';
@@ -406,6 +407,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: context.read<AppState>().setAppLinks,
           ),
         ),
+        claudeCodeSetting(),
         SettingItem.row(
           group: 'Appearance',
           label: 'Appearance',
