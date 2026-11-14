@@ -8,7 +8,8 @@ import 'k8s.dart';
 /// The pod table's Status column (backend jq in
 /// `backend/internal/columns/builtin.go`, and `overview.PodStatus`):
 /// Terminating, then the first failing init container (`Init:<reason>`),
-/// then the first container waiting/terminated reason, then the phase.
+/// then the first container waiting/non-Completed terminated reason, then
+/// the phase (Succeeded shown as Completed).
 String podStatus(Json pod) {
   if (dig(pod, ['metadata', 'deletionTimestamp']) != null) return 'Terminating';
   final status = asMap(pod['status']);
@@ -24,9 +25,12 @@ String podStatus(Json pod) {
   for (final s in asMapList(status['containerStatuses'])) {
     final st = asMap(s['state']);
     final r = dig<String>(st, ['waiting', 'reason']) ?? dig<String>(st, ['terminated', 'reason']);
-    if (r != null && r.isNotEmpty) return r;
+    // A clean exit says nothing about the pod: an Argo main can complete
+    // while its wait sidecar errors.
+    if (r != null && r.isNotEmpty && r != 'Completed') return r;
   }
-  return '${status['phase'] ?? 'Unknown'}';
+  final phase = '${status['phase'] ?? 'Unknown'}';
+  return phase == 'Succeeded' ? 'Completed' : phase;
 }
 
 /// Total restarts across the pod's (non-init) containers.

@@ -498,9 +498,14 @@ func PodStatus(p *corev1.Pod) string {
 		if w := cs.State.Waiting; w != nil && w.Reason != "" {
 			return w.Reason
 		}
-		if t := cs.State.Terminated; t != nil && t.Reason != "" {
+		// A clean exit says nothing about the pod (an Argo main can complete
+		// while its wait sidecar errors), so keep looking.
+		if t := cs.State.Terminated; t != nil && t.Reason != "" && t.Reason != completedReason {
 			return t.Reason
 		}
+	}
+	if p.Status.Phase == corev1.PodSucceeded {
+		return completedReason
 	}
 	return string(p.Status.Phase)
 }
