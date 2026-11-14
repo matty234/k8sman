@@ -21,11 +21,12 @@ import (
 
 // Fixtures (docs/PLUGINS.md §9): each fixtures/*.yaml is multi-document
 // YAML, the first document the subject and the rest the cluster that
-// related lookups see. fixtures/test.yaml sets now, context, readOnly and
-// the answers to metric queries. `plugin test` renders every fixture (the
-// plugin's cells, the resolved panel, the actions offered with their argv
-// or patch body, the alerts raised) and compares the result with
-// fixtures/__snapshots__/<fixture>; --update writes them.
+// related lookups see. fixtures/test.yaml sets now, context, readOnly,
+// the answers to metric queries and subresource calls. `plugin test`
+// renders every fixture (the plugin's cells, the resolved panel, the
+// actions offered with their argv or patch body, the alerts raised) and
+// compares the result with fixtures/__snapshots__/<fixture>; --update
+// writes them.
 
 // FixtureDir and SnapshotDir are where fixtures and snapshots live.
 const (
@@ -47,6 +48,11 @@ type FixtureConfig struct {
 	// Metrics answers metric queries, by query string. Without it there is
 	// no Prometheus (metrics are empty, with a note).
 	Metrics map[string][]Sample `yaml:"metrics"`
+	// Subresources answers subresource GETs (since 0.2.22), by
+	// "<namespace>/<name>/<subresource>", "<name>/<subresource>" or
+	// "<subresource>": the JSON the call returns. Without an answer the call
+	// fails, as it does without a guest agent.
+	Subresources map[string]any `yaml:"subresources"`
 }
 
 // FixtureResult is one fixture's outcome.
@@ -253,7 +259,7 @@ func renderFixture(p *Plugin, cfg FixtureConfig, path string) ([]byte, error) {
 	if p.m.Kinds[key] == nil && p.m.Kinds["*"] == nil {
 		return nil, fmt.Errorf("%s: the plugin has nothing for %s", filepath.Base(path), key)
 	}
-	env := Env{Context: cfg.Context, Now: cfg.Now, Lookup: &fixtureLookup{objs: objs, metrics: cfg.Metrics}}
+	env := Env{Context: cfg.Context, Now: cfg.Now, Lookup: &fixtureLookup{objs: objs, metrics: cfg.Metrics, subresources: cfg.Subresources}}
 	ns, _ := nestedString(subject, "metadata", "namespace")
 	name, _ := nestedString(subject, "metadata", "name")
 	snap := snapshot{Object: key + " " + strings.TrimPrefix(ns+"/"+name, "/")}
@@ -386,8 +392,9 @@ func cellString(v any) string {
 
 // fixtureLookup serves related objects and metrics from a fixture.
 type fixtureLookup struct {
-	objs    []map[string]any
-	metrics map[string][]Sample
+	objs         []map[string]any
+	metrics      map[string][]Sample
+	subresources map[string]any
 }
 
 func (f *fixtureLookup) List(_ context.Context, kindKey, ns, labelSelector, name string) ([]map[string]any, error) {

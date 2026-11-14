@@ -51,6 +51,10 @@ type Permissions struct {
 	Subresources []string `yaml:"subresources" json:"subresources,omitempty"`
 	// Create are the kinds create actions may create. Since 0.2.20.
 	Create []string `yaml:"create" json:"create,omitempty"`
+	// ReadSubresources are the subresources a kind's subresources data
+	// source may GET: kind key + "/" + subresource
+	// (kubevirt.io/VirtualMachineInstance/guestosinfo). Since 0.2.22.
+	ReadSubresources []string `yaml:"readSubresources" json:"readSubresources,omitempty"`
 }
 
 // Nav is a section of the sidebar's kinds list for the plugin's kinds
@@ -93,6 +97,10 @@ type Kind struct {
 	// (templates.go). They need no permissions.
 	Templates []Template `yaml:"templates"`
 	pos       Pos
+
+	// Subresources are GET subresources of the object that panels read as
+	// subresources.<name> (subresources.go). Since 0.2.22.
+	Subresources map[string]SubresourceRead `yaml:"subresources"`
 }
 
 // Status counts a kind's objects across the cluster for the plugin's
@@ -149,6 +157,21 @@ func (r *Related) IsList() bool { return !r.Name.IsSet() }
 type Metric struct {
 	Query    Expr   `yaml:"query"`
 	Instance string `yaml:"instance"`
+}
+
+// SubresourceRead is a GET of one of the object's subresources (KubeVirt's
+// guestosinfo, filesystemlist) for panels, read as subresources.<name>:
+// the JSON it answers, absent when the call fails or When is false. Kind
+// key + "/" + Name must be in permissions.readSubresources. Since 0.2.22.
+type SubresourceRead struct {
+	// Name is the subresource (filesystemlist).
+	Name string `yaml:"name"`
+	// Group and Version serve it (default: the object's), e.g.
+	// subresources.kubevirt.io and v1 for KubeVirt's aggregated API.
+	Group   string `yaml:"group"`
+	Version string `yaml:"version"`
+	// When skips the call unless it is true (a VMI that isn't running).
+	When Expr `yaml:"when"`
 }
 
 // Alert is a per-object rule evaluated on each overview poll; a hit is an
@@ -473,7 +496,7 @@ var (
 	severities      = []string{"error", "warning", "ok", "info", "neutral"}
 	severityAliases = map[string]string{"critical": "error", "warn": "warning", "success": "ok"}
 	placements      = []string{"top", "bottom"}
-	barFormats      = []string{"number", "quantity", "percent"}
+	barFormats      = []string{"number", "quantity", "bytes", "percent"}
 	codeLanguages   = []string{"text", "yaml", "json", "shell"}
 	genericModes    = []string{"keep", "collapse", "replace"}
 	// hostTabs are the app's own tabs a plugin tab can go into (Tab.Into):
@@ -504,6 +527,10 @@ var (
 // writeActionsVersion is the release that brought subresource and create
 // actions.
 const writeActionsVersion = "0.2.20"
+
+// readSubresourcesVersion is the release that brought the subresources
+// data source (permissions.readSubresources, a kind's subresources).
+const readSubresourcesVersion = "0.2.22"
 
 // subresourceDenied says why subresource sub of kind key can't be called
 // ("" = it can).
@@ -538,6 +565,7 @@ const (
 type usage struct {
 	read, patch          map[string]bool
 	subresources, create map[string]bool
+	readSubresources     map[string]bool
 	commands             map[string]bool
 	prometheus           bool
 }
@@ -661,6 +689,16 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 			d.errAt(permAt("subresources"), "permissions.subresources: %s", why)
 		}
 	}
+	for _, k := range m.Permissions.ReadSubresources {
+		if !subresourcePermRe.MatchString(k) {
+			d.errAt(permAt("readSubresources"), "permissions.readSubresources: %q is not a kind key and a subresource such as kubevirt.io/VirtualMachineInstance/guestosinfo", k)
+			continue
+		}
+		i := strings.LastIndex(k, "/")
+		if why := subresourceDenied(k[:i], k[i+1:]); why != "" {
+			d.errAt(permAt("readSubresources"), "permissions.readSubresources: %s", why)
+		}
+	}
 	for _, k := range m.Permissions.Create {
 		switch {
 		case !kindKeyRe.MatchString(k):
@@ -674,7 +712,7 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 	}
 	kindsNode := resolve(field(doc, "kinds"))
 	_, keyNodes := mapKeys(kindsNode)
-	used := &usage{read: map[string]bool{}, patch: map[string]bool{}, subresources: map[string]bool{}, create: map[string]bool{}, commands: map[string]bool{}}
+	used := &usage{read: map[string]bool{}, patch: map[string]bool{}, subresources: map[string]bool{}, create: map[string]bool{}, commands: map[string]bool{}, readSubresources: map[string]bool{}}
 	for _, key := range m.KindOrder {
 		k := m.Kinds[key]
 		kn := keyNodes[key]
@@ -732,6 +770,14 @@ func (m *Manifest) validate(d *decoder, doc *yaml.Node) {
 		if !used.subresources[k] {
 			d.warnAt(permAt("subresources"), "permissions.subresources: %s is declared but no subresource action calls it", k)
 		}
+	}
+	for _, k := range m.Permissions.ReadSubresources {
+		if !used.readSubresources[k] {
+			d.warnAt(permAt("readSubresources"), "permissions.readSubresources: %s is declared but no kind's subresources read it", k)
+		}
+	}
+	if len(m.Permissions.ReadSubresources) > 0 && !versionAtLeast(m.MinAppVersion, readSubresourcesVersion) {
+		d.warnAt(permAt("readSubresources"), "the subresources data source needs k8sman ≥ %s: set minAppVersion: %q so older apps say so instead of failing to load", readSubresourcesVersion, readSubresourcesVersion)
 	}
 	for _, k := range m.Permissions.Create {
 		if !used.create[k] {
@@ -817,6 +863,35 @@ func (k *Kind) validate(d *decoder, m *Manifest, key string, n *yaml.Node, used 
 			d.errAt(mn, "metrics.%s: metrics need permissions.prometheus: true", name)
 		}
 		used.prometheus = true
+	}
+	subNode := resolve(field(n, "subresources"))
+	for _, name := range slices.Sorted(maps.Keys(k.Subresources)) {
+		sr := k.Subresources[name]
+		sn := orNode(resolve(field(subNode, name)), subNode)
+		if !identRe.MatchString(name) {
+			d.errAt(sn, "subresources name %q must be a CEL identifier", name)
+		}
+		if key == "*" {
+			d.errAt(sn, `subresources.%s: subresources belong to a kind, not to "*"`, name)
+			continue
+		}
+		perm := key + "/" + sr.Name
+		switch {
+		case !subresourceNameRe.MatchString(sr.Name):
+			d.errAt(orNode(resolve(field(sn, "name")), sn), "subresources.%s: name is required: the subresource, lower-case letters, digits and dashes, e.g. guestosinfo", name)
+		case subresourceDenied(key, sr.Name) != "":
+			d.errAt(sn, "subresources.%s: %s", name, subresourceDenied(key, sr.Name))
+		case !slices.Contains(m.Permissions.ReadSubresources, perm):
+			d.errAt(sn, "subresources.%s: %s is not in permissions.readSubresources", name, perm)
+		default:
+			used.readSubresources[perm] = true
+		}
+		if sr.Group != "" && !apiGroupRe.MatchString(sr.Group) {
+			d.errAt(orNode(resolve(field(sn, "group")), sn), "subresources.%s: group must be an API group such as subresources.kubevirt.io", name)
+		}
+		if sr.Version != "" && !apiVersionRe.MatchString(sr.Version) {
+			d.errAt(orNode(resolve(field(sn, "version")), sn), "subresources.%s: version must be an API version such as v1", name)
+		}
 	}
 	alertsNode := resolve(field(n, "alerts"))
 	alertIDs := map[string]bool{}
@@ -1234,7 +1309,7 @@ func (b *Block) validate(d *decoder, n *yaml.Node) {
 	case "bar":
 		need(b.Value.IsSet() && b.Max.IsSet(), "value and max")
 		if b.Format != "" && !slices.Contains(barFormats, b.Format) {
-			d.errAt(resolve(field(n, "format")), "format must be number, quantity or percent")
+			d.errAt(resolve(field(n, "format")), "format must be number, quantity, bytes or percent")
 		}
 	case "code":
 		need(b.Value.IsSet(), "value")

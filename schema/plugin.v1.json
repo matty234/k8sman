@@ -541,6 +541,7 @@
           "enum": [
             "number",
             "quantity",
+            "bytes",
             "percent"
           ],
           "type": "string"
@@ -950,6 +951,16 @@
           ],
           "description": "The kind's part of the plugin's status line in Settings ▸ Integrations: its object count and counts of objects matching CEL predicates."
         },
+        "subresources": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SubresourceRead"
+          },
+          "description": "GET subresources of the object for panels, read as subresources.\u003cname\u003e (absent when the call fails). Since 0.2.22 (set minAppVersion).",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "type": "object"
+        },
         "templates": {
           "description": "Starting points for the resource editor's create mode (not for \"*\"). Need no permissions.",
           "items": {
@@ -1102,6 +1113,14 @@
           "description": "Kinds the plugin reads: its own and related ones. Secrets: names and keys only.",
           "items": {
             "pattern": "^(\\*|[a-z0-9.-]*/[A-Z][A-Za-z0-9]*)$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "readSubresources": {
+          "description": "GET subresources a kind's subresources may read: kind key + \"/\" + subresource, e.g. kubevirt.io/VirtualMachineInstance/guestosinfo. Since 0.2.22 (set minAppVersion).",
+          "items": {
+            "pattern": "^[a-z0-9.-]*/[A-Z][A-Za-z0-9]*/[a-z][a-z0-9-]*$",
             "type": "string"
           },
           "type": "array"
@@ -1403,6 +1422,32 @@
         },
         "version": {
           "description": "Its API version (default: the object's).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "SubresourceRead": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "description": "The API group serving it (default: the object's), e.g. subresources.kubevirt.io.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The subresource, e.g. guestosinfo; kind key + \"/\" + name must be in permissions.readSubresources.",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "version": {
+          "description": "Its API version (default: the object's).",
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression. bool: make the call only when true (e.g. the VMI is running). Can't read now, related, metrics or subresources.",
           "type": "string"
         }
       },

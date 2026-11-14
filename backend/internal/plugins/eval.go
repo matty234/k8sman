@@ -167,8 +167,8 @@ type PanelOut struct {
 	// the cluster doesn't serve, a forbidden list, no Prometheus).
 	Notes []string `json:"notes,omitempty"`
 	// Refresh is how often (seconds) the UI should render the panel again
-	// while it is open, when it reads related objects (5), metrics (15) or
-	// now (30); 0 = only when the object changes.
+	// while it is open, when it reads related objects (5), metrics or
+	// subresources (15) or now (30); 0 = only when the object changes.
 	Refresh int `json:"refresh,omitempty"`
 }
 
@@ -609,12 +609,13 @@ func renderPanel(p *Plugin, kp *kindProgs, obj map[string]any, env Env) PanelOut
 	r.ctx = lctx
 	r.resolveRelated(kp, kp.panelRelated, env, &ns)
 	r.resolveMetrics(kp, kp.panelMetrics, env, &ns)
+	r.resolveSubresources(p, kp, kp.panelSubres, env, &ns)
 	lcancel()
 	out.Notes = ns
 	for _, need := range []struct {
 		on   bool
 		secs int
-	}{{kp.panelNow, 30}, {!kp.panelMetrics.empty(), 15}, {!kp.panelRelated.empty(), 5}} {
+	}{{kp.panelNow, 30}, {!kp.panelMetrics.empty(), 15}, {!kp.panelSubres.empty(), subresourceRefresh}, {!kp.panelRelated.empty(), 5}} {
 		if need.on {
 			out.Refresh = need.secs
 		}

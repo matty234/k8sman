@@ -50,6 +50,7 @@ type program struct {
 	vars    []string
 	related refSet
 	metrics refSet
+	subres  refSet
 	out     *cel.Type
 	// usesRow is true when the expression reads the deprecated alias `row`.
 	usesRow bool
@@ -62,6 +63,7 @@ type kindProgs struct {
 	vars     map[string]*program
 	related  []relProg // by name
 	metrics  []metricProg
+	subres   []subresProg
 	columns  []colProg
 	sections []secProg
 	tabs     []tabProg
@@ -71,6 +73,8 @@ type kindProgs struct {
 	// panelNeeds and actionNeeds are the related objects (and, for
 	// panels, metrics) their expressions read, so only those are looked up.
 	panelRelated, panelMetrics, actionRelated refSet
+	// panelSubres are the subresources panels read.
+	panelSubres refSet
 	// panelNow is whether any panel expression reads `now`.
 	panelNow bool
 	// alertMemo reuses alert results per object version (alerts.go).
@@ -132,6 +136,12 @@ type metricProg struct {
 	name   string
 	metric *Metric
 	query  *program
+}
+
+type subresProg struct {
+	name string
+	sr   *SubresourceRead
+	when *program
 }
 
 type alertProg struct {
@@ -267,7 +277,7 @@ func (c *compiler) compile(e Expr, env *cel.Env, want *cel.Type, limit uint64) *
 		return nil
 	}
 	root := parsed.NativeRep().Expr()
-	p := &program{expr: e, vars: vars, out: out, related: scanRefs(root, varRelated), metrics: scanRefs(root, varMetrics)}
+	p := &program{expr: e, vars: vars, out: out, related: scanRefs(root, varRelated), metrics: scanRefs(root, varMetrics), subres: scanRefs(root, varSubres)}
 	ast.PreOrderVisit(a.NativeRep().Expr(), ast.NewExprVisitor(func(x ast.Expr) {
 		if x.Kind() == ast.IdentKind && x.AsIdent() == varNow {
 			p.usesNow = true
@@ -300,6 +310,9 @@ func (c *compiler) restrict(e Expr, env *cel.Env, want *cel.Type, limit uint64, 
 		bad = "related"
 	case !allowMetrics && !met.empty():
 		bad = "metrics"
+	case !c.kp.subRefs(p).empty():
+		// Panels compile without restrict: everywhere else is refused.
+		bad = varSubres
 	case noNow && now:
 		bad = "now"
 	}
@@ -327,6 +340,8 @@ func directly(p *program, what string) bool {
 		return !p.related.empty()
 	case varMetrics:
 		return !p.metrics.empty()
+	case varSubres:
+		return !p.subres.empty()
 	}
 	return p.usesNow
 }
@@ -449,6 +464,11 @@ func compileKind(d *decoder, key string, k *Kind) (*kindProgs, []Diag) {
 		kp.metrics = append(kp.metrics, metricProg{name: name, metric: &m,
 			query: c.restrict(m.Query, env, cel.StringType, panelCostLimit, "metric queries", false, false, true)})
 	}
+	for _, name := range sortedKeys(k.Subresources) {
+		sr := k.Subresources[name]
+		kp.subres = append(kp.subres, subresProg{name: name, sr: &sr,
+			when: c.restrict(sr.When, env, cel.BoolType, panelCostLimit, "subresource lookups", false, false, true)})
+	}
 	for i := range k.Columns {
 		col := &k.Columns[i]
 		if p := c.restrict(col.Value, env, nil, columnCostLimit, "columns", false, false, false); p != nil {
@@ -541,6 +561,7 @@ func (kp *kindProgs) needs() {
 		rel, met, now := kp.refs(p)
 		kp.panelRelated.add(rel)
 		kp.panelMetrics.add(met)
+		kp.panelSubres.add(kp.subRefs(p))
 		kp.panelNow = kp.panelNow || now
 	}
 	sections := func(secs []secProg) {
@@ -600,6 +621,25 @@ func (kp *kindProgs) refs(p *program) (rel, met refSet, now bool) {
 	}
 	walk(p)
 	return rel, met, now
+}
+
+// subRefs is what p reads of subresources, directly or through variables.
+func (kp *kindProgs) subRefs(p *program) (out refSet) {
+	seen := map[string]bool{}
+	var walk func(p *program)
+	walk = func(p *program) {
+		out.add(p.subres)
+		for _, v := range p.vars {
+			if !seen[v] {
+				seen[v] = true
+				if vp := kp.vars[v]; vp != nil {
+					walk(vp)
+				}
+			}
+		}
+	}
+	walk(p)
+	return out
 }
 
 func (c *compiler) compileBlock(b *Block) blockProg {

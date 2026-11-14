@@ -132,6 +132,13 @@ class PluginPanelCache extends ChangeNotifier {
     return e.data;
   }
 
+  /// Whether [ctx]'s first answer is still on its way (asked, neither data
+  /// nor an error yet). False for an object no plugin view has asked about.
+  bool loading(PanelContext ctx) {
+    final e = _entries[_id(ctx)];
+    return e != null && e.fetchedFor != null && e.data == null && e.error == null;
+  }
+
   /// The last fetch's error for [ctx], if it failed before any answer.
   Object? errorOf(PanelContext ctx) => _entries[_id(ctx)]?.error;
 

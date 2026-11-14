@@ -136,7 +136,7 @@ func permissionsHash(id string, perm Permissions) string {
 	// Fields added later are omitempty, so they leave the hashes of
 	// plugins that don't use them as they were.
 	norm := Permissions{Read: sorted(perm.Read), Patch: sorted(perm.Patch), Commands: sorted(perm.Commands), Prometheus: perm.Prometheus,
-		Subresources: sorted(perm.Subresources), Create: sorted(perm.Create)}
+		Subresources: sorted(perm.Subresources), Create: sorted(perm.Create), ReadSubresources: sorted(perm.ReadSubresources)}
 	b, _ := json.Marshal(struct {
 		ID string
 		P  Permissions

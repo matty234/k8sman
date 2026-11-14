@@ -444,6 +444,7 @@ Future<bool?> showPluginConsent(BuildContext context, PluginInfo p, {bool instal
           const SizedBox(height: 10),
           line(Icons.visibility_outlined, 'Read', reads.isEmpty ? 'nothing' : reads.join(', ')),
           if (perms.prometheus) line(Icons.insights_outlined, 'Query', 'Prometheus (through the Prometheus integration)'),
+          if (perms.readSubresources.isNotEmpty) line(Icons.visibility_outlined, 'Read', perms.readSubresources.map(_subresourceName).join(', ')),
           line(Icons.terminal, 'Run on this computer', perms.commands.isEmpty ? 'nothing' : perms.commands.join(', ')),
           line(Icons.edit_outlined, 'Change', perms.patch.isEmpty ? 'nothing' : '${perms.patch.map(_kindName).join(', ')} (with your confirmation)'),
           if (perms.subresources.isNotEmpty)

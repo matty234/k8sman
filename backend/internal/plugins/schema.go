@@ -48,6 +48,8 @@ var schemaRequired = map[string][]string{
 	"Status":      {"label"},
 	"StatusCount": {"label", "when"},
 	"Template":    {"name", "yaml"},
+	// Since 0.2.22.
+	"SubresourceRead": {"name"},
 }
 
 // severitySchema is a severity expression's: CEL returning a name of
@@ -165,6 +167,14 @@ func schemaField() map[string]map[string]any {
 		"Input.name":           {"pattern": identRe.String()},
 		"Input.type":           enum(inputTypes),
 		"Input.options":        {"description": "The choices of an enum input."},
+		// The subresources data source, since 0.2.22.
+		"Permissions.readSubresources": {"items": map[string]any{"type": "string", "pattern": subresourcePermRe.String()},
+			"description": `GET subresources a kind's subresources may read: kind key + "/" + subresource, e.g. kubevirt.io/VirtualMachineInstance/guestosinfo. Since 0.2.22 (set minAppVersion).`},
+		"Kind.subresources":       {"propertyNames": map[string]any{"pattern": identRe.String()}, "description": "GET subresources of the object for panels, read as subresources.<name> (absent when the call fails). Since 0.2.22 (set minAppVersion)."},
+		"SubresourceRead.name":    {"pattern": subresourceNameRe.String(), "description": `The subresource, e.g. guestosinfo; kind key + "/" + name must be in permissions.readSubresources.`},
+		"SubresourceRead.group":   {"description": "The API group serving it (default: the object's), e.g. subresources.kubevirt.io."},
+		"SubresourceRead.version": {"description": "Its API version (default: the object's)."},
+		"SubresourceRead.when":    {"description": "bool: make the call only when true (e.g. the VMI is running). Can't read now, related, metrics or subresources."},
 	}
 }
 

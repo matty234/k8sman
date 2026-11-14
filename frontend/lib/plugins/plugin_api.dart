@@ -151,8 +151,11 @@ class PluginPermissions {
   /// and kinds create actions may create.
   final List<String> subresources;
   final List<String> create;
+
+  /// Subresources panels may read (GET, `group/Kind/subresource`, since 0.2.22).
+  final List<String> readSubresources;
   const PluginPermissions(
-      {this.read = const [], this.patch = const [], this.commands = const [], this.prometheus = false, this.subresources = const [], this.create = const []});
+      {this.read = const [], this.patch = const [], this.commands = const [], this.prometheus = false, this.subresources = const [], this.create = const [], this.readSubresources = const []});
 
   /// Whether the plugin may change anything in the cluster.
   bool get writes => patch.isNotEmpty || subresources.isNotEmpty || create.isNotEmpty;
@@ -164,6 +167,7 @@ class PluginPermissions {
         prometheus: j['prometheus'] == true,
         subresources: [for (final x in (j['subresources'] as List? ?? const [])) '$x'],
         create: [for (final x in (j['create'] as List? ?? const [])) '$x'],
+        readSubresources: [for (final x in (j['readSubresources'] as List? ?? const [])) '$x'],
       );
 }
 

@@ -390,6 +390,17 @@ class _PluginTableState extends State<PluginTable> {
   }
 }
 
+/// [x] with an SI suffix (k, M, G, T, P): 34285264900 → 34.3G.
+String _si(double x) {
+  const units = ['', 'k', 'M', 'G', 'T', 'P'];
+  var i = 0;
+  while (x.abs() >= 1000 && i < units.length - 1) {
+    x /= 1000;
+    i++;
+  }
+  return i == 0 ? _text(x) : '${x.toStringAsFixed(1)}${units[i]}';
+}
+
 /// A bar block: value of max, amber from 80% and red from 90%.
 class _Bar extends StatelessWidget {
   final Json block;
@@ -406,7 +417,8 @@ class _Bar extends StatelessWidget {
     final sev = pct >= 90 ? Severity.error : (pct >= 80 ? Severity.warn : Severity.ok);
     String fmt(double x) => switch (block['format']) {
           'percent' => '${x.toStringAsFixed(0)}%',
-          'quantity' => x >= 1000 ? '${(x / 1000).toStringAsFixed(1)}k' : _text(x),
+          'quantity' => _si(x),
+          'bytes' => formatBytes(x),
           _ => _text(double.parse(x.toStringAsFixed(2))),
         };
     return Row(children: [

@@ -195,6 +195,65 @@ query, and empty (with a note) without Prometheus. Lookup expressions
 `related` or `metrics`. Map keys come out in no particular order: sort a
 list made from them (`related.secret.?data.orValue({}).map(k, k).sort()`).
 
+### Subresource data
+
+*Since 0.2.22: set `minAppVersion: 0.2.22` (older apps reject the fields).*
+A kind's `subresources` are GETs of one of the object's subresources, read
+in panels as `subresources.<name>`: the JSON the API server answers. They
+are what KubeVirt serves about a running guest through its guest agent
+(`guestosinfo`, `filesystemlist`, `userlist`). Each needs
+`kind key/subresource` in `permissions.readSubresources`, a list of its own
+(reading a subresource never lets an action call it, nor the other way
+round):
+
+```yaml
+minAppVersion: 0.2.22
+permissions:
+  read: [kubevirt.io/VirtualMachineInstance]
+  readSubresources: [kubevirt.io/VirtualMachineInstance/filesystemlist]
+kinds:
+  kubevirt.io/VirtualMachineInstance:
+    subresources:
+      filesystems:                   # subresources.filesystems
+        name: filesystemlist         # GET /apis/subresources.kubevirt.io/v1/namespaces/{ns}/virtualmachineinstances/{name}/filesystemlist
+        group: subresources.kubevirt.io
+        version: v1
+        when: object.status.?phase.orValue("") == "Running"
+    panel:
+      sections:
+        - title: Guest filesystems
+          when: has(subresources.filesystems)
+          blocks:
+            - type: table
+              rows: subresources.filesystems.?items.orValue([])
+              columns:
+                - {name: Mount, value: item.mountPoint, mono: true}
+                - {name: Type, value: item.fileSystemType}
+                - {name: Used, value: 'string(item.usedBytes / 1073741824) + " GiB"'}
+                - {name: Free, value: 'string((item.totalBytes - item.usedBytes) / 1073741824) + " GiB"'}
+                - {name: Use, value: 'item.totalBytes > 0 ? string(item.usedBytes * 100 / item.totalBytes) + "%" : ""'}
+```
+
+`group` and `version` default to the object's; the path is built as for
+[subresource actions](#subresource-and-create-actions). The call is made
+with your credentials, on read-only contexts too (it only reads), only
+when a panel expression mentions `subresources.<name>` and its `when`
+holds (`when` can't read `now`, `related`, `metrics` or `subresources`).
+Whole numbers in the answer are ints, as in objects.
+
+A subresource call can be slow or fail (a VM without a guest agent, a
+forbidden call): calls get a few seconds together, and one that fails or
+times out leaves `subresources.<name>` **absent**, with a one-line note
+above the plugin's sections; the rest of the panel renders. Guard what
+reads it with `has(subresources.x)` (a section's or block's `when`) or
+`subresources.?x`. Answers and failures are reused for 10 seconds, and an
+open panel that reads subresources renders again every 15 seconds.
+`subresources` is for panels only: in columns, alerts, status counts and
+actions (also through a variable) it is a load error. Like subresource
+actions, it never reaches `exec`, `attach`, `portforward`, `proxy`, `log`
+and the other denied subresources, nor any subresource of Secrets and
+ServiceAccounts, and it belongs to a kind, not to `"*"`.
+
 ### Patch actions
 
 A patch action changes the object it is offered for, through the app's own
@@ -555,7 +614,7 @@ the shared fields (`panel: &issuerPanel`) instead and give each kind its own
 my-plugin/
   plugin.yaml
   fixtures/
-    test.yaml                now, context, readOnly, metric answers
+    test.yaml                now, context, readOnly, metric and subresource answers
     certificate-ready.yaml   first document: the object; the rest: what related lookups see
     __snapshots__/
       certificate-ready.yaml written by plugin test --update
@@ -570,7 +629,14 @@ readOnly: false               # true: actions are hidden, as in the app
 metrics:                      # query string → samples; without it there is no Prometheus
   'certmanager_certificate_expiration_timestamp_seconds{namespace="default", name="web-tls"}':
     - {labels: {name: web-tls}, value: 1774915200}
+subresources:                 # since 0.2.22: what subresource GETs answer, by
+  default/fedora/filesystemlist:   # namespace/name/subresource, name/subresource or subresource
+    items:
+      - {mountPoint: /, fileSystemType: ext4, usedBytes: 2147483648, totalBytes: 10737418240}
 ```
+
+A subresource call with no answer in `subresources` fails, as one without
+a guest agent does, so a fixture can show both.
 
 Capture objects with **Copy YAML** or `kubectl get -o yaml`, and remove
 what shouldn't be committed. `k8sman-server plugin test <folder>` renders
@@ -817,6 +883,7 @@ share a definition (or one field of it).
 | `variables` | map of name → **CEL** | named values, `variables.<name>`; evaluated lazily, at most once per evaluation |
 | `related` | map of name → Related | §6 |
 | `metrics` | map of name → Metric | §6 |
+| `subresources` | map of name → `{name, group, version, when}` | since 0.2.22; GET subresources for panels ([Subresource data](#subresource-data)); not on `"*"` |
 | `columns` | list of Column | |
 | `hideColumns` | list of string | default columns to drop (by name, any case); `"*"`: all but Name, Namespace and Age |
 | `panel` | `{generic, sections: [Section], tabs: [Tab]}` | §4; `generic`: `keep` (default), `collapse` or `replace` |
@@ -1319,7 +1386,7 @@ only host tab in v1; more may be added later).
 | `links` | `ResourceLink` list | `items` **CEL**: a list of Refs; `empty` (text) |
 | `table` | compact table | `rows` **CEL** list; `columns`: list of `{name, value` **CEL** (sees `item`)`, type, link, mono: bool, detail: bool, severity` **CEL** (sees `item`)`}`; `sortBy` (column name), `descending`, `limit` (default 20, "Show all" beyond), `empty` (text). A `detail` column is drawn on its own line under its row, across the table |
 | `settings` | `KeyValueTable` | `value` **CEL**: a map of any depth, flattened into sorted `path → value` rows; `limit` (default 14, at most 50; "and N more" beyond), `empty` (text). See below |
-| `bar` | `UsageBar` | `label`, `value` **CEL** number, `max` **CEL** number, `format`: `number`, `quantity` or `percent`; amber from 80%, red from 90% |
+| `bar` | `UsageBar` | `label`, `value` **CEL** number, `max` **CEL** number, `format`: `number`, `quantity` (SI: 34.4G), `bytes` (binary: 32 GiB) or `percent`; amber from 80%, red from 90% |
 | `code` | `CodeBlock` | `value` **CEL**: a string, or any value, shown as YAML (JSON with `language: json`); `language`: `text`, `yaml`, `json` or `shell` |
 | `json` | `JsonTree` | `value` **CEL**, any value |
 | `message` | `InlineMessage` / `Callout` | `text` **CEL** string, `severity`: `info`, `warning` or `error`; `title` **CEL** string, optional: a warning or error with a title is a callout headed by it, the text under it |
@@ -1474,6 +1541,7 @@ must still have one type; use `dyn()` to mix (as in the Karpenter column).
 | `ns` | `string`: the object's namespace, `""` if cluster-scoped (not `namespace`: that is a reserved word in CEL and can't name a variable) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `related` | `map(string, dyn)` | | | ✓ | ✓ | |
 | `metrics` | `map(string, list(dyn))` | | | ✓ | | |
+| `subresources` | `map(string, dyn)`, since 0.2.22 | | | ✓ | | |
 | `item` | `dyn` (a map for a related filter) | | | `table` columns: the row | | a related `filter`: the candidate |
 | `row` | `dyn` | | | `table` columns | | |
 | `input` | `map(string, dyn)` | | | | patch `body`, `validate` | |
@@ -1563,6 +1631,14 @@ note in the section).
         query: '"certmanager_certificate_expiration_timestamp_seconds{namespace=" + promQuote(ns) + ", name=" + promQuote(object.metadata.name) + "}"'
 ```
 
+**Subresources** (panels only, since 0.2.22): `subresources: {name:
+{name: subresource, group?, version?, when?: CEL bool}}`, a GET of the
+object's subresource with the user's credentials, each in
+`permissions.readSubresources`. `subresources.<name>` is the JSON answer,
+absent (with a note) when the call fails or takes too long (a few seconds
+for a render's calls together); answers and errors are cached for 10 s per
+path. See [Subresource data](#subresource-data).
+
 **Permissions** in `plugin.yaml`:
 
 | Field | Type | Grants |
@@ -1573,6 +1649,7 @@ note in the section).
 | `prometheus` | bool | PromQL queries |
 | `subresources` | list of `group/Kind/subresource` | subresource actions calling these (since 0.2.20; never the denied subresources, nor on Secrets or ServiceAccounts) |
 | `create` | list of kind keys | create actions creating these (since 0.2.20; never Secrets, ServiceAccounts, RBAC or admission kinds) |
+| `readSubresources` | list of `group/Kind/subresource` | a kind's `subresources` GETting these, for panels (since 0.2.22; the same subresources and kinds are denied as for `subresources`) |
 
 The loader checks both ways: anything used must be declared (load error),
 anything declared but unused is a warning. Declared rather than inferred so

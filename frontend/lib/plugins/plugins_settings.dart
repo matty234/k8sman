@@ -401,6 +401,7 @@ class PluginRow extends StatelessWidget {
       Expanded(
         child: Text(
           'Reads ${perms.read.isEmpty ? 'nothing' : perms.read.map((k) => k == '*' ? 'every object you inspect' : k).join(', ')}. Runs ${perms.commands.isEmpty ? 'nothing' : perms.commands.join(', ')} on this computer.'
+          '${perms.readSubresources.isEmpty ? '' : ' Reads ${perms.readSubresources.join(', ')}.'}'
           '${perms.patch.isEmpty ? '' : ' Changes ${perms.patch.join(', ')}.'}'
           '${perms.subresources.isEmpty ? '' : ' Calls ${perms.subresources.join(', ')}.'}'
           '${perms.create.isEmpty ? '' : ' Creates ${perms.create.join(', ')}.'}',

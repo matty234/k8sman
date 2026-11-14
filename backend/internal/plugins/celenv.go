@@ -28,7 +28,7 @@ import (
 // when the kind entry is compiled, and evaluated lazily), now, context, ns
 // (the object's namespace; `namespace` is a reserved word in CEL, so the
 // variable can't have that name),
-// related and metrics (declared everywhere so they type-check; the
+// related, metrics and subresources (declared everywhere so they type-check; the
 // compiler refuses them where they aren't available, see refs), item in
 // table block columns and related filters (row is a deprecated alias in
 // columns), and input in patch bodies and input checks.
@@ -46,6 +46,7 @@ const (
 	varRow       = "row"
 	varRelated   = "related"
 	varMetrics   = "metrics"
+	varSubres    = "subresources"
 	varInput     = "input"
 	varItem      = "item"
 )
@@ -83,6 +84,7 @@ func envOptions() []cel.EnvOption {
 		cel.Variable(varNS, cel.StringType),
 		cel.Variable(varRelated, cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable(varMetrics, cel.MapType(cel.StringType, cel.ListType(cel.DynType))),
+		cel.Variable(varSubres, cel.MapType(cel.StringType, cel.DynType)),
 		cel.Macros(
 			parser.NewGlobalMacro("age", 1, nowMacro("_age")),
 			parser.NewGlobalMacro("until", 1, nowMacro("_until")),
@@ -382,7 +384,9 @@ type activation struct {
 	// the compiler keeps them out of columns and alerts).
 	related map[string]any
 	metrics map[string]any
-	input   map[string]any
+	// subresources are set for panels (nil elsewhere).
+	subresources map[string]any
+	input        map[string]any
 }
 
 func (a *activation) ResolveName(name string) (any, bool) {
@@ -403,6 +407,8 @@ func (a *activation) ResolveName(name string) (any, bool) {
 		return a.related, a.related != nil
 	case varMetrics:
 		return a.metrics, a.metrics != nil
+	case varSubres:
+		return a.subresources, a.subresources != nil
 	case varInput:
 		return a.input, a.input != nil
 	}
