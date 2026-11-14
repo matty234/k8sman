@@ -8,6 +8,8 @@ import 'package:xterm/xterm.dart';
 import '../../api/client.dart';
 import '../../state/dock_tab.dart';
 import 'exec_protocol.dart';
+import 'mouse_fix.dart';
+import 'xterm_fixes.dart';
 import 'sgr_filter.dart';
 
 enum TerminalPhase {
@@ -76,7 +78,7 @@ class TerminalTab extends DockTab {
 
   TerminalTab({required this.transport, required ExecRequest request, int? scrollback}) : _request = request {
     container = request.container;
-    terminal = Terminal(maxLines: scrollback ?? TerminalSettings.scrollback, platform: terminalPlatform);
+    terminal = FixedTerminal(maxLines: scrollback ?? TerminalSettings.scrollback, platform: terminalPlatform, mouseHandler: const WheelFixMouseHandler());
     terminal.onOutput = _onTerminalInput;
     terminal.onResize = (w, h, _, _) => _conn?.resize(w, h);
     controller.addListener(notifyListeners); // selection → copy button state
