@@ -67,6 +67,11 @@ class ExecRequest {
   /// The serial console of VMI [name] (a VM's console is its VMI's).
   const ExecRequest.vmConsole({required String namespace, required String name}) : this(namespace: namespace, pod: name, console: true, title: 'console: $name');
 
+  /// Claude Code in a local shell, with the k8sman MCP server for this
+  /// session, started on [prompt] (`?claude=1&prompt=`). The backend
+  /// builds the command; [plugin] carries the query.
+  ExecRequest.claudeCode({String prompt = ''}) : this(namespace: '', pod: '', local: true, plugin: {'claude': '1', if (prompt.isNotEmpty) 'prompt': prompt}, title: 'Claude Code');
+
   /// A plugin's shell action on this machine (see [plugin]).
   const ExecRequest.pluginAction(Map<String, String> query, {required String title}) : this(namespace: '', pod: '', local: true, plugin: query, title: title);
 

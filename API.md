@@ -49,6 +49,46 @@ curl -H "Authorization: Bearer $(cat ~/.config/k8sman/dev-token)" http://127.0.0
 
 The `--pprof` listener applies the same checks.
 
+## Claude Code (MCP)
+
+`k8sman-server mcp` is a stdio MCP server (`backend/internal/mcpserver`)
+that Claude Code starts once it's registered with
+`claude mcp add --scope user k8sman -- <path to k8sman-server> mcp`. It
+reads the cluster through the running app, on the context the app shows,
+with tools `cluster_info`, `list_problems` (the overview's issues and top
+Warning events), `list_resource_types`, `list_resources` (the kind's
+k8sman columns), `get_resource` (YAML), `get_events` and `get_logs`, and
+for the Security page `list_security_findings`, `get_security_finding`
+and `ignore_security_findings` (ids, scope `finding`/`namespace`/
+`everywhere` like the Ignore dialog, and a required reason). The Security
+page's "Ask Claude" (per finding, per category, or a selection) opens a
+Claude Code tab with the findings' ids in the prompt.
+
+While Settings ▸ General ▸ Claude Code is on, the server makes a second
+per-launch token and writes it with its address to `mcp.json` next to
+settings.json (mode 0600; `{addr, token, pid}`). The MCP server reads the
+file on every call, so it keeps working after the app relaunches. Turning
+the setting off or quitting removes the file and revokes the token. That
+token passes the same Host, Origin and Content-Type checks, and then only
+allows plain GETs (no WebSocket upgrades, so no exec, shells, logs streams
+or watches) of `/api/health`, `/api/namespaces`, `/api/resources`,
+`/api/table`, `/api/items`, `/api/object`, `/api/events`, `/api/owned`,
+`/api/overview`, `/api/logs/text` and `/api/security`, never with
+`resource=secrets` in the core group, plus one write: `POST
+/api/security/ignores`. Anything else → 403 (`ClaudeCodeReadOnly`).
+
+**Claude Code tabs.** `WS /api/local-shell?claude=1[&prompt=]` (refused
+while the setting is off; prompt at most 5000 characters) runs, in the
+user's login shell, `claude [prompt] --mcp-config <k8sman server>`: the
+MCP server for that session only, nothing added to the user's Claude Code
+config, the prompt typed in but not sent. The backend builds the command
+and passes the prompt as an environment variable, so it's never parsed by
+the shell. When Claude Code exits the tab stays open as a normal shell (or
+says Claude Code isn't installed). It opens in the chosen folder, else
+`claude/` next to settings.json, which gets a CLAUDE.md about k8sman when
+it has none. `kubectl` there targets the app's context as in any local
+shell, with the user's own credentials.
+
 If no kubeconfig can be loaded at startup the server still runs, disconnected:
 cluster endpoints return 503 (`reason: "NoKubeconfig"`), while `/api/health`,
 `/api/contexts`, `/api/kubeconfigs*`, `/api/settings/*` and `/api/portforwards*` keep working so
@@ -78,6 +118,7 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | GET/PUT/DELETE | `/api/columns` | read `{columns, isDefault, defaults}`, save `{columns}`, or reset the user's column override |
 | GET/PUT/DELETE | `/api/settings/sidebar` | the sidebar's top section, persisted in settings.json: read `{sidebar: {items} \| null}` (null = app default), save `{items}`, or reset. Each item is a page `{view, hidden?}` (hidden pages fold under "More") or a pinned kind `{group, kind, namespace?}` (keyed by group/kind, applies across clusters). Works without a cluster connection |
 | GET/PUT | `/api/settings/links` | which form the app's Copy link produces, in settings.json: read or save `{appLinks: bool}` (false = `https://k8sman.dev/o/?…`, true = `k8sman://open?…`). Works without a cluster connection |
+| GET/PUT | `/api/settings/mcp` | Claude Code access, in settings.json's `claudeCodeMcp` (off by default): read `{enabled, folder, defaultFolder, command, addCommand}` (`command` is `[<this binary>, "mcp"]`, `addCommand` the `claude mcp add` line to register it; `folder` is where Claude Code tabs open, `""` = `defaultFolder`); save `{enabled?, folder?}` (`folder` must be an existing absolute or `~/` path, `""` = the default), answering the same shape. See [Claude Code (MCP)](#claude-code-mcp). Works without a cluster connection |
 | GET/PUT | `/api/settings/link-clusters` | remembered "Always open links for this cluster here" choices, in settings.json as `linkClusterMap`: read `{linkClusterMap: {fingerprint: context}}`; save one with `{fingerprint, context}` (`context: ""` removes it). `fingerprint` must match `^[0-9a-f]{12}$`; `context` is at most 253 characters with no control characters (it need not exist). 204 on success. Works without a cluster connection |
 | PUT | `/api/settings/readonly` | lock or unlock a kube context: `{context, readOnly: true \| false \| null}` (null = automatic: read-only when the name looks like production). Returns `{context, readOnly, readOnlyReason}`. `GET /api/health` reports the current context's `readOnly` and `readOnlyReason` (`flag`, `context` or `auto`); `GET /api/contexts` adds `readOnly: {context: reason}` |
 | GET | `/api/settings/views` | saved views (see [Saved views](#saved-views)): `{views: [View], launchView, kubeconfigKeys: {path: key}}`. Works without a cluster connection |
@@ -92,7 +133,8 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | GET/PUT | `/api/settings/allowed-namespaces[?context=]` | the only namespaces a kube context shows, in settings.json's `allowedNamespaces`. Same shapes and limits as `/api/settings/namespaces` (`[]` removes the restriction). While set, reads of all namespaces (`/api/table`, `/api/items`, `/api/watch`, `/api/overview`, `/api/security`, `/api/metrics/{pods,summary,volumes}`) fan out over these namespaces instead of listing cluster-wide, and Security reads Roles and RoleBindings in them too |
 | GET | `/api/settings/allowed-namespaces/suggest` | `{namespaces, checked, listed}`: of the namespaces known for the current context (the cluster's list when readable, plus added, starred, allowed and the kubeconfig's; at most 500), those where the credentials may list pods (SelfSubjectAccessReview). Saves nothing |
 | GET/PUT | `/api/settings/default-namespace[?context=]` | where a kube context opens, in settings.json's `defaultNamespace` (`{"<context>": {fromKubeconfig?, namespaces?}}`). Read `{context, mode, namespaces}` with mode `all` (the default), `kubeconfig` or `namespaces`; save `{context?, mode, namespaces?}`, 204 |
-| GET/PUT | `/api/settings/security-ignores[?context=]` | findings the user ignores on the Security page, per kube context (default: the current one), in settings.json's `securityIgnores` (`{"<context>": [rule]}`; absent in older files). Read `{context, ignores: [rule]}`; save `{context?, ignores: [rule]}` (replaces the list; `[]` clears it, at most 500), 204. A rule is `{check, namespace?, kind?, name?, reason?, at?}` (`at` RFC3339, filled in when empty; kind and name come together). Three scopes: `check` alone ignores that check everywhere, plus `namespace` in one namespace, plus `kind` and `name` one target object (with `namespace` the object's). A finding is ignored by object rules only when every one of its objects is covered. Applied by `GET /api/security` (see `ignored`). Local settings only, so allowed in read-only mode |
+| POST | `/api/security/ignores` | adds `{rules: [rule]}` to the current context's ignore rules (one for the same target replaces the old), `{context, added}`. The one write the Claude Code token may make; its rules get `by: "claude"` |
+| GET/PUT | `/api/settings/security-ignores[?context=]` | findings the user ignores on the Security page, per kube context (default: the current one), in settings.json's `securityIgnores` (`{"<context>": [rule]}`; absent in older files). Read `{context, ignores: [rule]}`; save `{context?, ignores: [rule]}` (replaces the list; `[]` clears it, at most 500), 204. A rule is `{check, namespace?, kind?, name?, reason?, at?, by?}` (`at` RFC3339, filled in when empty; kind and name come together; `by` is `"claude"` for rules Claude Code added). Three scopes: `check` alone ignores that check everywhere, plus `namespace` in one namespace, plus `kind` and `name` one target object (with `namespace` the object's). A finding is ignored by object rules only when every one of its objects is covered. Applied by `GET /api/security` (see `ignored`). Local settings only, so allowed in read-only mode |
 | GET/PUT | `/api/settings/context-appearance[?context=]` | the icon and colour a user picked for a kube context's badge (default: the current one), in settings.json's `contextAppearance` (`{"<context>": {"icon": "<id>", "color": "<id or #hex>"}}`; absent in older files). Read `{context, icon, color, all}` (`all` = every saved badge by context); save `{context?, icon, color}`, 204; both empty forgets the badge. `icon` is a stable id from the app's icon set (`[a-z0-9_]`, at most 32; unknown ids are kept and shown as the default) or `text:XY`, a 1-2 character monogram; `color` is a palette id (`blue`, `red`, ...) or `#rrggbb`; empty = default. Local settings only, so allowed in read-only mode |
 | GET/PUT | `/api/settings/modules` | integrations the user turned off, in settings.json: read or save `{disabled: [ids]}`. Ids: `argocd`, `argoworkflows`, `helm`, `gpus`, `prometheus`, `gateway`, `hubble` (backend modules) and UI-only ones (`metrics`, `addons`). A turned-off module's endpoints (`/api/argocd/*`, `/api/argowf/*`, `/api/helm/*`, `/api/gpu`, `/api/prom/*`, `/api/gateway/*`, `/api/hubble/*`) answer 404 with `reason: "ModuleDisabled"`, its actions are not offered, and the overview skips its checks. Works without a cluster connection |
 | GET/PUT | `/api/settings/modules/{id}[?context=]` | a module's own settings for a kube context (default: the current one), in settings.json's `moduleSettings`: read `{context, settings}` (`{}` when none are saved) or save a JSON object (`{}` clears). The module validates it (400 with the reason). Only modules with settings (`hubble`, `argocd`, `prometheus`); others answer 404. Modules whose settings hold a secret show a redacted form on read and merge a partial body on write (Argo CD, below). Allowed in read-only mode: it changes k8sman's settings, not the cluster |
@@ -101,6 +143,7 @@ the server's preferred version is used if omitted) and `resource` (the plural, e
 | WS | `/api/watch` | live table: `{type:"SNAPSHOT",table}`, then `{type:"ADDED"/"MODIFIED"/"DELETED",row}`, or `{type:"ERROR",error}`. With `namespaces`, `{type:"PARTIAL_ERROR", namespace, error, reason, code}` reports a namespace of the set that can't be watched (e.g. Forbidden) while the socket stays open for the others. Re-lists and sends a fresh SNAPSHOT when the watch expires. To watch a single object, use `fieldSelector=metadata.name=X&includeObject=true`. `columns=<JSON array>` renders the rows through those columns instead of the kind's (a saved view's own columns; invalid queries are a 400). With `batch=true` the server may also send `{type:"BATCH",events:[{type,row},…]}`: deltas from a ~75ms window, in order (apply all, then redraw once). See [Shared watches](#shared-watches) |
 | WS | `/api/logs` | `namespace`, `pod`, `container`, `tailLines` (default 500, `-1` = all), `previous`, `timestamps`, `sinceSeconds`, `follow` (default true). Sends frames `{line}`, ending with `{eof:true}` or `{error}` |
 | WS | `/api/logs/aggregate` | merged logs of many pods. `namespace` plus one of `selector` (label selector; the pod set follows the shared pod watch) or `pods` (comma-separated names, fixed). `container`: a name, `*` for every container, or omitted for each pod's default (`kubectl.kubernetes.io/default-container`, else `main` if the pod has it, else the first). `tailLines` (per stream, default 200, `-1` = all), `sinceSeconds`, `previous` (each container's previous instance; containers without one are skipped, and a `selector` pod set is read once, not followed), `follow` (default true). Streams run concurrently with timestamps and are merged by timestamp through a 250ms reorder window. Frames: a JSON **array** `[{pod,container,ts,line},…]` per ~75ms flush (`ts` is RFC3339Nano, `line` has no timestamp prefix); `{event:"added"\|"removed",pod,container}` when a stream starts or its pod goes away (pods that appear later are read from their start); `{error,pod?,container?}` for one failing stream (the session continues); `{warning}` when more than 50 pods match (the first 50 by name are streamed). Streams start once a container is running or has terminated. Closing the socket closes every stream. Allowed in read-only mode |
+| GET | `/api/logs/text` | a container's recent logs as `text/plain`, not followed: `namespace`, `pod`, `container`, `tailLines` (default 200, at most 5000), `previous`, `sinceSeconds`. Longer output keeps its last 512 KiB. Used by the Claude Code tools, which can't use WebSockets |
 
 ## Shared watches
 
@@ -347,6 +390,26 @@ Forwards with `autoStart` start when the backend launches.
 | PATCH | `/api/portforwards/{id}` | `{autoStart?, label?, localPort?, openInBrowser?, https?}` |
 | POST | `/api/portforwards/{id}/start`, `/api/portforwards/{id}/stop` | start or stop a forward |
 | DELETE | `/api/portforwards/{id}` | stop and forget a forward |
+
+## KubeVirt disk export
+
+What `virtctl vmexport download` does, natively. A job creates an
+`export.kubevirt.io/v1beta1` VirtualMachineExport of a VM or PVC (or adopts
+an existing export), waits for it to be Ready, reads the token from the
+Secret in `status.tokenSecretRef` with the user's credentials (the token is
+never logged nor returned), and downloads a volume from
+`status.links.internal` through an in-process port-forward to the export
+server's pod, over TLS trusting `status.links.internal.cert`, straight into
+a file on this machine (via `<file>.part`). It deletes an export it created
+when the download ends, fails or is cancelled, or when nothing has asked
+about the job for a minute (the export also has a 6 h `ttlDuration`).
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/vm-exports` | `{namespace, kind: VirtualMachine/PersistentVolumeClaim/VirtualMachineExport, name}` → the job. Creating an export is refused on read-only contexts |
+| GET | `/api/vm-exports/{id}` | `{id, namespace, export, created, state, phase, conditions:[{type, status, reason, message}], volumes:[{name, formats}], error, path, bytes, total}`. `state` is `waiting`, `ready`, `downloading`, `done`, `failed` or `cancelled`; `formats` are `gzip` (the default), `raw` and `tar.gz` as offered; `total` is -1 when unknown |
+| POST | `/api/vm-exports/{id}/download` | `{volume, format, path}` (an absolute path) starts the download of a `ready` job |
+| DELETE | `/api/vm-exports/{id}` | cancel, and wait for the clean-up |
 
 ## Metrics
 

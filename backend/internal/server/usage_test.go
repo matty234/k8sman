@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -145,5 +146,20 @@ func TestNoEnrichmentWithoutColumnsReadingIt(t *testing.T) {
 	}
 	if !columns.NewEvaluator(columns.Defaults(podsType, nil)).UsesEnrichment() {
 		t.Fatal("default pod columns must still enrich")
+	}
+}
+
+// A one-off row (no memo, as for shell-action variables) of a shared cached
+// object must not let gojq write to it: two at once crashed the server.
+func TestOneOffRowLeavesSharedObjectAlone(t *testing.T) {
+	cols := []columns.Column{{Name: "Replicas", Query: ".spec.replicas"}}
+	u := &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "a"}, "spec": map[string]any{"replicas": int64(2)}}}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() { newTableBuilder(cols, false).row(u) })
+	}
+	wg.Wait()
+	if _, ok := u.Object["spec"].(map[string]any)["replicas"].(int64); !ok {
+		t.Fatal("the shared object was rewritten")
 	}
 }

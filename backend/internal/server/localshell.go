@@ -201,6 +201,12 @@ func (s *Server) handleLocalShell(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if q.Get("claude") != "" && q.Get("plugin") == "" {
+		if err := s.claudeShellSpec(&spec, q.Get("prompt")); err != nil {
+			fail(err)
+			return
+		}
+	}
 	if cols, err1 := strconv.Atoi(q.Get("cols")); err1 == nil {
 		if rows, err2 := strconv.Atoi(q.Get("rows")); err2 == nil && cols > 0 && rows > 0 && cols < 1<<16 && rows < 1<<16 {
 			spec.Cols, spec.Rows = uint16(cols), uint16(rows)

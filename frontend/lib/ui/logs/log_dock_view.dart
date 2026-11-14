@@ -15,6 +15,7 @@ import '../../util/k8s.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../terminal/terminal_session.dart';
+import '../../state/app_state.dart';
 import '../terminal/open_terminal.dart';
 import '../terminal/terminal_tab.dart';
 import 'log_stream_view.dart';
@@ -170,6 +171,13 @@ class _TabStrip extends StatelessWidget {
                 icon: const Icon(Icons.add, size: 17),
                 onPressed: localShellSupported ? () => openLocalShell(context) : null,
               ),
+              if (localShellSupported && context.select<AppState?, bool>((a) => a?.claudeCode ?? false))
+                IconButton(
+                  key: const ValueKey('dock-claude-code'),
+                  tooltip: 'Claude Code (with the k8sman tools, on the current context)',
+                  icon: const Icon(Icons.auto_awesome_outlined, size: 16),
+                  onPressed: () => openClaudeCode(context),
+                ),
               if (active is LogSession && !narrow) _ActiveStatus(stream: active),
               IconButton(
                 tooltip: '${dock.collapsed ? 'Expand' : 'Collapse'} panel (${shortcutLabel('J')})',

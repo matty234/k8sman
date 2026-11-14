@@ -161,7 +161,12 @@ class SecIgnoreRule {
   final String? name;
   final String reason;
   final String at;
-  const SecIgnoreRule({required this.check, this.namespace, this.kind, this.name, this.reason = '', this.at = ''});
+
+  /// Who added it: '' the user, 'claude' Claude Code through the MCP server.
+  final String by;
+  const SecIgnoreRule({required this.check, this.namespace, this.kind, this.name, this.reason = '', this.at = '', this.by = ''});
+
+  bool get byClaude => by == 'claude';
 
   factory SecIgnoreRule.fromJson(Json j) => SecIgnoreRule(
         check: asStr(j['check']),
@@ -170,6 +175,7 @@ class SecIgnoreRule {
         name: asStr(j['name']).isEmpty ? null : asStr(j['name']),
         reason: asStr(j['reason']),
         at: asStr(j['at']),
+        by: asStr(j['by']),
       );
 
   Json toJson() => {
@@ -179,6 +185,7 @@ class SecIgnoreRule {
         if (name != null) 'name': name,
         if (reason.isNotEmpty) 'reason': reason,
         if (at.isNotEmpty) 'at': at,
+        if (by.isNotEmpty) 'by': by,
       };
 
   bool get isObject => kind != null && name != null;

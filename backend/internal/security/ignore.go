@@ -17,6 +17,15 @@ type IgnoreRule struct {
 	Name      string `json:"name,omitempty"`
 	Reason    string `json:"reason,omitempty"`
 	At        string `json:"at,omitempty"` // RFC3339
+	// By is who added the rule: "" for the user in the app, "claude" for
+	// Claude Code through the MCP server.
+	By string `json:"by,omitempty"`
+}
+
+// SameTarget reports whether r and o hide the same findings (ignoring the
+// reason, time and author).
+func (r IgnoreRule) SameTarget(o IgnoreRule) bool {
+	return r.Check == o.Check && r.Namespace == o.Namespace && r.Kind == o.Kind && r.Name == o.Name
 }
 
 // Ignoring returns the rule that ignores f, if any.

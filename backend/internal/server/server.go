@@ -57,6 +57,11 @@ type Server struct {
 	dirOnce   sync.Once
 	// pluginMetrics caches plugin metric queries (15 s per query).
 	pluginMetrics pluginMetricCache
+	// Claude Code access (mcp.go): the listen address and mcp.json path
+	// to advertise, and the read-only token while the setting is on.
+	listenAddr, mcpPath string
+	mcpMu               sync.Mutex
+	mcpToken            string
 }
 
 // Options configures optional server behaviour.
@@ -77,11 +82,15 @@ type Options struct {
 	Plugins *plugins.Host
 	// Directory is the plugin directory (nil = plugins.DirectoryFromEnv).
 	Directory *plugins.Directory
+	// ListenAddr and MCPDiscoveryPath are where Claude Code access
+	// (mcp.go) points `k8sman-server mcp`. Empty = never advertised.
+	ListenAddr, MCPDiscoveryPath string
 }
 
 // New builds the server and registers routes.
 func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, opts Options) *Server {
-	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, settings: opts.Settings, mux: http.NewServeMux(), token: opts.AuthToken, plugins: opts.Plugins, directory: opts.Directory}
+	s := &Server{mgr: mgr, store: store, pf: pf, readOnly: opts.ReadOnly, settings: opts.Settings, mux: http.NewServeMux(), token: opts.AuthToken, plugins: opts.Plugins, directory: opts.Directory,
+		listenAddr: opts.ListenAddr, mcpPath: opts.MCPDiscoveryPath}
 	if s.settings == nil {
 		s.settings, _ = settings.Open("")
 	}
@@ -94,6 +103,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.kubeconfigRoutes()
 	s.sidebarRoutes()
 	s.linkRoutes()
+	s.mcpRoutes()
 	s.securityIgnoreRoutes()
 	s.logSettingsRoutes()
 	s.panelSettingsRoutes()
@@ -104,6 +114,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	s.appearanceRoutes()
 	s.execRoutes()
 	s.vmConsoleRoutes()
+	s.vmExportRoutes()
 	s.localShellRoutes()
 	s.securityRoutes()
 	s.rbacRoutes()
@@ -112,6 +123,7 @@ func New(mgr *cluster.Manager, store *columns.Store, pf *portforward.Manager, op
 	// Integrations (Argo CD, Helm, GPUs, …): see module.go.
 	s.modules = append(builtinModules(), &pluginsModule{s: s})
 	s.mountModules()
+	logMCP(s.syncMCP())
 	return s
 }
 
@@ -142,13 +154,22 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/watch", s.handleWatch)
 	s.mux.HandleFunc("GET /api/logs", s.handleLogs)
 	s.mux.HandleFunc("GET /api/logs/aggregate", s.handleLogsAggregate)
+	s.mux.HandleFunc("GET /api/logs/text", s.handleLogsText)
 }
 
 // ServeHTTP checks Host, Origin, the bearer token and Content-Type
 // (guard.go), then routes and logs.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !checkAccess(w, r, s.token) {
+	which, ok := checkAccessAny(w, r, s.token, s.currentMCPToken())
+	if !ok {
 		return
+	}
+	if which == 1 {
+		if !mcpAllowed(r) {
+			httpx.WriteError(w, http.StatusForbidden, "ClaudeCodeReadOnly", "Claude Code can only read through k8sman (and ignore Security findings), never Secrets")
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), mcpKey{}, true))
 	}
 	start := time.Now()
 	if s.mgr.Clients() == nil {
@@ -540,9 +561,11 @@ func (b *tableBuilder) build(u *unstructured.Unstructured) *builtRow {
 	}
 	compute := func() any {
 		eval := obj
-		if b.memo != nil && b.eval.WritesInput() {
-			// Shared with other goroutines (the watch cache): gojq writes
-			// to its input, so evaluate a private copy.
+		if b.eval.WritesInput() {
+			// gojq writes to its input, and rows are built from objects
+			// shared with other goroutines (the watch cache, also for the
+			// one-off rows of shell-action variables), so evaluate a
+			// private copy.
 			eval = columns.PrivateCopy(obj)
 		}
 		cells, errs := b.eval.Row(eval)

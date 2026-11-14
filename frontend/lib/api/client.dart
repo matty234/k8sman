@@ -36,22 +36,28 @@ class ApiException implements Exception {
   String toString() => 'API $status: $message';
 }
 
-/// Thin client for the k8sman Go backend. All calls are read-only against
-/// the cluster (column config writes go to the local config file).
 /// `/api/settings/mcp`: whether the MCP server is on, and how to add it to Claude Code.
 class McpSettings {
   final bool enabled;
   final List<String> command;
   final String addCommand;
-  const McpSettings({required this.enabled, this.command = const [], this.addCommand = ''});
+
+  /// The folder Claude Code tabs open in; '' = [defaultFolder].
+  final String folder;
+  final String defaultFolder;
+  const McpSettings({required this.enabled, this.command = const [], this.addCommand = '', this.folder = '', this.defaultFolder = ''});
 
   factory McpSettings.fromJson(Json j) => McpSettings(
         enabled: j['enabled'] == true,
         command: [for (final c in (j['command'] as List? ?? const [])) '$c'],
         addCommand: (j['addCommand'] ?? '') as String,
+        folder: (j['folder'] ?? '') as String,
+        defaultFolder: (j['defaultFolder'] ?? '') as String,
       );
 }
 
+/// Thin client for the k8sman Go backend. All calls are read-only against
+/// the cluster (column config writes go to the local config file).
 class ApiClient {
   /// Backend URL. In the macOS app the embedded backend listens on a random
   /// port, so `BackendController` (lib/app/backend.dart) updates this once
@@ -424,8 +430,9 @@ class ApiClient {
   /// The Claude Code MCP opt-in and the command that registers it.
   Future<McpSettings> getMcpSettings() async => McpSettings.fromJson(await _get('settings/mcp') as Json);
 
-  Future<McpSettings> putMcpSettings(bool enabled) async =>
-      McpSettings.fromJson(await _send('PUT', 'settings/mcp', const {}, {'enabled': enabled}) as Json);
+  /// Saves what's given: [folder] '' = the default folder.
+  Future<McpSettings> putMcpSettings({bool? enabled, String? folder}) async =>
+      McpSettings.fromJson(await _send('PUT', 'settings/mcp', const {}, {'enabled': ?enabled, 'folder': ?folder}) as Json);
 
   /// Remembered link mappings: cluster fingerprint → local context.
   Future<Map<String, String>> getLinkClusterMap() async {

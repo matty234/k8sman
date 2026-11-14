@@ -56,14 +56,22 @@ func Protect(token string, h http.Handler) http.Handler {
 //
 // It writes the error response and returns false when the request is refused.
 func checkAccess(w http.ResponseWriter, r *http.Request, token string) bool {
+	_, ok := checkAccessAny(w, r, token)
+	return ok
+}
+
+// checkAccessAny is checkAccess accepting any of tokens; it also returns the
+// index of the one the request carried (-1 when refused). Empty or short
+// tokens never match.
+func checkAccessAny(w http.ResponseWriter, r *http.Request, tokens ...string) (int, bool) {
 	if !allowedHost(r) {
 		guardErr(w, http.StatusForbidden, "Host not allowed", "ForbiddenHost")
-		return false
+		return -1, false
 	}
 	origin := r.Header.Get("Origin")
 	if origin != "" && !isLocalOrigin(origin) {
 		guardErr(w, http.StatusForbidden, "Origin not allowed", "ForbiddenOrigin")
-		return false
+		return -1, false
 	}
 	if origin != "" {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
@@ -73,18 +81,25 @@ func checkAccess(w http.ResponseWriter, r *http.Request, token string) bool {
 	}
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
-		return false
+		return -1, false
 	}
-	if !validToken(r, token) {
+	which := -1
+	for i, t := range tokens {
+		if validToken(r, t) {
+			which = i
+			break
+		}
+	}
+	if which < 0 {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="k8sman"`)
 		guardErr(w, http.StatusUnauthorized, "missing or invalid bearer token", "Unauthorized")
-		return false
+		return -1, false
 	}
 	if mutating(r.Method) && !allowedContentType(r) {
 		guardErr(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json", "UnsupportedMediaType")
-		return false
+		return -1, false
 	}
-	return true
+	return which, true
 }
 
 func guardErr(w http.ResponseWriter, code int, msg, reason string) {

@@ -86,6 +86,14 @@ type Settings struct {
 	// AppLinks makes "Copy link" copy the k8sman:// form instead of the
 	// https://k8sman.dev/o/ one.
 	AppLinks bool `json:"appLinks,omitempty"`
+	// ClaudeCodeMCP lets Claude Code read the cluster through the k8sman
+	// MCP server (`k8sman-server mcp`): while on, the backend writes
+	// mcp.json next to this file with its address and a read-only token.
+	// Off unless chosen.
+	ClaudeCodeMCP bool `json:"claudeCodeMcp,omitempty"`
+	// ClaudeCodeDir is the folder "Ask Claude Code" tabs start in ("" =
+	// <settings dir>/claude, which gets a CLAUDE.md about k8sman).
+	ClaudeCodeDir string `json:"claudeCodeDir,omitempty"`
 	// LinkClusterMap maps a cluster fingerprint from a shared link to the
 	// local context the user chose to open such links in.
 	LinkClusterMap map[string]string `json:"linkClusterMap,omitempty"`

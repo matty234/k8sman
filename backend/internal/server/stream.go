@@ -438,3 +438,37 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = ws.send(LogMessage{EOF: true})
 }
+
+// maxLogText caps /api/logs/text.
+const maxLogText = 512 << 10
+
+// handleLogsText returns a container's recent logs as plain text, without
+// following: for the Claude Code tools, which can't use WebSockets.
+// Query: namespace, pod, container, tailLines (default 200, at most 5000),
+// previous, sinceSeconds. Longer output keeps its last 512 KiB.
+func (s *Server) handleLogsText(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	ns, pod := q.Get("namespace"), q.Get("pod")
+	if ns == "" || pod == "" {
+		writeErr(w, httpx.BadRequest("namespace and pod are required"))
+		return
+	}
+	tail := int64(200)
+	if v, err := strconv.ParseInt(q.Get("tailLines"), 10, 64); err == nil && v > 0 {
+		tail = min(v, 5000)
+	}
+	opts := &corev1.PodLogOptions{Container: q.Get("container"), Previous: q.Get("previous") == "true", TailLines: &tail}
+	if v, err := strconv.ParseInt(q.Get("sinceSeconds"), 10, 64); err == nil && v > 0 {
+		opts.SinceSeconds = &v
+	}
+	b, err := s.mgr.Clients().Typed.CoreV1().Pods(ns).GetLogs(pod, opts).DoRaw(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if len(b) > maxLogText {
+		b = b[len(b)-maxLogText:]
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write(b)
+}

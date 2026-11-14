@@ -6,6 +6,8 @@ import '../../prometheus/prom_api.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
+import '../terminal/claude_prompts.dart';
+import '../terminal/open_terminal.dart' show openClaudeCode;
 import '../widgets/common.dart';
 
 Color alertSeverityColor(BuildContext context, AlertSeverity s) => severityColor(context, s.badge);
@@ -284,6 +286,7 @@ class AlertInstanceRow extends StatelessWidget {
     final desc = a.description;
     final summary = a.summary;
     final silenceable = onSilence != null && (a.state == AlertState.firing || a.state == AlertState.pending);
+    final claude = claudeAvailable(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -307,13 +310,20 @@ class AlertInstanceRow extends StatelessWidget {
           const SizedBox(height: 3),
           SelectableText(desc, style: hint),
         ],
-        if (a.runbookUrl != null || silenceable)
+        if (a.runbookUrl != null || silenceable || claude)
           Padding(
             padding: const EdgeInsets.only(top: 3),
             child: Wrap(spacing: 4, children: [
               if (a.runbookUrl != null)
                 TextRowAction(label: 'Runbook', icon: Icons.menu_book_outlined, tooltip: a.runbookUrl, onPressed: () => openUrl(a.runbookUrl!)),
               if (silenceable) TextRowAction(label: 'Silence…', icon: Icons.notifications_off_outlined, onPressed: () => onSilence!(a)),
+              if (claude)
+                TextRowAction(
+                  label: 'Ask Claude',
+                  icon: Icons.auto_awesome_outlined,
+                  tooltip: 'Open Claude Code about this alert (bottom panel)',
+                  onPressed: () => openClaudeCode(context, prompt: alertPrompt(a)),
+                ),
             ]),
           ),
       ]),

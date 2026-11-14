@@ -323,7 +323,25 @@ class FindingList extends StatefulWidget {
   final bool hideNamespace;
   final Set<String> pending;
   final void Function(SecFinding finding)? onIgnore;
-  const FindingList({super.key, required this.findings, required this.categories, this.grouped = true, this.hideNamespace = false, this.pending = const {}, this.onIgnore});
+
+  /// Offers Ask Claude on a finding and on each category's findings.
+  /// With [onSelect], checkboxes pick findings ([selected]; [onSelect] gets
+  /// the ids and whether they're now picked).
+  final void Function(List<SecFinding> findings, String? group)? onAskClaude;
+  final Set<String> selected;
+  final void Function(Iterable<String> ids, bool selected)? onSelect;
+  const FindingList({
+    super.key,
+    required this.findings,
+    required this.categories,
+    this.grouped = true,
+    this.hideNamespace = false,
+    this.pending = const {},
+    this.onIgnore,
+    this.onAskClaude,
+    this.selected = const {},
+    this.onSelect,
+  });
 
   @override
   State<FindingList> createState() => _FindingListState();
@@ -347,17 +365,36 @@ class _FindingListState extends State<FindingList> {
       if (fs.isNotEmpty || pending.contains(c.id)) groups[c] = fs;
     }
     final limit = widget.grouped ? _initial : 40;
+    final select = widget.onSelect;
+    final ask = widget.onAskClaude;
+    final selecting = widget.selected.isNotEmpty;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final e in groups.entries) ...[
         if (widget.grouped)
           Padding(
             padding: const EdgeInsets.only(top: 10, bottom: 2),
             child: Row(children: [
-              Icon(categoryIcon(e.key.id), size: 14, color: theme.hintColor),
+              if (select != null && e.value.isNotEmpty)
+                _GroupCheckbox(
+                  key: ValueKey('select-group-${e.key.id}'),
+                  ids: [for (final f in e.value) f.id],
+                  selected: widget.selected,
+                  onChanged: select,
+                )
+              else
+                Icon(categoryIcon(e.key.id), size: 14, color: theme.hintColor),
               const SizedBox(width: 6),
               Text(e.key.title, style: theme.textTheme.labelMedium?.copyWith(color: theme.hintColor, fontWeight: FontWeight.w600)),
               const SizedBox(width: 6),
               if (!pending.contains(e.key.id)) Text('${e.value.length}', style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
+              if (ask != null && e.value.isNotEmpty) ...[
+                const Spacer(),
+                AskClaudeLink(
+                  key: ValueKey('ask-claude-group-${e.key.id}'),
+                  label: e.value.length == 1 ? 'Ask Claude' : 'Ask Claude about ${e.value.length}',
+                  onTap: () => ask(e.value, e.key.title),
+                ),
+              ],
             ]),
           ),
         if (pending.contains(e.key.id)) PendingSecurityRows(key: ValueKey('pending-findings-${e.key.id}')),
@@ -368,6 +405,10 @@ class _FindingListState extends State<FindingList> {
             finding: f,
             hideNamespace: widget.hideNamespace,
             onIgnore: widget.onIgnore == null ? null : () => widget.onIgnore!(f),
+            onAskClaude: ask == null ? null : () => ask([f], null),
+            selected: select == null ? null : widget.selected.contains(f.id),
+            selecting: selecting,
+            onSelect: select == null ? null : (v) => select([f.id], v),
             expanded: _expanded.contains(f.id),
             onToggle: () => setState(() => _expanded.contains(f.id) ? _expanded.remove(f.id) : _expanded.add(f.id)),
           ),
@@ -397,7 +438,27 @@ class FindingTile extends StatelessWidget {
 
   /// Offers "Ignore…" (hover button and right-click) when set.
   final VoidCallback? onIgnore;
-  const FindingTile({super.key, required this.finding, required this.expanded, required this.onToggle, this.hideNamespace = false, this.onIgnore});
+
+  /// Offers "Ask Claude" (hover button and right-click) when set.
+  final VoidCallback? onAskClaude;
+
+  /// With [onSelect], a checkbox: shown on hover, or always while
+  /// [selecting] (something is picked).
+  final bool? selected;
+  final bool selecting;
+  final ValueChanged<bool>? onSelect;
+  const FindingTile({
+    super.key,
+    required this.finding,
+    required this.expanded,
+    required this.onToggle,
+    this.hideNamespace = false,
+    this.onIgnore,
+    this.onAskClaude,
+    this.selected,
+    this.selecting = false,
+    this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -408,10 +469,24 @@ class FindingTile extends StatelessWidget {
       Hoverable(
         builder: (hovered) => InkWell(
         onTap: onToggle,
-        onSecondaryTapUp: onIgnore == null ? null : (d) => showSidebarMenu(context, d.globalPosition, [('Ignore…', onIgnore!)]),
+        onSecondaryTapUp: onIgnore == null && onAskClaude == null && onSelect == null
+            ? null
+            : (d) => showSidebarMenu(context, d.globalPosition, [
+                  if (onAskClaude != null) ('Ask Claude', onAskClaude!),
+                  if (onSelect != null) (selected == true ? 'Deselect' : 'Select', () => onSelect!(selected != true)),
+                  if (onIgnore != null) ('Ignore…', onIgnore!),
+                ]),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (onSelect != null)
+              Visibility(
+                visible: hovered || selecting,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: _TinyCheckbox(key: ValueKey('select-${f.id}'), value: selected ?? false, onChanged: (v) => onSelect!(v ?? false)),
+              ),
             Padding(
               padding: const EdgeInsets.only(top: 1),
               child: Icon(expanded ? Icons.expand_more : Icons.chevron_right, size: 17, color: theme.hintColor),
@@ -428,6 +503,22 @@ class FindingTile extends StatelessWidget {
                 child: Padding(padding: const EdgeInsets.only(top: 2), child: Text(f.namespace!, maxLines: 1, overflow: TextOverflow.ellipsis, style: hint)),
               ),
             ],
+            if (onAskClaude != null)
+              Visibility(
+                visible: hovered,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: Tooltip(
+                  message: 'Ask Claude about this finding',
+                  child: InkWell(
+                    key: ValueKey('ask-claude-${f.id}'),
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: onAskClaude,
+                    child: Padding(padding: const EdgeInsets.fromLTRB(8, 1, 2, 1), child: Icon(Icons.auto_awesome_outlined, size: 15, color: theme.colorScheme.primary)),
+                  ),
+                ),
+              ),
             if (onIgnore != null)
               Visibility(
                 visible: hovered,
@@ -482,6 +573,75 @@ class FindingTile extends StatelessWidget {
           ]),
         ),
     ]);
+  }
+}
+
+/// A compact checkbox for finding rows.
+class _TinyCheckbox extends StatelessWidget {
+  final bool? value;
+  final bool tristate;
+  final ValueChanged<bool?> onChanged;
+  const _TinyCheckbox({super.key, required this.value, required this.onChanged, this.tristate = false});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 20,
+        height: 18,
+        child: Transform.scale(
+          scale: 0.75,
+          child: Checkbox(
+            value: value,
+            tristate: tristate,
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onChanged: onChanged,
+          ),
+        ),
+      );
+}
+
+/// Picks or clears every finding of a category.
+class _GroupCheckbox extends StatelessWidget {
+  final List<String> ids;
+  final Set<String> selected;
+  final void Function(Iterable<String> ids, bool selected) onChanged;
+  const _GroupCheckbox({super.key, required this.ids, required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final n = ids.where(selected.contains).length;
+    final all = n == ids.length;
+    return Tooltip(
+      message: all ? 'Deselect these findings' : 'Select these findings',
+      child: _TinyCheckbox(value: all ? true : (n == 0 ? false : null), tristate: true, onChanged: (_) => onChanged(ids, !all)),
+    );
+  }
+}
+
+/// "✦ Ask Claude …" as a small text link.
+class AskClaudeLink extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const AskClaudeLink({super.key, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Tooltip(
+      message: 'Opens Claude Code in the bottom panel with these findings',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.auto_awesome_outlined, size: 13, color: theme.colorScheme.primary),
+            const SizedBox(width: 4),
+            Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary)),
+          ]),
+        ),
+      ),
+    );
   }
 }
 

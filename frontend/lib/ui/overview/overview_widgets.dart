@@ -10,6 +10,7 @@ import 'overview_actions.dart';
 import 'overview_api.dart';
 import '../../util/text.dart';
 import '../widgets/namespace_picker.dart';
+import '../terminal/claude_prompts.dart';
 
 Color issueColor(BuildContext context, IssueSeverity s) => severityColor(context, s.badge);
 
@@ -242,6 +243,7 @@ class IssueGroupTile extends StatelessWidget {
     final multi = group.issues.length > 1;
     final app = context.watch<AppState>();
     final actions = app.readOnly ? const <QuickAction>[] : quickActionsFor(group, includeObject: !multi);
+    final claude = claudeAvailable(context);
 
     if (!multi) {
       return _IssueRow(
@@ -250,6 +252,7 @@ class IssueGroupTile extends StatelessWidget {
         context2: owner == null ? null : ObjectRef(group: owner.group, kind: owner.kind, name: owner.name, namespace: first.namespace),
         since: first.since,
         actions: actions,
+        claudePrompt: claude ? issuePrompt(group) : null,
         onChanged: onChanged,
       );
     }
@@ -267,6 +270,7 @@ class IssueGroupTile extends StatelessWidget {
         expanded: expanded,
         onToggle: onToggle,
         actions: actions,
+        claudePrompt: claude ? issuePrompt(group) : null,
         onChanged: onChanged,
       ),
       if (expanded)
@@ -282,6 +286,7 @@ class IssueGroupTile extends StatelessWidget {
                   since: i.since,
                   dense: true,
                   actions: app.readOnly ? const [] : quickActionsFor(IssueGroup([i]), includeOwner: false),
+                  claudePrompt: claude ? issuePrompt(IssueGroup([i])) : null,
                   onChanged: onChanged,
                 ),
             ]),
@@ -329,9 +334,13 @@ class _IssueRow extends StatefulWidget {
   final bool? expanded;
   final VoidCallback? onToggle;
   final List<QuickAction> actions;
+
+  /// Shows Ask Claude (with this prompt) beside the actions.
+  final String? claudePrompt;
   final VoidCallback onChanged;
 
   const _IssueRow({
+    this.claudePrompt,
     required this.issue,
     required this.title,
     required this.actions,
@@ -423,7 +432,7 @@ class _IssueRowState extends State<_IssueRow> {
     // keep one height and nothing shifts.
     final show = _hovered || _focused;
     final bg = Color.alphaBlend(colors.hover, theme.colorScheme.surface);
-    final actions = w.actions.isEmpty
+    final actions = w.actions.isEmpty && w.claudePrompt == null
         ? null
         : Positioned(
             right: 0,
@@ -447,6 +456,10 @@ class _IssueRowState extends State<_IssueRow> {
                       padding: const EdgeInsets.only(left: 2, right: 6),
                       alignment: Alignment.center,
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (w.claudePrompt != null) ...[
+                          AskClaudeButton(prompt: w.claudePrompt!),
+                          if (w.actions.isNotEmpty) const SizedBox(width: 4),
+                        ],
                         for (final a in w.actions) ...[
                           if (a != w.actions.first) const SizedBox(width: 6),
                           QuickActionButton(action: a, onDone: w.onChanged),
@@ -546,6 +559,7 @@ class _WarningEventListState extends State<WarningEventList> {
     final theme = Theme.of(context);
     final open = _open.contains(r.reason);
     final ex = r.example;
+    final claude = claudeAvailable(context);
     return Hoverable(
       onTap: () => setState(() => open ? _open.remove(r.reason) : _open.add(r.reason)),
       builder: (hovered) => Container(
@@ -585,6 +599,17 @@ class _WarningEventListState extends State<WarningEventList> {
               ),
             ),
             const SizedBox(width: 8),
+            // A fixed slot no taller than the text, shown on hover, so rows
+            // keep their size.
+            if (claude)
+              SizedBox(
+                width: 26,
+                height: 18,
+                child: IgnorePointer(
+                  ignoring: !hovered,
+                  child: Opacity(opacity: hovered ? 1 : 0, child: AskClaudeButton(prompt: warningPrompt(r))),
+                ),
+              ),
             if (r.lastSeen != null) SizedBox(width: 60, child: Align(alignment: Alignment.centerRight, child: AgeText(r.lastSeen, suffix: ' ago'))),
           ]),
           if (open)

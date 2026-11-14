@@ -50,6 +50,32 @@ TerminalTab? openLocalShell(BuildContext context) {
   return tab;
 }
 
+/// Opens Claude Code as a dock tab: a local shell running `claude` with the
+/// k8sman MCP server, starting on [prompt] (submitted). Needs Claude Code
+/// access on in Settings.
+TerminalTab? openClaudeCode(BuildContext context, {String prompt = ''}) {
+  if (!localShellSupported) return null;
+  final tab = TerminalTab(transport: execTransportFor(context.read<ApiClient>()), request: ExecRequest.claudeCode(prompt: prompt));
+  context.read<LogDock>().add(tab);
+  return tab;
+}
+
+/// The prompt "Ask Claude" starts with for the object in [ctx].
+String askClaudePrompt(PanelContext ctx) {
+  final kind = ctx.type.group.isEmpty ? ctx.type.kind : '${ctx.type.kind}.${ctx.type.group}';
+  final where = (ctx.namespace ?? '').isEmpty ? '' : ' in namespace ${ctx.namespace}';
+  return 'Using the k8sman tools, look into $kind ${ctx.name}$where: is anything wrong with it, and if so, why?';
+}
+
+/// "Ask Claude" for any object: opens Claude Code about it.
+ResourceAction askClaudeAction(PanelContext ctx) => ResourceAction(
+      id: 'ask-claude',
+      label: 'Ask Claude',
+      icon: Icons.auto_awesome_outlined,
+      tooltip: 'Open Claude Code about this object, with the k8sman tools (bottom panel)',
+      run: (context) async => openClaudeCode(context, prompt: askClaudePrompt(ctx)),
+    );
+
 /// Containers a terminal can attach to: running regular, sidecar and
 /// ephemeral containers, regular ones first.
 List<PodContainer> terminalContainers(Json pod) {

@@ -20,6 +20,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/cluster"
 	"github.com/matty234/k8sman/backend/internal/columns"
 	"github.com/matty234/k8sman/backend/internal/icons"
+	"github.com/matty234/k8sman/backend/internal/mcpserver"
 	"github.com/matty234/k8sman/backend/internal/plugins"
 	"github.com/matty234/k8sman/backend/internal/plugins/bundled"
 	"github.com/matty234/k8sman/backend/internal/plugins/legacy"
@@ -37,6 +38,9 @@ func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "plugin" {
 		os.Exit(pluginCommand(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		os.Exit(mcpCommand(os.Args[2:]))
 	}
 	var pluginDev stringList
 	flag.Var(&pluginDev, "plugin-dev", "load the plugin in this folder (or the plugins in its subfolders) in dev mode, hot reloaded; repeatable")
@@ -105,7 +109,10 @@ func main() {
 	pdir := plugins.DirectoryFromEnv(ph)
 	go pdir.Run(context.Background())
 
-	srv := &http.Server{Handler: server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st, NoRemoteIcons: *noRemoteIcon, IconCacheDir: *iconCache, AuthToken: token, Plugins: ph, Directory: pdir})}
+	api := server.New(mgr, store, pf, server.Options{ReadOnly: *readOnly, Settings: st, NoRemoteIcons: *noRemoteIcon, IconCacheDir: *iconCache, AuthToken: token, Plugins: ph, Directory: pdir,
+		ListenAddr: ln.Addr().String(), MCPDiscoveryPath: mcpserver.DiscoveryPath(*settingsPath)})
+	defer api.CloseMCP()
+	srv := &http.Server{Handler: api}
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)

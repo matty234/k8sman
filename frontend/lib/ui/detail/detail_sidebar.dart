@@ -682,13 +682,18 @@ class _InstantTabViewState extends State<InstantTabView> {
 /// The actions offered for an object, in display order. Shared by the
 /// inspector header and the table's right-click menu so they always match.
 List<ResourceAction> resourceActionsFor(AppState app, DetailTarget t, ResourcePanel panel, PanelContext ctx) {
-  final extra = [...panel.actions(ctx), ...hostKindActions(ctx)];
+  // The host's own actions wait for the plugins' first answer, so the bar
+  // fills in once instead of showing them alone and then reflowing.
+  final extra = [...panel.actions(ctx), if (!pluginPanels.loading(ctx)) ...hostKindActions(ctx)];
   final logs = extra.where((a) => a.id == kLogsActionId).toList();
-  if (app.readOnly) return logs;
+  // Claude Code only reads through k8sman, so it's offered in read-only too.
+  final claude = [if (app.claudeCode && localShellSupported) askClaudeAction(ctx)];
+  if (app.readOnly) return [...logs, ...claude];
   final terminal = extra.where((a) => a.id == kTerminalActionId);
   return [
     ...logs,
     ...terminal,
+    ...claude,
     if (portForwardKinds.containsKey(t.type.gk)) portForwardAction(ctx),
     ...standardActions(ctx),
     ...extra.where((a) => a.id != kLogsActionId && a.id != kTerminalActionId),

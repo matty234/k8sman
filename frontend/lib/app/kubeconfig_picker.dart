@@ -77,27 +77,33 @@ class NativeFiles {
   /// [saveYaml] for any text file type: the save panel offers [extensions]
   /// (the first is the default).
   static Future<String?> saveText(String suggestedName, String text, {required List<String> extensions, required String label, String confirm = 'Export'}) async {
-    String? path;
+    final path = await chooseSavePath(suggestedName, extensions: extensions, label: label, confirm: confirm);
+    if (path == null) return null;
+    await File(path).writeAsString(text);
+    return path;
+  }
+
+  /// Shows a save panel offering [extensions] (the first is the default)
+  /// and returns the chosen path without writing it (the caller does, or
+  /// the backend, which runs on this machine). Null when cancelled; throws
+  /// [UnsupportedError] when the platform has no save panel.
+  static Future<String?> chooseSavePath(String suggestedName, {required List<String> extensions, required String label, String confirm = 'Save'}) async {
     if (_windows || _linux) {
       try {
         final loc = await FileSelectorPlatform.instance.getSaveLocation(
           acceptedTypeGroups: [XTypeGroup(label: label, extensions: extensions)],
           options: SaveDialogOptions(suggestedName: suggestedName, confirmButtonText: confirm),
         );
-        path = loc?.path;
+        return loc?.path;
       } on UnimplementedError {
         throw UnsupportedError('no save panel');
       }
-    } else {
-      try {
-        path = await _channel.invokeMethod<String>('saveYaml', {'name': suggestedName, 'extensions': extensions, 'prompt': confirm});
-      } on MissingPluginException {
-        throw UnsupportedError('no save panel');
-      }
     }
-    if (path == null) return null;
-    await File(path).writeAsString(text);
-    return path;
+    try {
+      return await _channel.invokeMethod<String>('saveYaml', {'name': suggestedName, 'extensions': extensions, 'prompt': confirm});
+    } on MissingPluginException {
+      throw UnsupportedError('no save panel');
+    }
   }
 
   static Future<void> reveal(String path) async {

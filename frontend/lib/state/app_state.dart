@@ -1357,6 +1357,24 @@ class AppState extends ChangeNotifier {
   /// link's `c`) → local context name.
   Map<String, String> linkClusterMap = const {};
 
+  /// Claude Code access is on (Settings ▸ General ▸ Claude Code): offer
+  /// "Ask Claude" and Claude Code tabs.
+  bool claudeCode = false;
+
+  void setClaudeCode(bool v) {
+    if (v == claudeCode) return;
+    claudeCode = v;
+    notifyListeners();
+  }
+
+  Future<void> loadClaudeCode() async {
+    try {
+      setClaudeCode((await api.getMcpSettings()).enabled);
+    } catch (e) {
+      debugPrint('claude code setting: $e');
+    }
+  }
+
   Future<void> loadLinkPrefs() async {
     try {
       appLinks = await api.getAppLinks();
@@ -1402,6 +1420,7 @@ class AppState extends ChangeNotifier {
     // Views load without a connection (the error screen lists them).
     await loadViews();
     await loadLinkPrefs();
+    unawaited(loadClaudeCode());
     await loadPanelWidths();
     final launch = again ? null : savedViews.where((v) => v.id == launchViewId).firstOrNull;
     if (launch?.context != null) await _preselectContext(launch!.context!);

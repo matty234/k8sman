@@ -134,6 +134,15 @@ List<PaletteItem> paletteItems(BuildContext context) {
         aliases: const ['terminal', 'kubectl', 'zsh', 'bash'],
         run: () => openLocalShell(context),
       ),
+    if (dock != null && localShellSupported && app.claudeCode)
+      PaletteItem(
+        group: PaletteGroup.actions,
+        title: 'Open Claude Code',
+        typeLabel: 'Action',
+        icon: _icon(Icons.auto_awesome_outlined),
+        aliases: const ['claude', 'ai', 'mcp', 'assistant', 'ask'],
+        run: () => openClaudeCode(context),
+      ),
     if (app.detail != null)
       PaletteItem(
         group: PaletteGroup.actions,

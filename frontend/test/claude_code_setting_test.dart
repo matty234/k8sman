@@ -14,8 +14,8 @@ class _McpApi extends ApiClient {
   Future<McpSettings> getMcpSettings() async => _s;
 
   @override
-  Future<McpSettings> putMcpSettings(bool enabled) async {
-    on = enabled;
+  Future<McpSettings> putMcpSettings({bool? enabled, String? folder}) async {
+    on = enabled ?? on;
     return _s;
   }
 }

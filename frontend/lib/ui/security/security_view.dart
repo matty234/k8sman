@@ -7,6 +7,8 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../state/app_state.dart';
 import '../access/access_view.dart';
+import '../terminal/claude_prompts.dart';
+import '../terminal/open_terminal.dart';
 import '../widgets/common.dart';
 import '../widgets/editorial.dart' show PageScroll;
 import 'ai_summary.dart';
@@ -54,6 +56,14 @@ class _SecurityViewState extends State<SecurityView> {
   bool _showIgnored = false;
   String? _filter;
 
+  /// Findings picked for Ask Claude (ids).
+  final _selected = <String>{};
+
+  /// The ignore rules last seen, to notice the ones Claude Code adds
+  /// through the MCP server (null: take the next as the baseline).
+  List<SecIgnoreRule>? _knownRules;
+  Timer? _ignoreWatch;
+
   /// Only what names this object (see [SecurityFocus]).
   ObjectRef? _object;
   DateTime? _updatedAt;
@@ -72,13 +82,42 @@ class _SecurityViewState extends State<SecurityView> {
   void initState() {
     super.initState();
     SecurityFocus.request.addListener(_onFocus);
+    _ignoreWatch = Timer.periodic(const Duration(seconds: 4), (_) => _checkIgnores());
   }
 
   @override
   void dispose() {
     SecurityFocus.request.removeListener(_onFocus);
     _poll?.cancel();
+    _ignoreWatch?.cancel();
     super.dispose();
+  }
+
+  /// While Claude Code access is on, Claude can ignore findings through
+  /// the MCP server: when the rules change, refresh, and say what Claude
+  /// ignored.
+  Future<void> _checkIgnores() async {
+    if (!mounted || _data == null || !(context.read<AppState?>()?.claudeCode ?? false)) return;
+    final List<SecIgnoreRule> rules;
+    try {
+      rules = await source.ignores();
+    } catch (_) {
+      return;
+    }
+    final known = _knownRules;
+    _knownRules = rules;
+    if (!mounted || known == null) return;
+    String sig(List<SecIgnoreRule> rs) => [for (final r in rs) '${r.check}|${r.namespace}|${r.kind}|${r.name}|${r.at}'].join(';');
+    if (sig(known) == sig(rules)) return;
+    final byClaude = rules.where((r) => r.byClaude && !known.any((k) => k.sameTarget(r) && k.at == r.at)).length;
+    await _refresh();
+    if (!mounted || byClaude == 0) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+      content: Text(byClaude == 1 ? 'Claude Code ignored a finding' : 'Claude Code added $byClaude ignore rules'),
+      action: SnackBarAction(label: 'Show', onPressed: () => setState(() => _showIgnored = true)),
+      // An action would otherwise keep it open until dismissed.
+      persist: false,
+    ));
   }
 
   /// Takes a pending [SecurityFocus] request: its object, scoped to its
@@ -124,6 +163,7 @@ class _SecurityViewState extends State<SecurityView> {
         _loading = false;
         _updatedAt = DateTime.now();
         if (_filter != null && !data.categories.any((c) => c.id == _filter)) _filter = null;
+        _selected.retainAll({for (final f in data.findings) f.id});
       });
       _schedulePoll();
     } catch (e) {
@@ -181,9 +221,20 @@ class _SecurityViewState extends State<SecurityView> {
     await _changeIgnores(() => source.addIgnores([for (final r in rules) SecIgnoreRule(check: r.check, namespace: r.namespace, kind: r.kind, name: r.name, reason: r.reason, at: DateTime.now().toUtc().toIso8601String())]));
   }
 
+  Future<void> _ignoreSelected(List<SecFinding> picked) async {
+    final data = _data;
+    if (data == null) return;
+    final rules = await showBulkIgnoreDialog(context, picked, data.findings);
+    if (rules == null || !mounted) return;
+    final at = DateTime.now().toUtc().toIso8601String();
+    await _changeIgnores(() => source.addIgnores([for (final r in rules) SecIgnoreRule(check: r.check, namespace: r.namespace, kind: r.kind, name: r.name, reason: r.reason, at: at)]));
+    if (mounted) setState(_selected.clear);
+  }
+
   Future<void> _unignore(SecFinding f) => _changeIgnores(() => source.unignore(f));
 
   Future<void> _changeIgnores(Future<void> Function() change) async {
+    _knownRules = null; // the user's own change: no notice
     try {
       await change();
     } catch (e) {
@@ -191,6 +242,11 @@ class _SecurityViewState extends State<SecurityView> {
       return;
     }
     if (mounted) await _refresh();
+  }
+
+  void _askClaude(List<SecFinding> findings, String? group) {
+    if (findings.isEmpty) return;
+    openClaudeCode(context, prompt: securityPrompt(findings, group: group));
   }
 
   Future<void> _scan(String image) async {
@@ -333,6 +389,8 @@ class _SecurityViewState extends State<SecurityView> {
     bool show(String id) => filter == null || filter == id;
     final pending = data.pending;
     final ignored = [for (final i in data.ignored) if ((filter == null || i.finding.category == filter) && _names(i.finding.objects)) i];
+    final claude = claudeAvailable(context);
+    final picked = [for (final f in findings) if (_selected.contains(f.id)) f];
     // A section whose category is still loading keeps its place with
     // placeholder rows rather than reading as empty.
     Widget pendingSection(String id, String title) => DetailSection(
@@ -349,15 +407,33 @@ class _SecurityViewState extends State<SecurityView> {
       DetailSection(
         title: 'Findings',
         trailing: _findingsTrailing(context, data, findings.length, ignored.length),
-        child: FindingList(
-          key: ValueKey('findings-$filter'),
-          findings: findings,
-          categories: data.categories,
-          grouped: filter == null,
-          hideNamespace: _ns.single != null,
-          pending: {for (final p in pending) if (show(p)) p},
-          onIgnore: _ignore,
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (picked.isNotEmpty) _selectionBar(context, picked, claude: claude),
+          FindingList(
+            key: ValueKey('findings-$filter'),
+            findings: findings,
+            categories: data.categories,
+            grouped: filter == null,
+            hideNamespace: _ns.single != null,
+            pending: {for (final p in pending) if (show(p)) p},
+            onIgnore: _ignore,
+            onAskClaude: claude ? _askClaude : null,
+            selected: _selected,
+            onSelect: (ids, on) => setState(() => on ? _selected.addAll(ids) : _selected.removeAll(ids)),
+          ),
+          if (claude && filter != null && findings.isNotEmpty && picked.isEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: AskClaudeLink(
+                  key: const ValueKey('ask-claude-filtered'),
+                  label: findings.length == 1 ? 'Ask Claude about this finding' : 'Ask Claude about these ${findings.length}',
+                  onTap: () => _askClaude(findings, data.categories.where((c) => c.id == filter).map((c) => c.title).firstOrNull),
+                ),
+              ),
+            ),
+        ]),
       ),
       if (_showIgnored && ignored.isNotEmpty)
         DetailSection(
@@ -420,6 +496,47 @@ class _SecurityViewState extends State<SecurityView> {
     ];
   }
 
+  /// "3 selected · Ask Claude · Ignore… · Clear" above the findings.
+  Widget _selectionBar(BuildContext context, List<SecFinding> picked, {required bool claude}) {
+    final theme = Theme.of(context);
+    return Container(
+      key: const ValueKey('security-selection-bar'),
+      margin: const EdgeInsets.only(top: 4, bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(children: [
+        Text('${picked.length} selected', style: theme.textTheme.bodySmall),
+        const Spacer(),
+        if (claude) ...[
+          FilledButton.tonalIcon(
+            key: const ValueKey('ask-claude-selected'),
+            style: FilledButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10)),
+            icon: const Icon(Icons.auto_awesome_outlined, size: 15),
+            label: const Text('Ask Claude'),
+            onPressed: () => _askClaude(picked, null),
+          ),
+          const SizedBox(width: 6),
+        ],
+        OutlinedButton.icon(
+          key: const ValueKey('ignore-selected'),
+          style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10)),
+          icon: const Icon(Icons.visibility_off_outlined, size: 15),
+          label: const Text('Ignore…'),
+          onPressed: () => _ignoreSelected(picked),
+        ),
+        const SizedBox(width: 6),
+        TextButton(
+          style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+          onPressed: () => setState(_selected.clear),
+          child: const Text('Clear'),
+        ),
+      ]),
+    );
+  }
+
   String _imagesSummary(List<ImageSummary> images) {
     final scanned = images.where((i) => i.scanned).length;
     return '$scanned of ${images.length} scanned';
@@ -444,6 +561,12 @@ class _SecurityViewState extends State<SecurityView> {
     ]);
   }
 
+  /// "N ignored", and how many of all of them Claude ignored.
+  String _ignoredLabel(SecurityData data, int n, {required bool all}) {
+    final claude = all ? data.ignored.where((i) => i.rule.byClaude).length : 0;
+    return claude == 0 ? '$n ignored' : '$n ignored · $claude by Claude';
+  }
+
   Widget _categoryTrailing(BuildContext context, SecurityData data, int shown, int ignored) {
     final theme = Theme.of(context);
     final filter = _filter;
@@ -452,16 +575,18 @@ class _SecurityViewState extends State<SecurityView> {
     final allIgnored = filter == null && _object == null;
     final toggle = (allIgnored ? data.ignored.length : ignored) == 0
         ? null
-        : Tooltip(
-            message: _showIgnored ? 'Hide the ignored findings' : 'Show the ignored findings',
-            child: InkWell(
+        : Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: FilterChip(
               key: const ValueKey('toggle-ignored'),
-              borderRadius: BorderRadius.circular(4),
-              onTap: () => setState(() => _showIgnored = !_showIgnored),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                child: Text('${allIgnored ? data.ignored.length : ignored} ignored', style: hint?.copyWith(decoration: _showIgnored ? TextDecoration.underline : null)),
-              ),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              showCheckmark: false,
+              selected: _showIgnored,
+              tooltip: _showIgnored ? 'Hide the ignored findings' : 'Show the ignored findings, who ignored them and why',
+              avatar: Icon(Icons.visibility_off_outlined, size: 14, color: theme.hintColor),
+              label: Text(_ignoredLabel(data, allIgnored ? data.ignored.length : ignored, all: allIgnored), style: hint),
+              onSelected: (v) => setState(() => _showIgnored = v),
             ),
           );
     if (filter == null) {
