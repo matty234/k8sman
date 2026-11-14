@@ -23,6 +23,7 @@ func TestStatusFunctions(t *testing.T) {
 		{"podstatus", `{"status": {"phase": "Running", "containerStatuses": [{"state": {"running": {}}}, {"state": {"waiting": {"reason": "CrashLoopBackOff"}}}]}}`, "CrashLoopBackOff"},
 		{"podstatus", `{"metadata": {"deletionTimestamp": "2026-01-01T00:00:00Z"}, "status": {"phase": "Running"}}`, "Terminating"},
 		{"podstatus", `{"status": {"phase": "Running", "containerStatuses": [{"state": {"running": {}}}]}}`, "Running"},
+		{"podstatus", `{"status": {"phase": "Failed", "containerStatuses": [{"state": {"terminated": {"reason": "Completed"}}}, {"state": {"terminated": {"reason": "Error", "exitCode": 64}}}]}}`, "Error"},
 		{".spec.selector | selector", `{"spec": {"selector": {"matchLabels": {"app": "web"}, "matchExpressions": [{"key": "tier", "operator": "In", "values": ["a", "b"]}, {"key": "canary", "operator": "DoesNotExist"}]}}}`, "app=web,tier in (a,b),!canary"},
 		{"duration(.status.startTime; .status.completionTime)", `{"status": {"startTime": "2026-01-01T00:00:00Z", "completionTime": "2026-01-01T03:07:00Z"}}`, "3h07m"},
 		{"nodestatus", `{"spec": {"unschedulable": true}, "status": {"conditions": [{"type": "Ready", "status": "True"}]}}`, "Ready,SchedulingDisabled"},

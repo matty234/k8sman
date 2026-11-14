@@ -38,11 +38,16 @@ func podStatus(o map[string]any) any {
 		if r, ok := dig(c, "state", "waiting", "reason").(string); ok {
 			return r
 		}
-		if r, ok := dig(c, "state", "terminated", "reason").(string); ok {
+		// A container that exited cleanly says nothing about the pod: an Argo
+		// pod's main can complete while its wait sidecar errors.
+		if r, ok := dig(c, "state", "terminated", "reason").(string); ok && r != "Completed" {
 			return r
 		}
 	}
-	return dig(o, "status", "phase")
+	if phase := dig(o, "status", "phase"); phase != "Succeeded" {
+		return phase
+	}
+	return "Completed"
 }
 
 // deploymentStatus: Paused, Scaled down, Stalled (progress deadline
