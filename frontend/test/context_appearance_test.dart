@@ -13,7 +13,7 @@ class _Api extends ApiClient {
   final saved = <(String, String, String)>[];
 
   @override
-  Future<void> putContextAppearance(String context, String icon, String color) async => saved.add((context, icon, color));
+  Future<void> putContextAppearance(String context, String icon, String color, [String label = '']) async => saved.add((context, icon, color));
 }
 
 void main() {
@@ -30,7 +30,7 @@ void main() {
 
     await tester.tap(find.text('prod-eu'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Change icon & colour…'));
+    await tester.tap(find.text('Rename, icon & colour…'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('context-icon-rocket')));
     await tester.tap(find.byKey(const ValueKey('context-color-red')));

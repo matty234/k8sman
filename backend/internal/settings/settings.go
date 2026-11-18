@@ -563,9 +563,13 @@ func (st *Store) SetContextReadOnly(context string, readOnly *bool) error {
 type Appearance struct {
 	Icon  string `json:"icon,omitempty"`
 	Color string `json:"color,omitempty"`
+	// Label is a display name shown instead of the context's own; the real
+	// name is still what everything else uses.
+	Label string `json:"label,omitempty"`
 }
 
-// SetContextAppearance saves a context's badge; an empty one forgets it.
+// SetContextAppearance saves a context's badge and label; one with no
+// icon, colour or label forgets it.
 func (st *Store) SetContextAppearance(context string, a Appearance) error {
 	return st.Update(func(s *Settings) {
 		setOrForget(&s.ContextAppearance, context, a, a == (Appearance{}))

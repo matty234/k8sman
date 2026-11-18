@@ -5,6 +5,7 @@ import '../../api/client.dart';
 import '../../app/kubeconfig_picker.dart';
 import '../../state/app_state.dart';
 import '../../util/k8s.dart' show Severity;
+import '../../util/context_display.dart';
 import '../context_badge.dart';
 import '../helm/market/artifacthub_setting.dart';
 import '../resource_nav.dart' show lockContext;
@@ -153,7 +154,9 @@ class _ReadOnlyContexts extends StatelessWidget {
             Expanded(
               child: Text.rich(
                 TextSpan(children: [
-                  TextSpan(text: c.name),
+                  TextSpan(text: (app.contextAppearance[c.name]?.label ?? '').isEmpty ? c.name : app.contextAppearance[c.name]!.label),
+                  if ((app.contextAppearance[c.name]?.label ?? '').isNotEmpty) TextSpan(text: '   ${c.name}', style: faint),
+                  if (cloudProvider(c.name, server: c.server, auth: c.auth) case final p?) TextSpan(text: '   $p', style: faint),
                   if (c.name == app.currentContext) TextSpan(text: '   current', style: faint),
                   if (app.readOnlyContexts[c.name] == 'auto') TextSpan(text: '   locked: looks like production', style: faint),
                 ]),
@@ -163,7 +166,7 @@ class _ReadOnlyContexts extends StatelessWidget {
               ),
             ),
             Tooltip(
-              message: 'Change icon & colour',
+              message: 'Rename, icon & colour',
               child: IconButton(
                 key: ValueKey('appearance-${c.name}'),
                 visualDensity: VisualDensity.compact,

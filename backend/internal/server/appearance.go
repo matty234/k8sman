@@ -11,7 +11,7 @@ import (
 	"github.com/matty234/k8sman/backend/internal/settings"
 )
 
-// The icon and colour a user picked for a context's badge. Local settings
+// The icon, colour and display name a user picked for a context. Local settings
 // only, so it works in read-only mode.
 func (s *Server) appearanceRoutes() {
 	s.mux.HandleFunc("GET /api/settings/context-appearance", s.handleGetAppearance)
@@ -23,7 +23,10 @@ var (
 	appearanceColorID = regexp.MustCompile(`^([a-z]{1,16}|#[0-9a-fA-F]{6})$`)
 )
 
-const maxAppearances = 500
+const (
+	maxAppearances = 500
+	maxLabelRunes  = 64
+)
 
 func validAppearance(a settings.Appearance) bool {
 	if m, ok := strings.CutPrefix(a.Icon, "text:"); ok {
@@ -38,6 +41,14 @@ func validAppearance(a settings.Appearance) bool {
 	} else if a.Icon != "" && !appearanceIconID.MatchString(a.Icon) {
 		return false
 	}
+	if utf8.RuneCountInString(a.Label) > maxLabelRunes || !utf8.ValidString(a.Label) {
+		return false
+	}
+	for _, r := range a.Label {
+		if r < ' ' || r == 0x7f {
+			return false
+		}
+	}
 	return a.Color == "" || appearanceColorID.MatchString(a.Color)
 }
 
@@ -50,26 +61,27 @@ func (s *Server) handleGetAppearance(w http.ResponseWriter, r *http.Request) {
 		all = saved
 	}
 	a := all[ctx]
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"context": ctx, "icon": a.Icon, "color": a.Color, "all": all})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"context": ctx, "icon": a.Icon, "color": a.Color, "label": a.Label, "all": all})
 }
 
 // handlePutAppearance saves a context's badge.
-// Body: {"context"?: "<name>", "icon": "<id>" | "text:PR", "color": "<id>" | "#rrggbb"};
-// both empty forgets it. 204.
+// Body: {"context"?: "<name>", "icon": "<id>" | "text:PR", "color": "<id>" | "#rrggbb", "label"?: "<display name, 64 chars max>"};
+// all empty forgets it. 204.
 func (s *Server) handlePutAppearance(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Context string `json:"context"`
 		Icon    string `json:"icon"`
 		Color   string `json:"color"`
+		Label   string `json:"label"`
 	}
 	bad := func(msg string) {
 		httpx.WriteError(w, http.StatusBadRequest, "", msg)
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&body); err != nil {
-		bad("body must be {context?, icon, color}")
+		bad("body must be {context?, icon, color, label?}")
 		return
 	}
-	a := settings.Appearance{Icon: body.Icon, Color: body.Color}
+	a := settings.Appearance{Icon: body.Icon, Color: body.Color, Label: strings.TrimSpace(body.Label)}
 	if !validAppearance(a) {
 		bad("not an icon or colour id")
 		return

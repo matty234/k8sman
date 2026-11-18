@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import '../state/context_appearance.dart';
+import '../util/context_display.dart';
 import 'theme.dart';
 import 'widgets/common.dart' show Hoverable;
 
@@ -138,30 +139,32 @@ class _AppearanceDialog extends StatefulWidget {
 class _AppearanceDialogState extends State<_AppearanceDialog> {
   late ContextAppearance draft = widget.initial;
   late final mono = TextEditingController(text: widget.initial.monogram ?? '');
+  late final nameCtl = TextEditingController(text: widget.initial.label);
   bool saving = false;
 
   @override
   void dispose() {
     mono.dispose();
+    nameCtl.dispose();
     super.dispose();
   }
 
   void _icon(String id) {
     mono.clear();
-    setState(() => draft = ContextAppearance(icon: draft.icon == id ? '' : id, color: draft.color));
+    setState(() => draft = draft.copyWith(icon: draft.icon == id ? '' : id));
   }
 
-  void _color(String id) => setState(() => draft = ContextAppearance(icon: draft.icon, color: id));
+  void _color(String id) => setState(() => draft = draft.copyWith(color: id));
 
   void _monogram(String v) {
     final t = v.trim();
-    setState(() => draft = ContextAppearance(icon: t.isEmpty ? '' : 'text:$t', color: draft.color));
+    setState(() => draft = draft.copyWith(icon: t.isEmpty ? '' : 'text:$t'));
   }
 
   Future<void> _done() async {
     setState(() => saving = true);
     try {
-      await widget.app.setContextAppearance(widget.name, draft);
+      await widget.app.setContextAppearance(widget.name, draft.copyWith(label: nameCtl.text.trim()));
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
@@ -189,6 +192,15 @@ class _AppearanceDialogState extends State<_AppearanceDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text('Name', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 6),
+            TextField(
+              key: const ValueKey('context-name'),
+              controller: nameCtl,
+              maxLength: 64,
+              decoration: InputDecoration(isDense: true, counterText: '', hintText: contextDisplay(widget.name).primary),
+            ),
+            const SizedBox(height: 14),
             Text('Icon', style: theme.textTheme.labelLarge),
             const SizedBox(height: 6),
             Wrap(
@@ -268,10 +280,11 @@ class _AppearanceDialogState extends State<_AppearanceDialog> {
       actions: [
         TextButton(
           key: const ValueKey('context-appearance-reset'),
-          onPressed: draft.isDefault
+          onPressed: draft.isDefault && nameCtl.text.isEmpty
               ? null
               : () {
                   mono.clear();
+                  nameCtl.clear();
                   setState(() => draft = const ContextAppearance());
                 },
           child: const Text('Reset'),
