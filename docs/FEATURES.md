@@ -298,6 +298,10 @@ Everything k8sman does, by area. The [README](../README.md) has the tour.
   top, following pins the top; also Settings ▸ General) and **Download logs…**
   (shown lines, or only the matching ones, to `<pod>-<container>-<time>.log`;
   aggregates are named `<workload>-logs-<time>.log` and keep the pod prefix).
+- Lines a program coloured itself with ANSI escapes (pino-pretty, Rails,
+  `--color=always` tools) show those colours (16, 256 and true colour, bold,
+  italic, underline, dim), tuned for the light or dark theme, instead of the
+  raw escape codes. Search, copy and download use the plain text.
 - Aggregated logs (k9s style): **Logs** on a Deployment, StatefulSet, DaemonSet,
   ReplicaSet, Job or Service, or `l` / **Logs (N pods)** on two or more selected
   pods, opens one tab merging every pod's logs in timestamp order. Each line

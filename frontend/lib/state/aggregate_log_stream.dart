@@ -5,6 +5,7 @@ import '../api/models.dart';
 import 'namespace_scope.dart';
 import 'log_buffer.dart';
 import 'log_session.dart';
+import '../util/ansi.dart';
 
 /// How many palette colours [LogSource.colorIndex] indexes.
 const int kLogSourceColors = 8;
@@ -240,9 +241,9 @@ class AggregateLogStream extends LogSession {
     if (src.hidden) return false;
     if (regex) {
       final re = queryRegex;
-      return re != null && ((m.kind == 0 && re.hasMatch(src.full)) || re.hasMatch(lines[idx]));
+      return re != null && ((m.kind == 0 && re.hasMatch(src.full)) || re.hasMatch(stripAnsi(lines[idx])));
     }
-    return (m.kind == 0 && src.lowerFull.contains(q)) || lines[idx].toLowerCase().contains(q);
+    return (m.kind == 0 && src.lowerFull.contains(q)) || stripAnsi(lines[idx]).toLowerCase().contains(q);
   }
 
   @override
@@ -262,7 +263,7 @@ class AggregateLogStream extends LogSession {
       if (b.isNotEmpty) b.write('\n');
       if (m.kind == 0) b.write('${sources[m.src].full} ');
       if (timestamps && m.ts.isNotEmpty) b.write('${m.ts} ');
-      b.write(lines[i]);
+      b.write(stripAnsi(lines[i]));
     }
     return b.toString();
   }

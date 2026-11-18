@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'dock_tab.dart';
 import 'log_buffer.dart';
+import '../util/ansi.dart';
 
 /// Maximum lines kept in memory per session; older lines are dropped.
 const int kMaxLogLines = 10000;
@@ -84,15 +85,16 @@ abstract class LogSession extends DockTab {
 
   /// Whether line [idx] matches the lower-cased search [q].
   bool lineMatches(int idx, String q) {
-    if (regex) return queryRegex?.hasMatch(lines[idx]) ?? false;
-    return lines[idx].toLowerCase().contains(q);
+    final line = stripAnsi(lines[idx]);
+    if (regex) return queryRegex?.hasMatch(line) ?? false;
+    return line.toLowerCase().contains(q);
   }
 
   /// The line indices to show, or null for all of them.
   List<int>? get visibleRows => onlyMatching && query.isNotEmpty ? matching : null;
 
   /// Text for "Copy all".
-  String copyText() => lines.join('\n');
+  String copyText() => [for (final l in lines) stripAnsi(l)].join('\n');
 
   /// The buffer is full, so older lines of the chosen range were dropped.
   bool get truncated => lines.length >= kMaxLogLines;
@@ -105,8 +107,8 @@ abstract class LogSession extends DockTab {
   /// every buffered line, oldest first.
   String exportText({bool all = false}) {
     final rows = all ? null : visibleRows;
-    if (rows == null) return lines.join('\n');
-    return [for (final i in rows) lines[i]].join('\n');
+    if (rows == null) return copyText();
+    return [for (final i in rows) stripAnsi(lines[i])].join('\n');
   }
 
   /// Default file name for "Download", without the extension.

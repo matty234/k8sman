@@ -9,6 +9,7 @@ import '../../panels/pod/pod_widgets.dart';
 import '../../state/app_state.dart';
 import '../../state/log_dock.dart';
 import '../../app/kubeconfig_picker.dart' show NativeFiles;
+import '../../util/ansi.dart';
 import '../../util/k8s.dart';
 import '../theme.dart';
 import 'log_syntax.dart';
@@ -865,6 +866,49 @@ class _Toggle extends StatelessWidget {
 final _errRe = RegExp(r'\b(error|err|fatal|panic|exception|fail(ed|ure)?)\b', caseSensitive: false);
 final _warnRe = RegExp(r'\b(warn(ing)?)\b', caseSensitive: false);
 final _syntaxCache = LogSyntaxCache();
+final _ansiCache = _AnsiCache();
+
+/// A small LRU of parsed ANSI lines by raw text, so scrolling re-uses them.
+class _AnsiCache {
+  static const _capacity = 2000;
+  final _map = <String, (String, List<AnsiRun>)>{};
+
+  (String, List<AnsiRun>) parse(String raw) {
+    final v = _map.remove(raw) ?? parseAnsi(raw);
+    _map[raw] = v;
+    if (_map.length > _capacity) _map.remove(_map.keys.first);
+    return v;
+  }
+}
+
+/// An ANSI colour (see [AnsiStyle]) tuned to stay legible on the light or
+/// dark log background: black and white swap ends with the theme.
+Color ansiColor(int c, Brightness b) {
+  if (c >= 0x1000000) return Color(0xFF000000 | (c & 0xFFFFFF));
+  if (c < 16) return (b == Brightness.dark ? _darkAnsi : _lightAnsi)[c];
+  if (c >= 232) {
+    final v = 8 + (c - 232) * 10;
+    return Color.fromARGB(255, v, v, v);
+  }
+  final i = c - 16;
+  int ch(int x) => x == 0 ? 0 : 55 + x * 40;
+  return Color.fromARGB(255, ch(i ~/ 36), ch(i ~/ 6 % 6), ch(i % 6));
+}
+
+// Black, red, green, yellow, blue, magenta, cyan, white, then the bright set.
+const _darkAnsi = [
+  Color(0xFF8A8F98), Color(0xFFFF6B6B), Color(0xFF4FD1A5), Color(0xFFF2C94C),
+  Color(0xFF6CA8FF), Color(0xFFD38CF6), Color(0xFF4DC8E0), Color(0xFFD7DAE0),
+  Color(0xFFA0A6B0), Color(0xFFFF8F8F), Color(0xFF7BE3BE), Color(0xFFFFDD7A),
+  Color(0xFF94C0FF), Color(0xFFE4AEFF), Color(0xFF7FDCEE), Color(0xFFFFFFFF),
+];
+
+const _lightAnsi = [
+  Color(0xFF24292F), Color(0xFFC62828), Color(0xFF0B7D5C), Color(0xFF8A6100),
+  Color(0xFF1F63D1), Color(0xFF9C2BB0), Color(0xFF0C7A92), Color(0xFF6E7781),
+  Color(0xFF57606A), Color(0xFFD9363E), Color(0xFF1A9970), Color(0xFFA37200),
+  Color(0xFF3B7BE0), Color(0xFFB144C8), Color(0xFF1890AB), Color(0xFF8C959F),
+];
 final _tsRe = RegExp(r'^\d{4}-\d\d-\d\dT[\d:.]+(Z|[+-]\d\d:\d\d) ');
 
 /// Prefix colours for aggregated log sources: eight hues that stay legible
@@ -959,9 +1003,12 @@ class _LogLine extends StatelessWidget {
     } else if (timestamps && ts != null && ts!.isNotEmpty) {
       stamp = '$ts ';
     }
-    final toks = syntax ? _syntaxCache.tokens(body) : null;
+    // Lines the program coloured itself: show its colours, not the escapes.
+    final ansi = hasAnsi(body) ? _ansiCache.parse(body) : null;
+    if (ansi != null) body = ansi.$1;
+    final toks = syntax && ansi == null ? _syntaxCache.tokens(body) : null;
     final head = body.length > 300 ? body.substring(0, 300) : body;
-    final level = toks != null ? null : (_errRe.hasMatch(head) ? Severity.error : (_warnRe.hasMatch(head) ? Severity.warn : null));
+    final level = toks != null || ansi != null ? null : (_errRe.hasMatch(head) ? Severity.error : (_warnRe.hasMatch(head) ? Severity.warn : null));
     final base = level == null ? style : style.copyWith(color: severityColor(context, level).withValues(alpha: 0.95));
     final spans = <InlineSpan>[
       if (stamp != null)
@@ -969,7 +1016,7 @@ class _LogLine extends StatelessWidget {
           text: stamp,
           style: style.copyWith(color: theme.hintColor),
         ),
-      ..._highlight(body, base, toks == null ? null : _tokStyles(context, base, toks, body)),
+      ..._highlight(body, base, ansi != null ? _ansiStyles(theme.brightness, base, ansi.$2) : (toks == null ? null : _tokStyles(context, base, toks, body))),
     ];
     final content = Text.rich(
       TextSpan(children: spans),
@@ -1011,6 +1058,24 @@ class _LogLine extends StatelessWidget {
             ),
     );
   }
+
+  /// Styles for a line's ANSI runs, over [base] (same font and metrics).
+  List<(int, int, TextStyle)> _ansiStyles(Brightness b, TextStyle base, List<AnsiRun> runs) => [
+    for (final (a, e, st) in runs)
+      (
+        a,
+        e,
+        st.isPlain
+            ? base
+            : base.copyWith(
+                color: st.fg == null ? (st.dim ? base.color?.withValues(alpha: 0.6) : null) : ansiColor(st.fg!, b).withValues(alpha: st.dim ? 0.6 : 1),
+                backgroundColor: st.bg == null ? null : ansiColor(st.bg!, b).withValues(alpha: 0.35),
+                fontWeight: st.bold ? FontWeight.w700 : null,
+                fontStyle: st.italic ? FontStyle.italic : null,
+                decoration: st.underline ? TextDecoration.underline : null,
+              ),
+      ),
+  ];
 
   /// Per-token styles for a structured line (same font and metrics as [base]).
   List<(int, int, TextStyle)> _tokStyles(BuildContext context, TextStyle base, List<LogTok> toks, String body) {
