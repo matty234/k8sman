@@ -361,7 +361,7 @@ class _ResultRow extends StatelessWidget {
     final marks = item.highlight(query).toSet();
     final spans = highlightSpans(title, query, highlight: hl, marks: marks);
     final small = theme.textTheme.labelSmall?.copyWith(color: muted, fontWeight: FontWeight.w400);
-    return PickerRowShell(
+    final row = PickerRowShell(
       active: active,
       onTap: onTap,
       onHover: onHover,
@@ -395,5 +395,6 @@ class _ResultRow extends StatelessWidget {
         Text(item.typeLabel, style: small),
       ]),
     );
+    return item.tooltip == null ? row : Tooltip(message: item.tooltip!, child: row);
   }
 }

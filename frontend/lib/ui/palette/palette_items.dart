@@ -45,6 +45,9 @@ class PaletteItem {
 
   final VoidCallback run;
 
+  /// Shown on hover (e.g. the full name when the title is a short form).
+  final String? tooltip;
+
   PaletteItem({
     required this.group,
     required this.title,
@@ -56,6 +59,7 @@ class PaletteItem {
     this.exactAliases = const [],
     this.current = false,
     this.shortcut,
+    this.tooltip,
   })  : _lower = title.toLowerCase(),
         _aliasesLower = [for (final a in aliases) a.toLowerCase()],
         _exactLower = [for (final a in exactAliases) a.toLowerCase()];

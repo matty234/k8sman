@@ -2,11 +2,32 @@ import 'package:flutter/material.dart';
 
 import '../../modules/modules.dart';
 import '../../state/app_state.dart';
+import '../../util/context_display.dart';
 import '../resource_nav.dart';
 import '../settings/settings_page.dart';
 import 'palette_items.dart';
 
 Widget Function(Color) _icon(IconData i) => (c) => Icon(i, size: 15, color: c);
+
+/// One item per kube context. Cloud-generated names show structured (see
+/// [contextDisplay]); the full name stays searchable and is the tooltip.
+List<PaletteItem> contextPaletteItems(AppState app) {
+  final shown = contextDisplays([for (final c in app.contexts) c.name]);
+  return [
+    for (final c in app.contexts)
+      PaletteItem(
+        group: PaletteGroup.contexts,
+        title: shown[c.name]!.primary,
+        detail: shown[c.name]!.secondary ?? (c.cluster != c.name ? c.cluster : null),
+        aliases: shown[c.name]!.primary == c.name ? const [] : [c.name, ...?shown[c.name]!.secondary?.split(' · ')],
+        tooltip: shown[c.name]!.primary == c.name ? null : c.name,
+        typeLabel: 'Context',
+        icon: _icon(Icons.cloud_outlined),
+        current: c.name == app.currentContext,
+        run: () => c.name == app.currentContext ? null : app.switchContext(c.name),
+      ),
+  ];
+}
 
 /// What `:` command mode shows for the text after the colon.
 class CommandResults {
@@ -124,18 +145,7 @@ CommandResults rankCommand(
     ], cmd);
   }
   if (cmd == 'ctx' || cmd == 'context' || cmd == 'contexts') {
-    final items = [
-      for (final c in app.contexts)
-        PaletteItem(
-          group: PaletteGroup.contexts,
-          title: c.name,
-          detail: c.cluster != c.name ? c.cluster : null,
-          typeLabel: 'Context',
-          icon: _icon(Icons.cloud_outlined),
-          current: c.name == app.currentContext,
-          run: () => c.name == app.currentContext ? null : app.switchContext(c.name),
-        ),
-    ];
+    final items = contextPaletteItems(app);
     return CommandResults([PaletteSection(PaletteGroup.contexts, _filter(arg, items))], arg);
   }
 

@@ -20,6 +20,7 @@ import '../resource_table.dart';
 import '../settings/integrations_settings.dart' show IntegrationsPage;
 import '../settings/settings_page.dart';
 import '../terminal/open_terminal.dart';
+import 'palette_commands.dart' show contextPaletteItems;
 import 'palette_items.dart';
 import '../views/saved_views_ui.dart';
 
@@ -96,16 +97,7 @@ List<PaletteItem> paletteItems(BuildContext context) {
         current: app.namespace == ns,
         run: () => app.setNamespace(ns),
       ),
-    for (final c in app.contexts)
-      PaletteItem(
-        group: PaletteGroup.contexts,
-        title: c.name,
-        detail: c.cluster != c.name ? c.cluster : null,
-        typeLabel: 'Context',
-        icon: _icon(Icons.cloud_outlined),
-        current: c.name == app.currentContext,
-        run: () => c.name == app.currentContext ? null : app.switchContext(c.name),
-      ),
+    ...contextPaletteItems(app),
     if (dock != null)
       PaletteItem(
         group: PaletteGroup.actions,

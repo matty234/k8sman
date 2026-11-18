@@ -21,6 +21,7 @@ import 'palette/command_palette.dart';
 import 'settings/diagnostics_settings.dart' show DiagnosticsBadge;
 import 'settings/settings_page.dart';
 import 'theme.dart';
+import '../util/context_display.dart';
 import 'widgets/common.dart';
 import 'widgets/group_icon.dart';
 import 'views/saved_views_ui.dart';
@@ -988,13 +989,22 @@ class ContextPicker extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = AppColors.of(context);
     final current = app.contexts.any((c) => c.name == app.currentContext) ? app.currentContext : null;
+    // Cloud-generated names show structured; the real name is unchanged.
+    final shown = contextDisplays([for (final c in app.contexts) c.name]);
+    final currentShown = current == null ? null : shown[current]!.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         MenuButton<String>(
-        tooltip: 'Switch cluster context',
+        tooltip: current != null && currentShown != current ? '$current\nSwitch cluster context' : 'Switch cluster context',
+        maxWidth: 640,
         onSelected: (v) => v != app.currentContext ? app.switchContext(v) : null,
-        items: () => [
+        items: () {
+          // The menu grows to its widest name (see maxWidth), less the
+          // check, badge, lock and padding around it.
+          final secondaryW = shown.values.fold<double>(0, (w, d) => d.secondary == null ? w : math.max(w, MiddleEllipsisText.naturalWidth(context, d.secondary!, theme.textTheme.bodySmall) + 8));
+          final menuCap = math.min(640.0, MediaQuery.sizeOf(context).width - 32) - 110 - secondaryW;
+          return [
           for (final c in app.contexts)
             PopupMenuItem(
               value: c.name,
@@ -1005,19 +1015,30 @@ class ContextPicker extends StatelessWidget {
                   Navigator.pop(context);
                   showSidebarMenu(context, d.globalPosition, [('Change icon & colour…', () => showContextAppearanceDialog(context, c.name))]);
                 },
-                child: Row(children: [
+                child: Tooltip(
+                  message: c.name,
+                  child: Row(children: [
                   SizedBox(width: 18, child: c.name == app.currentContext ? Icon(Icons.check, size: 14, color: theme.colorScheme.primary) : null),
                   NamedContextBadge(c.name, size: 16),
                   const SizedBox(width: 8),
-                  Flexible(child: Text(c.name, overflow: TextOverflow.ellipsis)),
+                  SizedBox(
+                    width: math.min(MiddleEllipsisText.naturalWidth(context, shown[c.name]!.primary) + 1, menuCap),
+                    child: MiddleEllipsisText(shown[c.name]!.primary),
+                  ),
+                  if (shown[c.name]!.secondary != null) ...[
+                    const SizedBox(width: 8),
+                    Text(shown[c.name]!.secondary!, maxLines: 1, style: theme.textTheme.bodySmall?.copyWith(color: colors.faint)),
+                  ],
                   if (app.readOnlyContexts.containsKey(c.name)) ...[
                     const SizedBox(width: 6),
                     Tooltip(message: 'Read-only', child: Icon(Icons.lock, size: 12, color: colors.faint)),
                   ],
-                ]),
+                  ]),
+                ),
               ),
             ),
-        ],
+          ];
+        },
         builder: (h) => GestureDetector(
           behavior: HitTestBehavior.translucent,
           onSecondaryTapUp: current == null
@@ -1031,10 +1052,8 @@ class ContextPicker extends StatelessWidget {
               NamedContextBadge(current ?? '', size: 20),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  current ?? 'Select context',
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
+                child: MiddleEllipsisText(
+                  currentShown ?? 'Select context',
                   style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),

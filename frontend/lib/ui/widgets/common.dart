@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -203,6 +204,46 @@ class MenuSelect<T> extends StatelessWidget {
   }
 }
 
+/// One line of [text] that, when too wide, is shortened in the middle
+/// ("arn:aws:eks:eu-w…:cluster/prod") so both ends stay visible; the full
+/// text is then a tooltip.
+class MiddleEllipsisText extends StatelessWidget {
+  final String text;
+  final TextStyle? style;
+  const MiddleEllipsisText(this.text, {super.key, this.style});
+
+  /// Natural width of [text] in the surrounding text style. Pop-up menus
+  /// size to their content with intrinsic widths, which a LayoutBuilder
+  /// can't answer, so a menu row wraps this widget in a SizedBox of
+  /// `min(natural width, cap)`.
+  static double naturalWidth(BuildContext context, String text, [TextStyle? style]) {
+    final st = DefaultTextStyle.of(context).style.merge(style);
+    return (TextPainter(text: TextSpan(text: text, style: st), textDirection: TextDirection.ltr, maxLines: 1, textScaler: MediaQuery.textScalerOf(context))..layout()).width;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, c) {
+      var shown = text;
+      if (c.maxWidth.isFinite && naturalWidth(context, text, style) > c.maxWidth) {
+        String mid(int n) => '${text.substring(0, (n + 1) ~/ 2)}…${text.substring(text.length - n ~/ 2)}';
+        var lo = 0, hi = text.length - 1;
+        while (lo < hi) {
+          final m = (lo + hi + 1) ~/ 2;
+          if (naturalWidth(context, mid(m), style) <= c.maxWidth) {
+            lo = m;
+          } else {
+            hi = m - 1;
+          }
+        }
+        shown = mid(lo);
+      }
+      final t = Text(shown, maxLines: 1, softWrap: false, overflow: TextOverflow.clip, style: style);
+      return shown == text ? t : Tooltip(message: text, child: t);
+    });
+  }
+}
+
 /// A native-feeling pop-up button: [builder] draws the control (given its
 /// hover state); clicking opens [items] in a menu aligned under it.
 class MenuButton<T> extends StatelessWidget {
@@ -210,7 +251,10 @@ class MenuButton<T> extends StatelessWidget {
   final ValueChanged<T> onSelected;
   final Widget Function(bool hovered) builder;
   final String? tooltip;
-  const MenuButton({super.key, required this.items, required this.onSelected, required this.builder, this.tooltip});
+
+  /// Widest the pop-up may grow (it sizes to its widest item up to this).
+  final double maxWidth;
+  const MenuButton({super.key, required this.items, required this.onSelected, required this.builder, this.tooltip, this.maxWidth = 420});
 
   @override
   Widget build(BuildContext context) {
@@ -222,10 +266,11 @@ class MenuButton<T> extends StatelessWidget {
           final overlay = Overlay.of(ctx).context.findRenderObject() as RenderBox?;
           if (box == null || overlay == null) return;
           final topLeft = box.localToGlobal(Offset(0, box.size.height + 4), ancestor: overlay);
+          final win = MediaQuery.sizeOf(ctx).width;
           final v = await showMenu<T>(
             context: ctx,
             position: RelativeRect.fromLTRB(topLeft.dx, topLeft.dy, overlay.size.width - topLeft.dx - box.size.width, 0),
-            constraints: BoxConstraints(minWidth: box.size.width, maxWidth: 420),
+            constraints: BoxConstraints(minWidth: box.size.width, maxWidth: math.max(box.size.width, math.min(maxWidth, win - 32))),
             // Native menus appear instantly; no Material grow/fade.
             popUpAnimationStyle: AnimationStyle.noAnimation,
             items: items(),
