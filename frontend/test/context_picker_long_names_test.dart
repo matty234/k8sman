@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:k8sman/api/client.dart';
 import 'package:k8sman/api/models.dart';
 import 'package:k8sman/state/app_state.dart';
+import 'package:k8sman/state/context_appearance.dart';
 import 'package:k8sman/ui/resource_nav.dart';
 import 'package:k8sman/ui/theme.dart';
 import 'package:k8sman/util/context_display.dart';
@@ -18,9 +19,13 @@ void main() {
 
     const eks = 'arn:aws:eks:eu-west-1:123456789012:cluster/prod-payments';
     const long = 'some-very-long-plain-context-name-that-will-not-fit-in-a-sidebar-prod-search';
+    // A label replaces the primary; the secondary is the cloud one or the real name; duplicate labels stay.
+    expect(contextDisplays([eks, 'minikube', 'kind'], labels: {eks: 'Payments', 'minikube': 'Dev', 'kind': 'Dev'}),
+        {eks: (primary: 'Payments', secondary: 'eu-west-1 · 123456789012'), 'minikube': (primary: 'Dev', secondary: 'minikube'), 'kind': (primary: 'Dev', secondary: 'kind')});
     final names = [eks, long];
     final app = AppState(ApiClient(base: Uri.parse('http://fake')))
       ..currentContext = eks
+      ..contextAppearance = {long: const ContextAppearance(label: 'Search prod')}
       ..contexts = [for (final n in names) ContextInfo(name: n, cluster: 'c', user: 'u')];
     await tester.pumpWidget(ChangeNotifierProvider<AppState>.value(
       value: app,
@@ -31,8 +36,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('prod-payments'), findsNWidgets(2), reason: 'trigger and menu row');
     expect(find.text('eu-west-1 · 123456789012'), findsOneWidget);
+    expect(find.text('Search prod'), findsOneWidget);
+    expect(find.text(long), findsOneWidget, reason: 'the real name is the faint secondary');
     // (The test font is wider than the real one, so the long name is cut here.)
-    expect(find.byWidgetPredicate((w) => w is Text && (w.data ?? '').startsWith('some') && w.data!.contains('…') && w.data!.endsWith('search')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

@@ -629,7 +629,7 @@ class AppState extends ChangeNotifier {
   Future<void> _loadContextAppearance() async {
     try {
       final all = await api.getContextAppearances();
-      contextAppearance = {for (final e in all.entries) e.key: ContextAppearance(icon: e.value.icon, color: e.value.color)};
+      contextAppearance = {for (final e in all.entries) e.key: ContextAppearance(icon: e.value.icon, color: e.value.color, label: e.value.label)};
       notifyListeners();
     } catch (_) {
       // Older backend or no settings: the default badges.
@@ -638,7 +638,7 @@ class AppState extends ChangeNotifier {
 
   /// Saves [a] as [context]'s badge (default forgets it).
   Future<void> setContextAppearance(String context, ContextAppearance a) async {
-    await api.putContextAppearance(context, a.icon, a.color);
+    await api.putContextAppearance(context, a.icon, a.color, a.label);
     contextAppearance = {...contextAppearance};
     if (a.isDefault) {
       contextAppearance.remove(context);

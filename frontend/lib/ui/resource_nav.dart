@@ -980,6 +980,10 @@ Future<void> lockContext(BuildContext context, String ctx, bool lock) async {
   if (ok) await app.setContextReadOnly(ctx, false);
 }
 
+/// The widest a context's faint secondary line gets in the picker menu (a
+/// renamed context's secondary is its real name, which can be long).
+const _maxSecondaryW = 240.0;
+
 class ContextPicker extends StatelessWidget {
   const ContextPicker({super.key});
 
@@ -990,7 +994,7 @@ class ContextPicker extends StatelessWidget {
     final colors = AppColors.of(context);
     final current = app.contexts.any((c) => c.name == app.currentContext) ? app.currentContext : null;
     // Cloud-generated names show structured; the real name is unchanged.
-    final shown = contextDisplays([for (final c in app.contexts) c.name]);
+    final shown = contextDisplaysFor([for (final c in app.contexts) c.name], app.contextAppearance);
     final currentShown = current == null ? null : shown[current]!.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1002,8 +1006,9 @@ class ContextPicker extends StatelessWidget {
         items: () {
           // The menu grows to its widest name (see maxWidth), less the
           // check, badge, lock and padding around it.
-          final secondaryW = shown.values.fold<double>(0, (w, d) => d.secondary == null ? w : math.max(w, MiddleEllipsisText.naturalWidth(context, d.secondary!, theme.textTheme.bodySmall) + 8));
+          final secondaryW = shown.values.fold<double>(0, (w, d) => d.secondary == null ? w : math.max(w, math.min(_maxSecondaryW, MiddleEllipsisText.naturalWidth(context, d.secondary!, theme.textTheme.bodySmall) + 8)));
           final menuCap = math.min(640.0, MediaQuery.sizeOf(context).width - 32) - 110 - secondaryW;
+          if (menuCap < 80) return [for (final c in app.contexts) PopupMenuItem(value: c.name, height: 28, child: Text(shown[c.name]!.primary, overflow: TextOverflow.ellipsis))];
           return [
           for (final c in app.contexts)
             PopupMenuItem(
@@ -1013,7 +1018,7 @@ class ContextPicker extends StatelessWidget {
                 behavior: HitTestBehavior.translucent,
                 onSecondaryTapUp: (d) {
                   Navigator.pop(context);
-                  showSidebarMenu(context, d.globalPosition, [('Change icon & colour…', () => showContextAppearanceDialog(context, c.name))]);
+                  showSidebarMenu(context, d.globalPosition, [('Rename, icon & colour…', () => showContextAppearanceDialog(context, c.name))]);
                 },
                 child: Tooltip(
                   message: c.name,
@@ -1027,7 +1032,10 @@ class ContextPicker extends StatelessWidget {
                   ),
                   if (shown[c.name]!.secondary != null) ...[
                     const SizedBox(width: 8),
-                    Text(shown[c.name]!.secondary!, maxLines: 1, style: theme.textTheme.bodySmall?.copyWith(color: colors.faint)),
+                    SizedBox(
+                      width: math.min(_maxSecondaryW - 8, MiddleEllipsisText.naturalWidth(context, shown[c.name]!.secondary!, theme.textTheme.bodySmall) + 1),
+                      child: Text(shown[c.name]!.secondary!, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: colors.faint)),
+                    ),
                   ],
                   if (app.readOnlyContexts.containsKey(c.name)) ...[
                     const SizedBox(width: 6),
@@ -1043,7 +1051,7 @@ class ContextPicker extends StatelessWidget {
           behavior: HitTestBehavior.translucent,
           onSecondaryTapUp: current == null
               ? null
-              : (d) => showSidebarMenu(context, d.globalPosition, [('Change icon & colour…', () => showContextAppearanceDialog(context, current))]),
+              : (d) => showSidebarMenu(context, d.globalPosition, [('Rename, icon & colour…', () => showContextAppearanceDialog(context, current))]),
           child: Container(
             height: 32,
             padding: const EdgeInsets.symmetric(horizontal: 8),
