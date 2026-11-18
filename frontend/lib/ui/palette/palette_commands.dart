@@ -12,14 +12,14 @@ Widget Function(Color) _icon(IconData i) => (c) => Icon(i, size: 15, color: c);
 /// One item per kube context. Cloud-generated names show structured (see
 /// [contextDisplay]); the full name stays searchable and is the tooltip.
 List<PaletteItem> contextPaletteItems(AppState app) {
-  final shown = contextDisplaysFor([for (final c in app.contexts) c.name], app.contextAppearance);
+  final shown = contextDisplaysFor(app.contexts, app.contextAppearance);
   return [
     for (final c in app.contexts)
       PaletteItem(
         group: PaletteGroup.contexts,
         title: shown[c.name]!.primary,
         detail: shown[c.name]!.secondary ?? (c.cluster != c.name ? c.cluster : null),
-        aliases: shown[c.name]!.primary == c.name ? const [] : [c.name, ...?contextDisplay(c.name).secondary?.split(' · ')],
+        aliases: [if (shown[c.name]!.primary != c.name) c.name, ...?shown[c.name]!.secondary?.split(' · ')],
         tooltip: shown[c.name]!.primary == c.name ? null : c.name,
         typeLabel: 'Context',
         icon: _icon(Icons.cloud_outlined),

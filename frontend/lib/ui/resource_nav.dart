@@ -994,13 +994,13 @@ class ContextPicker extends StatelessWidget {
     final colors = AppColors.of(context);
     final current = app.contexts.any((c) => c.name == app.currentContext) ? app.currentContext : null;
     // Cloud-generated names show structured; the real name is unchanged.
-    final shown = contextDisplaysFor([for (final c in app.contexts) c.name], app.contextAppearance);
+    final shown = contextDisplaysFor(app.contexts, app.contextAppearance);
     final currentShown = current == null ? null : shown[current]!.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         MenuButton<String>(
-        tooltip: current != null && currentShown != current ? '$current\nSwitch cluster context' : 'Switch cluster context',
+        tooltip: current != null && (currentShown != current || shown[current]!.secondary != null) ? '$current\n${shown[current]!.secondary == null ? '' : '${shown[current]!.secondary}\n'}Switch cluster context' : 'Switch cluster context',
         maxWidth: 640,
         onSelected: (v) => v != app.currentContext ? app.switchContext(v) : null,
         items: () {
