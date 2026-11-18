@@ -129,7 +129,10 @@ jobs:
 
       - name: Release notes
         run: |
-          # The annotated tag's message, if any.
+          # The annotated tag's message, if any. actions/checkout leaves a
+          # lightweight tag in its place (actions/checkout#290), whose
+          # %(contents) is the commit message, so fetch the real tag first.
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
           git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/-----BEGIN PGP SIGNATURE-----/,$d' > dist/notes.md
           cat dist/notes.md
 
