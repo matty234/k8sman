@@ -169,12 +169,28 @@ class _GroupRow extends StatelessWidget {
 }
 
 /// The sample message and stack, monospaced, selectable and scrolling.
-class _Sample extends StatelessWidget {
+class _Sample extends StatefulWidget {
   final DiagnosticGroup g;
   const _Sample(this.g);
 
   @override
+  State<_Sample> createState() => _SampleState();
+}
+
+class _SampleState extends State<_Sample> {
+  // The Scrollbar needs its own controller: on desktop there is no
+  // primary one attached to this scroll view.
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final g = widget.g;
     final theme = Theme.of(context);
     final mono = monoStyle(context, size: 11.5).copyWith(height: 1.4);
     return Padding(
@@ -183,7 +199,9 @@ class _Sample extends StatelessWidget {
         constraints: const BoxConstraints(maxHeight: 280),
         decoration: BoxDecoration(color: theme.colorScheme.onSurface.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(6)),
         child: Scrollbar(
+          controller: _scroll,
           child: SingleChildScrollView(
+            controller: _scroll,
             padding: const EdgeInsets.all(10),
             child: SelectionArea(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
