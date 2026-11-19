@@ -487,7 +487,7 @@ func TestProtoFillFallsBackToJSON(t *testing.T) {
 		t.Fatalf("list = %v, %v", l, err)
 	}
 	want := map[string]any{"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
-		"metadata": map[string]any{"name": "b", "namespace": "ns", "creationTimestamp": nil}, "data": map[string]any{"pass": int64(6)}}
+		"metadata": map[string]any{"name": "b", "namespace": "ns"}, "data": map[string]any{"pass": int64(6)}}
 	if !reflect.DeepEqual(l.Items[1].Object, want) {
 		t.Fatalf("summary = %v", l.Items[1].Object)
 	}
