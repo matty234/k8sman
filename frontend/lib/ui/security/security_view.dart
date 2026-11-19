@@ -114,7 +114,9 @@ class _SecurityViewState extends State<SecurityView> {
     if (!mounted || byClaude == 0) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
       content: Text(byClaude == 1 ? 'Claude Code ignored a finding' : 'Claude Code added $byClaude ignore rules'),
-      action: SnackBarAction(label: 'Show', onPressed: () => setState(() => _showIgnored = true)),
+      action: SnackBarAction(label: 'Show', onPressed: () {
+        if (mounted) setState(() => _showIgnored = true);
+      }),
       // An action would otherwise keep it open until dismissed.
       persist: false,
     ));

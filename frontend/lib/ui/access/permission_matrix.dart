@@ -80,6 +80,15 @@ class _PermissionMatrixState extends State<PermissionMatrix> {
   bool get _narrow => widget.compact || _cellW < 50;
   double get _rowH => widget.compact ? 22 : 24;
 
+  /// The Scrollbar's own controller: there's no primary one for it here.
+  final _hScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _hScroll.dispose();
+    super.dispose();
+  }
+
   List<Object> _items() {
     final q = widget.filter.trim().toLowerCase();
     bool match(MatrixRow r) => q.isEmpty || r.resource.contains(q) || r.groupLabel.contains(q) || r.kind.toLowerCase().contains(q);
@@ -141,7 +150,8 @@ class _PermissionMatrixState extends State<PermissionMatrix> {
       final sized = SizedBox(width: width, child: body);
       if (width <= avail) return Align(alignment: Alignment.topLeft, child: sized);
       return Scrollbar(
-        child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: sized),
+        controller: _hScroll,
+        child: SingleChildScrollView(controller: _hScroll, scrollDirection: Axis.horizontal, child: sized),
       );
     });
   }
